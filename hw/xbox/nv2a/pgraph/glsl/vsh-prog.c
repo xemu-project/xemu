@@ -368,7 +368,7 @@ static MString* decode_opcode_input(const uint32_t *shader_token,
 
 
     if (vsh_get_field(shader_token, neg_field) > 0) {
-        mstring_append_chr(ret_str, '-');
+        mstring_append_fmt(ret_str, "-");
     }
 
     /* PARAM_R uses the supplied reg_num, but the other two need to be
@@ -446,10 +446,9 @@ static MString* decode_opcode(const uint32_t *shader_token,
         bool write_fog_register = false;
         if (vsh_get_field(shader_token, FLD_OUT_ORB) == OUTPUT_C) {
             assert(!"TODO: Emulate writeable const registers");
-            mstring_append(ret, "c");
-            mstring_append_int(ret,
-                convert_c_register(
-                    vsh_get_field(shader_token, FLD_OUT_ADDRESS)));
+            mstring_append_fmt(ret, "c%d",
+                               convert_c_register(vsh_get_field(
+                                   shader_token, FLD_OUT_ADDRESS)));
         } else {
             int out_reg = vsh_get_field(shader_token, FLD_OUT_ADDRESS) & 0xF;
             mstring_append(ret,out_reg_name[out_reg]);

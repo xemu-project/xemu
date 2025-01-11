@@ -28,7 +28,6 @@
 #include "sysemu/numa.h"
 #include "exec/cpu-common.h"
 #include "exec/ramlist.h"
-#include "qemu/bitmap.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "qapi/opts-visitor.h"
@@ -36,7 +35,6 @@
 #include "sysemu/qtest.h"
 #include "hw/core/cpu.h"
 #include "hw/mem/pc-dimm.h"
-#include "migration/vmstate.h"
 #include "hw/boards.h"
 #include "hw/mem/memory-device.h"
 #include "qemu/option.h"
@@ -130,9 +128,9 @@ static void parse_numa_node(MachineState *ms, NumaNodeOptions *node,
         }
     }
 
-    have_memdevs = have_memdevs ? : node->has_memdev;
-    have_mem = have_mem ? : node->has_mem;
-    if ((node->has_mem && have_memdevs) || (node->has_memdev && have_mem)) {
+    have_memdevs = have_memdevs || node->memdev;
+    have_mem = have_mem || node->has_mem;
+    if ((node->has_mem && have_memdevs) || (node->memdev && have_mem)) {
         error_setg(errp, "numa configuration should use either mem= or memdev=,"
                    "mixing both is not allowed");
         return;
@@ -152,7 +150,7 @@ static void parse_numa_node(MachineState *ms, NumaNodeOptions *node,
                         " use -numa node,memdev instead");
         }
     }
-    if (node->has_memdev) {
+    if (node->memdev) {
         Object *o;
         o = object_resolve_path_type(node->memdev, TYPE_MEMORY_BACKEND, NULL);
         if (!o) {
@@ -229,7 +227,8 @@ void parse_numa_hmat_lb(NumaState *numa_state, NumaHmatLBOptions *node,
                    node->target, numa_state->num_nodes);
         return;
     }
-    if (!numa_info[node->initiator].has_cpu) {
+    if (!numa_info[node->initiator].has_cpu &&
+        !numa_info[node->initiator].has_gi) {
         error_setg(errp, "Invalid initiator=%d, it isn't an "
                    "initiator proximity domain", node->initiator);
         return;
@@ -250,7 +249,7 @@ void parse_numa_hmat_lb(NumaState *numa_state, NumaHmatLBOptions *node,
     lb_data.initiator = node->initiator;
     lb_data.target = node->target;
 
-    if (node->data_type <= HMATLB_DATA_TYPE_WRITE_LATENCY) {
+    if (node->data_type <= HMAT_LB_DATA_TYPE_WRITE_LATENCY) {
         /* Input latency data */
 
         if (!node->has_latency) {
@@ -314,7 +313,7 @@ void parse_numa_hmat_lb(NumaState *numa_state, NumaHmatLBOptions *node,
             numa_info[node->target].lb_info_provided |= BIT(0);
         }
         lb_data.data = node->latency;
-    } else if (node->data_type >= HMATLB_DATA_TYPE_ACCESS_BANDWIDTH) {
+    } else if (node->data_type >= HMAT_LB_DATA_TYPE_ACCESS_BANDWIDTH) {
         /* Input bandwidth data */
         if (!node->has_bandwidth) {
             error_setg(errp, "Missing 'bandwidth' option");
@@ -381,7 +380,7 @@ void parse_numa_hmat_lb(NumaState *numa_state, NumaHmatLBOptions *node,
         }
         lb_data.data = node->bandwidth;
     } else {
-        assert(0);
+        g_assert_not_reached();
     }
 
     g_array_append_val(hmat_lb->list, lb_data);
@@ -531,10 +530,17 @@ static int parse_numa(void *opaque, QemuOpts *opts, Error **errp)
     /* Fix up legacy suffix-less format */
     if ((object->type == NUMA_OPTIONS_TYPE_NODE) && object->u.node.has_mem) {
         const char *mem_str = qemu_opt_get(opts, "mem");
-        qemu_strtosz_MiB(mem_str, NULL, &object->u.node.mem);
+        int ret = qemu_strtosz_MiB(mem_str, NULL, &object->u.node.mem);
+
+        if (ret < 0) {
+            error_setg_errno(&err, -ret, "could not parse memory size '%s'",
+                             mem_str);
+        }
     }
 
-    set_numa_options(ms, object, &err);
+    if (!err) {
+        set_numa_options(ms, object, &err);
+    }
 
     qapi_free_NumaOptions(object);
     if (err) {

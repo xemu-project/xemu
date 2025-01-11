@@ -8,7 +8,7 @@
  * directory.
  */
 
-#include "libc.h"
+#include <stdio.h>
 #include "s390-ccw.h"
 #include "virtio.h"
 #include "virtio-scsi.h"
@@ -16,7 +16,7 @@
 #define VIRTIO_BLK_F_GEOMETRY   (1 << 4)
 #define VIRTIO_BLK_F_BLK_SIZE   (1 << 6)
 
-static int virtio_blk_read_many(VDev *vdev, ulong sector, void *load_addr,
+static int virtio_blk_read_many(VDev *vdev, unsigned long sector, void *load_addr,
                                 int sec_num)
 {
     VirtioBlkOuthdr out_hdr;
@@ -49,7 +49,7 @@ static int virtio_blk_read_many(VDev *vdev, ulong sector, void *load_addr,
     return status;
 }
 
-int virtio_read_many(ulong sector, void *load_addr, int sec_num)
+int virtio_read_many(unsigned long sector, void *load_addr, int sec_num)
 {
     VDev *vdev = virtio_get_device();
 
@@ -59,34 +59,34 @@ int virtio_read_many(ulong sector, void *load_addr, int sec_num)
     case VIRTIO_ID_SCSI:
         return virtio_scsi_read_many(vdev, sector, load_addr, sec_num);
     }
-    panic("\n! No readable IPL device !\n");
+
     return -1;
 }
 
-unsigned long virtio_load_direct(ulong rec_list1, ulong rec_list2,
-                                 ulong subchan_id, void *load_addr)
+unsigned long virtio_load_direct(unsigned long rec_list1, unsigned long rec_list2,
+                                 unsigned long subchan_id, void *load_addr)
 {
     u8 status;
     int sec = rec_list1;
     int sec_num = ((rec_list2 >> 32) & 0xffff) + 1;
     int sec_len = rec_list2 >> 48;
-    ulong addr = (ulong)load_addr;
+    unsigned long addr = (unsigned long)load_addr;
 
     if (sec_len != virtio_get_block_size()) {
-        return -1;
+        return 0;
     }
 
-    sclp_print(".");
+    printf(".");
     status = virtio_read_many(sec, (void *)addr, sec_num);
     if (status) {
-        panic("I/O Error");
+        return 0;
     }
     addr += sec_num * virtio_get_block_size();
 
     return addr;
 }
 
-int virtio_read(ulong sector, void *load_addr)
+int virtio_read(unsigned long sector, void *load_addr)
 {
     return virtio_read_many(sector, load_addr, 1);
 }
@@ -230,7 +230,7 @@ int virtio_blk_setup_device(SubChannelId schid)
     vdev->schid = schid;
     virtio_setup_ccw(vdev);
 
-    sclp_print("Using virtio-blk.\n");
+    puts("Using virtio-blk.");
 
     return 0;
 }

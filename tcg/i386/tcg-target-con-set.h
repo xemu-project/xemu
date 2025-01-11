@@ -11,13 +11,16 @@
  *
  * C_N1_Im(...) defines a constraint set with 1 output and <m> inputs,
  * except that the output must use a new register.
+ *
+ * C_Nn_Om_Ik(...) defines a constraint set with <n + m> outputs and <k>
+ * inputs, except that the first <n> outputs must use new registers.
  */
 C_O0_I1(r)
 C_O0_I2(L, L)
 C_O0_I2(qi, r)
 C_O0_I2(re, r)
 C_O0_I2(ri, r)
-C_O0_I2(r, re)
+C_O0_I2(r, reT)
 C_O0_I2(s, L)
 C_O0_I2(x, r)
 C_O0_I2(L, x)
@@ -35,6 +38,8 @@ C_O1_I1(x, L)
 C_O1_I1(r, x)
 C_O1_I2(Q, 0, Q)
 C_O1_I2(q, r, re)
+C_O1_I2(q, 0, qi)
+C_O1_I2(q, r, reT)
 C_O1_I2(r, 0, ci)
 C_O1_I2(r, 0, r)
 C_O1_I2(r, 0, re)
@@ -51,10 +56,11 @@ C_N1_I2(r, r, r)
 C_N1_I2(r, r, rW)
 C_O1_I3(x, 0, x, x)
 C_O1_I3(x, x, x, x)
-C_O1_I4(r, r, re, r, 0)
+C_O1_I4(x, x, x, xO, x)
+C_O1_I4(r, r, reT, r, 0)
 C_O1_I4(r, r, r, ri, ri)
 C_O2_I1(r, r, L)
 C_O2_I2(a, d, a, r)
 C_O2_I2(r, r, L, L)
 C_O2_I3(a, d, 0, 1, r)
-C_O2_I4(r, r, 0, 1, re, re)
+C_N1_O1_I4(r, r, 0, 1, re, re)

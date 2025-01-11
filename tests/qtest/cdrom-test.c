@@ -17,7 +17,7 @@
 
 static char isoimage[] = "cdrom-boot-iso-XXXXXX";
 
-static int exec_genisoimg(const char **args)
+static int exec_xorrisofs(const char **args)
 {
     gchar *out_err = NULL;
     gint exit_status = -1;
@@ -37,17 +37,17 @@ static int exec_genisoimg(const char **args)
     return exit_status;
 }
 
-static int prepare_image(const char *arch, char *isoimage)
+static int prepare_image(const char *arch, char *isoimagepath)
 {
     char srcdir[] = "cdrom-test-dir-XXXXXX";
     char *codefile = NULL;
     int ifh, ret = -1;
     const char *args[] = {
-        "genisoimage", "-quiet", "-l", "-no-emul-boot",
-        "-b", NULL, "-o", isoimage, srcdir, NULL
+        "xorrisofs", "-quiet", "-l", "-no-emul-boot",
+        "-b", NULL, "-o", isoimagepath, srcdir, NULL
     };
 
-    ifh = mkstemp(isoimage);
+    ifh = mkstemp(isoimagepath);
     if (ifh < 0) {
         perror("Error creating temporary iso image file");
         return -1;
@@ -75,9 +75,9 @@ static int prepare_image(const char *arch, char *isoimage)
     }
 
     args[5] = strchr(codefile, '/') + 1;
-    ret = exec_genisoimg(args);
+    ret = exec_xorrisofs(args);
     if (ret) {
-        fprintf(stderr, "genisoimage failed: %i\n", ret);
+        fprintf(stderr, "xorrisofs failed: %i\n", ret);
     }
 
     unlink(codefile);
@@ -130,10 +130,40 @@ static void test_cdboot(gconstpointer data)
 
 static void add_x86_tests(void)
 {
-    qtest_add_data_func("cdrom/boot/default", "-cdrom ", test_cdboot);
-    qtest_add_data_func("cdrom/boot/virtio-scsi",
-                        "-device virtio-scsi -device scsi-cd,drive=cdr "
-                        "-blockdev file,node-name=cdr,filename=", test_cdboot);
+    if (!qtest_has_accel("tcg") && !qtest_has_accel("kvm")) {
+        g_test_skip("No KVM or TCG accelerator available, skipping boot tests");
+        return;
+    }
+
+    if (qtest_has_machine("pc")) {
+        qtest_add_data_func("cdrom/boot/default", "-cdrom ", test_cdboot);
+        if (qtest_has_device("virtio-scsi-ccw")) {
+            qtest_add_data_func("cdrom/boot/virtio-scsi",
+                                "-device virtio-scsi -device scsi-cd,drive=cdr "
+                                "-blockdev file,node-name=cdr,filename=",
+                                test_cdboot);
+        }
+
+        if (qtest_has_device("am53c974")) {
+            qtest_add_data_func("cdrom/boot/am53c974",
+                                "-device am53c974 -device scsi-cd,drive=cd1 "
+                                "-drive if=none,id=cd1,format=raw,file=",
+                                test_cdboot);
+        }
+        if (qtest_has_device("dc390")) {
+            qtest_add_data_func("cdrom/boot/dc390",
+                                "-device dc390 -device scsi-cd,drive=cd1 "
+                                "-blockdev file,node-name=cd1,filename=",
+                                test_cdboot);
+        }
+        if (qtest_has_device("lsi53c895a")) {
+            qtest_add_data_func("cdrom/boot/lsi53c895a",
+                                "-device lsi53c895a -device scsi-cd,drive=cd1 "
+                                "-blockdev file,node-name=cd1,filename=",
+                                test_cdboot);
+        }
+    }
+
     /*
      * Unstable CI test under load
      * See https://lists.gnu.org/archive/html/qemu-devel/2019-02/msg05509.html
@@ -142,41 +172,38 @@ static void add_x86_tests(void)
         qtest_add_data_func("cdrom/boot/isapc", "-M isapc "
                             "-drive if=ide,media=cdrom,file=", test_cdboot);
     }
-    if (qtest_has_device("am53c974")) {
-        qtest_add_data_func("cdrom/boot/am53c974",
-                            "-device am53c974 -device scsi-cd,drive=cd1 "
-                            "-drive if=none,id=cd1,format=raw,file=",
-                            test_cdboot);
-    }
-    if (qtest_has_device("dc390")) {
-        qtest_add_data_func("cdrom/boot/dc390",
-                            "-device dc390 -device scsi-cd,drive=cd1 "
-                            "-blockdev file,node-name=cd1,filename=",
-                            test_cdboot);
-    }
-    if (qtest_has_device("lsi53c895a")) {
-        qtest_add_data_func("cdrom/boot/lsi53c895a",
-                            "-device lsi53c895a -device scsi-cd,drive=cd1 "
-                            "-blockdev file,node-name=cd1,filename=",
-                            test_cdboot);
-    }
-    if (qtest_has_device("megasas")) {
-        qtest_add_data_func("cdrom/boot/megasas", "-M q35 "
-                            "-device megasas -device scsi-cd,drive=cd1 "
-                            "-blockdev file,node-name=cd1,filename=",
-                            test_cdboot);
-    }
-    if (qtest_has_device("megasas-gen2")) {
-        qtest_add_data_func("cdrom/boot/megasas-gen2", "-M q35 "
-                            "-device megasas-gen2 -device scsi-cd,drive=cd1 "
-                            "-blockdev file,node-name=cd1,filename=",
-                            test_cdboot);
+
+    if (qtest_has_machine("q35")) {
+        if (qtest_has_device("megasas")) {
+            qtest_add_data_func("cdrom/boot/megasas", "-M q35 "
+                                "-device megasas -device scsi-cd,drive=cd1 "
+                                "-blockdev file,node-name=cd1,filename=",
+                                test_cdboot);
+        }
+        if (qtest_has_device("megasas-gen2")) {
+            qtest_add_data_func("cdrom/boot/megasas-gen2", "-M q35 "
+                                "-device megasas-gen2 -device scsi-cd,drive=cd1 "
+                                "-blockdev file,node-name=cd1,filename=",
+                                test_cdboot);
+        }
     }
 }
 
 static void add_s390x_tests(void)
 {
+    if (!qtest_has_accel("tcg") && !qtest_has_accel("kvm")) {
+        g_test_skip("No KVM or TCG accelerator available, skipping boot tests");
+    }
+    if (!qtest_has_device("virtio-blk-ccw")) {
+        return;
+    }
+
     qtest_add_data_func("cdrom/boot/default", "-cdrom ", test_cdboot);
+
+    if (!qtest_has_device("virtio-scsi-ccw")) {
+        return;
+    }
+
     qtest_add_data_func("cdrom/boot/virtio-scsi",
                         "-device virtio-scsi -device scsi-cd,drive=cdr "
                         "-blockdev file,node-name=cdr,filename=", test_cdboot);
@@ -186,6 +213,30 @@ static void add_s390x_tests(void)
                         "-drive driver=null-co,read-zeroes=on,if=none,id=d1 "
                         "-device virtio-blk,drive=d2,bootindex=1 "
                         "-drive if=none,id=d2,media=cdrom,file=", test_cdboot);
+    qtest_add_data_func("cdrom/boot/as-fallback-device",
+                        "-device virtio-serial -device virtio-scsi "
+                        "-device virtio-blk,drive=d1,bootindex=1 "
+                        "-drive driver=null-co,read-zeroes=on,if=none,id=d1 "
+                        "-device virtio-blk,drive=d2,bootindex=2 "
+                        "-drive if=none,id=d2,media=cdrom,file=", test_cdboot);
+    qtest_add_data_func("cdrom/boot/as-last-option",
+                        "-device virtio-serial -device virtio-scsi "
+                        "-device virtio-blk,drive=d1,bootindex=1 "
+                        "-drive driver=null-co,read-zeroes=on,if=none,id=d1 "
+                        "-device virtio-blk,drive=d2,bootindex=2 "
+                        "-drive driver=null-co,read-zeroes=on,if=none,id=d2 "
+                        "-device virtio-blk,drive=d3,bootindex=3 "
+                        "-drive driver=null-co,read-zeroes=on,if=none,id=d3 "
+                        "-device scsi-hd,drive=d4,bootindex=4 "
+                        "-drive driver=null-co,read-zeroes=on,if=none,id=d4 "
+                        "-device scsi-hd,drive=d5,bootindex=5 "
+                        "-drive driver=null-co,read-zeroes=on,if=none,id=d5 "
+                        "-device virtio-blk,drive=d6,bootindex=6 "
+                        "-drive driver=null-co,read-zeroes=on,if=none,id=d6 "
+                        "-device scsi-hd,drive=d7,bootindex=7 "
+                        "-drive driver=null-co,read-zeroes=on,if=none,id=d7 "
+                        "-device scsi-cd,drive=d8,bootindex=8 "
+                        "-drive if=none,id=d8,media=cdrom,file=", test_cdboot);
     if (qtest_has_device("x-terminal3270")) {
         qtest_add_data_func("cdrom/boot/without-bootindex",
                             "-device virtio-scsi -device virtio-serial "
@@ -201,12 +252,12 @@ int main(int argc, char **argv)
 {
     int ret;
     const char *arch = qtest_get_arch();
-    const char *genisocheck[] = { "genisoimage", "-version", NULL };
+    const char *xorrisocheck[] = { "xorrisofs", "-version", NULL };
 
     g_test_init(&argc, &argv, NULL);
 
-    if (exec_genisoimg(genisocheck)) {
-        /* genisoimage not available - so can't run tests */
+    if (exec_xorrisofs(xorrisocheck)) {
+        /* xorrisofs not available - so can't run tests */
         return g_test_run();
     }
 
@@ -244,9 +295,18 @@ int main(int argc, char **argv)
         const char *armmachines[] = {
             "realview-eb", "realview-eb-mpcore", "realview-pb-a8",
             "realview-pbx-a9", "versatileab", "versatilepb", "vexpress-a15",
-            "vexpress-a9", "virt", NULL
+            "vexpress-a9", NULL
         };
         add_cdrom_param_tests(armmachines);
+        if (qtest_has_device("virtio-blk-pci")) {
+            const char *virtmachine[] = { "virt", NULL };
+            add_cdrom_param_tests(virtmachine);
+        }
+    } else if (g_str_equal(arch, "loongarch64")) {
+        if (qtest_has_device("virtio-blk-pci")) {
+            const char *virtmachine[] = { "virt", NULL };
+            add_cdrom_param_tests(virtmachine);
+        }
     } else {
         const char *nonemachine[] = { "none", NULL };
         add_cdrom_param_tests(nonemachine);

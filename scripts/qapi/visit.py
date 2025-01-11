@@ -28,6 +28,8 @@ from .gen import (
 )
 from .schema import (
     QAPISchema,
+    QAPISchemaAlternatives,
+    QAPISchemaBranches,
     QAPISchemaEnumMember,
     QAPISchemaEnumType,
     QAPISchemaFeature,
@@ -35,7 +37,6 @@ from .schema import (
     QAPISchemaObjectType,
     QAPISchemaObjectTypeMember,
     QAPISchemaType,
-    QAPISchemaVariants,
 )
 from .source import QAPISourceInfo
 
@@ -63,13 +64,25 @@ bool visit_type_%(c_name)s_members(Visitor *v, %(c_name)s *obj, Error **errp);
 def gen_visit_object_members(name: str,
                              base: Optional[QAPISchemaObjectType],
                              members: List[QAPISchemaObjectTypeMember],
-                             variants: Optional[QAPISchemaVariants]) -> str:
+                             branches: Optional[QAPISchemaBranches]) -> str:
     ret = mcgen('''
 
 bool visit_type_%(c_name)s_members(Visitor *v, %(c_name)s *obj, Error **errp)
 {
 ''',
                 c_name=c_name(name))
+
+    sep = ''
+    for memb in members:
+        if memb.optional and not memb.need_has():
+            ret += memb.ifcond.gen_if()
+            ret += mcgen('''
+    bool has_%(c_name)s = !!obj->%(c_name)s;
+''',
+                         c_name=c_name(memb.name))
+            sep = '\n'
+            ret += memb.ifcond.gen_endif()
+    ret += sep
 
     if base:
         ret += mcgen('''
@@ -82,10 +95,13 @@ bool visit_type_%(c_name)s_members(Visitor *v, %(c_name)s *obj, Error **errp)
     for memb in members:
         ret += memb.ifcond.gen_if()
         if memb.optional:
+            has = 'has_' + c_name(memb.name)
+            if memb.need_has():
+                has = 'obj->' + has
             ret += mcgen('''
-    if (visit_optional(v, "%(name)s", &obj->has_%(c_name)s)) {
+    if (visit_optional(v, "%(name)s", &%(has)s)) {
 ''',
-                         name=memb.name, c_name=c_name(memb.name))
+                         name=memb.name, has=has)
             indent.increase()
         special_features = gen_special_features(memb.features)
         if special_features != '0':
@@ -116,8 +132,8 @@ bool visit_type_%(c_name)s_members(Visitor *v, %(c_name)s *obj, Error **errp)
 ''')
         ret += memb.ifcond.gen_endif()
 
-    if variants:
-        tag_member = variants.tag_member
+    if branches:
+        tag_member = branches.tag_member
         assert isinstance(tag_member.type, QAPISchemaEnumType)
 
         ret += mcgen('''
@@ -125,7 +141,7 @@ bool visit_type_%(c_name)s_members(Visitor *v, %(c_name)s *obj, Error **errp)
 ''',
                      c_name=c_name(tag_member.name))
 
-        for var in variants.variants:
+        for var in branches.variants:
             case_str = c_enum_const(tag_member.type.name, var.name,
                                     tag_member.type.prefix)
             ret += var.ifcond.gen_if()
@@ -207,7 +223,8 @@ bool visit_type_%(c_name)s(Visitor *v, const char *name,
                  c_name=c_name(name))
 
 
-def gen_visit_alternate(name: str, variants: QAPISchemaVariants) -> str:
+def gen_visit_alternate(name: str,
+                        alternatives: QAPISchemaAlternatives) -> str:
     ret = mcgen('''
 
 bool visit_type_%(c_name)s(Visitor *v, const char *name,
@@ -229,7 +246,7 @@ bool visit_type_%(c_name)s(Visitor *v, const char *name,
 ''',
                 c_name=c_name(name))
 
-    for var in variants.variants:
+    for var in alternatives.variants:
         ret += var.ifcond.gen_if()
         ret += mcgen('''
     case %(case)s:
@@ -263,8 +280,9 @@ bool visit_type_%(c_name)s(Visitor *v, const char *name,
         abort();
     default:
         assert(visit_is_input(v));
-        error_setg(errp, QERR_INVALID_PARAMETER_TYPE, name ? name : "null",
-                   "%(name)s");
+        error_setg(errp,
+                   "Invalid parameter type for '%%s', expected: %(name)s",
+                   name ? name : "null");
         /* Avoid passing invalid *obj to qapi_free_%(c_name)s() */
         g_free(*obj);
         *obj = NULL;
@@ -341,7 +359,6 @@ class QAPISchemaGenVisitVisitor(QAPISchemaModularCVisitor):
         self._genc.preamble_add(mcgen('''
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qapi/qmp/qerror.h"
 #include "%(visit)s.h"
 ''',
                                       visit=visit))
@@ -379,14 +396,14 @@ class QAPISchemaGenVisitVisitor(QAPISchemaModularCVisitor):
                           features: List[QAPISchemaFeature],
                           base: Optional[QAPISchemaObjectType],
                           members: List[QAPISchemaObjectTypeMember],
-                          variants: Optional[QAPISchemaVariants]) -> None:
+                          branches: Optional[QAPISchemaBranches]) -> None:
         # Nothing to do for the special empty builtin
         if name == 'q_empty':
             return
         with ifcontext(ifcond, self._genh, self._genc):
             self._genh.add(gen_visit_members_decl(name))
             self._genc.add(gen_visit_object_members(name, base,
-                                                    members, variants))
+                                                    members, branches))
             # TODO Worth changing the visitor signature, so we could
             # directly use rather than repeat type.is_implicit()?
             if not name.startswith('q_'):
@@ -399,10 +416,10 @@ class QAPISchemaGenVisitVisitor(QAPISchemaModularCVisitor):
                              info: Optional[QAPISourceInfo],
                              ifcond: QAPISchemaIfCond,
                              features: List[QAPISchemaFeature],
-                             variants: QAPISchemaVariants) -> None:
+                             alternatives: QAPISchemaAlternatives) -> None:
         with ifcontext(ifcond, self._genh, self._genc):
             self._genh.add(gen_visit_decl(name))
-            self._genc.add(gen_visit_alternate(name, variants))
+            self._genc.add(gen_visit_alternate(name, alternatives))
 
 
 def gen_visit(schema: QAPISchema,

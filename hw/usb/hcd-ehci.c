@@ -783,9 +783,9 @@ static void ehci_register_companion(USBBus *bus, USBPort *ports[],
     EHCIState *s = container_of(bus, EHCIState, bus);
     uint32_t i;
 
-    if (firstport + portcount > NB_PORTS) {
+    if (firstport + portcount > EHCI_PORTS) {
         error_setg(errp, "firstport must be between 0 and %u",
-                   NB_PORTS - portcount);
+                   EHCI_PORTS - portcount);
         return;
     }
 
@@ -831,7 +831,7 @@ static USBDevice *ehci_find_device(EHCIState *ehci, uint8_t addr)
     USBPort *port;
     int i;
 
-    for (i = 0; i < NB_PORTS; i++) {
+    for (i = 0; i < EHCI_PORTS; i++) {
         port = &ehci->ports[i];
         if (!(ehci->portsc[i] & PORTSC_PED)) {
             DPRINTF("Port %d not enabled\n", i);
@@ -850,7 +850,7 @@ void ehci_reset(void *opaque)
 {
     EHCIState *s = opaque;
     int i;
-    USBDevice *devs[NB_PORTS];
+    USBDevice *devs[EHCI_PORTS];
 
     trace_usb_ehci_reset();
 
@@ -858,7 +858,7 @@ void ehci_reset(void *opaque)
      * Do the detach before touching portsc, so that it correctly gets send to
      * us or to our companion based on PORTSC_POWNER before the reset.
      */
-    for(i = 0; i < NB_PORTS; i++) {
+    for(i = 0; i < EHCI_PORTS; i++) {
         devs[i] = s->ports[i].dev;
         if (devs[i] && devs[i]->attached) {
             usb_detach(&s->ports[i]);
@@ -877,7 +877,7 @@ void ehci_reset(void *opaque)
     s->astate = EST_INACTIVE;
     s->pstate = EST_INACTIVE;
 
-    for(i = 0; i < NB_PORTS; i++) {
+    for(i = 0; i < EHCI_PORTS; i++) {
         if (s->companion_ports[i]) {
             s->portsc[i] = PORTSC_POWNER | PORTSC_PPOWER;
         } else {
@@ -1086,8 +1086,9 @@ static void ehci_opreg_write(void *ptr, hwaddr addr,
     case CONFIGFLAG:
         val &= 0x1;
         if (val) {
-            for(i = 0; i < NB_PORTS; i++)
+            for (i = 0; i < EHCI_PORTS; i++) {
                 handle_port_owner_write(s, i, 0);
+            }
         }
         break;
 
@@ -1464,7 +1465,7 @@ static int ehci_process_itd(EHCIState *ehci,
                     usb_handle_packet(dev, &ehci->ipacket);
                     usb_packet_unmap(&ehci->ipacket, &ehci->isgl);
                 } else {
-                    DPRINTF("ISOCH: attempt to addess non-iso endpoint\n");
+                    DPRINTF("ISOCH: attempt to address non-iso endpoint\n");
                     ehci->ipacket.status = USB_RET_NAK;
                     ehci->ipacket.actual_length = 0;
                 }
@@ -1513,7 +1514,7 @@ static int ehci_process_itd(EHCIState *ehci,
 
 
 /*  This state is the entry point for asynchronous schedule
- *  processing.  Entry here consitutes a EHCI start event state (4.8.5)
+ *  processing.  Entry here constitutes a EHCI start event state (4.8.5)
  */
 static int ehci_state_waitlisthead(EHCIState *ehci,  int async)
 {
@@ -2426,7 +2427,7 @@ static int usb_ehci_post_load(void *opaque, int version_id)
     EHCIState *s = opaque;
     int i;
 
-    for (i = 0; i < NB_PORTS; i++) {
+    for (i = 0; i < EHCI_PORTS; i++) {
         USBPort *companion = s->companion_ports[i];
         if (companion == NULL) {
             continue;
@@ -2451,14 +2452,14 @@ static void usb_ehci_vm_state_change(void *opaque, bool running, RunState state)
      * USB-devices which have async handled packages have a packet in the
      * ep queue to match the completion with.
      */
-    if (state == RUN_STATE_RUNNING) {
+    if (running) {
         ehci_advance_async_state(ehci);
     }
 
     /*
      * The schedule rebuilt from guest memory could cause the migration dest
      * to miss a QH unlink, and fail to cancel packets, since the unlinked QH
-     * will never have existed on the destination. Therefor we must flush the
+     * will never have existed on the destination. Therefore we must flush the
      * async schedule on savevm to catch any not yet noticed unlinks.
      */
     if (state == RUN_STATE_SAVE_VM) {
@@ -2473,7 +2474,7 @@ const VMStateDescription vmstate_ehci = {
     .minimum_version_id  = 1,
     .pre_save    = usb_ehci_pre_save,
     .post_load   = usb_ehci_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         /* mmio registers */
         VMSTATE_UINT32(usbcmd, EHCIState),
         VMSTATE_UINT32(usbsts, EHCIState),
@@ -2508,9 +2509,9 @@ void usb_ehci_realize(EHCIState *s, DeviceState *dev, Error **errp)
 {
     int i;
 
-    if (s->portnr > NB_PORTS) {
+    if (s->portnr > EHCI_PORTS) {
         error_setg(errp, "Too many ports! Max. port number is %d.",
-                   NB_PORTS);
+                   EHCI_PORTS);
         return;
     }
     if (s->maxframes < 8 || s->maxframes > 512)  {
@@ -2533,7 +2534,8 @@ void usb_ehci_realize(EHCIState *s, DeviceState *dev, Error **errp)
     }
 
     s->frame_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, ehci_work_timer, s);
-    s->async_bh = qemu_bh_new(ehci_work_bh, s);
+    s->async_bh = qemu_bh_new_guarded(ehci_work_bh, s,
+                                      &dev->mem_reentrancy_guard);
     s->device = dev;
 
     s->vmstate = qemu_add_vm_change_state_handler(usb_ehci_vm_state_change, s);

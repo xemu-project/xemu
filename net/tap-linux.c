@@ -45,7 +45,7 @@ int tap_open(char *ifname, int ifname_size, int *vnet_hdr,
     int len = sizeof(struct virtio_net_hdr);
     unsigned int features;
 
-    TFR(fd = open(PATH_NET_TUN, O_RDWR));
+    fd = RETRY_ON_EINTR(open(PATH_NET_TUN, O_RDWR));
     if (fd < 0) {
         error_setg_errno(errp, errno, "could not open %s", PATH_NET_TUN);
         return -1;
@@ -173,22 +173,14 @@ int tap_probe_has_ufo(int fd)
     return 1;
 }
 
-/* Verify that we can assign given length */
-int tap_probe_vnet_hdr_len(int fd, int len)
+int tap_probe_has_uso(int fd)
 {
-    int orig;
-    if (ioctl(fd, TUNGETVNETHDRSZ, &orig) == -1) {
+    unsigned offload;
+
+    offload = TUN_F_CSUM | TUN_F_USO4 | TUN_F_USO6;
+
+    if (ioctl(fd, TUNSETOFFLOAD, offload) < 0) {
         return 0;
-    }
-    if (ioctl(fd, TUNSETVNETHDRSZ, &len) == -1) {
-        return 0;
-    }
-    /* Restore original length: we can't handle failure. */
-    if (ioctl(fd, TUNSETVNETHDRSZ, &orig) == -1) {
-        fprintf(stderr, "TUNGETVNETHDRSZ ioctl() failed: %s. Exiting.\n",
-                strerror(errno));
-        abort();
-        return -errno;
     }
     return 1;
 }
@@ -237,7 +229,7 @@ int tap_fd_set_vnet_be(int fd, int is_be)
 }
 
 void tap_fd_set_offload(int fd, int csum, int tso4,
-                        int tso6, int ecn, int ufo)
+                        int tso6, int ecn, int ufo, int uso4, int uso6)
 {
     unsigned int offload = 0;
 
@@ -256,13 +248,22 @@ void tap_fd_set_offload(int fd, int csum, int tso4,
             offload |= TUN_F_TSO_ECN;
         if (ufo)
             offload |= TUN_F_UFO;
+        if (uso4) {
+            offload |= TUN_F_USO4;
+        }
+        if (uso6) {
+            offload |= TUN_F_USO6;
+        }
     }
 
     if (ioctl(fd, TUNSETOFFLOAD, offload) != 0) {
-        offload &= ~TUN_F_UFO;
+        offload &= ~(TUN_F_USO4 | TUN_F_USO6);
         if (ioctl(fd, TUNSETOFFLOAD, offload) != 0) {
-            fprintf(stderr, "TUNSETOFFLOAD ioctl() failed: %s\n",
+            offload &= ~TUN_F_UFO;
+            if (ioctl(fd, TUNSETOFFLOAD, offload) != 0) {
+                fprintf(stderr, "TUNSETOFFLOAD ioctl() failed: %s\n",
                     strerror(errno));
+            }
         }
     }
 }

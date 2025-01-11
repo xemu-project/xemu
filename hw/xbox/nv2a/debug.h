@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2018-2023 Matt Borgerson
+ * Copyright (c) 2018-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -30,8 +30,11 @@
     } \
 } while (0)
 
-// #define DEBUG_NV2A
-#ifdef DEBUG_NV2A
+#ifndef DEBUG_NV2A
+# define DEBUG_NV2A 0
+#endif
+
+#if DEBUG_NV2A
 # define NV2A_DPRINTF(format, ...)       printf("nv2a: " format, ## __VA_ARGS__)
 #else
 # define NV2A_DPRINTF(format, ...)       do { } while (0)
@@ -42,9 +45,11 @@
  * varying degree, but should otherwise not crash the system. Enable this
  * macro for debugging.
  */
-// #define DEBUG_NV2A_FEATURES 1
+#ifndef DEBUG_NV2A_FEATURES
+# define DEBUG_NV2A_FEATURES 0
+#endif
 
-#ifdef DEBUG_NV2A_FEATURES
+#if DEBUG_NV2A_FEATURES
 
 /* Feature which has not yet been confirmed */
 #define NV2A_UNCONFIRMED(format, ...) do { \

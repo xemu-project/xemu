@@ -319,7 +319,7 @@ static const VMStateDescription vmstate_pc87312 = {
     .version_id = 1,
     .minimum_version_id = 1,
     .post_load = pc87312_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT8(read_id_step, PC87312State),
         VMSTATE_UINT8(selected_index, PC87312State),
         VMSTATE_UINT8_ARRAY(regs, PC87312State, 3),
@@ -338,10 +338,10 @@ static void pc87312_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     ISASuperIOClass *sc = ISA_SUPERIO_CLASS(klass);
 
-    sc->parent_realize = dc->realize;
-    dc->realize = pc87312_realize;
-    dc->reset = pc87312_reset;
+    device_class_set_legacy_reset(dc, pc87312_reset);
     dc->vmsd = &vmstate_pc87312;
+    device_class_set_parent_realize(dc, pc87312_realize,
+                                    &sc->parent_realize);
     device_class_set_props(dc, pc87312_properties);
 
     sc->parallel = (ISASuperIOFuncs){

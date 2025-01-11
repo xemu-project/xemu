@@ -5,6 +5,7 @@
 
 #include "qemu/osdep.h"
 #include <sys/epoll.h>
+#include "qemu/lockcnt.h"
 #include "qemu/rcu_queue.h"
 #include "aio-posix.h"
 
@@ -63,11 +64,6 @@ static int fdmon_epoll_wait(AioContext *ctx, AioHandlerList *ready_list,
     AioHandler *node;
     int i, ret = 0;
     struct epoll_event events[128];
-
-    /* Fall back while external clients are disabled */
-    if (qatomic_read(&ctx->external_disable_cnt)) {
-        return fdmon_poll_ops.wait(ctx, ready_list, timeout);
-    }
 
     if (timeout > 0) {
         ret = qemu_poll_ns(&pfd, 1, timeout);
@@ -130,11 +126,6 @@ bool fdmon_epoll_try_upgrade(AioContext *ctx, unsigned npfd)
     bool ok;
 
     if (ctx->epollfd < 0) {
-        return false;
-    }
-
-    /* Do not upgrade while external clients are disabled */
-    if (qatomic_read(&ctx->external_disable_cnt)) {
         return false;
     }
 

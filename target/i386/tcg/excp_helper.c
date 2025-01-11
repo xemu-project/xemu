@@ -28,7 +28,7 @@
 G_NORETURN void helper_raise_interrupt(CPUX86State *env, int intno,
                                           int next_eip_addend)
 {
-    raise_interrupt(env, intno, 1, 0, next_eip_addend);
+    raise_interrupt(env, intno, next_eip_addend);
 }
 
 G_NORETURN void helper_raise_exception(CPUX86State *env, int exception_index)
@@ -112,10 +112,9 @@ void raise_interrupt2(CPUX86State *env, int intno,
 
 /* shortcuts to generate exceptions */
 
-G_NORETURN void raise_interrupt(CPUX86State *env, int intno, int is_int,
-                                int error_code, int next_eip_addend)
+G_NORETURN void raise_interrupt(CPUX86State *env, int intno, int next_eip_addend)
 {
-    raise_interrupt2(env, intno, is_int, error_code, next_eip_addend, 0);
+    raise_interrupt2(env, intno, 1, 0, next_eip_addend, 0);
 }
 
 G_NORETURN void raise_exception_err(CPUX86State *env, int exception_index,
@@ -139,6 +138,26 @@ G_NORETURN void raise_exception_ra(CPUX86State *env, int exception_index,
                                    uintptr_t retaddr)
 {
     raise_interrupt2(env, exception_index, 0, 0, 0, retaddr);
+}
+
+G_NORETURN void helper_icebp(CPUX86State *env)
+{
+    CPUState *cs = env_cpu(env);
+
+    do_end_instruction(env);
+
+    /*
+     * INT1 aka ICEBP generates a trap-like #DB, but it is pretty special.
+     *
+     * "Although the ICEBP instruction dispatches through IDT vector 1,
+     * that event is not interceptable by means of the #DB exception
+     * intercept".  Instead there is a separate fault-like ICEBP intercept.
+     */
+    cs->exception_index = EXCP01_DB;
+    env->error_code = 0;
+    env->exception_is_int = 0;
+    env->exception_next_eip = env->eip;
+    cpu_loop_exit(cs);
 }
 
 G_NORETURN void handle_unaligned_access(CPUX86State *env, vaddr vaddr,

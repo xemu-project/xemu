@@ -19,7 +19,7 @@ from avocado.utils import network
 from avocado.utils import vmimage
 from avocado.utils import datadrainer
 from avocado.utils.path import find_command
-from avocado_qemu import LinuxTest
+from avocado_qemu.linuxtest import LinuxTest
 
 class ReplayLinux(LinuxTest):
     """
@@ -48,11 +48,14 @@ class ReplayLinux(LinuxTest):
         bus_string = ''
         if self.bus:
             bus_string = ',bus=%s.%d' % (self.bus, id,)
-        vm.add_args('-drive', 'file=%s,snapshot,id=disk%s,if=none' % (path, id))
+        vm.add_args('-drive', 'file=%s,snapshot=on,id=disk%s,if=none' % (path, id))
         vm.add_args('-drive',
             'driver=blkreplay,id=disk%s-rr,if=none,image=disk%s' % (id, id))
         vm.add_args('-device',
             '%s,drive=disk%s-rr%s' % (device, id, bus_string))
+
+    def vm_add_cdrom(self, vm, path, id, device):
+        vm.add_args('-drive', 'file=%s,id=disk%s,if=none,media=cdrom' % (path, id))
 
     def launch_and_wait(self, record, args, shift):
         self.require_netdev('user')
@@ -65,7 +68,7 @@ class ReplayLinux(LinuxTest):
         if args:
             vm.add_args(*args)
         self.vm_add_disk(vm, self.boot_path, 0, self.hdd)
-        self.vm_add_disk(vm, self.cloudinit_path, 1, self.cd)
+        self.vm_add_cdrom(vm, self.cloudinit_path, 1, self.cd)
         logger = logging.getLogger('replay')
         if record:
             logger.info('recording the execution...')
@@ -91,10 +94,12 @@ class ReplayLinux(LinuxTest):
             vm.shutdown()
             logger.info('finished the recording with log size %s bytes'
                 % os.path.getsize(replay_path))
+            self.run_replay_dump(replay_path)
+            logger.info('successfully tested replay-dump.py')
         else:
             vm.event_wait('SHUTDOWN', self.timeout)
-            vm.shutdown(True)
-            logger.info('successfully fihished the replay')
+            vm.wait()
+            logger.info('successfully finished the replay')
         elapsed = time.time() - start_time
         logger.info('elapsed time %.2f sec' % elapsed)
         return elapsed
@@ -104,6 +109,14 @@ class ReplayLinux(LinuxTest):
         t2 = self.launch_and_wait(False, args, shift)
         logger = logging.getLogger('replay')
         logger.info('replay overhead {:.2%}'.format(t2 / t1 - 1))
+
+    def run_replay_dump(self, replay_path):
+        try:
+            subprocess.check_call(["./scripts/replay-dump.py",
+                                   "-f", replay_path],
+                                  stdout=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
+            self.fail('replay-dump.py failed')
 
 @skipUnless(os.getenv('AVOCADO_TIMEOUT_EXPECTED'), 'Test might timeout')
 class ReplayLinuxX8664(ReplayLinux):

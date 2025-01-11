@@ -361,7 +361,7 @@ static const VMStateDescription vmstate_nrf51_timer = {
     .name = TYPE_NRF51_TIMER,
     .version_id = 1,
     .post_load = nrf51_timer_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_TIMER(timer, NRF51TimerState),
         VMSTATE_INT64(timer_start_ns, NRF51TimerState),
         VMSTATE_INT64(update_counter_ns, NRF51TimerState),
@@ -388,7 +388,7 @@ static void nrf51_timer_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = nrf51_timer_reset;
+    device_class_set_legacy_reset(dc, nrf51_timer_reset);
     dc->vmsd = &vmstate_nrf51_timer;
     device_class_set_props(dc, nrf51_timer_properties);
 }

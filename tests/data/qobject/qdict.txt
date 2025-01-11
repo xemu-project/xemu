@@ -1866,10 +1866,6 @@ blackfin: 4096
 blackfin.c: 7552
 blackfin.h: 1089
 blackfin_sram.h: 1207
-blacklist.c: 8658
-blacklist.h: 108
-blackstamp.c: 9838
-BlackStamp_defconfig: 27434
 blinken.h: 617
 blizzard.c: 41338
 blizzard.h: 249
@@ -3491,12 +3487,6 @@ cred-internals.h: 559
 CREDITS: 603
 crime.c: 2833
 crime.h: 5271
-cris: 4096
-cris_defs_asm.h: 3805
-crisksyms.c: 472
-cris_supp_reg.h: 198
-crisv10.c: 129158
-crisv10.h: 4289
 crm_regs.h: 1700
 cr_pll.c: 4842
 crt0_ram.S: 2152

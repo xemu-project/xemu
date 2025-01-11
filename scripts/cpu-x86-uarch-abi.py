@@ -85,7 +85,7 @@ skip = [
 
 names = []
 
-for model in models["return"]:
+for model in models:
     if "alias-of" in model:
         continue
     names.append(model["name"])
@@ -94,11 +94,11 @@ models = {}
 
 for name in sorted(names):
     cpu = shell.cmd("query-cpu-model-expansion",
-                     { "type": "static",
-                       "model": { "name": name }})
+                    type="static",
+                    model={ "name": name })
 
     got = {}
-    for (feature, present) in cpu["return"]["model"]["props"].items():
+    for (feature, present) in cpu["model"]["props"].items():
         if present and feature not in skip:
             got[feature] = True
 
@@ -179,7 +179,6 @@ for level in range(len(abi_models)):
         models[name]["delta"][level] = delta
 
 def print_uarch_abi_csv():
-    print("# Automatically generated from '%s'" % __file__)
     print("Model,baseline,v2,v3,v4")
     for name in models.keys():
         print(name, end="")

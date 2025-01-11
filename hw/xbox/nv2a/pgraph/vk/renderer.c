@@ -1,7 +1,7 @@
 /*
  * Geforce NV2A PGRAPH Vulkan Renderer
  *
- * Copyright (c) 2024 Matt Borgerson
+ * Copyright (c) 2024-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -173,10 +173,12 @@ static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     qemu_mutex_lock(&d->pfifo.lock);
-    // FIXME: Possible race condition with pgraph, consider lock
-    uint32_t pline_offset, pstart_addr, pline_compare;
-    d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
-    SurfaceBinding *surface = pgraph_vk_surface_get_within(d, d->pcrtc.start + pline_offset);
+
+    VGADisplayParams vga_display_params;
+    d->vga.get_params(&d->vga, &vga_display_params);
+
+    SurfaceBinding *surface = pgraph_vk_surface_get_within(
+        d, d->pcrtc.start + vga_display_params.line_offset);
     if (surface == NULL || !surface->color) {
         qemu_mutex_unlock(&d->pfifo.lock);
         return 0;

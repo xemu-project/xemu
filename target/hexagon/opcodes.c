@@ -36,41 +36,6 @@ const char * const opcode_names[] = {
 #undef OPCODE
 };
 
-const char * const opcode_reginfo[] = {
-#define IMMINFO(TAG, SIGN, SIZE, SHAMT, SIGN2, SIZE2, SHAMT2)    /* nothing */
-#define REGINFO(TAG, REGINFO, RREGS, WREGS) REGINFO,
-#include "op_regs_generated.h.inc"
-    NULL
-#undef REGINFO
-#undef IMMINFO
-};
-
-
-const char * const opcode_rregs[] = {
-#define IMMINFO(TAG, SIGN, SIZE, SHAMT, SIGN2, SIZE2, SHAMT2)    /* nothing */
-#define REGINFO(TAG, REGINFO, RREGS, WREGS) RREGS,
-#include "op_regs_generated.h.inc"
-    NULL
-#undef REGINFO
-#undef IMMINFO
-};
-
-
-const char * const opcode_wregs[] = {
-#define IMMINFO(TAG, SIGN, SIZE, SHAMT, SIGN2, SIZE2, SHAMT2)    /* nothing */
-#define REGINFO(TAG, REGINFO, RREGS, WREGS) WREGS,
-#include "op_regs_generated.h.inc"
-    NULL
-#undef REGINFO
-#undef IMMINFO
-};
-
-const char * const opcode_short_semantics[] = {
-#define DEF_SHORTCODE(TAG, SHORTCODE)              [TAG] = #SHORTCODE,
-#include "shortcode_generated.h.inc"
-#undef DEF_SHORTCODE
-    NULL
-};
 
 DECLARE_BITMAP(opcode_attribs[XX_LAST_OPCODE], A_ZZ_LASTATTRIB);
 
@@ -111,33 +76,4 @@ void opcode_init(void)
 #include "op_attribs_generated.h.inc"
 #undef OP_ATTRIB
 #undef ATTRIBS
-
-    decode_init();
-}
-
-
-#define NEEDLE "IMMEXT("
-
-int opcode_which_immediate_is_extended(Opcode opcode)
-{
-    const char *p;
-
-    g_assert(opcode < XX_LAST_OPCODE);
-    g_assert(GET_ATTRIB(opcode, A_EXTENDABLE));
-
-    p = opcode_short_semantics[opcode];
-    p = strstr(p, NEEDLE);
-    g_assert(p);
-    p += strlen(NEEDLE);
-    while (isspace(*p)) {
-        p++;
-    }
-    /* lower is always imm 0, upper always imm 1. */
-    if (islower(*p)) {
-        return 0;
-    } else if (isupper(*p)) {
-        return 1;
-    } else {
-        g_assert_not_reached();
-    }
 }

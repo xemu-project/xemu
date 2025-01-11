@@ -144,6 +144,10 @@ int main(int argc, char **argv)
 {
     g_test_init(&argc, &argv, NULL);
 
+    if (!qtest_has_device("lsi53c895a")) {
+        return 0;
+    }
+
     qtest_add_func("fuzz/lsi53c895a/lsi_do_dma_empty_queue",
                    test_lsi_do_dma_empty_queue);
 

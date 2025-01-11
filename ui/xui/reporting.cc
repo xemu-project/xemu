@@ -22,7 +22,6 @@
 #include <glib/gi18n.h>
 #include <stdio.h>
 #include "reporting.hh"
-#define CPPHTTPLIB_OPENSSL_SUPPORT 1
 #include <httplib.h>
 #include <json.hpp>
 using json = nlohmann::json;

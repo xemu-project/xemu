@@ -52,10 +52,8 @@ int pit_get_out(PITChannelState *s, int64_t current_time)
     switch (s->mode) {
     default:
     case 0:
-        out = (d >= s->count);
-        break;
     case 1:
-        out = (d < s->count);
+        out = (d >= s->count);
         break;
     case 2:
         if ((d % s->count) == 0 && d != 0) {
@@ -182,7 +180,7 @@ static const VMStateDescription vmstate_pit_channel = {
     .name = "pit channel",
     .version_id = 2,
     .minimum_version_id = 2,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_INT32(count, PITChannelState),
         VMSTATE_UINT16(latched_count, PITChannelState),
         VMSTATE_UINT8(count_latched, PITChannelState),
@@ -230,7 +228,7 @@ static const VMStateDescription vmstate_pit_common = {
     .minimum_version_id = 2,
     .pre_save = pit_dispatch_pre_save,
     .post_load = pit_dispatch_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_V(channels[0].irq_disabled, PITCommonState, 3),
         VMSTATE_STRUCT_ARRAY(channels, PITCommonState, 3, 2,
                              vmstate_pit_channel, PITChannelState),
@@ -238,6 +236,11 @@ static const VMStateDescription vmstate_pit_common = {
                       PITCommonState), /* formerly irq_timer */
         VMSTATE_END_OF_LIST()
     }
+};
+
+static Property pit_common_properties[] = {
+    DEFINE_PROP_UINT32("iobase", PITCommonState, iobase,  -1),
+    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void pit_common_class_init(ObjectClass *klass, void *data)
@@ -252,6 +255,7 @@ static void pit_common_class_init(ObjectClass *klass, void *data)
      * done by board code.
      */
     dc->user_creatable = false;
+    device_class_set_props(dc, pit_common_properties);
 }
 
 static const TypeInfo pit_common_type = {

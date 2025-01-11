@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2018-2021 Matt Borgerson
+ * Copyright (c) 2018-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -20,6 +20,7 @@
  */
 
 #include "hw/xbox/nv2a/nv2a_int.h"
+#include "qemu/main-loop.h"
 
 void nv2a_update_irq(NV2AState *d)
 {
@@ -149,27 +150,16 @@ static int nv2a_get_bpp(VGACommonState *s)
     return bpp;
 }
 
-static void nv2a_get_offsets(VGACommonState *s,
-                             uint32_t *pline_offset,
-                             uint32_t *pstart_addr,
-                             uint32_t *pline_compare)
+static void nv2a_get_params(VGACommonState *s, VGADisplayParams *params)
 {
     NV2AState *d = container_of(s, NV2AState, vga);
-    uint32_t start_addr, line_offset, line_compare;
-
-    line_offset = s->cr[0x13]
-        | ((s->cr[0x19] & 0xe0) << 3)
-        | ((s->cr[0x25] & 0x20) << 6);
-    line_offset <<= 3;
-    *pline_offset = line_offset;
-
-    start_addr = d->pcrtc.start / 4;
-    *pstart_addr = start_addr;
-
-    line_compare = s->cr[VGA_CRTC_LINE_COMPARE] |
-                   ((s->cr[VGA_CRTC_OVERFLOW] & 0x10) << 4) |
-                   ((s->cr[VGA_CRTC_MAX_SCAN] & 0x40) << 3);
-    *pline_compare = line_compare;
+    params->line_offset = (s->cr[0x13] | ((s->cr[0x19] & 0xe0) << 3) |
+                           ((s->cr[0x25] & 0x20) << 6))
+                          << 3;
+    params->start_addr = d->pcrtc.start / 4;
+    params->line_compare = s->cr[VGA_CRTC_LINE_COMPARE] |
+                           ((s->cr[VGA_CRTC_OVERFLOW] & 0x10) << 4) |
+                           ((s->cr[VGA_CRTC_MAX_SCAN] & 0x40) << 3);
 }
 
 const uint8_t *nv2a_get_dac_palette(void)
@@ -235,7 +225,7 @@ static void nv2a_init_vga(NV2AState *d)
 
     vga_common_init(vga, OBJECT(d), &error_fatal);
     vga->get_bpp = nv2a_get_bpp;
-    vga->get_offsets = nv2a_get_offsets;
+    vga->get_params = nv2a_get_params;
     // vga->overlay_draw_line = nv2a_overlay_draw_line;
 
     d->hw_ops = *vga->hw_ops;
@@ -255,9 +245,9 @@ static void nv2a_lock_fifo(NV2AState *d)
 {
     qemu_mutex_lock(&d->pfifo.lock);
     qemu_cond_broadcast(&d->pfifo.fifo_cond);
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
     qemu_cond_wait(&d->pfifo.fifo_idle_cond, &d->pfifo.lock);
-    qemu_mutex_lock_iothread();
+    bql_lock();
     qemu_mutex_lock(&d->pgraph.lock);
 }
 
@@ -278,9 +268,9 @@ static void nv2a_reset(NV2AState *d)
     qemu_event_reset(&d->pgraph.flush_complete);
     qatomic_set(&d->pgraph.flush_pending, true);
     nv2a_unlock_fifo(d);
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
     qemu_event_wait(&d->pgraph.flush_complete);
-    qemu_mutex_lock_iothread();
+    bql_lock();
     nv2a_lock_fifo(d);
     if (!halted) {
         qatomic_set(&d->pfifo.halt, false);
@@ -360,10 +350,10 @@ static void nv2a_exitfn(PCIDevice *dev)
     pgraph_destroy(&d->pgraph);
 }
 
-static void qdev_nv2a_reset(DeviceState *dev)
+static void nv2a_reset_hold(Object *obj, ResetType type)
 {
-    NV2AState *d = NV2A_DEVICE(dev);
-    nv2a_reset(d);
+    NV2AState *s = NV2A_DEVICE(obj);
+    nv2a_reset(s);
 }
 
 // Note: This is handled as a VM state change and not as a `pre_save` callback
@@ -377,9 +367,9 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
         qatomic_set(&d->pfifo.halt, true);
         pgraph_pre_savevm_trigger(d);
         nv2a_unlock_fifo(d);
-        qemu_mutex_unlock_iothread();
+        bql_unlock();
         pgraph_pre_savevm_wait(d);
-        qemu_mutex_lock_iothread();
+        bql_lock();
         nv2a_lock_fifo(d);
     } else if (state == RUN_STATE_RESTORE_VM) {
         nv2a_lock_fifo(d);
@@ -393,9 +383,9 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
         nv2a_lock_fifo(d);
         pgraph_pre_shutdown_trigger(d);
         nv2a_unlock_fifo(d);
-        qemu_mutex_unlock_iothread();
+        bql_unlock();
         pgraph_pre_shutdown_wait(d);
-        qemu_mutex_lock_iothread();
+        bql_lock();
     }
 }
 
@@ -558,6 +548,7 @@ static const VMStateDescription vmstate_nv2a = {
 static void nv2a_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
@@ -572,9 +563,10 @@ static void nv2a_class_init(ObjectClass *klass, void *data)
     k->realize   = nv2a_realize;
     k->exit      = nv2a_exitfn;
 
+    rc->phases.hold = nv2a_reset_hold;
+
     dc->desc = "GeForce NV2A Integrated Graphics";
     dc->vmsd = &vmstate_nv2a;
-    dc->reset = qdev_nv2a_reset;
 }
 
 static const TypeInfo nv2a_info = {

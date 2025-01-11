@@ -19,10 +19,12 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
+#include "qemu/range.h"
 #include "cpu.h"
 #include "tcg/tcg.h"
 #include "exec/helper-proto.h"
 #include "exec/exec-all.h"
+#include "exec/page-protection.h"
 #include "exec/cpu_ldst.h"
 #include "asi.h"
 
@@ -65,9 +67,6 @@
 #define AM_CHECK(env1) (1)
 #endif
 #endif
-
-#define QT0 (env->qt0)
-#define QT1 (env->qt1)
 
 #if defined(TARGET_SPARC64) && !defined(CONFIG_USER_ONLY)
 /* Calculates TSB pointer value for fault page size
@@ -242,9 +241,7 @@ static void replace_tlb_1bit_lru(SparcTLBEntry *tlb,
             if (new_ctx == ctx) {
                 uint64_t vaddr = tlb[i].tag & ~0x1fffULL;
                 uint64_t size = 8192ULL << 3 * TTE_PGSIZE(tlb[i].tte);
-                if (new_vaddr == vaddr
-                    || (new_vaddr < vaddr + size
-                        && vaddr < new_vaddr + new_size)) {
+                if (ranges_overlap(new_vaddr, new_size, vaddr, size)) {
                     DPRINTF_MMU("auto demap entry [%d] %lx->%lx\n", i, vaddr,
                                 new_vaddr);
                     replace_tlb_entry(&tlb[i], tlb_tag, tlb_tte, env1);
@@ -360,6 +357,7 @@ static inline void do_check_asi(CPUSPARCState *env, int asi, uintptr_t ra)
 #endif /* !CONFIG_USER_ONLY */
 #endif
 
+#if defined(TARGET_SPARC64) || !defined(CONFIG_USER_ONLY)
 static void do_check_align(CPUSPARCState *env, target_ulong addr,
                            uint32_t align, uintptr_t ra)
 {
@@ -367,11 +365,7 @@ static void do_check_align(CPUSPARCState *env, target_ulong addr,
         cpu_raise_exception_ra(env, TT_UNALIGNED, ra);
     }
 }
-
-void helper_check_align(CPUSPARCState *env, target_ulong addr, uint32_t align)
-{
-    do_check_align(env, addr, align, GETPC());
-}
+#endif
 
 #if !defined(TARGET_SPARC64) && !defined(CONFIG_USER_ONLY) &&   \
     defined(DEBUG_MXCC)
@@ -424,18 +418,17 @@ static void sparc_raise_mmu_fault(CPUState *cs, hwaddr addr,
                                   bool is_write, bool is_exec, int is_asi,
                                   unsigned size, uintptr_t retaddr)
 {
-    SPARCCPU *cpu = SPARC_CPU(cs);
-    CPUSPARCState *env = &cpu->env;
+    CPUSPARCState *env = cpu_env(cs);
     int fault_type;
 
 #ifdef DEBUG_UNASSIGNED
     if (is_asi) {
-        printf("Unassigned mem %s access of %d byte%s to " TARGET_FMT_plx
+        printf("Unassigned mem %s access of %d byte%s to " HWADDR_FMT_plx
                " asi 0x%02x from " TARGET_FMT_lx "\n",
                is_exec ? "exec" : is_write ? "write" : "read", size,
                size == 1 ? "" : "s", addr, is_asi, env->pc);
     } else {
-        printf("Unassigned mem %s access of %d byte%s to " TARGET_FMT_plx
+        printf("Unassigned mem %s access of %d byte%s to " HWADDR_FMT_plx
                " from " TARGET_FMT_lx "\n",
                is_exec ? "exec" : is_write ? "write" : "read", size,
                size == 1 ? "" : "s", addr, env->pc);
@@ -486,11 +479,10 @@ static void sparc_raise_mmu_fault(CPUState *cs, hwaddr addr,
                                   bool is_write, bool is_exec, int is_asi,
                                   unsigned size, uintptr_t retaddr)
 {
-    SPARCCPU *cpu = SPARC_CPU(cs);
-    CPUSPARCState *env = &cpu->env;
+    CPUSPARCState *env = cpu_env(cs);
 
 #ifdef DEBUG_UNASSIGNED
-    printf("Unassigned mem access to " TARGET_FMT_plx " from " TARGET_FMT_lx
+    printf("Unassigned mem access to " HWADDR_FMT_plx " from " TARGET_FMT_lx
            "\n", addr, env->pc);
 #endif
 
@@ -691,23 +683,6 @@ uint64_t helper_ld_asi(CPUSPARCState *env, target_ulong addr,
     case ASI_M_DIAGS:   /* Turbosparc DTLB Diagnostic */
     case ASI_M_IODIAG:  /* Turbosparc IOTLB Diagnostic */
         break;
-    case ASI_KERNELTXT: /* Supervisor code access */
-        switch (size) {
-        case 1:
-            ret = cpu_ldub_code(env, addr);
-            break;
-        case 2:
-            ret = cpu_lduw_code(env, addr);
-            break;
-        default:
-        case 4:
-            ret = cpu_ldl_code(env, addr);
-            break;
-        case 8:
-            ret = cpu_ldq_code(env, addr);
-            break;
-        }
-        break;
     case ASI_M_TXTC_TAG:   /* SparcStation 5 I-cache tag */
     case ASI_M_TXTC_DATA:  /* SparcStation 5 I-cache data */
     case ASI_M_DATAC_TAG:  /* SparcStation 5 D-cache tag */
@@ -785,7 +760,6 @@ uint64_t helper_ld_asi(CPUSPARCState *env, target_ulong addr,
     case 0x4c: /* SuperSPARC MMU Breakpoint Action */
         ret = env->mmubpaction;
         break;
-    case ASI_USERTXT: /* User code access, XXX */
     default:
         sparc_raise_mmu_fault(cs, addr, false, false, asi, size, GETPC());
         ret = 0;
@@ -793,6 +767,8 @@ uint64_t helper_ld_asi(CPUSPARCState *env, target_ulong addr,
 
     case ASI_USERDATA: /* User data access */
     case ASI_KERNELDATA: /* Supervisor data access */
+    case ASI_USERTXT: /* User code access */
+    case ASI_KERNELTXT: /* Supervisor code access */
     case ASI_P: /* Implicit primary context data access (v9 only?) */
     case ASI_M_BYPASS:    /* MMU passthrough */
     case ASI_LEON_BYPASS: /* LEON MMU passthrough */
@@ -1167,6 +1143,49 @@ void helper_st_asi(CPUSPARCState *env, target_ulong addr, uint64_t val,
 #endif
 }
 
+uint64_t helper_ld_code(CPUSPARCState *env, target_ulong addr, uint32_t oi)
+{
+    MemOp mop = get_memop(oi);
+    uintptr_t ra = GETPC();
+    uint64_t ret;
+
+    switch (mop & MO_SIZE) {
+    case MO_8:
+        ret = cpu_ldb_code_mmu(env, addr, oi, ra);
+        if (mop & MO_SIGN) {
+            ret = (int8_t)ret;
+        }
+        break;
+    case MO_16:
+        ret = cpu_ldw_code_mmu(env, addr, oi, ra);
+        if ((mop & MO_BSWAP) != MO_TE) {
+            ret = bswap16(ret);
+        }
+        if (mop & MO_SIGN) {
+            ret = (int16_t)ret;
+        }
+        break;
+    case MO_32:
+        ret = cpu_ldl_code_mmu(env, addr, oi, ra);
+        if ((mop & MO_BSWAP) != MO_TE) {
+            ret = bswap32(ret);
+        }
+        if (mop & MO_SIGN) {
+            ret = (int32_t)ret;
+        }
+        break;
+    case MO_64:
+        ret = cpu_ldq_code_mmu(env, addr, oi, ra);
+        if ((mop & MO_BSWAP) != MO_TE) {
+            ret = bswap64(ret);
+        }
+        break;
+    default:
+        g_assert_not_reached();
+    }
+    return ret;
+}
+
 #endif /* CONFIG_USER_ONLY */
 #else /* TARGET_SPARC64 */
 
@@ -1189,7 +1208,7 @@ uint64_t helper_ld_asi(CPUSPARCState *env, target_ulong addr,
     case ASI_PNFL: /* Primary no-fault LE */
     case ASI_SNF:  /* Secondary no-fault */
     case ASI_SNFL: /* Secondary no-fault LE */
-        if (page_check_range(addr, size, PAGE_READ) == -1) {
+        if (!page_check_range(addr, size, PAGE_READ)) {
             ret = 0;
             break;
         }
@@ -1332,25 +1351,13 @@ uint64_t helper_ld_asi(CPUSPARCState *env, target_ulong addr,
                 ret = cpu_ldb_mmu(env, addr, oi, GETPC());
                 break;
             case 2:
-                if (asi & 8) {
-                    ret = cpu_ldw_le_mmu(env, addr, oi, GETPC());
-                } else {
-                    ret = cpu_ldw_be_mmu(env, addr, oi, GETPC());
-                }
+                ret = cpu_ldw_mmu(env, addr, oi, GETPC());
                 break;
             case 4:
-                if (asi & 8) {
-                    ret = cpu_ldl_le_mmu(env, addr, oi, GETPC());
-                } else {
-                    ret = cpu_ldl_be_mmu(env, addr, oi, GETPC());
-                }
+                ret = cpu_ldl_mmu(env, addr, oi, GETPC());
                 break;
             case 8:
-                if (asi & 8) {
-                    ret = cpu_ldq_le_mmu(env, addr, oi, GETPC());
-                } else {
-                    ret = cpu_ldq_be_mmu(env, addr, oi, GETPC());
-                }
+                ret = cpu_ldq_mmu(env, addr, oi, GETPC());
                 break;
             default:
                 g_assert_not_reached();
@@ -1387,6 +1394,10 @@ uint64_t helper_ld_asi(CPUSPARCState *env, target_ulong addr,
     case ASI_TWINX_PL: /* Primary, twinx, LE */
     case ASI_TWINX_S:  /* Secondary, twinx */
     case ASI_TWINX_SL: /* Secondary, twinx, LE */
+    case ASI_MON_P:
+    case ASI_MON_S:
+    case ASI_MON_AIUP:
+    case ASI_MON_AIUS:
         /* These are always handled inline.  */
         g_assert_not_reached();
 
@@ -1663,7 +1674,7 @@ void helper_st_asi(CPUSPARCState *env, target_ulong addr, target_ulong val,
             int idx = ((asi & 2) >> 1) | ((asi & 8) >> 2);
             env->dmmu.sun4v_tsb_pointers[idx] = val;
         } else {
-            helper_raise_exception(env, TT_ILL_INSN);
+            goto illegal_insn;
         }
         break;
     case 0x33:
@@ -1675,7 +1686,7 @@ void helper_st_asi(CPUSPARCState *env, target_ulong addr, target_ulong val,
              */
             env->dmmu.sun4v_ctx_config[(asi & 8) >> 3] = val;
         } else {
-            helper_raise_exception(env, TT_ILL_INSN);
+            goto illegal_insn;
         }
         break;
     case 0x35:
@@ -1692,7 +1703,7 @@ void helper_st_asi(CPUSPARCState *env, target_ulong addr, target_ulong val,
             int idx = ((asi & 2) >> 1) | ((asi & 8) >> 2);
             env->immu.sun4v_tsb_pointers[idx] = val;
         } else {
-            helper_raise_exception(env, TT_ILL_INSN);
+            goto illegal_insn;
         }
       break;
     case 0x37:
@@ -1704,7 +1715,7 @@ void helper_st_asi(CPUSPARCState *env, target_ulong addr, target_ulong val,
              */
             env->immu.sun4v_ctx_config[(asi & 8) >> 3] = val;
         } else {
-          helper_raise_exception(env, TT_ILL_INSN);
+            goto illegal_insn;
         }
         break;
     case ASI_UPA_CONFIG: /* UPA config */
@@ -1933,6 +1944,8 @@ void helper_st_asi(CPUSPARCState *env, target_ulong addr, target_ulong val,
     default:
         sparc_raise_mmu_fault(cs, addr, true, false, 1, size, GETPC());
         return;
+    illegal_insn:
+        cpu_raise_exception_ra(env, TT_ILL_INSN, GETPC());
     }
 }
 #endif /* CONFIG_USER_ONLY */

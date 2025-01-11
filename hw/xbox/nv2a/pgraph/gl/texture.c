@@ -666,8 +666,6 @@ static TextureBinding* generate_texture(const TextureShape s,
                    s.width, s.height, s.depth);
 
     if (gl_target == GL_TEXTURE_CUBE_MAP) {
-
-        ColorFormatInfo f = kelvin_color_format_gl_map[s.color_format];
         unsigned int block_size;
         if (f.gl_internal_format == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT) {
             block_size = 8;

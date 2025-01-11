@@ -5,18 +5,16 @@
 ##
 # @rtc-reset-reinjection:
 #
-# This command will reset the RTC interrupt reinjection backlog.
-# Can be used if another mechanism to synchronize guest time
-# is in effect, for example QEMU guest agent's guest-set-time
-# command.
+# This command will reset the RTC interrupt reinjection backlog.  Can
+# be used if another mechanism to synchronize guest time is in effect,
+# for example QEMU guest agent's guest-set-time command.
 #
 # Since: 2.1
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "rtc-reset-reinjection" }
-# <- { "return": {} }
-#
+#     -> { "execute": "rtc-reset-reinjection" }
+#     <- { "return": {} }
 ##
 { 'command': 'rtc-reset-reinjection',
   'if': 'TARGET_I386' }
@@ -28,23 +26,69 @@
 #
 # @uninit: The guest is uninitialized.
 #
-# @launch-update: The guest is currently being launched; plaintext data and
-#                 register state is being imported.
+# @launch-update: The guest is currently being launched; plaintext
+#     data and register state is being imported.
 #
-# @launch-secret: The guest is currently being launched; ciphertext data
-#                 is being imported.
+# @launch-secret: The guest is currently being launched; ciphertext
+#     data is being imported.
 #
 # @running: The guest is fully launched or migrated in.
 #
-# @send-update: The guest is currently being migrated out to another machine.
+# @send-update: The guest is currently being migrated out to another
+#     machine.
 #
-# @receive-update: The guest is currently being migrated from another machine.
+# @receive-update: The guest is currently being migrated from another
+#     machine.
 #
 # Since: 2.12
 ##
 { 'enum': 'SevState',
   'data': ['uninit', 'launch-update', 'launch-secret', 'running',
            'send-update', 'receive-update' ],
+  'if': 'TARGET_I386' }
+
+##
+# @SevGuestType:
+#
+# An enumeration indicating the type of SEV guest being run.
+#
+# @sev: The guest is a legacy SEV or SEV-ES guest.
+#
+# @sev-snp: The guest is an SEV-SNP guest.
+#
+# Since: 6.2
+##
+{ 'enum': 'SevGuestType',
+  'data': [ 'sev', 'sev-snp' ],
+  'if': 'TARGET_I386' }
+
+##
+# @SevGuestInfo:
+#
+# Information specific to legacy SEV/SEV-ES guests.
+#
+# @policy: SEV policy value
+#
+# @handle: SEV firmware handle
+#
+# Since: 2.12
+##
+{ 'struct': 'SevGuestInfo',
+  'data': { 'policy': 'uint32',
+            'handle': 'uint32' },
+  'if': 'TARGET_I386' }
+
+##
+# @SevSnpGuestInfo:
+#
+# Information specific to SEV-SNP guests.
+#
+# @snp-policy: SEV-SNP policy value
+#
+# Since: 9.1
+##
+{ 'struct': 'SevSnpGuestInfo',
+  'data': { 'snp-policy': 'uint64' },
   'if': 'TARGET_I386' }
 
 ##
@@ -60,25 +104,25 @@
 #
 # @build-id: SEV FW build id
 #
-# @policy: SEV policy value
-#
 # @state: SEV guest state
 #
-# @handle: SEV firmware handle
+# @sev-type: Type of SEV guest being run
 #
 # Since: 2.12
 ##
-{ 'struct': 'SevInfo',
-    'data': { 'enabled': 'bool',
-              'api-major': 'uint8',
-              'api-minor' : 'uint8',
-              'build-id' : 'uint8',
-              'policy' : 'uint32',
-              'state' : 'SevState',
-              'handle' : 'uint32'
-            },
-  'if': 'TARGET_I386'
-}
+{ 'union': 'SevInfo',
+  'base': { 'enabled': 'bool',
+            'api-major': 'uint8',
+            'api-minor' : 'uint8',
+            'build-id' : 'uint8',
+            'state' : 'SevState',
+            'sev-type' : 'SevGuestType' },
+  'discriminator': 'sev-type',
+  'data': {
+      'sev': 'SevGuestInfo',
+      'sev-snp': 'SevSnpGuestInfo' },
+  'if': 'TARGET_I386' }
+
 
 ##
 # @query-sev:
@@ -89,13 +133,12 @@
 #
 # Since: 2.12
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "query-sev" }
-# <- { "return": { "enabled": true, "api-major" : 0, "api-minor" : 0,
-#                  "build-id" : 0, "policy" : 0, "state" : "running",
-#                  "handle" : 1 } }
-#
+#     -> { "execute": "query-sev" }
+#     <- { "return": { "enabled": true, "api-major" : 0, "api-minor" : 0,
+#                      "build-id" : 0, "policy" : 0, "state" : "running",
+#                      "handle" : 1 } }
 ##
 { 'command': 'query-sev', 'returns': 'SevInfo',
   'if': 'TARGET_I386' }
@@ -121,11 +164,10 @@
 #
 # Since: 2.12
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "query-sev-launch-measure" }
-# <- { "return": { "data": "4l8LXeNlSPUDlXPJG5966/8%YZ" } }
-#
+#     -> { "execute": "query-sev-launch-measure" }
+#     <- { "return": { "data": "4l8LXeNlSPUDlXPJG5966/8%YZ" } }
 ##
 { 'command': 'query-sev-launch-measure', 'returns': 'SevLaunchMeasureInfo',
   'if': 'TARGET_I386' }
@@ -133,8 +175,8 @@
 ##
 # @SevCapability:
 #
-# The struct describes capability for a Secure Encrypted Virtualization
-# feature.
+# The struct describes capability for a Secure Encrypted
+# Virtualization feature.
 #
 # @pdh: Platform Diffie-Hellman key (base64 encoded)
 #
@@ -144,8 +186,8 @@
 #
 # @cbitpos: C-bit location in page table entry
 #
-# @reduced-phys-bits: Number of physical Address bit reduction when SEV is
-#                     enabled
+# @reduced-phys-bits: Number of physical Address bit reduction when
+#     SEV is enabled
 #
 # Since: 2.12
 ##
@@ -160,20 +202,19 @@
 ##
 # @query-sev-capabilities:
 #
-# This command is used to get the SEV capabilities, and is supported on AMD
-# X86 platforms only.
+# This command is used to get the SEV capabilities, and is supported
+# on AMD X86 platforms only.
 #
 # Returns: SevCapability objects.
 #
 # Since: 2.12
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "query-sev-capabilities" }
-# <- { "return": { "pdh": "8CCDD8DDD", "cert-chain": "888CCCDDDEE",
-#                  "cpu0-id": "2lvmGwo+...61iEinw==",
-#                  "cbitpos": 47, "reduced-phys-bits": 5}}
-#
+#     -> { "execute": "query-sev-capabilities" }
+#     <- { "return": { "pdh": "8CCDD8DDD", "cert-chain": "888CCCDDDEE",
+#                      "cpu0-id": "2lvmGwo+...61iEinw==",
+#                      "cbitpos": 47, "reduced-phys-bits": 1}}
 ##
 { 'command': 'query-sev-capabilities', 'returns': 'SevCapability',
   'if': 'TARGET_I386' }
@@ -216,18 +257,17 @@
 # supported on AMD X86 platforms only.
 #
 # @mnonce: a random 16 bytes value encoded in base64 (it will be
-#          included in report)
+#     included in report)
 #
 # Returns: SevAttestationReport objects.
 #
 # Since: 6.1
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute" : "query-sev-attestation-report",
-#                  "arguments": { "mnonce": "aaaaaaa" } }
-# <- { "return" : { "data": "aaaaaaaabbbddddd"} }
-#
+#     -> { "execute" : "query-sev-attestation-report",
+#                      "arguments": { "mnonce": "aaaaaaa" } }
+#     <- { "return" : { "data": "aaaaaaaabbbddddd"} }
 ##
 { 'command': 'query-sev-attestation-report',
   'data': { 'mnonce': 'str' },
@@ -241,16 +281,13 @@
 #
 # @filename: the path to the file to dump to
 #
-# This command is only supported on s390 architecture.
-#
 # Since: 2.5
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "dump-skeys",
-#      "arguments": { "filename": "/tmp/skeys" } }
-# <- { "return": {} }
-#
+#     -> { "execute": "dump-skeys",
+#          "arguments": { "filename": "/tmp/skeys" } }
+#     <- { "return": {} }
 ##
 { 'command': 'dump-skeys',
   'data': { 'filename': 'str' },
@@ -260,18 +297,18 @@
 # @GICCapability:
 #
 # The struct describes capability for a specific GIC (Generic
-# Interrupt Controller) version. These bits are not only decided by
-# QEMU/KVM software version, but also decided by the hardware that
-# the program is running upon.
+# Interrupt Controller) version.  These bits are not only decided by
+# QEMU/KVM software version, but also decided by the hardware that the
+# program is running upon.
 #
-# @version: version of GIC to be described. Currently, only 2 and 3
-#           are supported.
+# @version: version of GIC to be described.  Currently, only 2 and 3
+#     are supported.
 #
 # @emulated: whether current QEMU/hardware supports emulated GIC
-#            device in user space.
+#     device in user space.
 #
-# @kernel: whether current QEMU/hardware supports hardware
-#          accelerated GIC device in kernel.
+# @kernel: whether current QEMU/hardware supports hardware accelerated
+#     GIC device in kernel.
 #
 # Since: 2.6
 ##
@@ -284,19 +321,18 @@
 ##
 # @query-gic-capabilities:
 #
-# This command is ARM-only. It will return a list of GICCapability
+# This command is ARM-only.  It will return a list of GICCapability
 # objects that describe its capability bits.
 #
 # Returns: a list of GICCapability objects.
 #
 # Since: 2.6
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "query-gic-capabilities" }
-# <- { "return": [{ "version": 2, "emulated": true, "kernel": false },
-#                 { "version": 3, "emulated": false, "kernel": true } ] }
-#
+#     -> { "execute": "query-gic-capabilities" }
+#     <- { "return": [{ "version": 2, "emulated": true, "kernel": false },
+#                     { "version": 3, "emulated": false, "kernel": true } ] }
 ##
 { 'command': 'query-gic-capabilities', 'returns': ['GICCapability'],
   'if': 'TARGET_ARM' }
@@ -329,13 +365,7 @@
 #
 # @flc: true if FLC is supported
 #
-# @section-size: The EPC section size for guest
-#                Redundant with @sections.  Just for backward compatibility.
-#
 # @sections: The EPC sections info for guest (Since: 7.0)
-#
-# Features:
-# @deprecated: Member @section-size is deprecated.  Use @sections instead.
 #
 # Since: 6.2
 ##
@@ -344,8 +374,6 @@
             'sgx1': 'bool',
             'sgx2': 'bool',
             'flc': 'bool',
-            'section-size': { 'type': 'uint64',
-                    'features': [ 'deprecated' ] },
             'sections': ['SGXEPCSection']},
    'if': 'TARGET_I386' }
 
@@ -358,14 +386,13 @@
 #
 # Since: 6.2
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "query-sgx" }
-# <- { "return": { "sgx": true, "sgx1" : true, "sgx2" : true,
-#                  "flc": true,  "section-size" : 96468992,
-#                  "sections": [{"node": 0, "size": 67108864},
-#                  {"node": 1, "size": 29360128}]} }
-#
+#     -> { "execute": "query-sgx" }
+#     <- { "return": { "sgx": true, "sgx1" : true, "sgx2" : true,
+#                      "flc": true,
+#                      "sections": [{"node": 0, "size": 67108864},
+#                      {"node": 1, "size": 29360128}]} }
 ##
 { 'command': 'query-sgx', 'returns': 'SGXInfo', 'if': 'TARGET_I386' }
 
@@ -378,13 +405,124 @@
 #
 # Since: 6.2
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "query-sgx-capabilities" }
-# <- { "return": { "sgx": true, "sgx1" : true, "sgx2" : true,
-#                  "flc": true, "section-size" : 96468992,
-#                  "section" : [{"node": 0, "size": 67108864},
-#                  {"node": 1, "size": 29360128}]} }
-#
+#     -> { "execute": "query-sgx-capabilities" }
+#     <- { "return": { "sgx": true, "sgx1" : true, "sgx2" : true,
+#                      "flc": true,
+#                      "section" : [{"node": 0, "size": 67108864},
+#                      {"node": 1, "size": 29360128}]} }
 ##
 { 'command': 'query-sgx-capabilities', 'returns': 'SGXInfo', 'if': 'TARGET_I386' }
+
+
+##
+# @EvtchnPortType:
+#
+# An enumeration of Xen event channel port types.
+#
+# @closed: The port is unused.
+#
+# @unbound: The port is allocated and ready to be bound.
+#
+# @interdomain: The port is connected as an interdomain interrupt.
+#
+# @pirq: The port is bound to a physical IRQ (PIRQ).
+#
+# @virq: The port is bound to a virtual IRQ (VIRQ).
+#
+# @ipi: The post is an inter-processor interrupt (IPI).
+#
+# Since: 8.0
+##
+{ 'enum': 'EvtchnPortType',
+  'data': ['closed', 'unbound', 'interdomain', 'pirq', 'virq', 'ipi'],
+  'if': 'TARGET_I386' }
+
+##
+# @EvtchnInfo:
+#
+# Information about a Xen event channel port
+#
+# @port: the port number
+#
+# @vcpu: target vCPU for this port
+#
+# @type: the port type
+#
+# @remote-domain: remote domain for interdomain ports
+#
+# @target: remote port ID, or virq/pirq number
+#
+# @pending: port is currently active pending delivery
+#
+# @masked: port is masked
+#
+# Since: 8.0
+##
+{ 'struct': 'EvtchnInfo',
+  'data': {'port': 'uint16',
+           'vcpu': 'uint32',
+           'type': 'EvtchnPortType',
+           'remote-domain': 'str',
+           'target': 'uint16',
+           'pending': 'bool',
+           'masked': 'bool'},
+  'if': 'TARGET_I386' }
+
+
+##
+# @xen-event-list:
+#
+# Query the Xen event channels opened by the guest.
+#
+# Returns: list of open event channel ports.
+#
+# Since: 8.0
+#
+# .. qmp-example::
+#
+#     -> { "execute": "xen-event-list" }
+#     <- { "return": [
+#             {
+#                 "pending": false,
+#                 "port": 1,
+#                 "vcpu": 1,
+#                 "remote-domain": "qemu",
+#                 "masked": false,
+#                 "type": "interdomain",
+#                 "target": 1
+#             },
+#             {
+#                 "pending": false,
+#                 "port": 2,
+#                 "vcpu": 0,
+#                 "remote-domain": "",
+#                 "masked": false,
+#                 "type": "virq",
+#                 "target": 0
+#             }
+#          ]
+#        }
+##
+{ 'command': 'xen-event-list',
+  'returns': ['EvtchnInfo'],
+  'if': 'TARGET_I386' }
+
+##
+# @xen-event-inject:
+#
+# Inject a Xen event channel port (interrupt) to the guest.
+#
+# @port: The port number
+#
+# Since: 8.0
+#
+# .. qmp-example::
+#
+#     -> { "execute": "xen-event-inject", "arguments": { "port": 1 } }
+#     <- { "return": { } }
+##
+{ 'command': 'xen-event-inject',
+  'data': { 'port': 'uint32' },
+  'if': 'TARGET_I386' }

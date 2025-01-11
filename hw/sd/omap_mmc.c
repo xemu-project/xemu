@@ -103,6 +103,7 @@ static void omap_mmc_fifolevel_update(struct omap_mmc_s *host)
     }
 }
 
+/* These must match the encoding of the MMC_CMD Response field */
 typedef enum {
     sd_nore = 0,	/* no response */
     sd_r1,		/* normal response command */
@@ -112,8 +113,17 @@ typedef enum {
     sd_r1b = -1,
 } sd_rsp_type_t;
 
+/* These must match the encoding of the MMC_CMD Type field */
+typedef enum {
+    SD_TYPE_BC = 0,     /* broadcast -- no response */
+    SD_TYPE_BCR = 1,    /* broadcast with response */
+    SD_TYPE_AC = 2,     /* addressed -- no data transfer */
+    SD_TYPE_ADTC = 3,   /* addressed with data transfer */
+} MMCCmdType;
+
 static void omap_mmc_command(struct omap_mmc_s *host, int cmd, int dir,
-                sd_cmd_type_t type, int busy, sd_rsp_type_t resptype, int init)
+                             MMCCmdType type, int busy,
+                             sd_rsp_type_t resptype, int init)
 {
     uint32_t rspstatus, mask;
     int rsplen, timeout;
@@ -128,7 +138,7 @@ static void omap_mmc_command(struct omap_mmc_s *host, int cmd, int dir,
     if (resptype == sd_r1 && busy)
         resptype = sd_r1b;
 
-    if (type == sd_adtc) {
+    if (type == SD_TYPE_ADTC) {
         host->fifo_start = 0;
         host->fifo_len = 0;
         host->transfer = 1;
@@ -321,11 +331,10 @@ void omap_mmc_reset(struct omap_mmc_s *host)
     device_cold_reset(DEVICE(host->card));
 }
 
-static uint64_t omap_mmc_read(void *opaque, hwaddr offset,
-                              unsigned size)
+static uint64_t omap_mmc_read(void *opaque, hwaddr offset, unsigned size)
 {
     uint16_t i;
-    struct omap_mmc_s *s = (struct omap_mmc_s *) opaque;
+    struct omap_mmc_s *s = opaque;
 
     if (size != 2) {
         return omap_badwidth_read16(opaque, offset);
@@ -418,7 +427,7 @@ static void omap_mmc_write(void *opaque, hwaddr offset,
                            uint64_t value, unsigned size)
 {
     int i;
-    struct omap_mmc_s *s = (struct omap_mmc_s *) opaque;
+    struct omap_mmc_s *s = opaque;
 
     if (size != 2) {
         omap_badwidth_write16(opaque, offset, value);
@@ -434,10 +443,10 @@ static void omap_mmc_write(void *opaque, hwaddr offset,
         for (i = 0; i < 8; i ++)
             s->rsp[i] = 0x0000;
         omap_mmc_command(s, value & 63, (value >> 15) & 1,
-                (sd_cmd_type_t) ((value >> 12) & 3),
-                (value >> 11) & 1,
-                (sd_rsp_type_t) ((value >> 8) & 7),
-                (value >> 7) & 1);
+                         (MMCCmdType)((value >> 12) & 3),
+                         (value >> 11) & 1,
+                         (sd_rsp_type_t) ((value >> 8) & 7),
+                         (value >> 7) & 1);
         omap_mmc_update(s);
         break;
 
@@ -574,24 +583,6 @@ static const MemoryRegionOps omap_mmc_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
-static void omap_mmc_cover_cb(void *opaque, int line, int level)
-{
-    struct omap_mmc_s *host = (struct omap_mmc_s *) opaque;
-
-    if (!host->cdet_state && level) {
-        host->status |= 0x0002;
-        omap_mmc_interrupts_update(host);
-        if (host->cdet_wakeup) {
-            /* TODO: Assert wake-up */
-        }
-    }
-
-    if (host->cdet_state != level) {
-        qemu_set_irq(host->coverswitch, level);
-        host->cdet_state = level;
-    }
-}
-
 struct omap_mmc_s *omap_mmc_init(hwaddr base,
                 MemoryRegion *sysmem,
                 BlockBackend *blk,
@@ -617,49 +608,4 @@ struct omap_mmc_s *omap_mmc_init(hwaddr base,
     omap_mmc_reset(s);
 
     return s;
-}
-
-struct omap_mmc_s *omap2_mmc_init(struct omap_target_agent_s *ta,
-                BlockBackend *blk, qemu_irq irq, qemu_irq dma[],
-                omap_clk fclk, omap_clk iclk)
-{
-    struct omap_mmc_s *s = g_new0(struct omap_mmc_s, 1);
-
-    s->irq = irq;
-    s->dma = dma;
-    s->clk = fclk;
-    s->lines = 4;
-    s->rev = 2;
-
-    memory_region_init_io(&s->iomem, NULL, &omap_mmc_ops, s, "omap.mmc",
-                          omap_l4_region_size(ta, 0));
-    omap_l4_attach(ta, 0, &s->iomem);
-
-    /* Instantiate the storage */
-    s->card = sd_init(blk, false);
-    if (s->card == NULL) {
-        exit(1);
-    }
-
-    s->cdet = qemu_allocate_irq(omap_mmc_cover_cb, s, 0);
-    sd_set_cb(s->card, NULL, s->cdet);
-
-    omap_mmc_reset(s);
-
-    return s;
-}
-
-void omap_mmc_handlers(struct omap_mmc_s *s, qemu_irq ro, qemu_irq cover)
-{
-    if (s->cdet) {
-        sd_set_cb(s->card, ro, s->cdet);
-        s->coverswitch = cover;
-        qemu_set_irq(cover, s->cdet_state);
-    } else
-        sd_set_cb(s->card, ro, cover);
-}
-
-void omap_mmc_enable(struct omap_mmc_s *s, int enable)
-{
-    sd_enable(s->card, enable);
 }

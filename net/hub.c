@@ -194,31 +194,6 @@ NetClientState *net_hub_add_port(int hub_id, const char *name,
 }
 
 /**
- * Find a available port on a hub; otherwise create one new port
- */
-NetClientState *net_hub_port_find(int hub_id)
-{
-    NetHub *hub;
-    NetHubPort *port;
-    NetClientState *nc;
-
-    QLIST_FOREACH(hub, &hubs, next) {
-        if (hub->id == hub_id) {
-            QLIST_FOREACH(port, &hub->ports, next) {
-                nc = port->nc.peer;
-                if (!nc) {
-                    return &(port->nc);
-                }
-            }
-            break;
-        }
-    }
-
-    nc = net_hub_add_port(hub_id, NULL, NULL);
-    return nc;
-}
-
-/**
  * Print hub configuration
  */
 void net_hub_info(Monitor *mon)
@@ -274,7 +249,7 @@ int net_init_hubport(const Netdev *netdev, const char *name,
     assert(!peer);
     hubport = &netdev->u.hubport;
 
-    if (hubport->has_netdev) {
+    if (hubport->netdev) {
         hubpeer = qemu_find_netdev(hubport->netdev);
         if (!hubpeer) {
             error_setg(errp, "netdev '%s' not found", hubport->netdev);

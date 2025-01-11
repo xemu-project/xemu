@@ -28,6 +28,7 @@
 #include "migration/vmstate.h"
 #include "hw/misc/macio/macio.h"
 #include "hw/misc/macio/gpio.h"
+#include "hw/irq.h"
 #include "hw/nmi.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
@@ -167,7 +168,7 @@ static const VMStateDescription vmstate_macio_gpio = {
     .name = "macio_gpio",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT8_ARRAY(gpio_levels, MacIOGPIOState, 8),
         VMSTATE_UINT8_ARRAY(gpio_regs, MacIOGPIOState, 36),
         VMSTATE_END_OF_LIST()
@@ -193,7 +194,7 @@ static void macio_gpio_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
     NMIClass *nc = NMI_CLASS(oc);
 
-    dc->reset = macio_gpio_reset;
+    device_class_set_legacy_reset(dc, macio_gpio_reset);
     dc->vmsd = &vmstate_macio_gpio;
     nc->nmi_monitor_handler = macio_gpio_nmi;
 }

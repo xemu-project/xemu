@@ -16,7 +16,7 @@
 #include "exec/exec-all.h"
 #include "exec/helper-proto.h"
 #include "qemu/error-report.h"
-#include "qemu/main-loop.h"
+#include "qemu/timer.h"
 #include "hw/ppc/ppc.h"
 #include "power8-pmu.h"
 
@@ -82,10 +82,52 @@ static void pmu_update_summaries(CPUPPCState *env)
     env->pmc_cyc_cnt = cyc_cnt;
 }
 
-void pmu_mmcr01_updated(CPUPPCState *env)
+static void hreg_bhrb_filter_update(CPUPPCState *env)
 {
+    target_long ifm;
+
+    if (!(env->spr[SPR_POWER_MMCR0] & MMCR0_PMAE)) {
+        /* disable recording to BHRB */
+        env->bhrb_filter = BHRB_TYPE_NORECORD;
+        return;
+    }
+
+    ifm = (env->spr[SPR_POWER_MMCRA] & MMCRA_IFM_MASK) >> MMCRA_IFM_SHIFT;
+    switch (ifm) {
+    case 0:
+        /* record all branches */
+        env->bhrb_filter = -1;
+        break;
+    case 1:
+        /* only record calls (LK = 1) */
+        env->bhrb_filter = BHRB_TYPE_CALL;
+        break;
+    case 2:
+        /* only record indirect branches */
+        env->bhrb_filter = BHRB_TYPE_INDIRECT;
+        break;
+    case 3:
+        /* only record conditional branches */
+        env->bhrb_filter = BHRB_TYPE_COND;
+        break;
+    }
+}
+
+void pmu_mmcr01a_updated(CPUPPCState *env)
+{
+    PowerPCCPU *cpu = env_archcpu(env);
+
     pmu_update_summaries(env);
     hreg_update_pmu_hflags(env);
+
+    if (env->spr[SPR_POWER_MMCR0] & MMCR0_PMAO) {
+        ppc_set_irq(cpu, PPC_INTERRUPT_PERFM, 1);
+    } else {
+        ppc_set_irq(cpu, PPC_INTERRUPT_PERFM, 0);
+    }
+
+    hreg_bhrb_filter_update(env);
+
     /*
      * Should this update overflow timers (if mmcr0 is updated) so they
      * get set in cpu_post_load?
@@ -251,7 +293,7 @@ void helper_store_mmcr0(CPUPPCState *env, target_ulong value)
 
     env->spr[SPR_POWER_MMCR0] = value;
 
-    pmu_mmcr01_updated(env);
+    pmu_mmcr01a_updated(env);
 
     /* Update cycle overflow timers with the current MMCR0 state */
     pmu_update_overflow_timers(env);
@@ -263,7 +305,14 @@ void helper_store_mmcr1(CPUPPCState *env, uint64_t value)
 
     env->spr[SPR_POWER_MMCR1] = value;
 
-    pmu_mmcr01_updated(env);
+    pmu_mmcr01a_updated(env);
+}
+
+void helper_store_mmcrA(CPUPPCState *env, uint64_t value)
+{
+    env->spr[SPR_POWER_MMCRA] = value;
+
+    pmu_mmcr01a_updated(env);
 }
 
 target_ulong helper_read_pmc(CPUPPCState *env, uint32_t sprn)
@@ -277,23 +326,22 @@ void helper_store_pmc(CPUPPCState *env, uint32_t sprn, uint64_t value)
 {
     pmu_update_cycles(env);
 
-    env->spr[sprn] = value;
+    env->spr[sprn] = (uint32_t)value;
 
     pmc_update_overflow_timer(env, sprn);
 }
 
-static void fire_PMC_interrupt(PowerPCCPU *cpu)
+static void perfm_alert(PowerPCCPU *cpu)
 {
     CPUPPCState *env = &cpu->env;
 
     pmu_update_cycles(env);
 
     if (env->spr[SPR_POWER_MMCR0] & MMCR0_FCECE) {
-        env->spr[SPR_POWER_MMCR0] &= ~MMCR0_FCECE;
         env->spr[SPR_POWER_MMCR0] |= MMCR0_FC;
 
         /* Changing MMCR0_FC requires summaries and hflags update */
-        pmu_mmcr01_updated(env);
+        pmu_mmcr01a_updated(env);
 
         /*
          * Delete all pending timers if we need to freeze
@@ -307,6 +355,7 @@ static void fire_PMC_interrupt(PowerPCCPU *cpu)
         /* These MMCR0 bits do not require summaries or hflags update. */
         env->spr[SPR_POWER_MMCR0] &= ~MMCR0_PMAE;
         env->spr[SPR_POWER_MMCR0] |= MMCR0_PMAO;
+        ppc_set_irq(cpu, PPC_INTERRUPT_PERFM, 1);
     }
 
     raise_ebb_perfm_exception(env);
@@ -315,20 +364,17 @@ static void fire_PMC_interrupt(PowerPCCPU *cpu)
 void helper_handle_pmc5_overflow(CPUPPCState *env)
 {
     env->spr[SPR_POWER_PMC5] = PMC_COUNTER_NEGATIVE_VAL;
-    fire_PMC_interrupt(env_archcpu(env));
+    perfm_alert(env_archcpu(env));
 }
 
 /* This helper assumes that the PMC is running. */
 void helper_insns_inc(CPUPPCState *env, uint32_t num_insns)
 {
     bool overflow_triggered;
-    PowerPCCPU *cpu;
 
     overflow_triggered = pmu_increment_insns(env, num_insns);
-
     if (overflow_triggered) {
-        cpu = env_archcpu(env);
-        fire_PMC_interrupt(cpu);
+        perfm_alert(env_archcpu(env));
     }
 }
 
@@ -336,7 +382,7 @@ static void cpu_ppc_pmu_timer_cb(void *opaque)
 {
     PowerPCCPU *cpu = opaque;
 
-    fire_PMC_interrupt(cpu);
+    perfm_alert(cpu);
 }
 
 void cpu_ppc_pmu_init(CPUPPCState *env)

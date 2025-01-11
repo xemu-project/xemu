@@ -21,8 +21,11 @@
 #ifndef HW_XBOX_NV2A_PGRAPH_GL_DEBUG_H
 #define HW_XBOX_NV2A_PGRAPH_GL_DEBUG_H
 
-// #define DEBUG_NV2A_GL
-#ifdef DEBUG_NV2A_GL
+#ifndef DEBUG_NV2A_GL
+# define DEBUG_NV2A_GL 0
+#endif
+
+#if DEBUG_NV2A_GL
 
 #include <stdbool.h>
 #include "gloffscreen.h"

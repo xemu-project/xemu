@@ -184,7 +184,7 @@ modes.
 Reading and writing requests are created by CPU thread of QEMU. Later these
 requests proceed to block layer which creates "bottom halves". Bottom
 halves consist of callback and its parameters. They are processed when
-main loop locks the global mutex. These locks are not synchronized with
+main loop locks the BQL. These locks are not synchronized with
 replaying process because main loop also processes the events that do not
 affect the virtual machine state (like user interaction with monitor).
 
@@ -201,6 +201,9 @@ into the log.
 
 Saving/restoring the VM state
 -----------------------------
+
+Record/replay relies on VM state save and restore being complete and
+deterministic.
 
 All fields in the device state structure (including virtual timers)
 should be restored by loadvm to the same values they had before savevm.

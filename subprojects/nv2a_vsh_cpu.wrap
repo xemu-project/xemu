@@ -1,0 +1,4 @@
+[wrap-git]
+url=https://github.com/xemu-project/nv2a_vsh_cpu
+revision=561fe80da57a881f89000256b459440c0178a7ce
+depth=1

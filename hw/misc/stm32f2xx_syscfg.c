@@ -94,12 +94,12 @@ static void stm32f2xx_syscfg_write(void *opaque, hwaddr addr,
     switch (addr) {
     case SYSCFG_MEMRMP:
         qemu_log_mask(LOG_UNIMP,
-                      "%s: Changeing the memory mapping isn't supported " \
+                      "%s: Changing the memory mapping isn't supported " \
                       "in QEMU\n", __func__);
         return;
     case SYSCFG_PMC:
         qemu_log_mask(LOG_UNIMP,
-                      "%s: Changeing the memory mapping isn't supported " \
+                      "%s: Changing the memory mapping isn't supported " \
                       "in QEMU\n", __func__);
         return;
     case SYSCFG_EXTICR1:
@@ -142,7 +142,7 @@ static void stm32f2xx_syscfg_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = stm32f2xx_syscfg_reset;
+    device_class_set_legacy_reset(dc, stm32f2xx_syscfg_reset);
 }
 
 static const TypeInfo stm32f2xx_syscfg_info = {

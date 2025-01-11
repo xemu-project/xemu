@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2015 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2020-2024 Matt Borgerson
+ * Copyright (c) 2020-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -33,8 +33,6 @@
 #include "hw/xbox/nv2a/pgraph/util.h"
 #include "debug.h"
 #include "renderer.h"
-
-static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding, bool binding_changed, bool vertex_program, bool fixed_function);
 
 static GLenum get_gl_primitive_mode(enum ShaderPolygonMode polygon_mode, enum ShaderPrimitiveMode primitive_mode)
 {
@@ -102,13 +100,12 @@ static GLuint create_gl_shader(GLenum gl_shader_type,
     return shader;
 }
 
-static void update_shader_constant_locations(ShaderBinding *binding, const ShaderState *state)
+static void update_shader_constant_locations(ShaderBinding *binding)
 {
-    int i, j;
     char tmp[64];
 
     /* set texture samplers */
-    for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
         char samplerName[16];
         snprintf(samplerName, sizeof(samplerName), "texSamp%d", i);
         GLint texSampLoc = glGetUniformLocation(binding->gl_program, samplerName);
@@ -129,14 +126,14 @@ static void update_shader_constant_locations(ShaderBinding *binding, const Shade
     }
 
     /* lookup fragment shader uniforms */
-    for (i = 0; i < 9; i++) {
-        for (j = 0; j < 2; j++) {
+    for (int i = 0; i < 9; i++) {
+        for (int j = 0; j < 2; j++) {
             snprintf(tmp, sizeof(tmp), "c%d_%d", j, i);
             binding->psh_constant_loc[i][j] = glGetUniformLocation(binding->gl_program, tmp);
         }
     }
     binding->alpha_ref_loc = glGetUniformLocation(binding->gl_program, "alphaRef");
-    for (i = 1; i < NV2A_MAX_TEXTURES; i++) {
+    for (int i = 1; i < NV2A_MAX_TEXTURES; i++) {
         snprintf(tmp, sizeof(tmp), "bumpMat%d", i);
         binding->bump_mat_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
         snprintf(tmp, sizeof(tmp), "bumpScale%d", i);
@@ -151,7 +148,7 @@ static void update_shader_constant_locations(ShaderBinding *binding, const Shade
     }
 
     /* lookup vertex shader uniforms */
-    for(i = 0; i < NV2A_VERTEXSHADER_CONSTANTS; i++) {
+    for (int i = 0; i < NV2A_VERTEXSHADER_CONSTANTS; i++) {
         snprintf(tmp, sizeof(tmp), "c[%d]", i);
         binding->vsh_constant_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
     }
@@ -161,19 +158,19 @@ static void update_shader_constant_locations(ShaderBinding *binding, const Shade
     binding->fog_param_loc = glGetUniformLocation(binding->gl_program, "fogParam");
 
     binding->inv_viewport_loc = glGetUniformLocation(binding->gl_program, "invViewport");
-    for (i = 0; i < NV2A_LTCTXA_COUNT; i++) {
+    for (int i = 0; i < NV2A_LTCTXA_COUNT; i++) {
         snprintf(tmp, sizeof(tmp), "ltctxa[%d]", i);
         binding->ltctxa_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
     }
-    for (i = 0; i < NV2A_LTCTXB_COUNT; i++) {
+    for (int i = 0; i < NV2A_LTCTXB_COUNT; i++) {
         snprintf(tmp, sizeof(tmp), "ltctxb[%d]", i);
         binding->ltctxb_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
     }
-    for (i = 0; i < NV2A_LTC1_COUNT; i++) {
+    for (int i = 0; i < NV2A_LTC1_COUNT; i++) {
         snprintf(tmp, sizeof(tmp), "ltc1[%d]", i);
         binding->ltc1_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
     }
-    for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
+    for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
         snprintf(tmp, sizeof(tmp), "lightInfiniteHalfVector%d", i);
         binding->light_infinite_half_vector_loc[i] =
             glGetUniformLocation(binding->gl_program, tmp);
@@ -187,12 +184,12 @@ static void update_shader_constant_locations(ShaderBinding *binding, const Shade
         binding->light_local_attenuation_loc[i] =
             glGetUniformLocation(binding->gl_program, tmp);
     }
-    for (i = 0; i < 8; i++) {
+    for (int i = 0; i < 8; i++) {
         snprintf(tmp, sizeof(tmp), "clipRegion[%d]", i);
         binding->clip_region_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
     }
 
-    if (state->fixed_function) {
+    if (binding->state.fixed_function) {
         binding->material_alpha_loc =
             glGetUniformLocation(binding->gl_program, "material_alpha");
     } else {
@@ -200,7 +197,7 @@ static void update_shader_constant_locations(ShaderBinding *binding, const Shade
     }
 }
 
-static ShaderBinding *generate_shaders(const ShaderState *state)
+static void generate_shaders(ShaderBinding *binding)
 {
     char *previous_numeric_locale = setlocale(LC_NUMERIC, NULL);
     if (previous_numeric_locale) {
@@ -210,6 +207,8 @@ static ShaderBinding *generate_shaders(const ShaderState *state)
     /* Ensure numeric values are printed with '.' radix, no grouping */
     setlocale(LC_NUMERIC, "C");
     GLuint program = glCreateProgram();
+
+    ShaderState *state = &binding->state;
 
     /* Create an optional geometry shader and find primitive type */
     GLenum gl_primitive_mode =
@@ -264,18 +263,15 @@ static ShaderBinding *generate_shaders(const ShaderState *state)
 
     glUseProgram(program);
 
-    ShaderBinding* ret = g_malloc0(sizeof(ShaderBinding));
-    ret->gl_program = program;
-    ret->gl_primitive_mode = gl_primitive_mode;
-
-    update_shader_constant_locations(ret, state);
+    binding->initialized = true;
+    binding->gl_program = program;
+    binding->gl_primitive_mode = gl_primitive_mode;
+    update_shader_constant_locations(binding);
 
     if (previous_numeric_locale) {
         setlocale(LC_NUMERIC, previous_numeric_locale);
         g_free(previous_numeric_locale);
     }
-
-    return ret;
 }
 
 static const char *shader_gl_vendor = NULL;
@@ -331,19 +327,22 @@ void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg)
     qemu_event_set(&r->shader_cache_writeback_complete);
 }
 
-bool pgraph_gl_shader_load_from_memory(ShaderLruNode *snode)
+bool pgraph_gl_shader_load_from_memory(ShaderBinding *binding)
 {
     assert(glGetError() == GL_NO_ERROR);
 
-    if (!snode->program) {
+    if (!binding->program) {
         return false;
     }
 
     GLuint gl_program = glCreateProgram();
-    glProgramBinary(gl_program, snode->program_format, snode->program, snode->program_size);
+    glProgramBinary(gl_program, binding->program_format, binding->program,
+                    binding->program_size);
     GLint gl_error = glGetError();
     if (gl_error != GL_NO_ERROR) {
-        NV2A_DPRINTF("failed to load shader binary from disk: GL error code %d\n", gl_error);
+        NV2A_DPRINTF(
+            "failed to load shader binary from disk: GL error code %d\n",
+            gl_error);
         glDeleteProgram(gl_program);
         return false;
     }
@@ -361,16 +360,15 @@ bool pgraph_gl_shader_load_from_memory(ShaderLruNode *snode)
 
     glUseProgram(gl_program);
 
-    ShaderBinding* binding = g_malloc0(sizeof(ShaderBinding));
     binding->gl_program = gl_program;
-    binding->gl_primitive_mode = get_gl_primitive_mode(snode->state.polygon_front_mode,
-                                                       snode->state.primitive_mode);
-    snode->binding = binding;
+    binding->gl_primitive_mode = get_gl_primitive_mode(
+        binding->state.polygon_front_mode, binding->state.primitive_mode);
+    binding->initialized = true;
 
-    g_free(snode->program);
-    snode->program = NULL;
+    g_free(binding->program);
+    binding->program = NULL;
 
-    update_shader_constant_locations(binding, &snode->state);
+    update_shader_constant_locations(binding);
 
     return true;
 }
@@ -463,18 +461,18 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
 
     qemu_mutex_lock(&r->shader_cache_lock);
     LruNode *node = lru_lookup(&r->shader_cache, hash, &state);
-    ShaderLruNode *snode = container_of(node, ShaderLruNode, node);
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
 
     /* If we happened to regenerate this shader already, then we may as well use the new one */
-    if (snode->binding) {
+    if (binding->initialized) {
         qemu_mutex_unlock(&r->shader_cache_lock);
         return;
     }
 
-    snode->program_format = program_binary_format;
-    snode->program_size = shader_size;
-    snode->program = program_buffer;
-    snode->cached = true;
+    binding->program_format = program_binary_format;
+    binding->program_size = shader_size;
+    binding->program = program_buffer;
+    binding->cached = true;
     qemu_mutex_unlock(&r->shader_cache_lock);
     return;
 
@@ -512,43 +510,38 @@ static void *shader_reload_lru_from_disk(void *arg)
 
 static void shader_cache_entry_init(Lru *lru, LruNode *node, void *state)
 {
-    ShaderLruNode *snode = container_of(node, ShaderLruNode, node);
-    memcpy(&snode->state, state, sizeof(ShaderState));
-    snode->cached = false;
-    snode->binding = NULL;
-    snode->program = NULL;
-    snode->save_thread = NULL;
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
+    memcpy(&binding->state, state, sizeof(ShaderState));
+    binding->initialized = false;
+    binding->cached = false;
+    binding->program = NULL;
+    binding->save_thread = NULL;
 }
 
 static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
 {
-    ShaderLruNode *snode = container_of(node, ShaderLruNode, node);
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
 
-    if (snode->save_thread) {
-        qemu_thread_join(snode->save_thread);
-        g_free(snode->save_thread);
+    if (binding->save_thread) {
+        qemu_thread_join(binding->save_thread);
+        g_free(binding->save_thread);
     }
 
-    if (snode->binding) {
-        glDeleteProgram(snode->binding->gl_program);
-        g_free(snode->binding);
+    glDeleteProgram(binding->gl_program);
+    if (binding->program) {
+        g_free(binding->program);
     }
 
-    if (snode->program) {
-        g_free(snode->program);
-    }
-
-    snode->cached = false;
-    snode->save_thread = NULL;
-    snode->binding = NULL;
-    snode->program = NULL;
-    memset(&snode->state, 0, sizeof(ShaderState));
+    binding->cached = false;
+    binding->save_thread = NULL;
+    binding->program = NULL;
+    memset(&binding->state, 0, sizeof(ShaderState));
 }
 
 static bool shader_cache_entry_compare(Lru *lru, LruNode *node, void *key)
 {
-    ShaderLruNode *snode = container_of(node, ShaderLruNode, node);
-    return memcmp(&snode->state, key, sizeof(ShaderState));
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
+    return memcmp(&binding->state, key, sizeof(ShaderState));
 }
 
 void pgraph_gl_init_shaders(PGRAPHState *pg)
@@ -567,7 +560,7 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     /* FIXME: Make this configurable */
     const size_t shader_cache_size = 50*1024;
     lru_init(&r->shader_cache);
-    r->shader_cache_entries = malloc(shader_cache_size * sizeof(ShaderLruNode));
+    r->shader_cache_entries = malloc(shader_cache_size * sizeof(ShaderBinding));
     assert(r->shader_cache_entries != NULL);
     for (int i = 0; i < shader_cache_size; i++) {
         lru_add_free(&r->shader_cache, &r->shader_cache_entries[i].node);
@@ -595,10 +588,10 @@ void pgraph_gl_finalize_shaders(PGRAPHState *pg)
 
 static void *shader_write_to_disk(void *arg)
 {
-    ShaderLruNode *snode = (ShaderLruNode*) arg;
+    ShaderBinding *binding = (ShaderBinding*) arg;
 
-    char *shader_bin = shader_get_bin_directory(snode->node.hash);
-    char *shader_path = shader_get_binary_path(shader_bin, snode->node.hash);
+    char *shader_bin = shader_get_bin_directory(binding->node.hash);
+    char *shader_path = shader_get_binary_path(shader_bin, binding->node.hash);
 
     static uint64_t gl_vendor_len;
     if (gl_vendor_len == 0) {
@@ -634,19 +627,19 @@ static void *shader_write_to_disk(void *arg)
     WRITE_OR_ERR(&gl_vendor_len, sizeof(gl_vendor_len));
     WRITE_OR_ERR(shader_gl_vendor, gl_vendor_len);
 
-    WRITE_OR_ERR(&snode->program_format, sizeof(snode->program_format));
-    WRITE_OR_ERR(&snode->state, sizeof(snode->state));
+    WRITE_OR_ERR(&binding->program_format, sizeof(binding->program_format));
+    WRITE_OR_ERR(&binding->state, sizeof(binding->state));
 
-    WRITE_OR_ERR(&snode->program_size, sizeof(snode->program_size));
-    WRITE_OR_ERR(snode->program, snode->program_size);
+    WRITE_OR_ERR(&binding->program_size, sizeof(binding->program_size));
+    WRITE_OR_ERR(binding->program, binding->program_size);
 
     #undef WRITE_OR_ERR
 
     fclose(shader_file);
 
     g_free(shader_path);
-    g_free(snode->program);
-    snode->program = NULL;
+    g_free(binding->program);
+    binding->program = NULL;
 
     return NULL;
 
@@ -654,23 +647,23 @@ error:
     fprintf(stderr, "nv2a: Failed to write shader binary file to %s\n", shader_path);
     qemu_unlink(shader_path);
     g_free(shader_path);
-    g_free(snode->program);
-    snode->program = NULL;
+    g_free(binding->program);
+    binding->program = NULL;
     return NULL;
 }
 
-void pgraph_gl_shader_cache_to_disk(ShaderLruNode *snode)
+void pgraph_gl_shader_cache_to_disk(ShaderBinding *binding)
 {
-    if (!snode->binding || snode->cached) {
+    if (binding->cached) {
         return;
     }
 
     GLint program_size;
-    glGetProgramiv(snode->binding->gl_program, GL_PROGRAM_BINARY_LENGTH, &program_size);
+    glGetProgramiv(binding->gl_program, GL_PROGRAM_BINARY_LENGTH, &program_size);
 
-    if (snode->program) {
-        g_free(snode->program);
-        snode->program = NULL;
+    if (binding->program) {
+        g_free(binding->program);
+        binding->program = NULL;
     }
 
     /* program_size might be zero on some systems, if no binary formats are supported */
@@ -678,27 +671,23 @@ void pgraph_gl_shader_cache_to_disk(ShaderLruNode *snode)
         return;
     }
 
-    snode->program = g_malloc(program_size);
+    binding->program = g_malloc(program_size);
     GLsizei program_size_copied;
-    glGetProgramBinary(snode->binding->gl_program, program_size, &program_size_copied,
-                       &snode->program_format, snode->program);
+    glGetProgramBinary(binding->gl_program, program_size, &program_size_copied,
+                       &binding->program_format, binding->program);
     assert(glGetError() == GL_NO_ERROR);
 
-    snode->program_size = program_size_copied;
-    snode->cached = true;
+    binding->program_size = program_size_copied;
+    binding->cached = true;
 
     char name[24];
-    snprintf(name, sizeof(name), "scache-%llx", (unsigned long long) snode->node.hash);
-    snode->save_thread = g_malloc0(sizeof(QemuThread));
-    qemu_thread_create(snode->save_thread, name, shader_write_to_disk, snode, QEMU_THREAD_JOINABLE);
+    snprintf(name, sizeof(name), "scache-%llx", (unsigned long long) binding->node.hash);
+    binding->save_thread = g_malloc0(sizeof(QemuThread));
+    qemu_thread_create(binding->save_thread, name, shader_write_to_disk, binding, QEMU_THREAD_JOINABLE);
 }
 
 static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
-                                    bool binding_changed,
-
-                                    // FIXME: Remove these... We already know it from binding.state
-                                    bool vertex_program,
-                                    bool fixed_function)
+                                    bool binding_changed)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
     int i, j;
@@ -799,7 +788,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         assert(0);
     }
 
-    if (fixed_function) {
+    if (binding->state.fixed_function) {
         /* update lighting constants */
         struct {
             uint32_t* v;
@@ -1018,10 +1007,7 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
         goto update_constants;
     }
 
-    pg->program_data_dirty = false;
-
-    ShaderBinding* old_binding = r->shader_binding;
-
+    ShaderBinding *old_binding = r->shader_binding;
     ShaderState state = pgraph_get_shader_state(pg);
     assert(!state.vulkan);
 
@@ -1029,22 +1015,24 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
                          state.vertex_program ? "yes" : "no",
                          state.fixed_function ? "yes" : "no");
 
-    uint64_t shader_state_hash = fast_hash((uint8_t*) &state, sizeof(ShaderState));
     qemu_mutex_lock(&r->shader_cache_lock);
-    LruNode *node = lru_lookup(&r->shader_cache, shader_state_hash, &state);
-    ShaderLruNode *snode = container_of(node, ShaderLruNode, node);
-    if (snode->binding || pgraph_gl_shader_load_from_memory(snode)) {
-        r->shader_binding = snode->binding;
-    } else {
-        r->shader_binding = generate_shaders(&state);
-        nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
 
-        /* cache it */
-        snode->binding = r->shader_binding;
+    uint64_t shader_state_hash =
+        fast_hash((uint8_t *)&state, sizeof(ShaderState));
+
+    LruNode *node = lru_lookup(&r->shader_cache, shader_state_hash, &state);
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
+
+    if (!binding->initialized && !pgraph_gl_shader_load_from_memory(binding)) {
+        nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
+        generate_shaders(binding);
         if (g_config.perf.cache_shaders) {
-            pgraph_gl_shader_cache_to_disk(snode);
+            pgraph_gl_shader_cache_to_disk(binding);
         }
     }
+    assert(binding->initialized);
+    r->shader_binding = binding;
+    pg->program_data_dirty = false;
 
     qemu_mutex_unlock(&r->shader_cache_lock);
 
@@ -1057,8 +1045,9 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
     NV2A_GL_DGROUP_END();
 
 update_constants:
-    shader_update_constants(pg, r->shader_binding, binding_changed,
-                                   state.vertex_program, state.fixed_function);
+    assert(r->shader_binding);
+    assert(r->shader_binding->initialized);
+    shader_update_constants(pg, r->shader_binding, binding_changed);
 }
 
 GLuint pgraph_gl_compile_shader(const char *vs_src, const char *fs_src)

@@ -8,7 +8,6 @@
  */
 
 #include "qemu/osdep.h"
-#include <string.h>
 #include "hw/i2c/pmbus_device.h"
 #include "hw/irq.h"
 #include "migration/vmstate.h"
@@ -186,7 +185,7 @@ static uint32_t adm1272_direct_to_watts(uint16_t value)
     return pmbus_direct_mode2data(c, value);
 }
 
-static void adm1272_exit_reset(Object *obj)
+static void adm1272_exit_reset(Object *obj, ResetType type)
 {
     ADM1272State *s = ADM1272(obj);
     PMBusDevice *pmdev = PMBUS_DEVICE(obj);
@@ -387,7 +386,7 @@ static int adm1272_write_data(PMBusDevice *pmdev, const uint8_t *buf,
         break;
 
     case ADM1272_MFR_POWER_CYCLE:
-        adm1272_exit_reset((Object *)s);
+        device_cold_reset(DEVICE(s));
         break;
 
     case ADM1272_HYSTERESIS_LOW:
@@ -458,7 +457,7 @@ static const VMStateDescription vmstate_adm1272 = {
     .name = "ADM1272",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]){
+    .fields = (const VMStateField[]){
         VMSTATE_PMBUS_DEVICE(parent, ADM1272State),
         VMSTATE_UINT64(ein_ext, ADM1272State),
         VMSTATE_UINT32(pin_ext, ADM1272State),

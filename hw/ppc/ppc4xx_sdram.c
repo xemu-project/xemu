@@ -33,6 +33,7 @@
 #include "qemu/units.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
+#include "qemu/error-report.h"
 #include "exec/address-spaces.h" /* get_system_memory() */
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
@@ -192,17 +193,13 @@ static inline hwaddr sdram_ddr_base(uint32_t bcr)
 
 static hwaddr sdram_ddr_size(uint32_t bcr)
 {
-    hwaddr size;
-    int sh;
+    int sh = (bcr >> 17) & 0x7;
 
-    sh = (bcr >> 17) & 0x7;
     if (sh == 7) {
-        size = -1;
-    } else {
-        size = (4 * MiB) << sh;
+        return -1;
     }
 
-    return size;
+    return (4 * MiB) << sh;
 }
 
 static uint32_t sdram_ddr_dcr_read(void *opaque, int dcrn)
@@ -440,7 +437,7 @@ static void ppc4xx_sdram_ddr_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->realize = ppc4xx_sdram_ddr_realize;
-    dc->reset = ppc4xx_sdram_ddr_reset;
+    device_class_set_legacy_reset(dc, ppc4xx_sdram_ddr_reset);
     /* Reason: only works as function of a ppc4xx SoC */
     dc->user_creatable = false;
     device_class_set_props(dc, ppc4xx_sdram_ddr_props);
@@ -504,7 +501,7 @@ static uint32_t sdram_ddr2_bcr(hwaddr ram_base, hwaddr ram_size)
         bcr = 0x8000;
         break;
     default:
-        error_report("invalid RAM size " TARGET_FMT_plx, ram_size);
+        error_report("invalid RAM size " HWADDR_FMT_plx, ram_size);
         return 0;
     }
     bcr |= ram_base >> 2 & 0xffe00000;
@@ -520,13 +517,10 @@ static inline hwaddr sdram_ddr2_base(uint32_t bcr)
 
 static hwaddr sdram_ddr2_size(uint32_t bcr)
 {
-    hwaddr size;
     int sh;
 
     sh = 1024 - ((bcr >> 6) & 0x3ff);
-    size = 8 * MiB * sh;
-
-    return size;
+    return 8 * MiB * sh;
 }
 
 static uint32_t sdram_ddr2_dcr_read(void *opaque, int dcrn)
@@ -728,7 +722,7 @@ static void ppc4xx_sdram_ddr2_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->realize = ppc4xx_sdram_ddr2_realize;
-    dc->reset = ppc4xx_sdram_ddr2_reset;
+    device_class_set_legacy_reset(dc, ppc4xx_sdram_ddr2_reset);
     /* Reason: only works as function of a ppc4xx SoC */
     dc->user_creatable = false;
     device_class_set_props(dc, ppc4xx_sdram_ddr2_props);

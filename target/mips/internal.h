@@ -79,9 +79,10 @@ struct mips_def_t {
     int32_t CP0_PageGrain_rw_bitmask;
     int32_t CP0_PageGrain;
     target_ulong CP0_EBaseWG_rw_bitmask;
+    uint32_t lcsr_cpucfg1;
+    uint32_t lcsr_cpucfg2;
     uint64_t insn_flags;
     enum mips_mmu_types mmu_type;
-    int32_t SAARP;
 };
 
 extern const char regnames[32][3];
@@ -98,9 +99,6 @@ int mips_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
 #define KSEG1_BASE      ((target_ulong)(int32_t)0xA0000000UL)
 #define KSEG2_BASE      ((target_ulong)(int32_t)0xC0000000UL)
 #define KSEG3_BASE      ((target_ulong)(int32_t)0xE0000000UL)
-
-#define KVM_KSEG0_BASE  ((target_ulong)(int32_t)0x40000000UL)
-#define KVM_KSEG2_BASE  ((target_ulong)(int32_t)0x60000000UL)
 
 #if !defined(CONFIG_USER_ONLY)
 
@@ -225,6 +223,16 @@ static inline void mips_env_set_pc(CPUMIPSState *env, target_ulong value)
     } else {
         env->hflags &= ~(MIPS_HFLAG_M16);
     }
+}
+
+static inline bool mips_env_is_bigendian(CPUMIPSState *env)
+{
+    return extract32(env->CP0_Config0, CP0C0_BE, 1);
+}
+
+static inline MemOp mo_endian_env(CPUMIPSState *env)
+{
+    return mips_env_is_bigendian(env) ? MO_BE : MO_LE;
 }
 
 static inline void restore_pamask(CPUMIPSState *env)

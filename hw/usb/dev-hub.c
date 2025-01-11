@@ -402,7 +402,7 @@ static void usb_hub_handle_control(USBDevice *dev, USBPacket *p,
         {
             unsigned int n = index - 1;
             USBHubPort *port;
-            USBDevice *dev;
+            USBDevice *pdev;
 
             trace_usb_hub_set_port_feature(s->dev.addr, index,
                                            feature_name(value));
@@ -411,7 +411,7 @@ static void usb_hub_handle_control(USBDevice *dev, USBPacket *p,
                 goto fail;
             }
             port = &s->ports[n];
-            dev = port->port.dev;
+            pdev = port->port.dev;
             switch(value) {
             case PORT_SUSPEND:
                 port->wPortStatus |= PORT_STAT_SUSPEND;
@@ -419,8 +419,8 @@ static void usb_hub_handle_control(USBDevice *dev, USBPacket *p,
             case PORT_RESET:
                 usb_hub_port_set(port, PORT_STAT_RESET);
                 usb_hub_port_clear(port, PORT_STAT_RESET);
-                if (dev && dev->attached) {
-                    usb_device_reset(dev);
+                if (pdev && pdev->attached) {
+                    usb_device_reset(pdev);
                     usb_hub_port_set(port, PORT_STAT_ENABLE);
                 }
                 usb_wakeup(s->intr, 0);
@@ -479,6 +479,7 @@ static void usb_hub_handle_control(USBDevice *dev, USBPacket *p,
                     usb_hub_port_clear(port, PORT_STAT_SUSPEND);
                     port->wPortChange = 0;
                 }
+                break;
             default:
                 goto fail;
             }
@@ -630,7 +631,7 @@ static const VMStateDescription vmstate_usb_hub_port = {
     .name = "usb-hub-port",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT16(wPortStatus, USBHubPort),
         VMSTATE_UINT16(wPortChange, USBHubPort),
         VMSTATE_END_OF_LIST()
@@ -649,7 +650,7 @@ static const VMStateDescription vmstate_usb_hub_port_timer = {
     .version_id = 1,
     .minimum_version_id = 1,
     .needed = usb_hub_port_timer_needed,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_TIMER_PTR(port_timer, USBHubState),
         VMSTATE_END_OF_LIST()
     },
@@ -659,13 +660,13 @@ static const VMStateDescription vmstate_usb_hub = {
     .name = "usb-hub",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_USB_DEVICE(dev, USBHubState),
         VMSTATE_STRUCT_ARRAY(ports, USBHubState, MAX_PORTS, 0,
                              vmstate_usb_hub_port, USBHubPort),
         VMSTATE_END_OF_LIST()
     },
-    .subsections = (const VMStateDescription * []) {
+    .subsections = (const VMStateDescription * const []) {
         &vmstate_usb_hub_port_timer,
         NULL
     }

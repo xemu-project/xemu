@@ -12,7 +12,6 @@
 #include "hw/qdev-properties.h"
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
-#include "monitor/monitor.h"
 #include "qemu/log.h"
 #include "trace.h"
 #include "hw/intc/intc.h"
@@ -39,11 +38,12 @@ static bool goldfish_pic_get_statistics(InterruptStatsProvider *obj,
     return true;
 }
 
-static void goldfish_pic_print_info(InterruptStatsProvider *obj, Monitor *mon)
+static void goldfish_pic_print_info(InterruptStatsProvider *obj, GString *buf)
 {
     GoldfishPICState *s = GOLDFISH_PIC(obj);
-    monitor_printf(mon, "goldfish-pic.%d: pending=0x%08x enabled=0x%08x\n",
-                   s->idx, s->pending, s->enabled);
+    g_string_append_printf(buf,
+                           "goldfish-pic.%d: pending=0x%08x enabled=0x%08x\n",
+                           s->idx, s->pending, s->enabled);
 }
 
 static void goldfish_pic_update(GoldfishPICState *s)
@@ -161,7 +161,7 @@ static const VMStateDescription vmstate_goldfish_pic = {
     .name = "goldfish_pic",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(pending, GoldfishPICState),
         VMSTATE_UINT32(enabled, GoldfishPICState),
         VMSTATE_END_OF_LIST()
@@ -191,7 +191,7 @@ static void goldfish_pic_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
     InterruptStatsProviderClass *ic = INTERRUPT_STATS_PROVIDER_CLASS(oc);
 
-    dc->reset = goldfish_pic_reset;
+    device_class_set_legacy_reset(dc, goldfish_pic_reset);
     dc->realize = goldfish_pic_realize;
     dc->vmsd = &vmstate_goldfish_pic;
     ic->get_statistics = goldfish_pic_get_statistics;

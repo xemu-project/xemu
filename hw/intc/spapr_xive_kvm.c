@@ -485,7 +485,7 @@ static int kvmppc_xive_get_queues(SpaprXive *xive, Error **errp)
  *
  * Whenever the VM is stopped, the VM change handler sets the source
  * PQs to PENDING to stop the flow of events and to possibly catch a
- * triggered interrupt occuring while the VM is stopped. The previous
+ * triggered interrupt occurring while the VM is stopped. The previous
  * state is saved in anticipation of a migration. The XIVE controller
  * is then synced through KVM to flush any in-flight event
  * notification and stabilize the EQs.
@@ -551,7 +551,7 @@ static void kvmppc_xive_change_state_handler(void *opaque, bool running,
 
         /*
          * PQ is set to PENDING to possibly catch a triggered
-         * interrupt occuring while the VM is stopped (hotplug event
+         * interrupt occurring while the VM is stopped (hotplug event
          * for instance) .
          */
         if (pq != XIVE_ESB_OFF) {
@@ -633,7 +633,7 @@ int kvmppc_xive_post_load(SpaprXive *xive, int version_id)
     /* The KVM XIVE device should be in use */
     assert(xive->fd != -1);
 
-    /* Restore the ENDT first. The targetting depends on it. */
+    /* Restore the ENDT first. The targeting depends on it. */
     for (i = 0; i < xive->nr_ends; i++) {
         if (!xive_end_is_valid(&xive->endt[i])) {
             continue;
@@ -720,7 +720,7 @@ int kvmppc_xive_connect(SpaprInterruptController *intc, uint32_t nr_servers,
 {
     SpaprXive *xive = SPAPR_XIVE(intc);
     XiveSource *xsrc = &xive->source;
-    size_t esb_len = xive_source_esb_len(xsrc);
+    uint64_t esb_len = xive_source_esb_len(xsrc);
     size_t tima_len = 4ull << TM_SHIFT;
     CPUState *cs;
     int fd;
@@ -824,7 +824,7 @@ void kvmppc_xive_disconnect(SpaprInterruptController *intc)
 {
     SpaprXive *xive = SPAPR_XIVE(intc);
     XiveSource *xsrc;
-    size_t esb_len;
+    uint64_t esb_len;
 
     assert(xive->fd != -1);
 

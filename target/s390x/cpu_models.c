@@ -17,14 +17,16 @@
 #include "sysemu/kvm.h"
 #include "sysemu/tcg.h"
 #include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "qapi/visitor.h"
 #include "qemu/module.h"
 #include "qemu/hw-version.h"
 #include "qemu/qemu-print.h"
 #ifndef CONFIG_USER_ONLY
 #include "sysemu/sysemu.h"
+#include "target/s390x/kvm/pv.h"
+#include CONFIG_DEVICES
 #endif
-#include "hw/s390x/pv.h"
 
 #define CPUDEF_INIT(_type, _gen, _ec_ga, _mha_pow, _hmfai, _name, _desc) \
     {                                                                    \
@@ -46,6 +48,13 @@
  * generation 15 one base feature and one optional feature have been deprecated.
  */
 static S390CPUDef s390_cpu_defs[] = {
+    /*
+     * Linux requires at least z10 nowadays, and IBM only supports recent CPUs
+     * (see https://www.ibm.com/support/pages/ibm-mainframe-life-cycle-history),
+     * so we consider older CPUs as legacy that can optionally be disabled via
+     * the CONFIG_S390X_LEGACY_CPUS config switch.
+     */
+#if defined(CONFIG_S390X_LEGACY_CPUS) || defined(CONFIG_USER_ONLY)
     CPUDEF_INIT(0x2064, 7, 1, 38, 0x00000000U, "z900", "IBM zSeries 900 GA1"),
     CPUDEF_INIT(0x2064, 7, 2, 38, 0x00000000U, "z900.2", "IBM zSeries 900 GA2"),
     CPUDEF_INIT(0x2064, 7, 3, 38, 0x00000000U, "z900.3", "IBM zSeries 900 GA3"),
@@ -63,6 +72,7 @@ static S390CPUDef s390_cpu_defs[] = {
     CPUDEF_INIT(0x2096, 9, 2, 40, 0x00000000U, "z9BC", "IBM System z9 BC GA1"),
     CPUDEF_INIT(0x2094, 9, 3, 40, 0x00000000U, "z9EC.3", "IBM System z9 EC GA3"),
     CPUDEF_INIT(0x2096, 9, 3, 40, 0x00000000U, "z9BC.2", "IBM System z9 BC GA2"),
+#endif
     CPUDEF_INIT(0x2097, 10, 1, 43, 0x00000000U, "z10EC", "IBM System z10 EC GA1"),
     CPUDEF_INIT(0x2097, 10, 2, 43, 0x00000000U, "z10EC.2", "IBM System z10 EC GA2"),
     CPUDEF_INIT(0x2098, 10, 2, 43, 0x00000000U, "z10BC", "IBM System z10 BC GA1"),
@@ -195,11 +205,7 @@ uint32_t s390_get_ibc_val(void)
 
 void s390_get_feat_block(S390FeatType type, uint8_t *data)
 {
-    static S390CPU *cpu;
-
-    if (!cpu) {
-        cpu = S390_CPU(qemu_get_cpu(0));
-    }
+    S390CPU *cpu = S390_CPU(first_cpu);
 
     if (!cpu || !cpu->model) {
         return;
@@ -236,6 +242,7 @@ bool s390_has_feat(S390Feat feat)
         return 0;
     }
 
+#ifndef CONFIG_USER_ONLY
     if (s390_is_pv()) {
         switch (feat) {
         case S390_FEAT_DIAG_318:
@@ -253,12 +260,14 @@ bool s390_has_feat(S390Feat feat)
         case S390_FEAT_SIE_CMMA:
         case S390_FEAT_SIE_PFMFI:
         case S390_FEAT_SIE_IBS:
+        case S390_FEAT_CONFIGURATION_TOPOLOGY:
             return false;
             break;
         default:
             break;
         }
     }
+#endif
     return test_bit(feat, cpu->model->features);
 }
 
@@ -355,9 +364,9 @@ static void s390_print_cpu_model_list_entry(gpointer data, gpointer user_data)
     /* strip off the -s390x-cpu */
     g_strrstr(name, "-" TYPE_S390_CPU)[0] = 0;
     if (details->len) {
-        qemu_printf("s390 %-15s %-35s (%s)\n", name, scc->desc, details->str);
+        qemu_printf("  %-15s %-35s (%s)\n", name, scc->desc, details->str);
     } else {
-        qemu_printf("s390 %-15s %-35s\n", name, scc->desc);
+        qemu_printf("  %-15s %-35s\n", name, scc->desc);
     }
     g_free(name);
 }
@@ -402,6 +411,7 @@ void s390_cpu_list(void)
     S390Feat feat;
     GSList *list;
 
+    qemu_printf("Available CPUs:\n");
     list = object_class_get_list(TYPE_S390_CPU, false);
     list = g_slist_sort(list, s390_cpu_list_compare);
     g_slist_foreach(list, s390_print_cpu_model_list_entry, NULL);
@@ -411,14 +421,14 @@ void s390_cpu_list(void)
     for (feat = 0; feat < S390_FEAT_MAX; feat++) {
         const S390FeatDef *def = s390_feat_def(feat);
 
-        qemu_printf("%-20s %s\n", def->name, def->desc);
+        qemu_printf("  %-20s %s\n", def->name, def->desc);
     }
 
     qemu_printf("\nRecognized feature groups:\n");
     for (group = 0; group < S390_FEAT_GROUP_MAX; group++) {
         const S390FeatGroupDef *def = s390_feat_group_def(group);
 
-        qemu_printf("%-20s %s\n", def->name, def->desc);
+        qemu_printf("  %-20s %s\n", def->name, def->desc);
     }
 }
 
@@ -480,6 +490,8 @@ static void check_consistency(const S390CPUModel *model)
         { S390_FEAT_DIAG_318, S390_FEAT_EXTENDED_LENGTH_SCCB },
         { S390_FEAT_NNPA, S390_FEAT_VECTOR },
         { S390_FEAT_RDP, S390_FEAT_LOCAL_TLB_CLEARING },
+        { S390_FEAT_UV_FEAT_AP, S390_FEAT_AP },
+        { S390_FEAT_UV_FEAT_AP_INTR, S390_FEAT_UV_FEAT_AP },
     };
     int i;
 
@@ -498,22 +510,29 @@ static void error_prepend_missing_feat(const char *name, void *opaque)
     error_prepend((Error **) opaque, "%s ", name);
 }
 
-static void check_compatibility(const S390CPUModel *max_model,
+static void check_compat_model_failed(Error **errp,
+                                      const S390CPUModel *max_model,
+                                      const char *msg)
+{
+    error_setg(errp, "%s. Maximum supported model in the current configuration: \'%s\'",
+               msg, max_model->def->name);
+    error_append_hint(errp, "Consider a different accelerator, try \"-accel help\"\n");
+    return;
+}
+
+static bool check_compatibility(const S390CPUModel *max_model,
                                 const S390CPUModel *model, Error **errp)
 {
+    ERRP_GUARD();
     S390FeatBitmap missing;
 
     if (model->def->gen > max_model->def->gen) {
-        error_setg(errp, "Selected CPU generation is too new. Maximum "
-                   "supported model in the configuration: \'%s\'",
-                   max_model->def->name);
-        return;
+        check_compat_model_failed(errp, max_model, "Selected CPU generation is too new");
+        return false;
     } else if (model->def->gen == max_model->def->gen &&
                model->def->ec_ga > max_model->def->ec_ga) {
-        error_setg(errp, "Selected CPU GA level is too new. Maximum "
-                   "supported model in the configuration: \'%s\'",
-                   max_model->def->name);
-        return;
+        check_compat_model_failed(errp, max_model, "Selected CPU GA level is too new");
+        return false;
     }
 
 #ifndef CONFIG_USER_ONLY
@@ -521,25 +540,27 @@ static void check_compatibility(const S390CPUModel *max_model,
         error_setg(errp, "The unpack facility is not compatible with "
                    "the --only-migratable option. You must remove either "
                    "the 'unpack' facility or the --only-migratable option");
-        return;
+        return false;
     }
 #endif
 
     /* detect the missing features to properly report them */
     bitmap_andnot(missing, model->features, max_model->features, S390_FEAT_MAX);
     if (bitmap_empty(missing, S390_FEAT_MAX)) {
-        return;
+        return true;
     }
 
     error_setg(errp, " ");
     s390_feat_bitmap_to_ascii(missing, errp, error_prepend_missing_feat);
     error_prepend(errp, "Some features requested in the CPU model are not "
-                  "available in the configuration: ");
+                  "available in the current configuration: ");
+    error_append_hint(errp,
+                      "Consider a different accelerator, QEMU, or kernel version\n");
+    return false;
 }
 
 S390CPUModel *get_max_cpu_model(Error **errp)
 {
-    Error *err = NULL;
     static S390CPUModel max_model;
     static bool cached;
 
@@ -548,15 +569,13 @@ S390CPUModel *get_max_cpu_model(Error **errp)
     }
 
     if (kvm_enabled()) {
-        kvm_s390_get_host_cpu_model(&max_model, &err);
+        if (!kvm_s390_get_host_cpu_model(&max_model, errp)) {
+            return NULL;
+        }
     } else {
         max_model.def = s390_find_cpu_def(QEMU_MAX_CPU_TYPE, QEMU_MAX_CPU_GEN,
                                           QEMU_MAX_CPU_EC_GA, NULL);
         bitmap_copy(max_model.features, qemu_max_cpu_feat, S390_FEAT_MAX);
-    }
-    if (err) {
-        error_propagate(errp, err);
-        return NULL;
     }
     cached = true;
     return &max_model;
@@ -564,7 +583,7 @@ S390CPUModel *get_max_cpu_model(Error **errp)
 
 void s390_realize_cpu_model(CPUState *cs, Error **errp)
 {
-    Error *err = NULL;
+    ERRP_GUARD();
     S390CPUClass *xcc = S390_CPU_GET_CLASS(cs);
     S390CPU *cpu = S390_CPU(cs);
     const S390CPUModel *max_model;
@@ -593,9 +612,7 @@ void s390_realize_cpu_model(CPUState *cs, Error **errp)
     cpu->model->cpu_ver = max_model->cpu_ver;
 
     check_consistency(cpu->model);
-    check_compatibility(max_model, cpu->model, &err);
-    if (err) {
-        error_propagate(errp, err);
+    if (!check_compatibility(max_model, cpu->model, errp)) {
         return;
     }
 
@@ -751,7 +768,7 @@ void s390_set_qemu_cpu_model(uint16_t type, uint8_t gen, uint8_t ec_ga,
     const S390CPUDef *def = s390_find_cpu_def(type, gen, ec_ga, NULL);
 
     g_assert(def);
-    g_assert(QTAILQ_EMPTY_RCU(&cpus));
+    g_assert(QTAILQ_EMPTY_RCU(&cpus_queue));
 
     /* build the CPU model */
     s390_qemu_cpu_model.def = def;
@@ -972,7 +989,7 @@ static void register_types(void)
 
     init_ignored_base_feat();
 
-    /* init all bitmaps from gnerated data initially */
+    /* init all bitmaps from generated data initially */
     s390_init_feat_bitmap(qemu_max_init, qemu_max_cpu_feat);
     for (i = 0; i < ARRAY_SIZE(s390_cpu_defs); i++) {
         s390_init_feat_bitmap(s390_cpu_defs[i].base_init,

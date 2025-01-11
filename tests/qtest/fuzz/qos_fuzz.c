@@ -46,12 +46,11 @@ static void qos_set_machines_devices_available(void)
     MachineInfoList *mach_info;
     ObjectTypeInfoList *type_info;
 
-    mach_info = qmp_query_machines(&error_abort);
+    mach_info = qmp_query_machines(false, false, &error_abort);
     machines_apply_to_node(mach_info);
     qapi_free_MachineInfoList(mach_info);
 
-    type_info = qmp_qom_list_types(true, "device", true, true,
-                                   &error_abort);
+    type_info = qmp_qom_list_types("device", true, true, &error_abort);
     types_apply_to_node(type_info);
     qapi_free_ObjectTypeInfoList(type_info);
 }
@@ -181,6 +180,7 @@ static void walk_path(QOSGraphNode *orig_path, int len)
 
         fuzz_path_vec = path_vec;
     } else {
+        g_string_free(cmd_line, true);
         g_free(path_vec);
     }
 
