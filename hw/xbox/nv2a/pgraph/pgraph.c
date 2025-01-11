@@ -1073,6 +1073,12 @@ DEF_METHOD(NV097, SET_CONTROL0)
     PG_SET_MASK(NV_PGRAPH_CONTROL_0,
              NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE,
              z_perspective);
+
+    bool texture_perspective =
+        parameter & NV097_SET_CONTROL0_TEXTURE_PERSPECTIVE_ENABLE;
+    PG_SET_MASK(NV_PGRAPH_CONTROL_3,
+             NV_PGRAPH_CONTROL_3_TEXTURE_PERSPECTIVE_ENABLE,
+             texture_perspective);
 }
 
 DEF_METHOD(NV097, SET_COLOR_MATERIAL)

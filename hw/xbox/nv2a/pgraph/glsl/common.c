@@ -26,9 +26,9 @@ MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bo
     const char *flat_s = "flat";
     const char *noperspective_s = z_perspective ? "" : "noperspective";
     const char *qualifier_s = smooth ? noperspective_s : flat_s;
-    const char *qualifiers[11] = {
-        "noperspective", flat_s,          qualifier_s,     qualifier_s,
-        qualifier_s,     qualifier_s,     noperspective_s, noperspective_s,
+    const char *qualifiers[9] = {
+        qualifier_s,     qualifier_s,     qualifier_s,     
+        qualifier_s,     noperspective_s, noperspective_s,
         noperspective_s, noperspective_s, noperspective_s
     };
 
@@ -36,17 +36,17 @@ MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bo
 
     const char *float_s = "float";
     const char *vec4_s = "vec4";
-    const char *types[11] = { float_s, float_s, vec4_s, vec4_s, vec4_s, vec4_s,
+    const char *types[9] = { vec4_s, vec4_s, vec4_s, vec4_s,
                               float_s, vec4_s,  vec4_s, vec4_s, vec4_s };
 
     const char *prefix_s = prefix ? "v_" : "";
-    const char *names[11] = {
-        "vtx_inv_w", "vtx_inv_w_flat", "vtxD0", "vtxD1", "vtxB0", "vtxB1",
-        "vtxFog",    "vtxT0",          "vtxT1", "vtxT2", "vtxT3",
+    const char *names[9] = {
+        "vtxD0",    "vtxD1",    "vtxB0",    "vtxB1",
+        "vtxFog",   "vtxT0",    "vtxT1",    "vtxT2",    "vtxT3",
     };
     const char *suffix_s = array ? "[]" : "";
 
-    for (int i = 0; i < 11; i++) {
+    for (int i = 0; i < 9; i++) {
         if (location) {
             mstring_append_fmt(out, "layout(location = %d) ", i);
         }

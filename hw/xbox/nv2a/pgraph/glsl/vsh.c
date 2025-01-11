@@ -75,12 +75,10 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
         "}\n");
 
     pgraph_get_glsl_vtx_header(header, state->vulkan, state->smooth_shading,
-                             false, prefix_outputs, false, state->z_perspective);
+                             false, prefix_outputs, false, state->texture_perspective || state->z_perspective);
 
     if (prefix_outputs) {
         mstring_append(header,
-                       "#define vtx_inv_w v_vtx_inv_w\n"
-                       "#define vtx_inv_w_flat v_vtx_inv_w_flat\n"
                        "#define vtxD0 v_vtxD0\n"
                        "#define vtxD1 v_vtxD1\n"
                        "#define vtxB0 v_vtxB0\n"
@@ -142,7 +140,7 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
     } else if (state->vertex_program) {
         pgraph_gen_vsh_prog_glsl(VSH_VERSION_XVS,
                                  (uint32_t *)state->program_data,
-                                 state->program_length, state->z_perspective,
+                                 state->program_length, state->z_perspective, state->texture_perspective,
                                  state->vulkan, header, body);
     } else {
         assert(false);

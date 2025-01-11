@@ -91,10 +91,14 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
     }
 
     /* vertex program stuff */
-    state.vertex_program = vertex_program,
+    state.vertex_program = vertex_program;
     state.z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
                           NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
 
+    state.psh.z_perspective = state.z_perspective;
+    state.texture_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3) &
+                                NV_PGRAPH_CONTROL_3_TEXTURE_PERSPECTIVE_ENABLE;
+    state.psh.texture_perspective = state.texture_perspective;
     state.point_params_enable = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
                                          NV_PGRAPH_CSV0_D_POINTPARAMSENABLE);
     state.point_size =

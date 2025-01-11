@@ -451,9 +451,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                    "    oPos.w = clamp(oPos.w, -1.884467e+019, -5.421011e-20);\n"
                    "  } else {\n"
                    "    oPos.w = clamp(oPos.w, 5.421011e-20, 1.884467e+019);\n"
-                   "  }\n"
-                   "  vtx_inv_w = 1.0 / oPos.w;\n"
-                   "  vtx_inv_w_flat = vtx_inv_w;\n");
+                   "  }\n");
 }
 
 static void append_skinning_code(MString* str, bool mix,

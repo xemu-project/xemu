@@ -461,6 +461,7 @@
 #       define NV_PGRAPH_CONTROL_2_STENCIL_OP_V_INCR                7
 #       define NV_PGRAPH_CONTROL_2_STENCIL_OP_V_DECR                8
 #define NV_PGRAPH_CONTROL_3                              0x00001958
+#   define NV_PGRAPH_CONTROL_3_TEXTURE_PERSPECTIVE_ENABLE       (1 << 6)
 #   define NV_PGRAPH_CONTROL_3_SHADEMODE                        (1 << 7)
 #       define NV_PGRAPH_CONTROL_3_SHADEMODE_FLAT                   0
 #       define NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH                 1
@@ -879,6 +880,7 @@
 #       define NV097_SET_CONTROL0_STENCIL_WRITE_ENABLE            (1 << 0)
 #       define NV097_SET_CONTROL0_Z_FORMAT                        (1 << 12)
 #       define NV097_SET_CONTROL0_Z_PERSPECTIVE_ENABLE            (1 << 16)
+#       define NV097_SET_CONTROL0_TEXTURE_PERSPECTIVE_ENABLE      (1 << 20)
 #   define NV097_SET_COLOR_MATERIAL                           0x00000298
 #   define NV097_SET_FOG_MODE                                 0x0000029C
 #       define NV097_SET_FOG_MODE_V_LINEAR                        0x2601

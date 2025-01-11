@@ -726,15 +726,17 @@ static void apply_convolution_filter(const struct PixelShader *ps, MString *vars
         "}\n", tex, tex, tex, tex, tex_remap, tex);
 }
 
-static MString *psh_convert(struct PixelShader *ps, bool z_perspective)
+static MString *psh_convert(struct PixelShader *ps)
 {
     int i;
 
+    bool z_perspective = ps->state.z_perspective;
+    bool tex = ps->state.texture_perspective;
     const char *u = ps->state.vulkan ? "" : "uniform "; // FIXME: Remove
 
     MString *preflight = mstring_new();
     pgraph_get_glsl_vtx_header(preflight, ps->state.vulkan,
-                             ps->state.smooth_shading, true, false, false, z_perspective);
+                             ps->state.smooth_shading, true, false, false, tex || z_perspective);
 
     if (ps->state.vulkan) {
         mstring_append_fmt(preflight,
@@ -1196,11 +1198,15 @@ static MString *psh_convert(struct PixelShader *ps, bool z_perspective)
         }
     }
 
+    /* NV097_SET_CONTROL0_Z_PERSPECTIVE_ENABLE enables w-buffering
+     * not only gl_Position gets divided by the homogeneous coordinate, 
+     * but also all other interpolated variables, which requires 
+     * the division to be after the rasterization */
     if (z_perspective) {     
         mstring_append(ps->code, "gl_FragDepth = 1.0/(gl_FragCoord.w * clipRange.y);\n");
     }
 
-    for (i = 0; i < ps->num_var_refs; i++) {
+    for (int i = 0; i < ps->num_var_refs; i++) {
         mstring_append_fmt(vars, "vec4 %s = vec4(0);\n", ps->var_refs[i]);
         if (strcmp(ps->var_refs[i], "r0") == 0) {
             if (ps->tex_modes[0] != PS_TEXTUREMODES_NONE) {
@@ -1259,7 +1265,7 @@ static void parse_combiner_output(uint32_t value, struct OutputInfo *out)
     out->cd_alphablue = flags & 0x40;
 }
 
-MString *pgraph_gen_psh_glsl(const PshState state, bool z_perspective)
+MString *pgraph_gen_psh_glsl(const PshState state)
 {
     int i;
     struct PixelShader ps;
@@ -1309,5 +1315,5 @@ MString *pgraph_gen_psh_glsl(const PshState state, bool z_perspective)
         ps.final_input.inv_r0 = flags & PS_FINALCOMBINERSETTING_COMPLEMENT_R0;
     }
 
-    return psh_convert(&ps, z_perspective);
+    return psh_convert(&ps);
 }

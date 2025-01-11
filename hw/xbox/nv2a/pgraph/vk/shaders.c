@@ -396,7 +396,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
 
         MString *geometry_shader_code = pgraph_gen_geom_glsl(
             state->polygon_front_mode, state->polygon_back_mode,
-            state->primitive_mode, state->smooth_shading, true, state->z_perspective);
+            state->primitive_mode, state->smooth_shading, true, state->z_perspective || state->texture_perspective);
         if (geometry_shader_code) {
             NV2A_VK_DPRINTF("geometry shader: \n%s",
                             mstring_get_str(geometry_shader_code));
@@ -417,7 +417,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
             mstring_get_str(vertex_shader_code));
         mstring_unref(vertex_shader_code);
 
-        MString *fragment_shader_code = pgraph_gen_psh_glsl(state->psh, state->z_perspective);
+        MString *fragment_shader_code = pgraph_gen_psh_glsl(state->psh);
         NV2A_VK_DPRINTF("fragment shader: \n%s",
                         mstring_get_str(fragment_shader_code));
         snode->fragment = pgraph_vk_create_shader_module_from_glsl(

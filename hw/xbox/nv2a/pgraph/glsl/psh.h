@@ -36,6 +36,6 @@
 #define PSH_UBO_BINDING 1
 #define PSH_TEX_BINDING 2
 
-MString *pgraph_gen_psh_glsl(const PshState state, bool z_perspective);
+MString *pgraph_gen_psh_glsl(const PshState state);
 
 #endif
