@@ -860,13 +860,23 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
 
     mstring_append(body,
         "  if (clipRange.y != clipRange.x) {\n");
-    if (texture || z_perspective) {      
-        if (vulkan) {
-            mstring_append(body, "    oPos.z = (oPos.z - clipRange.z)/(clipRange.w - clipRange.z);\n");
+    if (texture) {  
+        if (z_perspective) {
+            if (vulkan) {
+                mstring_append(body, "    oPos.z = (oPos.z - clipRange.z)/(clipRange.w - clipRange.z);\n");
+            } else {
+                mstring_append(body, "    oPos.z = (oPos.z - clipRange.z)/(0.5*(clipRange.w - clipRange.z)) - 1;\n");
+            }
         } else {
-            mstring_append(body,
-                           "    oPos.z = (oPos.z - clipRange.z)/(0.5*(clipRange.w "
-                           "- clipRange.z)) - 1;\n");
+            /* There is some clip distance / clip range issue here; if using x and y as near and far planes,
+             * character shadows in many games get clipped (e.g. Conker, Halo CE, Wallace & Gromit), 
+             * and using z and w as near and far planes restores them but the Xbox dashboard background 
+             * gets clipped. Set / disable gl_clipDistance? ( x = 0, y = zmax, z = zclipmin, w = zclipmax ) */
+            if (vulkan) {
+                mstring_append(body, "    oPos.z = (oPos.z - clipRange.x)/(clipRange.y - clipRange.x);\n");
+            } else {
+                mstring_append(body, "    oPos.z = (oPos.z - clipRange.x)/(0.5*(clipRange.y - clipRange.x)) - 1;\n");
+            }
         }
         mstring_append(body,
             "  }\n"
