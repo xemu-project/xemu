@@ -179,7 +179,6 @@ typedef struct ShaderBinding {
     int vsh_constant_loc;
     uint32_t vsh_constants[NV2A_VERTEXSHADER_CONSTANTS][4];
 
-    int inv_viewport_loc;
     int ltctxa_loc;
     int ltctxb_loc;
     int ltc1_loc;

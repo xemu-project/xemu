@@ -821,22 +821,14 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
     assert(has_final);
 
     mstring_append(body,
-        /* the shaders leave the result in screen space, while
-         * opengl expects it in clip space.
-         * TODO: the pixel-center co-ordinate differences should handled
+        /* The shaders leave the result in screen space, while OpenGL expects it
+         * in clip space. Xbox NV2A rasterizer appears to have 4 bit precision
+         * fixed point fractional part and to convert floating point coordinates
+         * by flooring.
          */
-        "  oPos.x = 2.0 * (oPos.x - surfaceSize.x * 0.5) / surfaceSize.x;\n"
-        );
+        "  oPos.xy = floor(oPos.xy * 16.0f) / 16.0f;\n"
+        "  oPos.xy = (2.0f * oPos.xy - surfaceSize) / surfaceSize;\n"
 
-    if (vulkan) {
-        mstring_append(body,
-                       "  oPos.y = 2.0 * oPos.y / surfaceSize.y - 1.0;\n");
-    } else {
-        mstring_append(body, "  oPos.y = -2.0 * (oPos.y - surfaceSize.y * 0.5) "
-                             "/ surfaceSize.y;\n");
-    }
-
-    mstring_append(body,
         "  oPos.z = oPos.z / clipRange.y;\n"
         "  oPos.w = clampAwayZeroInf(oPos.w);\n"
 
@@ -849,4 +841,8 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
          */
         "  oPos.xyz *= oPos.w;\n"
     );
+
+    if (!vulkan) {
+        mstring_append(body, "  oPos.y = -oPos.y;\n");
+    }
 }

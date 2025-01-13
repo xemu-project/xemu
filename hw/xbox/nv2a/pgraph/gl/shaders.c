@@ -158,7 +158,6 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     binding->fog_color_loc = glGetUniformLocation(binding->gl_program, "fogColor");
     binding->fog_param_loc = glGetUniformLocation(binding->gl_program, "fogParam");
 
-    binding->inv_viewport_loc = glGetUniformLocation(binding->gl_program, "invViewport");
     for (int i = 0; i < NV2A_LTCTXA_COUNT; i++) {
         snprintf(tmp, sizeof(tmp), "ltctxa[%d]", i);
         binding->ltctxa_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
@@ -847,28 +846,6 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         if (binding->specular_power_loc != -1) {
     	    glUniform1f(binding->specular_power_loc, pg->specular_power);
 	    }
-
-        /* estimate the viewport by assuming it matches the surface ... */
-        unsigned int aa_width = 1, aa_height = 1;
-        pgraph_apply_anti_aliasing_factor(pg, &aa_width, &aa_height);
-
-        float m11 = 0.5 * (pg->surface_binding_dim.width/aa_width);
-        float m22 = -0.5 * (pg->surface_binding_dim.height/aa_height);
-        float m33 = zmax;
-        float m41 = *(float*)&pg->vsh_constants[NV_IGRAPH_XF_XFCTX_VPOFF][0];
-        float m42 = *(float*)&pg->vsh_constants[NV_IGRAPH_XF_XFCTX_VPOFF][1];
-
-        float invViewport[16] = {
-            1.0/m11, 0, 0, 0,
-            0, 1.0/m22, 0, 0,
-            0, 0, 1.0/m33, 0,
-            -1.0+m41/m11, 1.0+m42/m22, 0, 1.0
-        };
-
-        if (binding->inv_viewport_loc != -1) {
-            glUniformMatrix4fv(binding->inv_viewport_loc,
-                               1, GL_FALSE, &invViewport[0]);
-        }
     }
 
     /* update vertex program constants */
