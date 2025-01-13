@@ -644,8 +644,8 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
     uint32_t v[2];
     v[0] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
     v[1] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMAX);
-    float zclip_min = *(float *)&v[0];// / zmax * 2.0 - 1.0;
-    float zclip_max = *(float *)&v[1];// / zmax * 2.0 - 1.0;
+    float zclip_min = *(float *)&v[0];
+    float zclip_max = *(float *)&v[1];
 
     if (binding->clip_range_loc != -1) {       
         uniform4f(&binding->vertex->uniforms, binding->clip_range_loc, 0,

@@ -876,13 +876,12 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
                            "- clipRange.x)) - 1;\n");
         }
     }
-        mstring_append(body,
-            "  }\n"
-        );
+    mstring_append(body,
+        "  }\n"
+    );    
     if (z_perspective || texture) {
             mstring_append(body, "  oPos.xyz *= oPos.w;\n");
-    } else {
-    
+    } else {   
         mstring_append(
             body,
 
@@ -896,6 +895,6 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
              * can't multiply by W because it could be meaningless here */
         "    oPos.w = 1.0;\n"
         "  }\n"
-    );
+        );
     }
 }
