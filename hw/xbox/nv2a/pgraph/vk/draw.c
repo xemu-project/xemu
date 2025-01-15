@@ -738,12 +738,9 @@ static void create_pipeline(PGRAPHState *pg)
 
     uint32_t control_0 = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0);
     bool depth_test = control_0 & NV_PGRAPH_CONTROL_0_ZENABLE;
-    bool z_persp = control_0 & NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
     bool depth_write = !!(control_0 & NV_PGRAPH_CONTROL_0_ZWRITEENABLE);
     bool stencil_test =
         pgraph_reg_r(pg, NV_PGRAPH_CONTROL_1) & NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE;
-    bool tex_persp =
-        pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3) & NV_PGRAPH_CONTROL_3_TEXTURE_PERSPECTIVE_ENABLE;
 
     int num_active_shader_stages = 0;
     VkPipelineShaderStageCreateInfo shader_stages[3];
@@ -817,6 +814,13 @@ static void create_pipeline(PGRAPHState *pg)
         // FIXME: Handle in shader?
     }
 
+    VkPipelineRasterizationDepthClipStateCreateInfoEXT clipping =
+        (VkPipelineRasterizationDepthClipStateCreateInfoEXT){
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_DEPTH_CLIP_STATE_CREATE_INFO_EXT,
+            .depthClipEnable = VK_TRUE,
+            .pNext = rasterizer_next_struct,
+        };
+
     VkPipelineRasterizationStateCreateInfo rasterizer = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .depthClampEnable = VK_FALSE,
@@ -829,7 +833,7 @@ static void create_pipeline(PGRAPHState *pg)
                          VK_FRONT_FACE_COUNTER_CLOCKWISE :
                          VK_FRONT_FACE_CLOCKWISE,
         .depthBiasEnable = VK_FALSE,
-        .pNext = rasterizer_next_struct,
+        .pNext = &clipping,
     };
 
     if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) & NV_PGRAPH_SETUPRASTER_CULLENABLE) {
@@ -986,9 +990,10 @@ static void create_pipeline(PGRAPHState *pg)
 
     if (GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_ZCOMPRESSOCCLUDE),
                  NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
-        NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CLAMP || (tex_persp && !z_persp)) {
+        NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CLAMP) {
         rasterizer.depthClampEnable = VK_TRUE;
-    }
+        clipping.depthClipEnable = VK_FALSE;
+    } 
 
     // FIXME: Dither
     // if (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &

@@ -146,11 +146,8 @@ void pgraph_gl_draw_begin(NV2AState *d)
     bool mask_blue = control_0 & NV_PGRAPH_CONTROL_0_BLUE_WRITE_ENABLE;
     bool color_write = mask_alpha || mask_red || mask_green || mask_blue;
     bool depth_test = control_0 & NV_PGRAPH_CONTROL_0_ZENABLE;
-    bool z_persp = control_0 & NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
     bool stencil_test =
         pgraph_reg_r(pg, NV_PGRAPH_CONTROL_1) & NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE;
-    bool tex_persp =
-        pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3) & NV_PGRAPH_CONTROL_3_TEXTURE_PERSPECTIVE_ENABLE;
     bool is_nop_draw = !(color_write || depth_test || stencil_test);
 
     pgraph_gl_surface_update(d, true, true, depth_test || stencil_test);
@@ -260,7 +257,7 @@ void pgraph_gl_draw_begin(NV2AState *d)
 
     if (GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_ZCOMPRESSOCCLUDE),
                  NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
-        NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CLAMP || (tex_persp && !z_persp)) {
+        NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CLAMP) {
         glEnable(GL_DEPTH_CLAMP);
     } else {
         glDisable(GL_DEPTH_CLAMP);
