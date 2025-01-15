@@ -837,9 +837,7 @@ static void create_pipeline(PGRAPHState *pg)
                                       NV_PGRAPH_SETUPRASTER_CULLCTRL);
         assert(cull_face < ARRAY_SIZE(pgraph_cull_face_vk_map));
         rasterizer.cullMode = pgraph_cull_face_vk_map[cull_face];
-    } else {
-        rasterizer.cullMode = VK_CULL_MODE_NONE;
-    }
+    } 
 
     VkPipelineMultisampleStateCreateInfo multisampling = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
