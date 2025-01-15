@@ -2996,9 +2996,6 @@ void qemu_init(int argc, char **argv)
     fake_argv[fake_argc++] = strdup("-device");
     fake_argv[fake_argc++] = strdup("usb-hub,port=1,ports=4");
 
-    fake_argv[fake_argc++] = strdup("-audio");
-    fake_argv[fake_argc++] = strdup("none");
-
     for (int i = 1; i < argc; i++) {
         if (argv[i] != NULL) {
             fake_argv[fake_argc++] = argv[i];
