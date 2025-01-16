@@ -65,12 +65,21 @@ enum controller_input_device_type {
     INPUT_DEVICE_SDL_GAMECONTROLLER,
 };
 
-enum peripheral_type { PERIPHERAL_NONE, PERIPHERAL_XMU, PERIPHERAL_TYPE_COUNT };
+enum peripheral_type { PERIPHERAL_NONE, PERIPHERAL_XMU, PERIPHERAL_XBLC, PERIPHERAL_TYPE_COUNT };
+extern const char *peripheral_type_names[3];
 
 typedef struct XmuState {
     const char *filename;
     void *dev;
 } XmuState;
+
+typedef struct XblcState {
+    const char *output_device_name;
+    const char *input_device_name;
+    float input_device_volume;
+    float output_device_volume;
+    void *dev;
+} XblcState;
 
 typedef struct ControllerState {
     QTAILQ_ENTRY(ControllerState) entry;
@@ -123,9 +132,13 @@ ControllerState *xemu_input_get_bound(int index);
 void xemu_input_bind(int index, ControllerState *state, int save);
 bool xemu_input_bind_xmu(int player_index, int peripheral_port_index,
                          const char *filename, bool is_rebind);
-void xemu_input_rebind_xmu(int port);
-void xemu_input_unbind_xmu(int player_index, int peripheral_port_index);
+bool xemu_input_bind_xblc(int player_index, const char *output_device, 
+                          const char *input_device, bool is_rebind);
+void xemu_input_unbind_peripheral(int player_index, int expansion_slot_index);
+void xemu_input_rebind_peripherals(int port);
 int xemu_input_get_controller_default_bind_port(ControllerState *state, int start);
+char *xemu_input_serialize_xblc_settings(XblcState *xblc);
+XblcState *xemu_input_deserialize_xblc_settings(const char *param);
 void xemu_save_peripheral_settings(int player_index, int peripheral_index,
                                    int peripheral_type,
                                    const char *peripheral_parameter);
