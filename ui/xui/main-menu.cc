@@ -159,6 +159,50 @@ void MainMenuInputView::Draw()
     ImGui::Columns(1);
 
     //
+    // Render device driver combo
+    //
+
+    // List available device drivers
+    const char *driver = bound_drivers[active];
+
+    if (strcmp(driver, DRIVER_DUKE) == 0)
+        driver = DRIVER_DUKE_DISPLAY_NAME;
+    else if (strcmp(driver, DRIVER_LIGHT_GUN) == 0)
+        driver = DRIVER_LIGHT_GUN_DISPLAY_NAME;
+
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (ImGui::BeginCombo("###InputDrivers", driver,
+                          ImGuiComboFlags_NoArrowButton)) {
+        const char *available_drivers[] = { DRIVER_DUKE,
+                                            DRIVER_LIGHT_GUN };
+        const char *driver_display_names[] = {
+            DRIVER_DUKE_DISPLAY_NAME, 
+            DRIVER_LIGHT_GUN_DISPLAY_NAME
+        };
+        bool is_selected = false;
+        int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);
+        for (int i = 0; i < num_drivers; i++) {
+            const char *iter = driver_display_names[i];
+            is_selected = strcmp(driver, iter) == 0;
+            ImGui::PushID(iter);
+            if (ImGui::Selectable(iter, is_selected)) {
+                for (int j = 0; j < num_drivers; j++) {
+                    if (iter == driver_display_names[j])
+                        bound_drivers[active] = available_drivers[j];
+                }
+                xemu_input_bind(active, bound_controllers[active], 1);
+            }
+            if (is_selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+            ImGui::PopID();
+        }
+
+        ImGui::EndCombo();
+    }
+    DrawComboChevron();
+
+    //
     // Render input device combo
     //
 
@@ -259,16 +303,17 @@ void MainMenuInputView::Draw()
         ImGui::GetCursorPosX() +
         (int)((ImGui::GetColumnWidth() - controller_display_size.x) / 2.0));
 
-    ImGui::Image(id,
-        controller_display_size,
-        ImVec2(0, controller_height/t_h),
-        ImVec2(controller_width/t_w, 0));
+    cur = ImGui::GetCursorPos();
+
+    ImGui::Image(id, controller_display_size,
+                 ImVec2(0, controller_height / t_h),
+                 ImVec2(controller_width / t_w, 0));
     ImVec2 pos = ImGui::GetCursorPos();
     if (!device_selected) {
         const char *msg = "Please select an available input device";
         ImVec2 dim = ImGui::CalcTextSize(msg);
-        ImGui::SetCursorPosX(cur.x + (controller_display_size.x-dim.x)/2);
-        ImGui::SetCursorPosY(cur.y + (controller_display_size.y-dim.y)/2);
+        ImGui::SetCursorPosX(cur.x + (controller_display_size.x - dim.x) / 2);
+        ImGui::SetCursorPosY(cur.y + (controller_display_size.y - dim.y) / 2);
         ImGui::Text("%s", msg);
     }
 
@@ -287,20 +332,22 @@ void MainMenuInputView::Draw()
         xmu_fbo->Target();
         id = (ImTextureID)(intptr_t)xmu_fbo->Texture();
 
-        const char *img_file_filters = ".img Files\0*.img\0All Files\0*.*\0";
+        const char *img_file_filters =
+            ".img Files\0*.img\0All Files\0*.*\0";
         const char *comboLabels[2] = { "###ExpansionSlotA",
-                                       "###ExpansionSlotB" };
+                                        "###ExpansionSlotB" };
         for (int i = 0; i < 2; i++) {
             // Display a combo box to allow the user to choose the type of
             // peripheral they want to use
             enum peripheral_type selected_type =
                 bound_state->peripheral_types[i];
-            const char *peripheral_type_names[2] = { "None", "Memory Unit" };
+            const char *peripheral_type_names[2] = { "None",
+                                                        "Memory Unit" };
             const char *selected_peripheral_type =
                 peripheral_type_names[selected_type];
             ImGui::SetNextItemWidth(-FLT_MIN);
             if (ImGui::BeginCombo(comboLabels[i], selected_peripheral_type,
-                                  ImGuiComboFlags_NoArrowButton)) {
+                                    ImGuiComboFlags_NoArrowButton)) {
                 // Handle all available peripheral types
                 for (int j = 0; j < 2; j++) {
                     bool is_selected = selected_type == j;
@@ -322,7 +369,8 @@ void MainMenuInputView::Draw()
                             bound_state->peripherals[i] = NULL;
                         }
 
-                        // Change the peripheral type to the newly selected type
+                        // Change the peripheral type to the newly selected
+                        // type
                         bound_state->peripheral_types[i] =
                             (enum peripheral_type)j;
 
@@ -331,11 +379,12 @@ void MainMenuInputView::Draw()
                             bound_state->peripherals[i] =
                                 g_malloc(sizeof(XmuState));
                             memset(bound_state->peripherals[i], 0,
-                                   sizeof(XmuState));
-                        }
+                                    sizeof(XmuState));
 
-                        xemu_save_peripheral_settings(
-                            active, i, bound_state->peripheral_types[i], NULL);
+                            xemu_save_peripheral_settings(
+                                active, i, bound_state->peripheral_types[i], 
+                                NULL);
+                        }
                     }
 
                     if (is_selected) {
