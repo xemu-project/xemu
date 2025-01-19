@@ -2406,8 +2406,7 @@ if have_system
 
   # Default to native drivers first, OSS second, SDL third
   audio_drivers_priority = \
-    [ 'pa', 'coreaudio', 'dsound', 'sndio', 'oss' ] + \
-    (host_os == 'linux' ? [] : [ 'sdl' ])
+    [ 'pa', 'coreaudio', 'dsound', 'sndio', 'oss', 'sdl' ]
   audio_drivers_default = []
   foreach k: audio_drivers_priority
     if audio_drivers_available[k]
