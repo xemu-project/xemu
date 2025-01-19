@@ -637,18 +637,18 @@ void RenderArcadeStick(float frame_x, float frame_y, uint32_t primary_color,
 {
     // Location within the controller texture of masked button locations,
     // relative to the origin of the controller
-    const struct rect stick_ctr = { 116, 163, 0, 0 };
+    const struct rect stick_ctr = { 116, 161, 0, 0 };
     const struct rect buttons[12] = {
-        { 216, 127, 37, 39 }, // A
+        { 216, 126, 37, 39 }, // A
         { 224, 182, 37, 39 }, // B
-        { 272, 207, 37, 39 }, // X
-        { 324, 200, 37, 39 }, // Y
+        { 271, 206, 37, 39 }, // X
+        { 322, 200, 37, 39 }, // Y
         { 0, 0, 0, 0 }, // D-Left
         { 0, 0, 0, 0 }, // D-Up
         { 0, 0, 0, 0 }, // D-Right
         { 0, 0, 0, 0 }, // D-Down
-        { 378, 282, 21, 23 }, // Back
-        { 402, 282, 21, 23 }, // Start
+        { 378, 280, 21, 23 }, // Back
+        { 402, 280, 21, 23 }, // Start
         { 118, 225, 21, 23 }, // White
         { 141, 225, 21, 23 }, // Black
     };
