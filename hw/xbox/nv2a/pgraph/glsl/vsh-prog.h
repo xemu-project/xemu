@@ -28,8 +28,7 @@
 #ifndef HW_XBOX_NV2A_PGRAPH_GLSL_VSH_PROG_H
 #define HW_XBOX_NV2A_PGRAPH_GLSL_VSH_PROG_H
 
-void pgraph_gen_vsh_prog_glsl(uint16_t version, const uint32_t *tokens,
-                              unsigned int length, bool z_perspective, bool texture,
-                              bool vulkan, MString *header, MString *body);
+void pgraph_gen_vsh_prog_glsl(uint16_t version, const ShaderState *state,
+                              MString *header, MString *body);
 
 #endif

@@ -33,6 +33,7 @@
 #include <assert.h>
 
 #include "hw/xbox/nv2a/pgraph/vsh.h"
+#include "hw/xbox/nv2a/pgraph/shaders.h"
 #include "common.h"
 #include "vsh-prog.h"
 
@@ -795,13 +796,14 @@ static const char* vsh_header =
     "}\n";
 
 void pgraph_gen_vsh_prog_glsl(uint16_t version,
-                   const uint32_t *tokens,
-                   unsigned int length,
-                   bool z_perspective,
-                   bool texture,
-                   bool vulkan,
+                   const ShaderState *state,
                    MString *header, MString *body)
 {
+    const uint32_t *tokens = (uint32_t *)state->program_data;
+    unsigned int length = state->program_length;
+    bool z_perspective = state->z_perspective;
+    bool texture = state->texture_perspective;
+    bool vulkan = state->vulkan;
 
     mstring_append(header, vsh_header);
 
@@ -860,11 +862,11 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
 
     mstring_append(body,
         "  if (clipRange.y != clipRange.x) {\n");
-        if (vulkan) {
-                mstring_append(body, "    oPos.z = (oPos.z - clipRange.z)/(clipRange.w - clipRange.z);\n");
-        } else {
-                mstring_append(body, "    oPos.z = (oPos.z - clipRange.z)/(0.5*(clipRange.w - clipRange.z)) - 1;\n");
-        }
+    if (vulkan) {
+        mstring_append(body, "    oPos.z = (oPos.z - clipRange.z)/(clipRange.w - clipRange.z);\n");
+    } else {
+        mstring_append(body, "    oPos.z = (oPos.z - clipRange.z)/(0.5*(clipRange.w - clipRange.z)) - 1;\n");
+    }    
     mstring_append(body,
         "  }\n"
     );    

@@ -430,6 +430,30 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         mstring_append(body, "   oPos.z = oPos.z * 2.0 - oPos.w;\n");
     }
 
+    if (state->z_perspective) {        
+        mstring_append(body,
+                   "  if (oPos.w < 0.0) {\n"
+                   "    oPos.w = clamp(oPos.w, -1.884467e+019, -5.421011e-20);\n"
+                   "  } else {\n"
+                   "    oPos.w = clamp(oPos.w, 5.421011e-20, 1.884467e+019);\n"
+                   "  }\n");   
+
+        mstring_append(body, "   oPos.z = oPos.w;\n");
+        
+        mstring_append(body, "  if (clipRange.y != clipRange.x) {\n");
+        if (state->vulkan) {
+            mstring_append(body,
+                "    oPos.z = (oPos.z - clipRange.z)/(clipRange.w - clipRange.z);\n");
+        } else {
+            mstring_append(body, 
+                "    oPos.z = (oPos.z - clipRange.z)/(0.5*(clipRange.w - clipRange.z)) - 1;\n");
+        }
+        mstring_append(body, "  }\n");  
+        if (state->z_perspective) {
+            mstring_append(body, "  oPos.z *= oPos.w;\n");
+        } 
+    }
+
     /* FIXME: Testing */
     if (state->point_params_enable) {
         mstring_append_fmt(
@@ -446,12 +470,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                            state->surface_scale_factor);
     }
 
-    mstring_append(body,
-                   "  if (oPos.w < 0.0) {\n"
-                   "    oPos.w = clamp(oPos.w, -1.884467e+019, -5.421011e-20);\n"
-                   "  } else {\n"
-                   "    oPos.w = clamp(oPos.w, 5.421011e-20, 1.884467e+019);\n"
-                   "  }\n");
 }
 
 static void append_skinning_code(MString* str, bool mix,

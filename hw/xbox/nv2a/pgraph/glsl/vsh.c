@@ -138,10 +138,7 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
     if (state->fixed_function) {
         pgraph_gen_vsh_ff_glsl(state, header, body, uniforms);
     } else if (state->vertex_program) {
-        pgraph_gen_vsh_prog_glsl(VSH_VERSION_XVS,
-                                 (uint32_t *)state->program_data,
-                                 state->program_length, state->z_perspective, state->texture_perspective,
-                                 state->vulkan, header, body);
+        pgraph_gen_vsh_prog_glsl(VSH_VERSION_XVS, state, header, body);
     } else {
         assert(false);
     }
