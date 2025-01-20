@@ -30,7 +30,7 @@
 #include "qemu/fifo8.h"
 #include "xblc.h"
 
-//#define DEBUG_XBLC
+#define DEBUG_XBLC
 #ifdef DEBUG_XBLC
 #define DPRINTF printf
 #else
@@ -214,17 +214,17 @@ static void output_callback(void *userdata, uint8_t *stream, int len)
     USBXBLCState *s = (USBXBLCState *)userdata;
     const uint8_t *data;
     uint32_t max_len;
+
+    // Not enough data to send, wait a bit longer, fill with silence for now
     if (fifo8_num_used(&s->out.fifo) < XBLC_MAX_PACKET) {
         memcpy(stream, (void*)silence, MIN(len, ARRAY_SIZE(silence)));
     } else {
+        // Write speaker data into audio backend
         while (len > 0 && !fifo8_is_empty(&s->out.fifo)) {
             max_len = MIN(fifo8_num_used(&s->out.fifo), (uint32_t)len);
             data = fifo8_pop_bufptr(&s->out.fifo, max_len, &max_len);
 
-            if(s->out.volume > SDL_MIX_MAXVOLUME) {
-                memcpy(stream, data, max_len);
-                SDL_MixAudioFormat(stream, data, AUDIO_S16LSB, max_len, MIN(s->out.volume - SDL_MIX_MAXVOLUME, SDL_MIX_MAXVOLUME));
-            } else if(s->out.volume < SDL_MIX_MAXVOLUME) {
+            if(s->out.volume < SDL_MIX_MAXVOLUME) {
                 memset(stream, 0, len);
                 SDL_MixAudioFormat(stream, data, AUDIO_S16LSB, max_len, MAX(0, s->out.volume));
             } else {
@@ -373,13 +373,13 @@ static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
     init_input_stream |= should_init_stream(&s->in, xblc->input_device_name);
     init_output_stream |= should_init_stream(&s->out, xblc->output_device_name);
 
-    if (init_input_stream) {
+    if (init_input_stream || init_output_stream) {
         xblc_audio_channel_init(s, true, xblc->input_device_name);
     } else {
         DPRINTF("Input Stream will not change\n");
     }
 
-    if (init_output_stream) {
+    if (init_input_stream || init_output_stream) {
         xblc_audio_channel_init(s, false, xblc->output_device_name);
     } else {
         DPRINTF("Output Stream will not change\n");
@@ -482,7 +482,7 @@ static void usb_xbox_communicator_unrealize(USBDevice *dev)
     fifo8_destroy(&s->in.fifo);
 
     SDL_CloseAudioDevice(s->in.voice);
-    SDL_CloseAudioDevice(s->out.voice);    
+    SDL_CloseAudioDevice(s->out.voice);
 }
 
 static void usb_xblc_class_initfn(ObjectClass *klass, void *data)
