@@ -30,7 +30,7 @@
 #include "qemu/fifo8.h"
 #include "xblc.h"
 
-#define DEBUG_XBLC
+//#define DEBUG_XBLC
 #ifdef DEBUG_XBLC
 #define DPRINTF printf
 #else
@@ -373,16 +373,10 @@ static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
     init_input_stream |= should_init_stream(&s->in, xblc->input_device_name);
     init_output_stream |= should_init_stream(&s->out, xblc->output_device_name);
 
+    // If either channel needs to be initialized, initialize both channels
     if (init_input_stream || init_output_stream) {
         xblc_audio_channel_init(s, true, xblc->input_device_name);
-    } else {
-        DPRINTF("Input Stream will not change\n");
-    }
-
-    if (init_input_stream || init_output_stream) {
         xblc_audio_channel_init(s, false, xblc->output_device_name);
-    } else {
-        DPRINTF("Output Stream will not change\n");
     }
 
     DPRINTF("[XBLC] Init audio streams at %d Hz\n", sample_rate);
