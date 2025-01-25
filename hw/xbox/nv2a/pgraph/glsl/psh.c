@@ -744,15 +744,12 @@ static MString* psh_convert(struct PixelShader *ps)
         mstring_append_fmt(preflight,
                            "layout(location = 0) out vec4 fragColor;\n");
     }
-    if (z_perspective) {
-        mstring_append_fmt(preflight,
-                           "%svec4 clipRange;\n",
-                           u);
-    }
     mstring_append_fmt(preflight, "%sfloat alphaRef;\n"
                                   "%svec4  fogColor;\n"
-                                  "%sivec4 clipRegion[8];\n",
-                                  u, u, u);
+                                  "%sivec4 clipRegion[8];\n"
+                                  "%svec4 clipRange;\n"
+                                  "%sfloat zbias;\n",
+                                  u, u, u, u, u);
     for (int i = 0; i < 4; i++) {
         mstring_append_fmt(preflight, "%smat2  bumpMat%d;\n"
                                       "%sfloat bumpScale%d;\n"
@@ -865,6 +862,31 @@ static MString* psh_convert(struct PixelShader *ps)
         mstring_append(clip, "if (!clipContained) {\n"
                              "  discard;\n"
                              "}\n");
+    }
+
+    /* Depth clipping */
+    /* OGL/VK zbias is applied to z coord, so we need to apply it 
+     * to w coord manually when w-buffering is enabled */
+    mstring_append(clip, "float w = 1.0/gl_FragCoord.w + zbias;\n"); 
+    if (ps->state.vulkan) {
+        mstring_append(clip, "float z = gl_FragCoord.z;\n");
+    } else {
+        /* Changing clipping range to [-1, 1] here 
+         * prevents floating point precission loss in OGL */
+        mstring_append(clip, "float z = gl_FragCoord.z * 2.0 - 1.0;\n");
+    }
+    if (ps->state.clipping) {
+        if (ps->state.z_perspective) {
+            mstring_append(clip,
+                      "if (w < clipRange.z || clipRange.w < w) {\n"
+                      "  discard;\n"
+                      "}\n");
+        } else {
+            mstring_append(clip,
+                       "if (z * clipRange.y < clipRange.z || z * clipRange.y > clipRange.w) {\n"
+                       "  discard;\n"
+                       "}\n");
+        }
     }
 
     /* calculate perspective-correct inputs */
@@ -1199,8 +1221,11 @@ static MString* psh_convert(struct PixelShader *ps)
      * not only gl_Position gets divided by the homogeneous coordinate, 
      * but also all other interpolated variables, which requires 
      * the division to be after the rasterization */
-    if (z_perspective) {     
-        mstring_append(ps->code, "gl_FragDepth = 1.0/(gl_FragCoord.w * clipRange.y);\n");
+    if (z_perspective) {   
+        mstring_append(ps->code, "gl_FragDepth = w / clipRange.y;\n");
+    }
+    else if (!ps->state.vulkan) {
+        mstring_append(ps->code, "gl_FragDepth = z;\n");
     }
 
     for (int i = 0; i < ps->num_var_refs; i++) {

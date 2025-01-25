@@ -861,21 +861,10 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
     }
 
     mstring_append(body,
-        "  if (clipRange.y != clipRange.x) {\n");
-    if (vulkan) {
-        mstring_append(body, "    oPos.z = (oPos.z - clipRange.z)/(clipRange.w - clipRange.z);\n");
-    } else {
-        mstring_append(body, "    oPos.z = (oPos.z - clipRange.z)/(0.5*(clipRange.w - clipRange.z)) - 1;\n");
-    }    
-    mstring_append(body,
+        "  if (clipRange.y != clipRange.x) {\n"
+        "    oPos.z /= clipRange.y;\n"  
         "  }\n"
     );    
-    /* fix: restore Xbox dashboard background */
-    if (!z_perspective && texture) {
-        mstring_append(body,
-            "  oPos.z = min(oPos.z, clipRange.w);\n"
-        );  
-    }
 
     if (z_perspective || texture) {
             mstring_append(body, "  oPos.xyz *= oPos.w;\n");

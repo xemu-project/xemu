@@ -312,6 +312,9 @@ static void update_shader_constant_locations(ShaderBinding *binding)
 
     binding->clip_range_loc_frag =
         uniform_index(&binding->fragment->uniforms, "clipRange");
+
+    binding->zbias_loc =
+        uniform_index(&binding->fragment->uniforms, "zbias");
 }
 
 static void shader_cache_entry_init(Lru *lru, LruNode *node, void *state)
@@ -656,6 +659,18 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         uniform4f(&binding->fragment->uniforms, binding->clip_range_loc_frag, 0,
                   zmax, zclip_min, zclip_max);
     }
+    if (binding->zbias_loc != -1) {
+        float zbias = 0.0f;
+        if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
+            uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
+            zbias = *(float *)&zbias_u32;
+        }
+        uniform1f(&binding->fragment->uniforms, binding->zbias_loc, zbias);
+    }
+
     /* Clipping regions */
     unsigned int max_gl_width = pg->surface_binding_dim.width;
     unsigned int max_gl_height = pg->surface_binding_dim.height;

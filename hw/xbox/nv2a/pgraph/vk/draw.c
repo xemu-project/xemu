@@ -814,16 +814,9 @@ static void create_pipeline(PGRAPHState *pg)
         // FIXME: Handle in shader?
     }
 
-    VkPipelineRasterizationDepthClipStateCreateInfoEXT clipping =
-        (VkPipelineRasterizationDepthClipStateCreateInfoEXT){
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_DEPTH_CLIP_STATE_CREATE_INFO_EXT,
-            .depthClipEnable = VK_TRUE,
-            .pNext = rasterizer_next_struct,
-        };
-
     VkPipelineRasterizationStateCreateInfo rasterizer = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .depthClampEnable = VK_FALSE,
+        .depthClampEnable = VK_TRUE,
         .rasterizerDiscardEnable = VK_FALSE,
         .polygonMode = pgraph_polygon_mode_vk_map[r->shader_binding->state
                                                       .polygon_front_mode],
@@ -833,7 +826,7 @@ static void create_pipeline(PGRAPHState *pg)
                          VK_FRONT_FACE_COUNTER_CLOCKWISE :
                          VK_FRONT_FACE_CLOCKWISE,
         .depthBiasEnable = VK_FALSE,
-        .pNext = &clipping,
+        .pNext = rasterizer_next_struct,
     };
 
     if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) & NV_PGRAPH_SETUPRASTER_CULLENABLE) {
@@ -987,13 +980,6 @@ static void create_pipeline(PGRAPHState *pg)
         rasterizer.depthBiasSlopeFactor = zfactor;
         rasterizer.depthBiasConstantFactor = zbias;
     }
-
-    if (GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_ZCOMPRESSOCCLUDE),
-                 NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
-        NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CLAMP) {
-        rasterizer.depthClampEnable = VK_TRUE;
-        clipping.depthClipEnable = VK_FALSE;
-    } 
 
     // FIXME: Dither
     // if (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &

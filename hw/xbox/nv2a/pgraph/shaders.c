@@ -121,6 +121,10 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
                            NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
     state.psh.smooth_shading = state.smooth_shading;
 
+    state.psh.clipping = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_ZCOMPRESSOCCLUDE),
+                                        NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
+                               NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CULL;
+
     state.program_length = 0;
 
     if (vertex_program) {

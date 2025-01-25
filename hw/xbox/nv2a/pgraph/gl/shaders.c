@@ -154,6 +154,7 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     }
     binding->surface_size_loc = glGetUniformLocation(binding->gl_program, "surfaceSize");
     binding->clip_range_loc = glGetUniformLocation(binding->gl_program, "clipRange");
+    binding->zbias_loc = glGetUniformLocation(binding->gl_program, "zbias");
     binding->fog_color_loc = glGetUniformLocation(binding->gl_program, "fogColor");
     binding->fog_param_loc = glGetUniformLocation(binding->gl_program, "fogParam");
 
@@ -891,6 +892,17 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         float zclip_min = *(float*)&v[0];
         float zclip_max = *(float*)&v[1];
         glUniform4f(binding->clip_range_loc, 0, zmax, zclip_min, zclip_max);
+    }
+    if (binding->zbias_loc != -1) {
+        float zbias = 0.0f;
+        if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
+            uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
+            zbias = *(float *)&zbias_u32;
+        }
+        glUniform1f(binding->zbias_loc, zbias);
     }
 
     /* Clipping regions */
