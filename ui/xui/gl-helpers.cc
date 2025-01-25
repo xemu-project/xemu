@@ -428,7 +428,7 @@ static const struct rect tex_items[] = {
 };
 
 static const struct rect light_gun_tex_items[] = {
-    { 0, 137, 473, 374 } // obj_controller
+    { 16, 159, 462, 336 } // obj_controller
 };
 
 enum tex_item_names {
@@ -639,7 +639,8 @@ static void RenderLightGun(float frame_x, float frame_y, uint32_t primary_color,
     // Location within the controller texture of masked button locations,
     // relative to the origin of the controller
     const struct rect buttons[] = {
-        { 216, 127, 37, 39 } // A
+        { 174, 156, 55, 66 }, // A
+        { 385, 177, 28, 28 }  // B
     };
 
     glUseProgram(g_decal_shader->prog);
@@ -665,8 +666,8 @@ static void RenderLightGun(float frame_x, float frame_y, uint32_t primary_color,
 
     // The controller has alpha cutouts where the buttons are. Draw a surface
     // behind the buttons if they are activated
-    for (int i = 0; i < 1; i++) {
-        if (state->gp.buttons & (1 << i)) {
+    for (int i = 0; i < 2; i++) {
+        if (state->lg.buttons & (1 << i)) {
             RenderDecal(g_decal_shader, frame_x + buttons[i].x,
                         frame_y + buttons[i].y, buttons[i].w, buttons[i].h, 0,
                         0, 1, 1, 0, 0, primary_color + 0xff);
