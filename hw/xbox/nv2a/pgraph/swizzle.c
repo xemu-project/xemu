@@ -4,6 +4,7 @@
  * Copyright (c) 2015 Jannik Vogel
  * Copyright (c) 2013 espes
  * Copyright (c) 2007-2010 The Nouveau Project.
+ * Copyright (c) 2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -68,7 +69,7 @@ static void generate_swizzle_masks(unsigned int width,
     *mask_z = z;
 }
 
-void swizzle_box(
+static inline void swizzle_box_internal(
     const uint8_t *src_buf,
     unsigned int width,
     unsigned int height,
@@ -114,7 +115,7 @@ void swizzle_box(
     }
 }
 
-void unswizzle_box(
+static inline void unswizzle_box_internal(
     const uint8_t *src_buf,
     unsigned int width,
     unsigned int height,
@@ -148,3 +149,36 @@ void unswizzle_box(
         off_z = (off_z - mask_z) & mask_z;
     }
 }
+
+/* Multiversioned to optimize for common bytes_per_pixel */         \
+#define C(m, bpp)                                                   \
+    m##_internal(src_buf, width, height, depth, dst_buf, row_pitch, \
+                 slice_pitch, bpp)
+#define MULTIVERSION(m)                                                     \
+    void m(const uint8_t *src_buf, unsigned int width, unsigned int height, \
+           unsigned int depth, uint8_t *dst_buf, unsigned int row_pitch,    \
+           unsigned int slice_pitch, unsigned int bytes_per_pixel)          \
+    {                                                                       \
+        switch (bytes_per_pixel) {                                          \
+        case 1:                                                             \
+            C(m, 1);                                                        \
+            break;                                                          \
+        case 2:                                                             \
+            C(m, 2);                                                        \
+            break;                                                          \
+        case 3:                                                             \
+            C(m, 3);                                                        \
+            break;                                                          \
+        case 4:                                                             \
+            C(m, 4);                                                        \
+            break;                                                          \
+        default:                                                            \
+            C(m, bytes_per_pixel);                                          \
+        }                                                                   \
+    }
+
+MULTIVERSION(swizzle_box)
+MULTIVERSION(unswizzle_box)
+
+#undef C
+#undef MULTIVERSION
