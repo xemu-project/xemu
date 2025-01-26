@@ -22,7 +22,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
-#include "qemu/osdep.h"
+#include <stdbool.h>
 
 #include "swizzle.h"
 
