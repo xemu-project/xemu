@@ -86,6 +86,8 @@ static void xemu_input_print_controller_state(ControllerState *state)
 ControllerStateList available_controllers =
     QTAILQ_HEAD_INITIALIZER(available_controllers);
 ControllerState *bound_controllers[4] = { NULL, NULL, NULL, NULL };
+const char *bound_drivers[4] = { DRIVER_DUKE, DRIVER_DUKE, DRIVER_DUKE,
+                                 DRIVER_DUKE };
 int test_mode;
 
 static const char **port_index_to_settings_key_map[] = {
@@ -93,6 +95,13 @@ static const char **port_index_to_settings_key_map[] = {
     &g_config.input.bindings.port2,
     &g_config.input.bindings.port3,
     &g_config.input.bindings.port4,
+};
+
+static const char **port_index_to_driver_settings_key_map[] = {
+    &g_config.input.bindings.port1_driver,
+    &g_config.input.bindings.port2_driver,
+    &g_config.input.bindings.port3_driver, 
+    &g_config.input.bindings.port4_driver
 };
 
 static int *peripheral_types_settings_map[4][2] = {
@@ -118,6 +127,25 @@ static const char **peripheral_params_settings_map[4][2] = {
 };
 
 static int sdl_kbd_scancode_map[25];
+
+static const char *get_bound_driver(int port)
+{
+    assert(port >= 0 && port <= 3);
+    const char *driver = *port_index_to_driver_settings_key_map[port];
+
+    // If the driver in the config is NULL, empty, or unrecognized 
+    // then default to DRIVER_DUKE
+    if (driver == NULL)
+        return DRIVER_DUKE;
+    if (strlen(driver) == 0)
+        return DRIVER_DUKE;
+    if (strcmp(driver, DRIVER_DUKE) == 0)
+        return DRIVER_DUKE;
+    if (strcmp(driver, DRIVER_S) == 0)
+        return DRIVER_S;
+
+    return DRIVER_DUKE;
+}
 
 static const int port_map[4] = { 3, 4, 1, 2 };
 
@@ -176,6 +204,11 @@ void xemu_input_init(void)
             sdl_kbd_scancode_map[i] = SDL_SCANCODE_UNKNOWN;
         }
     }
+
+    bound_drivers[0] = get_bound_driver(0);
+    bound_drivers[1] = get_bound_driver(1);
+    bound_drivers[2] = get_bound_driver(2);
+    bound_drivers[3] = get_bound_driver(3);
 
     // Check to see if we should auto-bind the keyboard
     int port = xemu_input_get_controller_default_bind_port(new_con, 0);
@@ -520,6 +553,8 @@ void xemu_input_bind(int index, ControllerState *state, int save)
             }
         }
         xemu_settings_set_string(port_index_to_settings_key_map[index], guid_buf);
+        xemu_settings_set_string(port_index_to_driver_settings_key_map[index],
+                                 bound_drivers[index]);
     }
 
     // Bind new controller
@@ -548,7 +583,7 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         QDict *qdict = qdict_new();
 
         // Specify device driver
-        qdict_put_str(qdict, "driver", "usb-xbox-gamepad");
+        qdict_put_str(qdict, "driver", bound_drivers[index]);
 
         // Specify device identifier
         static int id_counter = 0;
