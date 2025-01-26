@@ -112,7 +112,7 @@ void usb_xid_handle_reset(USBDevice *dev)
 }
 
 void usb_xid_handle_control(USBDevice *dev, USBPacket *p, int request,
-                                   int value, int index, int length, uint8_t *data)
+                            int value, int index, int length, uint8_t *data)
 {
     USBXIDGamepadState *s = (USBXIDGamepadState *)dev;
 

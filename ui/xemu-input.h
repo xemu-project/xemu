@@ -31,9 +31,11 @@
 #include "qemu/queue.h"
 
 #define DRIVER_DUKE "usb-xbox-gamepad"
+#define DRIVER_S "usb-xbox-gamepad-s"
 #define DRIVER_ARCADE_STICK "usb-xbox-arcade-stick"
 
 #define DRIVER_DUKE_DISPLAY_NAME "Xbox Controller"
+#define DRIVER_S_DISPLAY_NAME "Xbox Controller S"
 #define DRIVER_ARCADE_STICK_DISPLAY_NAME "Arcade Stick"
 
 enum controller_state_buttons_mask {

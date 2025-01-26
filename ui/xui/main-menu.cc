@@ -167,16 +167,19 @@ void MainMenuInputView::Draw()
 
     if (strcmp(driver, DRIVER_DUKE) == 0)
         driver = DRIVER_DUKE_DISPLAY_NAME;
+    else if (strcmp(driver, DRIVER_S) == 0)
+        driver = DRIVER_S_DISPLAY_NAME;
     else if (strcmp(driver, DRIVER_ARCADE_STICK) == 0)
         driver = DRIVER_ARCADE_STICK_DISPLAY_NAME;
 
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("###InputDrivers", driver,
                           ImGuiComboFlags_NoArrowButton)) {
-        const char *available_drivers[] = { DRIVER_DUKE, 
+        const char *available_drivers[] = { DRIVER_DUKE, DRIVER_S, 
                                             DRIVER_ARCADE_STICK };
         const char *driver_display_names[] = {
             DRIVER_DUKE_DISPLAY_NAME, 
+            DRIVER_S_DISPLAY_NAME, 
             DRIVER_ARCADE_STICK_DISPLAY_NAME
         };
         bool is_selected = false;

@@ -1,0 +1,86 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
+ <g class="layer">
+  <title>Controller S</title>
+
+  <!-- Left Thumbstick Head -->
+  <ellipse cx="33.5" cy="397.5" fill="#000000" id="svg_69" rx="26" ry="26" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2"/>
+  <ellipse cx="33.5" cy="397.5" fill="#000000" fill-opacity="null" id="svg_70" rx="18.5" ry="18.5" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2"/>
+  <ellipse cx="33.5" cy="383.5" fill="#ff0000" id="svg_71" rx="1.43" ry="1.6" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0"/>
+  <ellipse cx="33.5" cy="411.5" fill="#ff0000" id="svg_72" rx="1.5" ry="1.5" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0"/>
+  <ellipse cx="19" cy="397.5" fill="#ff0000" id="svg_73" rx="1.43" ry="1.6" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <ellipse cx="48" cy="397.5" fill="#ff0000" id="svg_74" rx="1.43" ry="1.6" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0"/>
+
+  <!-- Right Thumbstick Head -->
+  <ellipse cx="33.5" cy="464.5" fill="#000000" id="svg_80" rx="26" ry="26" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <ellipse cx="33.5" cy="464.5" fill="#000000" fill-opacity="null" id="svg_79" rx="18.5" ry="18.5" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <ellipse cx="33.5" cy="450.67" fill="#ff0000" id="svg_78" rx="1.43" ry="1.6" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <ellipse cx="33.5" cy="478.67" fill="#ff0000" id="svg_77" rx="1.5" ry="1.5" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <ellipse cx="19" cy="464.5" fill="#ff0000" id="svg_76" rx="1.43" ry="1.6" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <ellipse cx="48" cy="464.5" fill="#ff0000" id="svg_75" rx="1.43" ry="1.6" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+
+  <!-- Controller Body -->
+  <path d="m63.5,37.5c0,0 30,-15 41,-18.5c11,-3.5 47,-14 47,-14c0,0 19,13 78,14c59,1 83.5,-15 83.5,-15c0,0 42,12.5 49,15c7,2.5 39,20 39,20c0,0 61.2,116.9 63.1,185.8c1.9,68.9 -6.4,118.3 -27.2,126.5c-20.8,8.2 -46.7,-4.7 -67.3,-30.8c-20.6,-26.1 -22.6,-52.5 -22.6,-52.5c0,0 -33.9,-17.3 -115.3,-17.4c-81.4,-0.1 -112.7,16.9 -112.7,16.9c0,0 -5.7,34.4 -23.6,54.8c-17.9,20.4 -44.4,36.7 -63.9,28.7c-19.5,-8 -32.2,-51.7 -29.7,-123.4c2.5,-71.7 61.7,-190.1 61.7,-190.1z" fill="#000000" id="svg_5" stroke="#ff0000" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <path d="m53.5,48c0,0 21.5,-10.3 40,-16.6c18.5,-6.3 40,-9.9 40,-9.9c0,0 6.3,12.2 31.8,28.2c25.5,16 37.2,14.8 37.2,14.8c0,0 -11.7,9.4 -17.3,28.9c-5.6,19.5 3,35.8 11.6,45.7c8.6,9.9 23.6,16.2 37.2,15.9c13.6,-0.3 27.9,-6.4 37.5,-17c9.6,-10.6 15.9,-29.6 9.4,-47.6c-6.5,-18 -14.9,-25.9 -14.9,-25.4c0,0.5 12,-0.6 37,-16.6c25,-16 30.5,-26.9 30.5,-26.9c0,0 20,4.9 38.7,10.6c18.7,5.7 40.8,17.4 40.8,17.4c0,0 32.4,44.6 22.4,119.6c-10,75 -88.4,98.9 -88.4,98.9c0,0 -39.3,-52.2 -115.3,-52.2c-76,0 -112.2,51.2 -112.2,51.2c0,0 -78.2,-17.2 -88.2,-94.7c-10,-77.5 22.2,-124.3 22.2,-124.3z" fill="#000000" fill-opacity="null" id="svg_2" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+
+  <!-- Left Thumbstick -->
+  <ellipse cx="97.6" cy="109.6" fill="#000000" fill-opacity="null" id="svg_53" rx="46.8" ry="44.8" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <ellipse cx="101.6" cy="110.4" fill="#000000" fill-opacity="null" id="svg_54" rx="33" ry="33" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+
+  <!-- Right Thumbstick -->
+  <path d="m248.8,196.8c0.81,-32.4 27.15,-50 44.57,-51.2c17.42,-1.2 39.31,9.2 45.38,25.2c6.08,16 4.86,42 -10.54,54c-15.4,12 -27.55,20 -53.08,12.4c-25.53,-7.6 -26.34,-40.4 -26.34,-40.4l0.01,0z" fill="#000000" fill-opacity="null" id="svg_55" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <ellipse cx="295" cy="188.8" fill="#000000" fill-opacity="null" id="svg_56" rx="33" ry="33" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+
+  <!-- Circle Behind Face Buttons -->
+  <ellipse cx="362.4" cy="111" fill="#000000" id="svg_31" rx="40" ry="40.6" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+
+  <!-- X Button -->
+  <ellipse cx="328" cy="111.6" fill="#0000ff" id="svg_32" rx="17" ry="17" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-width="2"/>
+  <text fill="#ff0000" font-family="Helvetica" font-size="24" font-weight="bold" id="svg_60" letter-spacing="0" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" text-anchor="middle" x="328" xml:space="preserve" y="120.4">X</text>
+
+  <!-- B Button -->
+  <ellipse cx="398" cy="110.8" fill="#0000ff" id="svg_33" rx="17" ry="17" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-width="2"/>
+  <text fill="#ff0000" font-family="Helvetica" font-size="24" font-weight="bold" id="svg_63" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" text-anchor="middle" transform="matrix(1, 0, 0, 1, 0, 0)" x="398.8" xml:space="preserve" y="119.6">B</text>
+
+  <!-- A Button -->
+  <ellipse cx="364" cy="146.4" fill="#0000ff" id="svg_35" rx="17" ry="17" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-width="2"/>
+  <text fill="#ff0000" font-family="Helvetica" font-size="24" font-weight="bold" id="svg_64" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" text-anchor="middle" transform="matrix(1, 0, 0, 1, 0, 0)" x="363.6" xml:space="preserve" y="154.8">A</text>
+
+  <!-- Y Button -->
+  <ellipse cx="364" cy="76.4" fill="#0000ff" id="svg_34" rx="17" ry="17" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-width="2"/>
+  <text fill="#ff0000" font-family="Helvetica" font-size="24" font-weight="bold" id="svg_65" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="0" text-anchor="middle" transform="matrix(1, 0, 0, 1, 0, 0)" x="363.6" xml:space="preserve" y="85.6">Y</text>
+
+  <!-- White Button -->
+  <ellipse cx="368.6" cy="204.6" fill="#000000" id="svg_39" rx="18.2" ry="18.2" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2"/>
+  <ellipse cx="368.6" cy="204.6" fill="#0000ff" id="svg_36" rx="14.4" ry="14.6" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-width="2"/>
+
+  <!-- Black Button -->
+  <ellipse cx="404" cy="176" fill="#000000" id="svg_38" rx="18" ry="18" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <ellipse cx="404" cy="176" fill="#0000ff" id="svg_37" rx="14.4" ry="14.6" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-width="2"/>
+
+  <!-- Back Button -->
+  <ellipse cx="55.6" cy="160" fill="#000000" fill-opacity="null" id="svg_40" rx="13.6" ry="13.6" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <ellipse cx="55.6" cy="160" fill="#0000ff" fill-opacity="null" id="svg_43" rx="10" ry="10" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2"/>
+  <path d="m59.83,155l-0.17,9.33l-10.33,-4.83l10.5,-4.5z" fill="none" fill-opacity="null" id="svg_81" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2"/>
+
+  <!-- Start Button -->
+  <ellipse cx="82" cy="189" fill="#000000" fill-opacity="null" id="svg_41" rx="15.6" ry="16.2" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <ellipse cx="82" cy="189" fill="#0000ff" id="svg_42" rx="12" ry="12.4" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <path d="m76.17,183.83l0,10.33l11.5,-4.83l-11.5,-5.5z" fill="none" fill-opacity="null" id="svg_82" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2"/>
+
+  <!-- D-Pad -->
+  <ellipse cx="164" cy="189" fill="#000000" fill-opacity="null" id="svg_52" rx="48.2" ry="49.6" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <ellipse cx="164" cy="188" fill="#000000" id="svg_50" rx="42.6" ry="42.6" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <ellipse cx="164" cy="188" fill="#000000" fill-opacity="null" id="svg_51" rx="37.2" ry="37" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)"/>
+  <line fill="none" fill-opacity="null" id="svg_1" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" x1="151" x2="151" y1="153" y2="176"/>
+  <line fill="none" fill-opacity="null" id="svg_3" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" x1="176" x2="176" y1="153" y2="177"/>
+  <line fill="none" fill-opacity="null" id="svg_4" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)" x1="151" x2="151" y1="198.29" y2="223"/>
+  <line fill="none" fill-opacity="null" id="svg_6" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" x1="176" x2="176" y1="199" y2="223"/>
+  <line fill="none" fill-opacity="null" id="svg_7" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" x1="176" x2="200" y1="176" y2="176"/>
+  <line fill="none" fill-opacity="null" id="svg_8" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)" x1="175" x2="200" y1="199" y2="199"/>
+  <line fill="none" fill-opacity="null" id="svg_9" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" transform="matrix(1, 0, 0, 1, 0, 0)" x1="128" x2="152" y1="199" y2="199"/>
+  <line fill="none" fill-opacity="null" id="svg_10" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2" x1="128" x2="152" y1="176" y2="176"/>
+
+  <!-- Jewel -->
+  <ellipse cx="233.19" cy="106.15" fill="#0000ff" id="svg_20" rx="40" ry="40" stroke="#ff0000" stroke-dasharray="null" stroke-linecap="null" stroke-linejoin="null" stroke-opacity="null" stroke-width="2"/>
+ </g>
+</svg>
