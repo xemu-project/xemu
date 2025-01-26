@@ -18,6 +18,7 @@ specific_ss.add(files(
 	'xid-gamepad.c',
 	'xid-light-gun.c',
 	'xblc.c',
+	'xid-gamepad.c',
 	))
 subdir('nv2a')
 subdir('mcpx')

@@ -137,31 +137,21 @@ static int sdl_kbd_scancode_map[25];
 static const char *get_bound_driver(int port)
 {
     assert(port >= 0 && port <= 3);
-    const char *driver = NULL;
-    switch (port) {
-    case 0:
-        driver = g_config.input.bindings.port1_driver;
-        break;
-    case 1:
-        driver = g_config.input.bindings.port2_driver;
-        break;
-    case 2:
-        driver = g_config.input.bindings.port3_driver;
-        break;
-    case 3:
-        driver = g_config.input.bindings.port4_driver;
-        break;
-    }
+    const char *driver = *port_index_to_driver_settings_key_map[port];
+
+    // If the driver in the config is NULL, empty, or unrecognized 
+    // then default to DRIVER_DUKE
     if (driver == NULL)
-        return DRIVER_DUKE; // Shouldn't be possible
+        return DRIVER_DUKE;
     if (strlen(driver) == 0)
         return DRIVER_DUKE;
     if (strcmp(driver, DRIVER_DUKE) == 0)
         return DRIVER_DUKE;
+    if (strcmp(driver, DRIVER_S) == 0)
+        return DRIVER_S;
     if (strcmp(driver, DRIVER_LIGHT_GUN) == 0)
         return DRIVER_LIGHT_GUN;
 
-    // Shouldn't be possible
     return DRIVER_DUKE;
 }
 
@@ -760,8 +750,7 @@ void xemu_input_bind(int index, ControllerState *state, int save)
                 snprintf(guid_buf, sizeof(guid_buf), "keyboard");
             }
         }
-        xemu_settings_set_string(port_index_to_settings_key_map[index], 
-                                 guid_buf);
+        xemu_settings_set_string(port_index_to_settings_key_map[index], guid_buf);
         xemu_settings_set_string(port_index_to_driver_settings_key_map[index],
                                  bound_drivers[index]);
     }
