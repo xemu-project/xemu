@@ -31,9 +31,11 @@
 #include "qemu/queue.h"
 
 #define DRIVER_DUKE "usb-xbox-gamepad"
+#define DRIVER_S "usb-xbox-gamepad-s"
 #define DRIVER_STEEL_BATTALION "usb-steel-battalion"
 
 #define DRIVER_DUKE_DISPLAY_NAME "Xbox Controller"
+#define DRIVER_S_DISPLAY_NAME "Xbox Controller S"
 #define DRIVER_STEEL_BATTALION_DISPLAY_NAME "Steel Battalion Controller"
 
 enum controller_state_buttons_mask {

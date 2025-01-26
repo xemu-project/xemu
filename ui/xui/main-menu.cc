@@ -167,6 +167,8 @@ void MainMenuInputView::Draw()
 
     if (strcmp(driver, DRIVER_DUKE) == 0)
         driver = DRIVER_DUKE_DISPLAY_NAME;
+    else if (strcmp(driver, DRIVER_S) == 0)
+        driver = DRIVER_S_DISPLAY_NAME;
     else if (strcmp(driver, DRIVER_STEEL_BATTALION) == 0)
         driver = DRIVER_STEEL_BATTALION_DISPLAY_NAME;
     
@@ -175,11 +177,14 @@ void MainMenuInputView::Draw()
                           ImGuiComboFlags_NoArrowButton)) {
         const char *available_drivers[] = { 
             DRIVER_DUKE, 
+            DRIVER_S,
             DRIVER_STEEL_BATTALION 
             };
         const char *driver_display_names[] = { 
             DRIVER_DUKE_DISPLAY_NAME, 
+            DRIVER_S_DISPLAY_NAME, 
             DRIVER_STEEL_BATTALION_DISPLAY_NAME 
+
             };
         bool is_selected = false;
         int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);

@@ -152,6 +152,25 @@ static const char *get_bound_driver(int port)
     return DRIVER_DUKE;
 }
 
+static const char *get_bound_driver(int port)
+{
+    assert(port >= 0 && port <= 3);
+    const char *driver = *port_index_to_driver_settings_key_map[port];
+
+    // If the driver in the config is NULL, empty, or unrecognized 
+    // then default to DRIVER_DUKE
+    if (driver == NULL)
+        return DRIVER_DUKE;
+    if (strlen(driver) == 0)
+        return DRIVER_DUKE;
+    if (strcmp(driver, DRIVER_DUKE) == 0)
+        return DRIVER_DUKE;
+    if (strcmp(driver, DRIVER_S) == 0)
+        return DRIVER_S;
+
+    return DRIVER_DUKE;
+}
+
 static const int port_map[4] = { 3, 4, 1, 2 };
 
 void xemu_input_init(void)
@@ -318,6 +337,11 @@ void xemu_input_init(void)
             sdl_sbc_kbd_scancode_map[i] = SDL_SCANCODE_UNKNOWN;
         }
     }
+
+    bound_drivers[0] = get_bound_driver(0);
+    bound_drivers[1] = get_bound_driver(1);
+    bound_drivers[2] = get_bound_driver(2);
+    bound_drivers[3] = get_bound_driver(3);
 
     bound_drivers[0] = get_bound_driver(0);
     bound_drivers[1] = get_bound_driver(1);

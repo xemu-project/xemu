@@ -54,6 +54,7 @@
 #define XID_DEVICESUBTYPE_GAMEPAD_S 0x02
 
 #define TYPE_USB_XID_GAMEPAD "usb-xbox-gamepad"
+#define TYPE_USB_XID_GAMEPAD_S "usb-xbox-gamepad-s"
 #define TYPE_USB_XID_STEEL_BATTALION "usb-steel-battalion"
 
 #define GAMEPAD_A 0
