@@ -148,25 +148,3 @@ void unswizzle_box(
         off_z = (off_z - mask_z) & mask_z;
     }
 }
-
-void unswizzle_rect(
-    const uint8_t *src_buf,
-    unsigned int width,
-    unsigned int height,
-    uint8_t *dst_buf,
-    unsigned int pitch,
-    unsigned int bytes_per_pixel)
-{
-    unswizzle_box(src_buf, width, height, 1, dst_buf, pitch, 0, bytes_per_pixel);
-}
-
-void swizzle_rect(
-    const uint8_t *src_buf,
-    unsigned int width,
-    unsigned int height,
-    uint8_t *dst_buf,
-    unsigned int pitch,
-    unsigned int bytes_per_pixel)
-{
-    swizzle_box(src_buf, width, height, 1, dst_buf, pitch, 0, bytes_per_pixel);
-}
