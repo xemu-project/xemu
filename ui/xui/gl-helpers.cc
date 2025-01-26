@@ -878,9 +878,8 @@ void RenderXblc(XblcState *xblc, float frame_x, float frame_y,
                 secondary_color, 0);
 
     if(xblc->dev != NULL) {
-        int average_volume = xblc_audio_stream_get_average_input_volume(xblc->dev);
-        float percent = average_volume / 32768.0f;
-        RenderMeter(g_decal_shader, 4, 4, 252, 5, percent, primary_color + 0x40, primary_color + 0xFF);
+        float volume = xblc_audio_stream_get_current_input_volume(xblc->dev);
+        RenderMeter(g_decal_shader, 4, 4, 252, 5, volume, primary_color + 0x40, primary_color + 0xFF);
     }
 
     glBindVertexArray(0);

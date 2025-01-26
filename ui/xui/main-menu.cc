@@ -537,8 +537,8 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
     ImGui::SetNextItemWidth(max_width);
     if(ImGui::BeginCombo(combo_label, selected_device, ImGuiComboFlags_NoArrowButton)) {
 
-        int numOutputDevices = SDL_GetNumAudioDevices(is_capture);
-        for(int device_index = -1; device_index < numOutputDevices; device_index++) {
+        int num_devices = SDL_GetNumAudioDevices(is_capture);
+        for(int device_index = -1; device_index < num_devices; device_index++) {
             const char *device_name = default_device_name;
             if(device_index >= 0)
                 device_name = SDL_GetAudioDeviceName(device_index, is_capture);
@@ -590,13 +590,13 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
 static void DrawVolumeControlSlider(int active, XblcState *xblc, int is_capture)
 {
     float max_width = ImGui::GetColumnWidth() - (10 * g_viewport_mgr.m_scale);
-    xblc->input_device_volume = xblc_audio_stream_get_input_volume(xblc->dev) / 128.0f;
-    xblc->output_device_volume = xblc_audio_stream_get_output_volume(xblc->dev) / 128.0f;
+    xblc->input_device_volume = xblc_audio_stream_get_input_volume(xblc->dev);
+    xblc->output_device_volume = xblc_audio_stream_get_output_volume(xblc->dev);
     float *ui_volume = (is_capture == 0) ? &xblc->output_device_volume : &xblc->input_device_volume;
     float original_volume = *ui_volume;
     const char *label = (is_capture == 0) ? "Speaker" : "Microphone";
     char description[32];
-    sprintf(description, "Volume: %.2f%%", 100 * original_volume);
+    sprintf(description, "Volume: %.0f%%", 100 * original_volume);
 
     // This is not respected. Not sure why
     ImGui::SetNextItemWidth(max_width);
@@ -608,12 +608,10 @@ static void DrawVolumeControlSlider(int active, XblcState *xblc, int is_capture)
 
     // If the slider value has changed, update the backend value
     if(*ui_volume != original_volume) {
-        int adjusted_volume = (int)(*ui_volume * 128);
-        if(is_capture == 0) {
-            xblc_audio_stream_set_output_volume(xblc->dev, adjusted_volume);
-        } else {
-            xblc_audio_stream_set_input_volume(xblc->dev, adjusted_volume);
-        }
+        if(is_capture)
+            xblc_audio_stream_set_input_volume(xblc->dev, *ui_volume);
+        else
+            xblc_audio_stream_set_output_volume(xblc->dev, *ui_volume);
 
         // Save the changes
         char *buf = xemu_input_serialize_xblc_settings(xblc);

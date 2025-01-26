@@ -608,19 +608,12 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         assert(bound_controllers[index]->device != NULL);
         Error *err = NULL;
 
-        // Unbind any XMUs
+        // Unbind any peripherals
         for (int i = 0; i < 2; i++) {
             if (bound_controllers[index]->peripherals[i]) {
                 // If a peripheral was bound, unbind the peripheral
-                switch (bound_controllers[index]->peripheral_types[i]) {
-                    case PERIPHERAL_XMU:
-                    case PERIPHERAL_XBLC:
-                        xemu_input_unbind_peripheral(index, i);
-                        break;
-                    default:
-                        assert(false);
-                        break;
-                }
+                if (bound_controllers[index]->peripheral_types[i] != PERIPHERAL_NONE)
+                    xemu_input_unbind_peripheral(index, i);
 
                 // Free up the XmuState and set the peripheral type to none
                 g_free(bound_controllers[index]->peripherals[i]);

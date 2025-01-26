@@ -67,7 +67,7 @@ typedef struct XBLCStream {
     uint8_t packet[XBLC_MAX_PACKET];
     Fifo8 fifo;
     int volume;
-    int average_volume;
+    int peak_volume;
 } XBLCStream;
 
 typedef struct USBXBLCState {
@@ -180,33 +180,33 @@ static void usb_xblc_handle_reset(USBDevice *dev)
         SDL_UnlockAudioDevice(s->out.voice);
 }
 
-int xblc_audio_stream_get_average_input_volume(void *dev)
+float xblc_audio_stream_get_current_input_volume(void *dev)
 {
     USBXBLCState *s = (USBXBLCState*)dev;
-    return s->in.average_volume;
+    return s->in.peak_volume / 32768.0f;
 }
 
-int xblc_audio_stream_get_output_volume(void *dev)
+float xblc_audio_stream_get_output_volume(void *dev)
 {
     USBXBLCState *s = (USBXBLCState*)dev;
-    return s->out.volume;
+    return (float)s->out.volume / SDL_MIX_MAXVOLUME;
 }
 
-int xblc_audio_stream_get_input_volume(void *dev)
+float xblc_audio_stream_get_input_volume(void *dev)
 {
     USBXBLCState *s = (USBXBLCState*)dev;
-    return s->in.volume;
+    return (float)s->in.volume / SDL_MIX_MAXVOLUME;
 }
 
-void xblc_audio_stream_set_output_volume(void *dev, int volume)
+void xblc_audio_stream_set_output_volume(void *dev, float volume)
 {
     USBXBLCState *s = (USBXBLCState*)dev;
-    s->out.volume = volume;
+    s->out.volume = MIN(SDL_MIX_MAXVOLUME, MAX(0, (int)(volume * SDL_MIX_MAXVOLUME)));
 }
-void xblc_audio_stream_set_input_volume(void *dev, int volume)
+void xblc_audio_stream_set_input_volume(void *dev, float volume)
 {
     USBXBLCState *s = (USBXBLCState*)dev;
-    s->in.volume = volume;
+    s->in.volume = MIN(SDL_MIX_MAXVOLUME, MAX(0, (int)(volume * SDL_MIX_MAXVOLUME)));
 }
 
 static void output_callback(void *userdata, uint8_t *stream, int len)
@@ -236,9 +236,9 @@ static void output_callback(void *userdata, uint8_t *stream, int len)
     }
 }
 
-static int calc_average_amplitude(const int16_t *samples, int len) {
+static int calc_peak_amplitude(const int16_t *samples, int len) {
     int max = 0;
-    for(int i = 0; i < len / 2; i++) {
+    for(int i = 0; i < len; i++) {
         max = MAX(max, abs(samples[i]));
     }
     return max;
@@ -247,19 +247,18 @@ static int calc_average_amplitude(const int16_t *samples, int len) {
 static void input_callback(void *userdata, uint8_t *stream, int len)
 {
     USBXBLCState *s = (USBXBLCState *)userdata;
+    uint8_t buffer[XBLC_FIFO_SIZE];
     
-    s->in.average_volume = s->in.volume * 
-        calc_average_amplitude((int16_t*)stream, len / 2) / 128;
+    s->in.peak_volume = s->in.volume * 
+        calc_peak_amplitude((int16_t*)stream, len / sizeof(int16_t)) / SDL_MIX_MAXVOLUME;
 
     // Don't try to put more into the queue than will fit
     uint32_t max_len = MIN(len, fifo8_num_free(&s->in.fifo));
     if (max_len > 0) {
         if(s->in.volume < SDL_MIX_MAXVOLUME) {
-            uint8_t *buffer = g_malloc(max_len);
             memset(buffer, 0, max_len);
             SDL_MixAudioFormat(buffer, stream, AUDIO_S16LSB, max_len, MAX(s->in.volume, 0));
             fifo8_push_all(&s->in.fifo, buffer, max_len);
-            g_free(buffer);
         } else {
             fifo8_push_all(&s->in.fifo, stream, max_len);
         }
@@ -308,7 +307,7 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture, const char *d
 
     fifo8_reset(&channel->fifo);
     if(capture)
-        s->in.average_volume = 0;
+        s->in.peak_volume = 0;
 
     SDL_AudioSpec desired_spec;
     desired_spec.channels = 1;
@@ -345,8 +344,8 @@ static bool should_init_stream(const XBLCStream *stream, const char *requested_d
     
     // If neither name is null, but they don't match, initialize it
     if (stream->device_name != NULL &&
-             requested_device_name != NULL &&
-             strcmp(stream->device_name, requested_device_name) != 0)
+        requested_device_name != NULL &&
+        strcmp(stream->device_name, requested_device_name) != 0)
         return true;
 
     // We don't need to initialize it

@@ -25,11 +25,15 @@ extern "C" {
 #endif
 
 void xblc_audio_stream_reinit(void *dev);
-int xblc_audio_stream_get_output_volume(void *dev);
-int xblc_audio_stream_get_input_volume(void *dev);
-void xblc_audio_stream_set_output_volume(void *dev, int volume);
-void xblc_audio_stream_set_input_volume(void *dev, int volume);
-int xblc_audio_stream_get_average_input_volume(void *dev);
+
+/* Outputs a value on the interval [0, 1] where 0 is muted and 1 is full volume */
+float xblc_audio_stream_get_output_volume(void *dev);
+float xblc_audio_stream_get_input_volume(void *dev);
+
+/* Accepts a value on the interval [0, 1] where 0 is muted and 1 is full volume */
+void xblc_audio_stream_set_output_volume(void *dev, float volume);
+void xblc_audio_stream_set_input_volume(void *dev, float volume);
+float xblc_audio_stream_get_current_input_volume(void *dev);
 
 #ifdef __cplusplus
 }
