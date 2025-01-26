@@ -149,8 +149,11 @@ typedef struct AC97DeviceState {
     OBJECT_CHECK(AC97DeviceState, (obj), "AC97")
 
 static void po_callback(void *opaque, int free);
+
+#ifndef XBOX
 static void pi_callback(void *opaque, int avail);
 static void mc_callback(void *opaque, int avail);
+#endif
 
 static void fetch_bd(AC97LinkState *s, AC97BusMasterRegs *r)
 {
@@ -218,7 +221,9 @@ static void voice_set_active(AC97LinkState *s, int bm_index, int on)
 {
     switch (bm_index) {
     case PI_INDEX:
+#ifndef XBOX
         AUD_set_active_in(s->voice_pi, on);
+#endif
         break;
 
     case PO_INDEX:
@@ -226,7 +231,9 @@ static void voice_set_active(AC97LinkState *s, int bm_index, int on)
         break;
 
     case MC_INDEX:
+#ifndef XBOX
         AUD_set_active_in(s->voice_mc, on);
+#endif
         break;
 
     case SO_INDEX:
@@ -294,6 +301,7 @@ static void open_voice(AC97LinkState *s, int index, int freq)
         s->invalid_freq[index] = 0;
         switch (index) {
         case PI_INDEX:
+#ifndef XBOX
             s->voice_pi = AUD_open_in(
                 &s->card,
                 s->voice_pi,
@@ -302,6 +310,7 @@ static void open_voice(AC97LinkState *s, int index, int freq)
                 pi_callback,
                 &as
                 );
+#endif
             break;
 
         case PO_INDEX:
@@ -316,6 +325,7 @@ static void open_voice(AC97LinkState *s, int index, int freq)
             break;
 
         case MC_INDEX:
+#ifndef XBOX
             s->voice_mc = AUD_open_in(
                 &s->card,
                 s->voice_mc,
@@ -324,6 +334,7 @@ static void open_voice(AC97LinkState *s, int index, int freq)
                 mc_callback,
                 &as
                 );
+#endif
             break;
 
         case SO_INDEX:
@@ -333,7 +344,9 @@ static void open_voice(AC97LinkState *s, int index, int freq)
         s->invalid_freq[index] = freq;
         switch (index) {
         case PI_INDEX:
+#ifndef XBOX
             AUD_close_in(&s->card, s->voice_pi);
+#endif
             s->voice_pi = NULL;
             break;
 
@@ -343,7 +356,9 @@ static void open_voice(AC97LinkState *s, int index, int freq)
             break;
 
         case MC_INDEX:
+#ifndef XBOX
             AUD_close_in(&s->card, s->voice_mc);
+#endif
             s->voice_mc = NULL;
             break;
 
@@ -357,17 +372,21 @@ static void reset_voices(AC97LinkState *s, uint8_t active[LAST_INDEX])
 {
     uint16_t freq;
 
+#ifndef XBOX
     freq = mixer_load(s, AC97_PCM_LR_ADC_Rate);
     open_voice(s, PI_INDEX, freq);
     AUD_set_active_in(s->voice_pi, active[PI_INDEX]);
+#endif
 
     freq = mixer_load(s, AC97_PCM_Front_DAC_Rate);
     open_voice(s, PO_INDEX, freq);
     AUD_set_active_out(s->voice_po, active[PO_INDEX]);
 
+#ifndef XBOX
     freq = mixer_load(s, AC97_MIC_ADC_Rate);
     open_voice(s, MC_INDEX, freq);
     AUD_set_active_in(s->voice_mc, active[MC_INDEX]);
+#endif
 }
 
 static void get_volume(uint16_t vol, uint16_t mask, int inverse,
@@ -408,7 +427,9 @@ static void update_volume_in(AC97LinkState *s)
     get_volume(mixer_load(s, AC97_Record_Gain_Mute), 0x0f, 0,
                &mute, &lvol, &rvol);
 
+#ifndef XBOX
     AUD_set_volume_in(s->voice_pi, mute, lvol, rvol);
+#endif
 }
 
 static void set_volume(AC97LinkState *s, int index, uint32_t val)
@@ -972,6 +993,10 @@ static int read_audio(AC97LinkState *s, AC97BusMasterRegs *r,
     int to_copy = 0;
     SWVoiceIn *voice = (r - s->bm_regs) == MC_INDEX ? s->voice_mc : s->voice_pi;
 
+#ifdef XBOX
+    return 0;
+#endif
+
     temp = MIN(temp, max);
 
     if (!temp) {
@@ -1081,6 +1106,7 @@ static void transfer_audio(AC97LinkState *s, int index, int elapsed)
     }
 }
 
+#ifndef XBOX
 static void pi_callback(void *opaque, int avail)
 {
     transfer_audio(opaque, PI_INDEX, avail);
@@ -1090,6 +1116,7 @@ static void mc_callback(void *opaque, int avail)
 {
     transfer_audio(opaque, MC_INDEX, avail);
 }
+#endif
 
 static void po_callback(void *opaque, int free)
 {
