@@ -79,7 +79,7 @@ jobs:
           artifact_name: xemu-win-aarch64-release
           arch: aarch64
     env:
-      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-b6d29d4
+      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-03e3cd0
 
     steps:
     - name: Download source package

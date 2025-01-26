@@ -2292,14 +2292,6 @@ libglslang = not_found
 
 if host_os == 'windows'
   vulkan = declare_dependency(compile_args: ['-DVK_USE_PLATFORM_WIN32_KHR'])
-  libglslang = declare_dependency(link_args: [
-        '-lglslang',
-        '-lMachineIndependent',
-        '-lGenericCodeGen',
-        '-lSPIRV',
-        '-lSPIRV-Tools',
-        '-lSPIRV-Tools-opt'
-      ])
 elif host_os == 'linux'
   vulkan = dependency('vulkan')
 endif

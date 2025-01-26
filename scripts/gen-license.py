@@ -261,6 +261,12 @@ Lib('SPIRV-Reflect', 'https://github.com/KhronosGroup/SPIRV-Reflect',
 	submodule=Submodule('subprojects/SPIRV-Reflect.wrap')
 	),
 
+Lib('glslang', 'https://github.com/KhronosGroup/glslang',
+	bsd_3clause, 'https://raw.githubusercontent.com/KhronosGroup/glslang/main/LICENSE.txt',
+	ships_static=all_platforms,
+	submodule=Submodule('subprojects/glslang.wrap')
+	),
+
 #
 # Data files included with xemu
 #
@@ -373,18 +379,6 @@ Lib('miniz', 'https://github.com/richgel999/miniz',
 	lgplv2_1, 'https://raw.githubusercontent.com/richgel999/miniz/master/LICENSE',
 	ships_static={windows},	platform={windows},
 	version='2.1.0'
-	),
-
-Lib('glslang', 'https://github.com/KhronosGroup/glslang',
-	bsd_3clause, 'https://raw.githubusercontent.com/KhronosGroup/glslang/main/LICENSE.txt',
-	ships_static={windows},	platform={windows},
-	version='14.3.0'
-	),
-
-Lib('SPIRV-Tools', 'https://github.com/KhronosGroup/SPIRV-Tools',
-	apache2, 'https://raw.githubusercontent.com/KhronosGroup/SPIRV-Tools/main/LICENSE',
-	ships_static={windows},	platform={windows},
-	pkgconfig=PkgConfig('SPIRV-Tools')
 	),
 ]
 
