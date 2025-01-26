@@ -88,6 +88,7 @@ typedef struct PshState {
     bool z_perspective;
     bool texture_perspective;
     bool clipping;
+    bool near_far;
 } PshState;
 
 #endif

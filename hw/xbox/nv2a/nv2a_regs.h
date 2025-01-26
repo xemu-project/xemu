@@ -620,6 +620,7 @@
 #define NV_PGRAPH_WINDOWCLIPY6                           0x00001A7C
 #define NV_PGRAPH_WINDOWCLIPY7                           0x00001A80
 #define NV_PGRAPH_ZCOMPRESSOCCLUDE                       0x00001A84
+#   define NV_PGRAPH_ZCOMPRESSOCCLUDE_CULL_NEAR_FAR_EN          (1 << 0)
 #   define NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN                 (1 << 4)
 #       define NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CULL            0
 #       define NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CLAMP           1
@@ -1235,6 +1236,7 @@
 #       define NV097_SET_ZMIN_MAX_CONTROL_ZCLAMP_EN               0x000000F0
 #       define NV097_SET_ZMIN_MAX_CONTROL_ZCLAMP_EN_CULL              0
 #       define NV097_SET_ZMIN_MAX_CONTROL_ZCLAMP_EN_CLAMP             1
+#       define NV097_SET_ZMIN_MAX_CONTROL_CULL_NEAR_FAR_EN_TRUE   (1 << 0)
 #   define NV097_SET_ANTI_ALIASING_CONTROL                    0x00001D7C
 #       define NV097_SET_ANTI_ALIASING_CONTROL_ENABLE             (1 << 0)
 #   define NV097_SET_ZSTENCIL_CLEAR_VALUE                     0x00001D8C
