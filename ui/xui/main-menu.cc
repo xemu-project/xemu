@@ -91,9 +91,6 @@ void MainMenuInputView::Draw()
     // Dimensions of controller (rendered at origin)
     float controller_width  = 477.0f;
     float controller_height = 395.0f;
-    // Dimensions of XMU
-    float xmu_x = 0, xmu_x_stride = 256, xmu_y = 0;
-    float xmu_w = 256, xmu_h = 256;
 
     // Setup rendering to fbo for controller and port images
     controller_fbo->Target();
