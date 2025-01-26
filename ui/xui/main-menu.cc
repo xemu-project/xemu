@@ -520,6 +520,11 @@ void MainMenuInputView::DrawXmuSettings(int active, int expansion_slot_index)
     ImGui::PopID();
 }
 
+static int num_input_devices = 0;
+static int num_output_devices = 0;
+static const char **input_device_names = nullptr;
+static const char **output_device_names = nullptr;
+
 static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_capture)
 {
     ControllerState *bound_state = xemu_input_get_bound(active);
@@ -532,16 +537,36 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
     if(selected_device == NULL)
         selected_device = default_device_name;
 
+    int num_devices = SDL_GetNumAudioDevices(is_capture);
+    // Get pointers to the correct device name cache
+    const char ***device_names = (is_capture ? &input_device_names : &output_device_names);
+    int *num_device_names = (is_capture ? &num_input_devices : &num_output_devices);
+
+    // If the number of devices is incorrect, update the cache
+    if (num_devices != *num_device_names) {
+        *num_device_names = num_devices;
+        // Update the device name cache
+        if(*device_names == nullptr)
+            g_free(*device_names);
+        if(num_devices == 0)
+            *device_names = nullptr;
+        else {
+            *device_names = (const char**)g_malloc(num_devices * sizeof(const char*));
+            for(int i = 0; i < num_devices; i++)
+            {
+                (*device_names)[i] = SDL_GetAudioDeviceName(i, is_capture);
+            }
+        }
+    }
+
     const char *combo_label = (is_capture == 0) ? "###Speaker" : "###Microphone";
     // ImGui::Text("%s", label_text);
     ImGui::SetNextItemWidth(max_width);
     if(ImGui::BeginCombo(combo_label, selected_device, ImGuiComboFlags_NoArrowButton)) {
-
-        int num_devices = SDL_GetNumAudioDevices(is_capture);
         for(int device_index = -1; device_index < num_devices; device_index++) {
             const char *device_name = default_device_name;
             if(device_index >= 0)
-                device_name = SDL_GetAudioDeviceName(device_index, is_capture);
+                device_name = (*device_names)[device_index];
 
             // Default: device_index is -1, label is "Default", value is NULL
             bool is_selected = (device_index == -1) && (selected_device == default_device_name);
