@@ -127,6 +127,34 @@ static const char **peripheral_params_settings_map[4][2] = {
       &g_config.input.peripherals.port4.peripheral_param_1 }
 };
 
+static const char **xblc_input_device_map[4] = {
+    &g_config.input.peripherals.port1.xblc1_settings.input_device_name,
+    &g_config.input.peripherals.port2.xblc2_settings.input_device_name,
+    &g_config.input.peripherals.port3.xblc3_settings.input_device_name,
+    &g_config.input.peripherals.port4.xblc4_settings.input_device_name,
+};
+
+static float *xblc_input_volume_map[4] = {
+    &g_config.input.peripherals.port1.xblc1_settings.input_device_volume,
+    &g_config.input.peripherals.port2.xblc2_settings.input_device_volume,
+    &g_config.input.peripherals.port3.xblc3_settings.input_device_volume,
+    &g_config.input.peripherals.port4.xblc4_settings.input_device_volume,
+};
+
+static const char **xblc_output_device_map[4] = {
+    &g_config.input.peripherals.port1.xblc1_settings.output_device_name,
+    &g_config.input.peripherals.port2.xblc2_settings.output_device_name,
+    &g_config.input.peripherals.port3.xblc3_settings.output_device_name,
+    &g_config.input.peripherals.port4.xblc4_settings.output_device_name,
+};
+
+static float *xblc_output_volume_map[4] = {
+    &g_config.input.peripherals.port1.xblc1_settings.output_device_volume,
+    &g_config.input.peripherals.port2.xblc2_settings.output_device_volume,
+    &g_config.input.peripherals.port3.xblc3_settings.output_device_volume,
+    &g_config.input.peripherals.port4.xblc4_settings.output_device_volume,
+};
+
 static int sdl_kbd_scancode_map[25];
 
 static const char *get_bound_driver(int port)
@@ -399,84 +427,29 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
     }
 }
 
-char *xemu_input_serialize_xblc_settings(XblcState *xblc)
+void xemu_input_save_xblc_settings(int port, XblcState *xblc)
 {
     const char *default_device_name = "Default";
-
-    const char *output_device_label = xblc->output_device_name == NULL ?
-        default_device_name : xblc->output_device_name;
-    const char *input_device_label = xblc->input_device_name == NULL ?
-        default_device_name : xblc->input_device_name;
-
-    return g_strdup_printf("%d|%d|%s|%s", (int)(200 * xblc->output_device_volume), (int)(200 * xblc->input_device_volume), output_device_label, input_device_label);
+    *peripheral_types_settings_map[port][0] = PERIPHERAL_XBLC;
+    *xblc_output_device_map[port] = xblc->output_device_name == NULL ? 
+                                    default_device_name : xblc->output_device_name;
+    *xblc_output_volume_map[port] = xblc->output_device_volume * 100;
+    *xblc_input_device_map[port] = xblc->input_device_name == NULL ? 
+                                    default_device_name : xblc->input_device_name;
+    *xblc_input_volume_map[port] = xblc->input_device_volume * 100;
 }
 
-XblcState *xemu_input_deserialize_xblc_settings(const char *param)
+XblcState *xemu_input_load_xblc_settings(int port)
 {
     const char *default_device_name = "Default";
-    char temp[1024];
-    memset(temp, 0, 1024);
-
     XblcState *xblc = (XblcState*)g_malloc(sizeof(XblcState));
     memset(xblc, 0, sizeof(XblcState));
-    xblc->input_device_volume = 0.5f;
-    xblc->output_device_volume = 0.5f;                
-
-    if(param != NULL) {
-        char *output_device = NULL;
-        char *input_device = NULL;
-        int output_device_volume = 100;
-        int input_device_volume = 100;
-
-        DPRINTF("Parameters: %s\n", param);
-        char *delimiterPtr = strchr(param, '|');
-        if(delimiterPtr != NULL) {
-            memset(temp, 0, 1024);
-            memcpy(temp, param, delimiterPtr - param);
-            output_device_volume = atoi(temp);
-            param = delimiterPtr+1;
-            delimiterPtr = strchr(param, '|');
-            if(delimiterPtr != NULL) {
-                memset(temp, 0, 1024);
-                memcpy(temp, param, delimiterPtr - param);
-                input_device_volume = atoi(temp);
-                param = delimiterPtr+1;
-                delimiterPtr = strchr(param, '|');
-                if(delimiterPtr != NULL) {
-                    output_device = g_strndup(param, delimiterPtr - param);
-                    input_device = g_strdup(delimiterPtr+1);
-
-                    DPRINTF("Output Volume: %d\n", output_device_volume);
-                    DPRINTF("Input Volume: %d\n", input_device_volume);
-                    DPRINTF("Output Device: %s\n", output_device);
-                    DPRINTF("Input Device: %s\n", input_device);
-                
-                    if(strcmp(output_device, default_device_name) == 0) {
-                        g_free((void*)output_device);
-                        output_device = NULL;
-                    }
-
-                    if(strcmp(input_device, default_device_name) == 0) {
-                        g_free((void*)input_device);
-                        input_device = NULL;
-                    }
-
-                    xblc->output_device_name = output_device;
-                    xblc->output_device_volume = output_device_volume / 200.0f;
-                    xblc->input_device_name = input_device;
-                    xblc->input_device_volume = input_device_volume / 200.0f;
-                } else {
-                    DPRINTF("Delimiter not found in %s\n", param);
-                }
-            } else {
-                DPRINTF("Delimiter not found in %s\n", param);
-            }
-        } else {
-            DPRINTF("Delimiter not found in %s\n", param);
-        }
-    } else {
-        DPRINTF("Param is NULL\n");
-    }
+    xblc->output_device_name = *xblc_output_device_map[port] == NULL ? 
+                                default_device_name : *xblc_output_device_map[port];
+    xblc->output_device_volume = *xblc_output_volume_map[port] / 100;
+    xblc->input_device_name = *xblc_input_device_map[port] == NULL ? 
+                                default_device_name : *xblc_input_device_map[port];
+    xblc->input_device_volume = *xblc_input_volume_map[port] / 100;
 
     return xblc;
 }
@@ -1014,16 +987,14 @@ bool xemu_input_bind_xblc(int player_index, const char *output_device,
     assert(dev);
 
     xblc->dev = (void *)dev;
-    xblc_audio_stream_set_output_volume(xblc->dev, (int)(256 * xblc->output_device_volume));
-    xblc_audio_stream_set_input_volume(xblc->dev, (int)(256 * xblc->input_device_volume));
+    xblc_audio_stream_set_output_volume(xblc->dev, xblc->output_device_volume);
+    xblc_audio_stream_set_input_volume(xblc->dev, xblc->input_device_volume);
 
     // Unref for eventual cleanup
     qobject_unref(qdict);
 
     if (!is_rebind) {
-        char *buf = xemu_input_serialize_xblc_settings(xblc);
-        xemu_save_peripheral_settings(player_index, 0, peripheral_type, buf);
-        g_free(buf);
+        xemu_input_save_xblc_settings(player_index, xblc);
     }
 
     return true;
@@ -1043,14 +1014,10 @@ static void xemu_input_rebind_xblc(int port)
         return;
     }
 
-    const char *param = *peripheral_params_settings_map[port][0];
-
     if (peripheral_type == PERIPHERAL_XBLC) {
         bound_controllers[port]->peripheral_types[0] = peripheral_type;
-        bound_controllers[port]->peripherals[0] = xemu_input_deserialize_xblc_settings(param);
+        bound_controllers[port]->peripherals[0] = xemu_input_load_xblc_settings(port);
         XblcState *xblc = (XblcState*)bound_controllers[port]->peripherals[0];
-
-        DPRINTF("XLBC Parameter: %s\n", param);
 
         char *output_temp = xblc->output_device_name == NULL ? NULL : g_strdup(xblc->output_device_name);
         char *input_temp = xblc->input_device_name == NULL ? NULL : g_strdup(xblc->input_device_name);

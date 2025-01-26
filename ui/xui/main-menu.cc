@@ -597,9 +597,7 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
                     xblc_audio_stream_reinit(xblc->dev);
                 
                 // Save the changes
-                char *buf = xemu_input_serialize_xblc_settings(xblc);
-                xemu_save_peripheral_settings(active, 0, PERIPHERAL_XBLC, buf);
-                g_free(buf);
+                xemu_input_save_xblc_settings(active, xblc);
             }
 
             if (is_selected) {
@@ -639,9 +637,7 @@ static void DrawVolumeControlSlider(int active, XblcState *xblc, int is_capture)
             xblc_audio_stream_set_output_volume(xblc->dev, *ui_volume);
 
         // Save the changes
-        char *buf = xemu_input_serialize_xblc_settings(xblc);
-        xemu_save_peripheral_settings(active, 0, PERIPHERAL_XBLC, buf);
-        g_free(buf);
+        xemu_input_save_xblc_settings(active, xblc);
     }
 }
 
