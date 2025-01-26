@@ -78,9 +78,6 @@ RUN make \
 
 RUN rm ${MXE_PATH}/src/sdl2*.patch
 COPY vulkan-headers.mk \
-     spirv-headers.mk \
-     spirv-tools.mk \
-     glslang.mk \
      glib.mk \
      sdl2.mk \
      libsamplerate.mk \
@@ -101,10 +98,7 @@ RUN make \
         cmake \
         libslirp \
         sdl2 \
-        vulkan-headers \
-        spirv-headers \
-        spirv-tools \
-        glslang
+        vulkan-headers
 
 RUN find ${MXE_PATH}/usr -executable -type f -exec chmod a+x {} \;
 
