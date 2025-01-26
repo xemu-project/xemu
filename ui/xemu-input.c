@@ -61,27 +61,27 @@ static void xemu_input_print_controller_state(ControllerState *state)
            "LTrig   = %.3f, RTrig   = %.3f\n"
            "LStickX = %.3f, RStickX = %.3f\n"
            "LStickY = %.3f, RStickY = %.3f\n\n",
-        !!(state->buttons & CONTROLLER_BUTTON_A),
-        !!(state->buttons & CONTROLLER_BUTTON_B),
-        !!(state->buttons & CONTROLLER_BUTTON_X),
-        !!(state->buttons & CONTROLLER_BUTTON_Y),
-        !!(state->buttons & CONTROLLER_BUTTON_DPAD_LEFT),
-        !!(state->buttons & CONTROLLER_BUTTON_DPAD_UP),
-        !!(state->buttons & CONTROLLER_BUTTON_DPAD_RIGHT),
-        !!(state->buttons & CONTROLLER_BUTTON_DPAD_DOWN),
-        !!(state->buttons & CONTROLLER_BUTTON_BACK),
-        !!(state->buttons & CONTROLLER_BUTTON_START),
-        !!(state->buttons & CONTROLLER_BUTTON_WHITE),
-        !!(state->buttons & CONTROLLER_BUTTON_BLACK),
-        !!(state->buttons & CONTROLLER_BUTTON_LSTICK),
-        !!(state->buttons & CONTROLLER_BUTTON_RSTICK),
-        !!(state->buttons & CONTROLLER_BUTTON_GUIDE),
-        state->axis[CONTROLLER_AXIS_LTRIG],
-        state->axis[CONTROLLER_AXIS_RTRIG],
-        state->axis[CONTROLLER_AXIS_LSTICK_X],
-        state->axis[CONTROLLER_AXIS_RSTICK_X],
-        state->axis[CONTROLLER_AXIS_LSTICK_Y],
-        state->axis[CONTROLLER_AXIS_RSTICK_Y]
+        !!(state->gp.buttons & CONTROLLER_BUTTON_A),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_B),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_X),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_Y),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_DPAD_LEFT),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_DPAD_UP),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_DPAD_RIGHT),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_DPAD_DOWN),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_BACK),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_START),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_WHITE),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_BLACK),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_LSTICK),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_RSTICK),
+        !!(state->gp.buttons & CONTROLLER_BUTTON_GUIDE),
+        state->gp.axis[CONTROLLER_AXIS_LTRIG],
+        state->gp.axis[CONTROLLER_AXIS_RTRIG],
+        state->gp.axis[CONTROLLER_AXIS_LSTICK_X],
+        state->gp.axis[CONTROLLER_AXIS_RSTICK_X],
+        state->gp.axis[CONTROLLER_AXIS_LSTICK_Y],
+        state->gp.axis[CONTROLLER_AXIS_RSTICK_Y]
         );
 }
 #endif
@@ -146,27 +146,10 @@ static const char *get_bound_driver(int port)
         return DRIVER_DUKE;
     if (strcmp(driver, DRIVER_DUKE) == 0)
         return DRIVER_DUKE;
-    if (strcmp(driver, DRIVER_STEEL_BATTALION) == 0)
-        return DRIVER_STEEL_BATTALION;
-
-    return DRIVER_DUKE;
-}
-
-static const char *get_bound_driver(int port)
-{
-    assert(port >= 0 && port <= 3);
-    const char *driver = *port_index_to_driver_settings_key_map[port];
-
-    // If the driver in the config is NULL, empty, or unrecognized 
-    // then default to DRIVER_DUKE
-    if (driver == NULL)
-        return DRIVER_DUKE;
-    if (strlen(driver) == 0)
-        return DRIVER_DUKE;
-    if (strcmp(driver, DRIVER_DUKE) == 0)
-        return DRIVER_DUKE;
     if (strcmp(driver, DRIVER_S) == 0)
         return DRIVER_S;
+    if (strcmp(driver, DRIVER_STEEL_BATTALION) == 0)
+        return DRIVER_STEEL_BATTALION;
 
     return DRIVER_DUKE;
 }

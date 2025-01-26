@@ -37,7 +37,7 @@
 extern int viewport_coords[4];
 
 Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
-GLuint g_controller_duke_tex, g_controller_s_tex, g_sb_controller_duke_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
+GLuint g_controller_duke_tex, g_controller_s_tex, g_sb_controller_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
 
 enum class ShaderType {
     Blit,
@@ -706,13 +706,13 @@ static void RenderControllerS(float frame_x, float frame_y, uint32_t primary_col
 
     // Check to see if the guide button is pressed
     const uint32_t animate_guide_button_duration = 2000;
-    if (state->buttons & CONTROLLER_BUTTON_GUIDE) {
-        state->animate_guide_button_end =
+    if (state->gp.buttons & CONTROLLER_BUTTON_GUIDE) {
+        state->gp.animate_guide_button_end =
             now + animate_guide_button_duration;
     }
 
-    if (now < state->animate_guide_button_end) {
-        t = 1.0f - (float)(state->animate_guide_button_end - now) /
+    if (now < state->gp.animate_guide_button_end) {
+        t = 1.0f - (float)(state->gp.animate_guide_button_end - now) /
                        (float)animate_guide_button_duration;
         float sin_wav = (1 - sin(M_PI * t / 2.0f));
 
@@ -742,7 +742,7 @@ static void RenderControllerS(float frame_x, float frame_y, uint32_t primary_col
     // The controller has alpha cutouts where the buttons are. Draw a surface
     // behind the buttons if they are activated
     for (int i = 0; i < 12; i++) {
-        if (state->buttons & (1 << i)) {
+        if (state->gp.buttons & (1 << i)) {
             RenderDecal(g_decal_shader, frame_x + buttons[i].x,
                         frame_y + buttons[i].y, buttons[i].w, buttons[i].h, 0,
                         0, 1, 1, 0, 0, primary_color + 0xff);
@@ -756,15 +756,15 @@ static void RenderControllerS(float frame_x, float frame_y, uint32_t primary_col
     float h = tex_items[obj_lstick].h;
     float c_x = frame_x + lstick_ctr.x;
     float c_y = frame_y + lstick_ctr.y;
-    float lstick_x = (float)state->axis[CONTROLLER_AXIS_LSTICK_X] / 32768.0;
-    float lstick_y = (float)state->axis[CONTROLLER_AXIS_LSTICK_Y] / 32768.0;
+    float lstick_x = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_X] / 32768.0;
+    float lstick_y = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] / 32768.0;
     RenderDecal(
         g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * lstick_x),
         (int)(c_y - h / 2.0f + 10.0f * lstick_y), w, h, tex_items[obj_lstick].x,
         tex_items[obj_lstick].y, w, h,
-        (state->buttons & CONTROLLER_BUTTON_LSTICK) ? secondary_color :
+        (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? secondary_color :
                                                          primary_color,
-        (state->buttons & CONTROLLER_BUTTON_LSTICK) ? primary_color :
+        (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? primary_color :
                                                          secondary_color,
         0);
 
@@ -773,15 +773,15 @@ static void RenderControllerS(float frame_x, float frame_y, uint32_t primary_col
     h = tex_items[obj_rstick].h;
     c_x = frame_x + rstick_ctr.x;
     c_y = frame_y + rstick_ctr.y;
-    float rstick_x = (float)state->axis[CONTROLLER_AXIS_RSTICK_X] / 32768.0;
-    float rstick_y = (float)state->axis[CONTROLLER_AXIS_RSTICK_Y] / 32768.0;
+    float rstick_x = (float)state->gp.axis[CONTROLLER_AXIS_RSTICK_X] / 32768.0;
+    float rstick_y = (float)state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] / 32768.0;
     RenderDecal(
         g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * rstick_x),
         (int)(c_y - h / 2.0f + 10.0f * rstick_y), w, h, tex_items[obj_rstick].x,
         tex_items[obj_rstick].y, w, h,
-        (state->buttons & CONTROLLER_BUTTON_RSTICK) ? secondary_color :
+        (state->gp.buttons & CONTROLLER_BUTTON_RSTICK) ? secondary_color :
                                                          primary_color,
-        (state->buttons & CONTROLLER_BUTTON_RSTICK) ? primary_color :
+        (state->gp.buttons & CONTROLLER_BUTTON_RSTICK) ? primary_color :
                                                          secondary_color,
         0);
 
@@ -789,19 +789,19 @@ static void RenderControllerS(float frame_x, float frame_y, uint32_t primary_col
                 GL_ZERO); // Don't blend, just overwrite values in buffer
 
     // Render trigger bars
-    float ltrig = state->axis[CONTROLLER_AXIS_LTRIG] / 32767.0;
-    float rtrig = state->axis[CONTROLLER_AXIS_RTRIG] / 32767.0;
+    float ltrig = state->gp.axis[CONTROLLER_AXIS_LTRIG] / 32767.0;
+    float rtrig = state->gp.axis[CONTROLLER_AXIS_RTRIG] / 32767.0;
     const uint32_t animate_trigger_duration = 1000;
     if ((ltrig > 0) || (rtrig > 0)) {
-        state->animate_trigger_end = now + animate_trigger_duration;
+        state->gp.animate_trigger_end = now + animate_trigger_duration;
         rumble_l = fmax(rumble_l, ltrig);
         rumble_r = fmax(rumble_r, rtrig);
     }
 
     // Animate trigger alpha down after a period of inactivity
     alpha = 0x80;
-    if (state->animate_trigger_end > now) {
-        t = 1.0f - (float)(state->animate_trigger_end - now) /
+    if (state->gp.animate_trigger_end > now) {
+        t = 1.0f - (float)(state->gp.animate_trigger_end - now) /
                        (float)animate_trigger_duration;
         float sin_wav = (1 - sin(M_PI * t / 2.0f));
         alpha += fmin(sin_wav * 0x40, 0x80);
@@ -816,8 +816,8 @@ static void RenderControllerS(float frame_x, float frame_y, uint32_t primary_col
                 rtrig, primary_color + alpha, primary_color + 0xff);
 
     // Apply rumble updates
-    state->rumble_l = (int)(rumble_l * (float)0xffff);
-    state->rumble_r = (int)(rumble_r * (float)0xffff);
+    state->gp.rumble_l = (int)(rumble_l * (float)0xffff);
+    state->gp.rumble_r = (int)(rumble_r * (float)0xffff);
 
     glBindVertexArray(0);
     glUseProgram(0);
