@@ -43,20 +43,26 @@ void unswizzle_box(
     unsigned int slice_pitch,
     unsigned int bytes_per_pixel);
 
-void unswizzle_rect(
+static inline void unswizzle_rect(
     const uint8_t *src_buf,
     unsigned int width,
     unsigned int height,
     uint8_t *dst_buf,
     unsigned int pitch,
-    unsigned int bytes_per_pixel);
+    unsigned int bytes_per_pixel)
+{
+    unswizzle_box(src_buf, width, height, 1, dst_buf, pitch, 0, bytes_per_pixel);
+}
 
-void swizzle_rect(
+static inline void swizzle_rect(
     const uint8_t *src_buf,
     unsigned int width,
     unsigned int height,
     uint8_t *dst_buf,
     unsigned int pitch,
-    unsigned int bytes_per_pixel);
+    unsigned int bytes_per_pixel)
+{
+    swizzle_box(src_buf, width, height, 1, dst_buf, pitch, 0, bytes_per_pixel);
+}
 
 #endif
