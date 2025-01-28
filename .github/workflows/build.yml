@@ -450,6 +450,9 @@ jobs:
 
         # Ensure subprojects are uploaded
         rm src/subprojects/.gitignore
+    - name: Install dependencies
+      run: |
+        python3 -m pip install --upgrade build
     - name: Integrate Debian packaging
       run: |
         pushd src
