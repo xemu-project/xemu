@@ -326,11 +326,6 @@ void xemu_input_init(void)
     bound_drivers[2] = get_bound_driver(2);
     bound_drivers[3] = get_bound_driver(3);
 
-    bound_drivers[0] = get_bound_driver(0);
-    bound_drivers[1] = get_bound_driver(1);
-    bound_drivers[2] = get_bound_driver(2);
-    bound_drivers[3] = get_bound_driver(3);
-
     // Check to see if we should auto-bind the keyboard
     int port = xemu_input_get_controller_default_bind_port(new_con, 0);
     if (port >= 0) {
@@ -712,7 +707,6 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
             state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] = -32768;
         if (kbd[sdl_kbd_scancode_map[19]]) 
             state->gp.axis[CONTROLLER_AXIS_LTRIG] = 32767;
-
         if (kbd[sdl_kbd_scancode_map[20]]) 
             state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] = 32767;
         if (kbd[sdl_kbd_scancode_map[21]]) 
