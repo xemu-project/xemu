@@ -884,6 +884,22 @@ static MString* psh_convert(struct PixelShader *ps)
             "}\n", z, z
         );
     }
+    if (ps->state.near_far) {
+        /* FIXME: set correct custom clip planes 
+         * (see pgraph ZMinMaxControl tests)*/
+        mstring_append(clip,  
+            // near plane
+            "if (z * clipRange.y < clipRange.z*2.0/3.0) {\n"
+            "  discard;\n"
+            "}\n"
+            // z=n->f far plane
+            "if (z * clipRange.y > clipRange.w*1.2) {\n"   
+            // z=inc far plane
+            //"if (z * clipRange.y > clipRange.w + 2.0*(clipRange.w + clipRange.z)/(clipRange.w - clipRange.z) - 1) {\n"  
+            "  discard;\n"
+            "}\n"           
+        );        
+    }
 
     /* calculate perspective-correct inputs */
     MString *vars = mstring_new();
