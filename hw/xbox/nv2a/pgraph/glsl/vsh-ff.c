@@ -427,9 +427,16 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     "   } else {\n"
     "     oPos.w = clamp(oPos.w, 5.421011e-20, 1.884467e+019);\n"
     "   }\n"
-    "   oPos = invViewport * oPos;\n"
     );
 
+    if (state->z_perspective) {
+        mstring_append(body,
+            "    depthBuf = (invViewport * vec4(oPos.xyz/oPos.w, oPos.w)).w;\n"
+            "    oPos.xyz /= oPos.w;\n"
+            "    oPos.w = 1.0;\n"
+        );  
+    }
+    mstring_append(body,"   oPos = invViewport * oPos;\n");
     if (state->vulkan) {
         mstring_append(body, "   oPos.y *= -1;\n");
     }

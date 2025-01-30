@@ -857,7 +857,7 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
     }
 
     if (z_perspective) {
-        mstring_append(body, "  oPos.z = oPos.w;\n");
+        mstring_append(body, "  depthBuf = oPos.w;\n");
     }
 
     mstring_append(body,
@@ -866,7 +866,7 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
         "  }\n"
     );    
 
-    if (z_perspective || texture) {
+    if (texture) {
             mstring_append(body, "  oPos.xyz *= oPos.w;\n");
     } else {   
         mstring_append(

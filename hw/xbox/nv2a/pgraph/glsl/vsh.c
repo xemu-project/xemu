@@ -79,6 +79,7 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
 
     if (prefix_outputs) {
         mstring_append(header,
+                       "#define depthBuf v_depthBuf\n"
                        "#define vtxD0 v_vtxD0\n"
                        "#define vtxD1 v_vtxD1\n"
                        "#define vtxB0 v_vtxB0\n"
