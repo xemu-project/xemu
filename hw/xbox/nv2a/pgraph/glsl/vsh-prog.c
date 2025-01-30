@@ -867,10 +867,9 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
     );    
 
     if (texture) {
-            mstring_append(body, "  oPos.xyz *= oPos.w;\n");
+        mstring_append(body, "  oPos.xyz *= oPos.w;\n");
     } else {   
-        mstring_append(
-            body,
+        mstring_append(body,
 
         /* Correct for the perspective divide */
         "  if (oPos.w < 0.0) {\n"

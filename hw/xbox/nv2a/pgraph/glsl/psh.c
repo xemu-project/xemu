@@ -893,9 +893,9 @@ static MString* psh_convert(struct PixelShader *ps)
             "  discard;\n"
             "}\n"
             // z=n->f far plane
-            "if (z * clipRange.y > clipRange.w*1.2) {\n"   
+            //"if (z * clipRange.y > clipRange.w*1.2) {\n"   
             // z=inc far plane
-            //"if (z * clipRange.y > clipRange.w + 2.0*(clipRange.w + clipRange.z)/(clipRange.w - clipRange.z) - 1) {\n"  
+            "if (z * clipRange.y > clipRange.w + 2.0*(clipRange.w + clipRange.z)/(clipRange.w - clipRange.z) - 1) {\n"  
             "  discard;\n"
             "}\n"           
         );        
