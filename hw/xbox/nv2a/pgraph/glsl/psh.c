@@ -876,7 +876,7 @@ static MString* psh_convert(struct PixelShader *ps)
         mstring_append(clip, "float z = gl_FragCoord.z * 2.0 - 1.0;\n");
     }
 
-    const char *z = ps->state.z_perspective && ps->state.clipping ? "w" : "z * clipRange.y";
+    const char *z = ps->state.z_perspective ? "w" : "z * clipRange.y";
     if (ps->state.clipping) {
         mstring_append_fmt(clip,
             "if (%s < clipRange.z || clipRange.w < %s) {\n"
