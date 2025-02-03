@@ -550,7 +550,6 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
 
     const char *bound_driver = get_bound_driver(state->bound);
     if (strcmp(bound_driver, DRIVER_STEEL_BATTALION) == 0) {
-        state->sbc.buttons = 0;
 
         if (state->sbc.gearLever == 0)
             state->sbc.gearLever = 255;
