@@ -770,8 +770,8 @@ static MString* psh_convert(struct PixelShader *ps)
         "dotmap_minus1_to_1_gl",
         "dotmap_minus1_to_1",
         "dotmap_hilo_1",
-        "dotmap_hilo_hemisphere_d3d",
-        "dotmap_hilo_hemisphere_gl",
+        "dotmap_hilo_hemisphere", //D3D
+        "dotmap_hilo_hemisphere", //GL
         "dotmap_hilo_hemisphere",
     };
 
@@ -820,12 +820,6 @@ static MString* psh_convert(struct PixelShader *ps)
         "    vec2 hilo = vec2(_col.a << 8 | _col.r, _col.g << 8 | _col.b);\n"
         "    hilo = (hilo - 65536.0f*step(32767.5f, hilo)) / 32767.0f;\n"
         "    return vec3(hilo, sqrt(max(1.0f - dot(hilo, hilo), 0.0f)));\n"
-        "}\n"
-        "vec3 dotmap_hilo_hemisphere_gl(vec4 col) {\n"
-        "    return dotmap_hilo_hemisphere(col);\n"
-        "}\n"
-        "vec3 dotmap_hilo_hemisphere_d3d(vec4 col) {\n"
-        "    return dotmap_hilo_hemisphere(col);\n"
         "}\n"
         "const float[9] gaussian3x3 = float[9](\n"
         "    1.0/16.0, 2.0/16.0, 1.0/16.0,\n"
