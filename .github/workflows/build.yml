@@ -93,8 +93,8 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /tmp/xemu-ccache
-        key: cache-wincross-${{ runner.os }}-${{ matrix.configuration }}-${{ github.sha }}
-        restore-keys: cache-wincross-${{ runner.os }}-${{ matrix.configuration }}-
+        key: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
+        restore-keys: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
     - name: Pull Docker image
       run: docker pull $DOCKER_IMAGE_NAME
     - name: Compile
