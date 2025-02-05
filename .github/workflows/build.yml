@@ -404,13 +404,13 @@ jobs:
         echo "XEMU_VERSION=$(cat XEMU_VERSION)" >> $GITHUB_ENV
     - name: Extract Ubuntu artifacts
       run: |
-        pushd dist/xemu-ubuntu-release
-        tar xvf xemu-ubuntu-release.tgz
-        popd
-
-        pushd dist/xemu-ubuntu-debug
-        tar xvf xemu-ubuntu-debug.tgz
-        popd
+        for arch in x86_64 aarch64; do
+          for config in release debug; do
+            pushd dist/xemu-ubuntu-$arch-$config
+            tar xvf xemu-ubuntu-$arch-$config.tgz
+            popd
+          done
+        done
     # Architecture tags were recently added to the Windows release path. Provide an alias with the former name for a while.
     - name: Add transitionary package alias
       run: |
