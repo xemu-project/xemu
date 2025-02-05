@@ -1016,7 +1016,6 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
     bool binding_changed = false;
     if (r->shader_binding && !test_shaders_dirty(pg) && !pg->program_data_dirty) {
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND_NOTDIRTY);
-        goto update_constants;
     }
 
     ShaderBinding *old_binding = r->shader_binding;
@@ -1056,7 +1055,6 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
 
     NV2A_GL_DGROUP_END();
 
-update_constants:
     assert(r->shader_binding);
     assert(r->shader_binding->initialized);
     shader_update_constants(pg, r->shader_binding, binding_changed);
