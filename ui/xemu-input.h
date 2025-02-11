@@ -35,10 +35,12 @@
 #define DRIVER_DUKE "usb-xbox-gamepad"
 #define DRIVER_S "usb-xbox-gamepad-s"
 #define DRIVER_STEEL_BATTALION "usb-steel-battalion"
+#define DRIVER_DVD_PLAYBACK_KIT "xbox-dvd-playback-kit"
 
 #define DRIVER_DUKE_DISPLAY_NAME "Xbox Controller"
 #define DRIVER_S_DISPLAY_NAME "Xbox Controller S"
 #define DRIVER_STEEL_BATTALION_DISPLAY_NAME "Steel Battalion Controller"
+#define DRIVER_DVD_PLAYBACK_KIT_DISPLAY_NAME "Xbox DVD Playback Kit"
 
 enum controller_state_buttons_mask {
     CONTROLLER_BUTTON_A          = (1 << 0),
@@ -108,6 +110,54 @@ enum steel_battalion_controller_state_buttons_mask {
 #define SBC_BUTTON_TUNER_LEFT 0x20000000000ULL
 #define SBC_BUTTON_TUNER_RIGHT 0x40000000000ULL
 
+enum dvd_playback_kit_state_buttons_mask {
+    DVD_BUTTON_UP                = (1 << 0),
+    DVD_BUTTON_LEFT              = (1 << 1),
+    DVD_BUTTON_SELECT            = (1 << 2),
+    DVD_BUTTON_RIGHT             = (1 << 3),
+    DVD_BUTTON_DOWN              = (1 << 4),
+    DVD_BUTTON_DISPLAY           = (1 << 5),
+    DVD_BUTTON_REVERSE           = (1 << 6),
+    DVD_BUTTON_PLAY              = (1 << 7),
+    DVD_BUTTON_FORWARD           = (1 << 8),
+    DVD_BUTTON_SKIP_DOWN         = (1 << 9),
+    DVD_BUTTON_STOP              = (1 << 10),
+    DVD_BUTTON_PAUSE             = (1 << 11),
+    DVD_BUTTON_SKIP_UP           = (1 << 12),
+    DVD_BUTTON_TITLE             = (1 << 13),
+    DVD_BUTTON_INFO              = (1 << 14),
+    DVD_BUTTON_MENU              = (1 << 15),
+    DVD_BUTTON_BACK              = (1 << 16),
+    DVD_BUTTON_1                 = (1 << 17),
+    DVD_BUTTON_2                 = (1 << 18),
+    DVD_BUTTON_3                 = (1 << 19),
+    DVD_BUTTON_4                 = (1 << 20),
+    DVD_BUTTON_5                 = (1 << 21),
+    DVD_BUTTON_6                 = (1 << 22),
+    DVD_BUTTON_7                 = (1 << 23),
+    DVD_BUTTON_8                 = (1 << 24),
+    DVD_BUTTON_9                 = (1 << 25),
+    DVD_BUTTON_0                 = (1 << 26),
+    // Media Center Extender Remote
+    MCE_BUTTON_POWER             = (1 << 27),
+    MCE_BUTTON_MY_TV             = (1 << 28),
+    MCE_BUTTON_MY_MUSIC          = (1 << 29),
+    MCE_BUTTON_MY_PICTURES       = (1 << 30),
+    MCE_BUTTON_MY_VIDEOS         = (1 << 31),
+    MCE_BUTTON_RECORD            = (1ULL << 32),
+    MCE_BUTTON_START             = (1ULL << 33),
+    MCE_BUTTON_VOL_UP            = (1ULL << 34),
+    MCE_BUTTON_VOL_DOWN          = (1ULL << 35),
+    MCE_BUTTON_MUTE              = (1ULL << 36),
+    MCE_BUTTON_CH_UP             = (1ULL << 37),
+    MCE_BUTTON_CH_DOWN           = (1ULL << 38),
+    MCE_BUTTON_RECORDED_TV       = (1ULL << 39),
+    MCE_BUTTON_LIVE_TV           = (1ULL << 40),
+    MCE_BUTTON_STAR              = (1ULL << 41),
+    MCE_BUTTON_POUND             = (1ULL << 42),
+    MCE_BUTTON_CLEAR             = (1ULL << 43),
+};
+
 enum controller_state_axis_index {
     CONTROLLER_AXIS_LTRIG,
     CONTROLLER_AXIS_RTRIG,
@@ -171,6 +221,11 @@ typedef struct SteelBattalionState {
     uint8_t toggleSwitches;
 } SteelBattalionState;
 
+typedef struct {
+    char *firmware;
+    uint64_t buttons;
+} DVDPlaybackKitState;
+
 typedef struct ControllerState {
     QTAILQ_ENTRY(ControllerState) entry;
 
@@ -179,6 +234,7 @@ typedef struct ControllerState {
 
     GamepadState gp;
     SteelBattalionState sbc;
+    DVDPlaybackKitState dvdKit;
 
     enum controller_input_device_type type;
     const char         *name;
@@ -224,6 +280,7 @@ int xemu_input_get_controller_default_bind_port(ControllerState *state, int star
 void xemu_save_peripheral_settings(int player_index, int peripheral_index,
                                    int peripheral_type,
                                    const char *peripheral_parameter);
+void xemu_save_dvd_firmware_settings(int player_index, const char *firmware);
 
 void xemu_input_set_test_mode(int enabled);
 int xemu_input_get_test_mode(void);
