@@ -106,8 +106,15 @@ static const char **port_index_to_settings_key_map[] = {
 static const char **port_index_to_driver_settings_key_map[] = {
     &g_config.input.bindings.port1_driver,
     &g_config.input.bindings.port2_driver,
-    &g_config.input.bindings.port3_driver, 
+    &g_config.input.bindings.port3_driver,
     &g_config.input.bindings.port4_driver
+};
+
+static const char **port_index_to_dvd_firmware_key_map[] = {
+    &g_config.input.bindings.port1_dvd_firmware,
+    &g_config.input.bindings.port2_dvd_firmware,
+    &g_config.input.bindings.port3_dvd_firmware,
+    &g_config.input.bindings.port4_dvd_firmware,
 };
 
 static int *peripheral_types_settings_map[4][2] = {
@@ -133,6 +140,7 @@ static const char **peripheral_params_settings_map[4][2] = {
 };
 
 static int sdl_sbc_kbd_scancode_map[52];
+static int sdl_dvd_kit_kbd_scancode_map[44];
 
 int *g_keyboard_scancode_map[25] = {
     &g_config.input.keyboard_controller_scancode_map.a,
@@ -262,6 +270,8 @@ static const char *get_bound_driver(int port)
         return DRIVER_S;
     if (strcmp(driver, DRIVER_STEEL_BATTALION) == 0)
         return DRIVER_STEEL_BATTALION;
+    if (strcmp(driver, DRIVER_DVD_PLAYBACK_KIT) == 0)
+        return DRIVER_DVD_PLAYBACK_KIT;
 
     return DRIVER_DUKE;
 }
@@ -409,6 +419,54 @@ void xemu_input_init(void)
         }
     }
 
+    {
+        int i = 0;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.up;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.left;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.select;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.right;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.down;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.display;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.reverse;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.play;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.forward;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.skip_down;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.stop;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.pause;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.skip_up;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.title;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.info;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.menu;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.back;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.button1;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.button2;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.button3;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.button4;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.button5;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.button6;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.button7;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.button8;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.button9;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.button0;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.power;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.my_tv;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.my_music;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.my_pictures;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.my_videos;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.record;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.start;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.volume_up;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.volume_down;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.mute;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.channel_up;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.channel_down;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.recorded_tv;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.live_tv;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.star;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.pound;
+        sdl_dvd_kit_kbd_scancode_map[i++] = g_config.input.keyboard_dvd_kit_scancode_map.clear;
+    }
+
     bound_drivers[0] = get_bound_driver(0);
     bound_drivers[1] = get_bound_driver(1);
     bound_drivers[2] = get_bound_driver(2);
@@ -463,6 +521,14 @@ void xemu_save_peripheral_settings(int player_index, int peripheral_index,
         peripheral_parameter == NULL ? "" : peripheral_parameter);
 }
 
+void xemu_save_dvd_firmware_settings(int player_index, const char *firmware)
+{
+    ControllerState *state = bound_controllers[player_index];
+    state->dvdKit.firmware = g_strdup(firmware);
+    xemu_settings_set_string(port_index_to_dvd_firmware_key_map[player_index],
+                             firmware);
+}
+
 void xemu_input_process_sdl_events(const SDL_Event *event)
 {
     if (event->type == SDL_CONTROLLERDEVICEADDED) {
@@ -490,6 +556,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         new_con->peripheral_types[1] = PERIPHERAL_NONE;
         new_con->peripherals[0] = NULL;
         new_con->peripherals[1] = NULL;
+        new_con->dvdKit.firmware = NULL;
 
         char guid_buf[35] = { 0 };
         SDL_JoystickGetGUIDString(new_con->sdl_joystick_guid, guid_buf, sizeof(guid_buf));
@@ -628,6 +695,7 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
 {
     state->gp.buttons = 0;
     state->sbc.buttons = 0;
+    state->dvdKit.buttons = 0;
     memset(state->gp.axis, 0, sizeof(state->gp.axis));
     memset(state->sbc.axis, 0, sizeof(state->sbc.axis));
 
@@ -777,6 +845,10 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
             state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] = 32767;
 
         state->sbc.previousButtons = state->sbc.buttons;
+    } else if (strcmp(bound_driver, DRIVER_DVD_PLAYBACK_KIT) == 0) {
+        for (int i = 0; i < 44; i++) {
+            state->dvdKit.buttons |= (unsigned long long)kbd[sdl_dvd_kit_kbd_scancode_map[i]] << i;
+        }
     } else {
 
 #define KBD_STATE(btn) \
@@ -1079,7 +1151,9 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         QDict *usbhub_qdict = NULL;
         DeviceState *usbhub_dev = NULL;
 
-        bool hasInternalHub = strcmp(bound_drivers[index], DRIVER_STEEL_BATTALION) != 0;
+        bool hasInternalHub = strcmp(bound_drivers[index], DRIVER_STEEL_BATTALION) != 0
+                           && strcmp(bound_drivers[index], DRIVER_DVD_PLAYBACK_KIT) != 0;
+        bool hasFirmware = strcmp(bound_drivers[index], DRIVER_DVD_PLAYBACK_KIT) == 0;
 
         if (hasInternalHub) {
             // Create controller's internal USB hub.
@@ -1112,6 +1186,12 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         qdict_put_str(qdict, "port", tmp);
         g_free(tmp);
 
+        // Specify DVD firmware
+        if (hasFirmware) {
+            qdict_put_str(qdict, "firmware", *port_index_to_dvd_firmware_key_map[index]);
+            state->dvdKit.firmware = (char*) *port_index_to_dvd_firmware_key_map[index];
+        }
+
         // Create the device
         QemuOpts *opts = qemu_opts_from_qdict(qemu_find_opts("device"), qdict, &error_abort);
         DeviceState *dev = qdev_device_add(opts, &error_abort);
@@ -1135,8 +1215,8 @@ bool xemu_input_bind_xmu(int player_index, int expansion_slot_index,
     assert(player_index >= 0 && player_index < 4);
     assert(expansion_slot_index >= 0 && expansion_slot_index < 2);
 
-    bool hasInternalHub =
-        strcmp(bound_drivers[player_index], DRIVER_STEEL_BATTALION) != 0;
+    bool hasInternalHub = strcmp(bound_drivers[player_index], DRIVER_STEEL_BATTALION) != 0
+                       && strcmp(bound_drivers[player_index], DRIVER_DVD_PLAYBACK_KIT) != 0;
     assert(hasInternalHub);
 
     ControllerState *player = bound_controllers[player_index];
@@ -1261,11 +1341,11 @@ void xemu_input_unbind_xmu(int player_index, int expansion_slot_index)
 
 void xemu_input_rebind_xmu(int port)
 {
-    bool hasInternalHub =
-        strcmp(bound_drivers[port], DRIVER_STEEL_BATTALION) != 0;
+    bool hasInternalHub = strcmp(bound_drivers[port], DRIVER_STEEL_BATTALION) != 0
+                       && strcmp(bound_drivers[port], DRIVER_DVD_PLAYBACK_KIT) != 0;
     if (!hasInternalHub)
         return;
-        
+
     // Try to bind peripherals back to controller
     for (int i = 0; i < 2; i++) {
         enum peripheral_type peripheral_type =

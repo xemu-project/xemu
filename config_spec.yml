@@ -24,12 +24,16 @@ input:
   bindings:
     port1_driver: string
     port1: string
+    port1_dvd_firmware: string
     port2_driver: string
     port2: string
+    port2_dvd_firmware: string
     port3_driver: string
     port3: string
+    port3_dvd_firmware: string
     port4_driver: string
     port4: string
+    port4_dvd_firmware: string
   peripherals:
     port1:
       peripheral_type_0: integer
@@ -61,7 +65,7 @@ input:
     default: true
   background_input_capture: bool
   keyboard_controller_scancode_map:
-    # Scancode reference : https://github.com/libsdl-org/SDL/blob/main/include/SDL_scancode.h
+    # Scancode reference : https://github.com/libsdl-org/SDL/blob/main/include/SDL3/SDL_scancode.h
     a:
       type: integer
       default: 4 # a
@@ -137,6 +141,139 @@ input:
     rtrigger:
       type: integer
       default: 18 # w
+  keyboard_dvd_kit_scancode_map:
+    up:
+      type: integer
+      default: 26 # W
+    left:
+      type: integer
+      default: 4 # A
+    select:
+      type: integer
+      default: 40 # Return
+    right:
+      type: integer
+      default: 7 # D
+    down:
+      type: integer
+      default: 22 # S
+    display:
+      type: integer
+      default: 20 # Q
+    reverse:
+      type: integer
+      default: 29 # Z
+    play:
+      type: integer
+      default: 27 # X
+    forward:
+      type: integer
+      default: 25 # V
+    skip_down:
+      type: integer
+      default: 54 # Comma<
+    stop:
+      type: integer
+      default: 19 # P
+    pause:
+      type: integer
+      default: 6 # C
+    skip_up:
+      type: integer
+      default: 55 # Period>
+    title:
+      type: integer
+      default: 23 # T
+    info:
+      type: integer
+      default: 12 # I
+    menu:
+      type: integer
+      default: 16 # M
+    back:
+      type: integer
+      default: 42 # Backspace
+    button1:
+      type: integer
+      default: 30 # 1
+    button2:
+      type: integer
+      default: 31 # 2
+    button3:
+      type: integer
+      default: 32 # 3
+    button4:
+      type: integer
+      default: 33 # 4
+    button5:
+      type: integer
+      default: 34 # 5
+    button6:
+      type: integer
+      default: 35 # 6
+    button7:
+      type: integer
+      default: 36 # 7
+    button8:
+      type: integer
+      default: 37 # 8
+    button9:
+      type: integer
+      default: 38 # 9
+    button0:
+      type: integer
+      default: 39 # 0
+    power:
+      type: integer
+      default: 58 # F1
+    my_tv:
+      type: integer
+      default: 59 # F2
+    my_music:
+      type: integer
+      default: 60 # F3
+    my_pictures:
+      type: integer
+      default: 61 # F4
+    my_videos:
+      type: integer
+      default: 62 # F5
+    record:
+      type: integer
+      default: 63 # F6
+    start:
+      type: integer
+      default: 64 # F7
+    volume_up:
+      type: integer
+      default: 65 # F8
+    volume_down:
+      type: integer
+      default: 66 # F9
+    mute:
+      type: integer
+      default: 67 # F10
+    channel_up:
+      type: integer
+      default: 68 # F11
+    channel_down:
+      type: integer
+      default: 69 # F12
+    recorded_tv:
+      type: integer
+      default: 21 # R
+    live_tv:
+      type: integer
+      default: 15 # L
+    star:
+      type: integer
+      default: 45 # minus-
+    pound:
+      type: integer
+      default: 46 # equal=
+    clear:
+      type: integer
+      default: 49 # backslash\
   keyboard_sbc_scancode_map:
     eject:
       type: integer
