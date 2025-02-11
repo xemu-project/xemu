@@ -171,20 +171,23 @@ void MainMenuInputView::Draw()
         driver = DRIVER_S_DISPLAY_NAME;
     else if (strcmp(driver, DRIVER_STEEL_BATTALION) == 0)
         driver = DRIVER_STEEL_BATTALION_DISPLAY_NAME;
-    
+    else if (strcmp(driver, DRIVER_DVD_PLAYBACK_KIT) == 0)
+        driver = DRIVER_DVD_PLAYBACK_KIT_DISPLAY_NAME;
+
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("###InputDrivers", driver,
                           ImGuiComboFlags_NoArrowButton)) {
-        const char *available_drivers[] = { 
-            DRIVER_DUKE, 
+        const char *available_drivers[] = {
+            DRIVER_DUKE,
             DRIVER_S,
-            DRIVER_STEEL_BATTALION 
+            DRIVER_STEEL_BATTALION,
+            DRIVER_DVD_PLAYBACK_KIT
             };
-        const char *driver_display_names[] = { 
-            DRIVER_DUKE_DISPLAY_NAME, 
-            DRIVER_S_DISPLAY_NAME, 
-            DRIVER_STEEL_BATTALION_DISPLAY_NAME 
-
+        const char *driver_display_names[] = {
+            DRIVER_DUKE_DISPLAY_NAME,
+            DRIVER_S_DISPLAY_NAME,
+            DRIVER_STEEL_BATTALION_DISPLAY_NAME,
+            DRIVER_DVD_PLAYBACK_KIT_DISPLAY_NAME
             };
         bool is_selected = false;
         int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);
@@ -329,8 +332,9 @@ void MainMenuInputView::Draw()
     ImGui::SetCursorPos(pos);
 
     if (bound_state) {
-        bool hasInternalHub =
-            strcmp(bound_drivers[active], DRIVER_STEEL_BATTALION) != 0;
+        bool hasInternalHub = strcmp(bound_drivers[active], DRIVER_STEEL_BATTALION) != 0
+                           && strcmp(bound_drivers[active], DRIVER_DVD_PLAYBACK_KIT) != 0;
+        bool hasFirmware = strcmp(bound_drivers[active], DRIVER_DVD_PLAYBACK_KIT) == 0;
         if (hasInternalHub) {
             SectionTitle("Expansion Slots");
             // Begin a 2-column layout to render the expansion slots
@@ -491,6 +495,19 @@ void MainMenuInputView::Draw()
 
             ImGui::PopStyleVar(); // ItemSpacing
             ImGui::Columns(1);
+        }
+        if (hasFirmware) {
+            SectionTitle("Firmware");
+            const char *firmware_filters = ".bin Files\0*.bin\0All Files\0*.*\0";
+            const char *firmware_path = NULL;
+            if (bound_state->dvdKit.firmware == NULL)
+                firmware_path = g_strdup("");
+            else
+                firmware_path = g_strdup(bound_state->dvdKit.firmware);
+            if (FilePicker("DVD Kit Firmware", &firmware_path, firmware_filters)) {
+                xemu_save_dvd_firmware_settings(active, firmware_path);
+            }
+            g_free((void *)firmware_path);
         }
     }
 
