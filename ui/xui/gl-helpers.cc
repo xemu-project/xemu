@@ -21,6 +21,7 @@
 #include "common.hh"
 #include "data/controller_mask.png.h"
 #include "data/controller_mask_s.png.h"
+#include "data/dvd_remote_mask.png.h"
 #include "data/sb_controller_mask.png.h"
 #include "data/logo_sdf.png.h"
 #include "data/xemu_64x64.png.h"
@@ -37,7 +38,7 @@
 extern int viewport_coords[4];
 
 Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
-GLuint g_controller_duke_tex, g_controller_s_tex, g_sb_controller_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
+GLuint g_controller_duke_tex, g_controller_s_tex, g_sb_controller_tex, g_dvd_remote_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
 
 enum class ShaderType {
     Blit,
@@ -474,6 +475,8 @@ void InitCustomRendering(void)
         LoadTextureFromMemory(controller_mask_s_data, controller_mask_s_size);
     g_sb_controller_tex =
         LoadTextureFromMemory(sb_controller_mask_data, sb_controller_mask_size);
+    g_dvd_remote_tex =
+        LoadTextureFromMemory(dvd_remote_mask_data, dvd_remote_mask_size);
     g_decal_shader = NewDecalShader(ShaderType::Mask);
     controller_fbo = new Fbo(512, 512);
 
@@ -1115,6 +1118,135 @@ void RenderSteelBattalionController(float frame_x, float frame_y, uint32_t prima
     glUseProgram(0);
 }
 
+void RenderDVDRemote(float frame_x, float frame_y, uint32_t primary_color,
+                         uint32_t secondary_color, ControllerState *state)
+{
+    // Location within the controller texture of masked button locations,
+    // relative to the origin of the controller
+    const struct rect dvd_buttons[] = {
+        { 108, 248, 20, 10 }, // UP
+        {  78, 226, 20, 10 }, // LEFT
+        { 106, 225, 24, 11 }, // SELECT
+        { 139, 226, 19, 11 }, // RIGHT
+        { 109, 203, 19, 11 }, // DOWN
+        { 106, 326, 24, 11 }, // DISPLAY
+        {  74, 300, 24, 11 }, // REVERSE
+        { 106, 300, 24, 11 }, // PLAY
+        { 139, 300, 24, 11 }, // FORWARD
+        {  74, 274, 11, 11 }, // SKIP-
+        { 100, 274, 11, 11 }, // STOP
+        { 126, 274, 11, 11 }, // PAUSE
+        { 152, 274, 11, 11 }, // SKIP+
+        {  74, 248, 11, 11 }, // TITLE
+        { 152, 248, 11, 11 }, // INFO
+        {  74, 202, 11, 12 }, // MENU
+        { 152, 202, 11, 12 }, // BACK
+        {  80, 176, 11, 12 }, // 1
+        { 113, 176, 11, 12 }, // 2
+        { 145, 176, 11, 12 }, // 3
+        {  80, 154, 11, 11 }, // 4
+        { 113, 154, 11, 11 }, // 5
+        { 145, 154, 11, 11 }, // 6
+        {  80, 131, 11, 11 }, // 7
+        { 113, 131, 11, 11 }, // 8
+        { 145, 131, 11, 11 }, // 9
+        { 113, 108, 11, 11 }, // 0
+    };
+    const struct rect mce_buttons[] = {
+        { 339, 267, 16, 8 }, // UP
+        { 312, 251, 16, 8 }, // LEFT
+        { 337, 251, 21, 8 }, // SELECT -> OK
+        { 366, 251, 16, 8 }, // RIGHT
+        { 339, 235, 16, 8 }, // DOWN
+        { 340,  40, 14, 8 }, // DISPLAY -> XBOX
+        { 298, 306,  8, 8 }, // REVERSE -> REW
+        { 340, 290, 14,15 }, // PLAY
+        { 389, 306,  8, 8 }, // FORWARD -> FWD
+        { 320, 290,  8, 8 }, // SKIP- -> REPLAY
+        { 343, 313,  8, 8 }, // STOP
+        { 366, 306,  8, 8 }, // PAUSE
+        { 366, 290,  8, 8 }, // SKIP+ -> SKIP
+        { 327, 173, 11, 8 }, // TITLE -> GUIDE
+        { 385, 271,  8, 8 }, // INFO -> MORE
+        { 382, 176, 11, 8 }, // MENU -> DVD MENU
+        { 301, 271,  8, 8 }, // BACK
+        { 307, 154, 15, 8 }, // 1
+        { 340, 154, 15, 8 }, // 2
+        { 372, 154, 15, 8 }, // 3
+        { 307, 134, 15, 8 }, // 4
+        { 340, 134, 15, 8 }, // 5
+        { 372, 134, 15, 8 }, // 6
+        { 307, 115, 15, 8 }, // 7
+        { 340, 115, 15, 8 }, // 8
+        { 372, 115, 15, 8 }, // 9
+        { 340,  95, 15, 8 }, // 0
+        { 395, 342,  8, 8 }, // POWER
+        { 301, 323,  8, 8 }, // MY_TV
+        { 327, 332,  8, 8 }, // MY_MUSIC
+        { 359, 332,  8, 8 }, // MY_PICTURES
+        { 385, 323,  8, 8 }, // MY_VIDEOS
+        { 320, 306,  8, 8 }, // RECORD
+        { 337, 215, 21, 8 }, // START
+        { 298, 225, 21, 8 }, // VOL_UP
+        { 304, 206, 21, 8 }, // VOL_DOWN
+        { 337, 196, 21, 8 }, // MUTE
+        { 376, 225, 21, 8 }, // CH_UP
+        { 369, 206, 21, 8 }, // CH_DOWN
+        { 301, 176, 11, 8 }, // RECORDED_TV
+        { 356, 173, 11, 8 }, // LIVE_TV
+        { 307,  95, 15, 8 }, // STAR
+        { 372,  95, 15, 8 }, // POUND
+        { 327,  72, 11, 8 }, // CLEAR
+    };
+    const struct rect mce_enter_button =
+        { 356,  72, 11, 8 }; // ENTER
+
+    glUseProgram(g_decal_shader->prog);
+    glBindVertexArray(g_decal_shader->vao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_dvd_remote_tex);
+
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_ONE, GL_ZERO);
+
+    // Render controller texture
+    RenderDecal(g_decal_shader, frame_x + 0, frame_y + 0,
+                tex_items[obj_controller].w, tex_items[obj_controller].h,
+                tex_items[obj_controller].x, tex_items[obj_controller].y,
+                tex_items[obj_controller].w, tex_items[obj_controller].h,
+                primary_color, secondary_color, 0);
+
+    glBlendFunc(GL_ONE_MINUS_DST_ALPHA,
+                GL_ONE); // Blend with controller cutouts
+
+    // The controller has alpha cutouts where the buttons are. Draw a surface
+    // behind the buttons if they are activated
+    for (int i = 0; i < sizeof(dvd_buttons) / sizeof(dvd_buttons[0]); i++) {
+        if (state->dvdKit.buttons & (1ULL << i)) {
+            RenderDecal(g_decal_shader, frame_x + dvd_buttons[i].x,
+                        frame_y + dvd_buttons[i].y, dvd_buttons[i].w, dvd_buttons[i].h, 0,
+                        0, 1, 1, 0, 0, primary_color + 0xff);
+        }
+    }
+    for (int i = 0; i < sizeof(mce_buttons) / sizeof(mce_buttons[0]); i++) {
+        if (state->dvdKit.buttons & (1ULL << i)) {
+            RenderDecal(g_decal_shader, frame_x + mce_buttons[i].x,
+                        frame_y + mce_buttons[i].y, mce_buttons[i].w, mce_buttons[i].h, 0,
+                        0, 1, 1, 0, 0, primary_color + 0xff);
+        }
+    }
+    if (state->dvdKit.buttons & DVD_BUTTON_SELECT) {
+        RenderDecal(g_decal_shader, frame_x + mce_enter_button.x,
+                    frame_y + mce_enter_button.y, mce_enter_button.w, mce_enter_button.h, 0,
+                    0, 1, 1, 0, 0, primary_color + 0xff);
+    }
+
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Blend with controller
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
 void RenderController(float frame_x, float frame_y, uint32_t primary_color,
                       uint32_t secondary_color, ControllerState *state)
 {
@@ -1127,6 +1259,8 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
     else if (strcmp(bound_drivers[state->bound], DRIVER_DUKE) == 0)
         RenderDukeController(frame_x, frame_y, primary_color, secondary_color,
                              state);
+    else if (strcmp(bound_drivers[state->bound], DRIVER_DVD_PLAYBACK_KIT) == 0)
+        RenderDVDRemote(frame_x, frame_y, primary_color, secondary_color, state);
 }
 
 void RenderControllerPort(float frame_x, float frame_y, int i,
