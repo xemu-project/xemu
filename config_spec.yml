@@ -151,7 +151,7 @@ display:
     fullscreen_exclusive: bool
     startup_size:
       type: enum
-      values: [last_used, 640x480, 1280x720, 1280x800, 1280x960, 1920x1080, 2560x1440, 2560x1600, 2560x1920, 3840x2160]
+      values: [last_used, 640x480, 720x480, 1280x720, 1280x800, 1280x960, 1920x1080, 2560x1440, 2560x1600, 2560x1920, 3840x2160]
       default: 1280x960
     last_width:
       type: integer
