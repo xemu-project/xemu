@@ -44,6 +44,8 @@ struct McpxApuDebugVoice
     bool persist;
     bool multipass;
     bool linked;
+    uint8_t multipass_bin;
+    uint16_t multipass_dst_voice;
     int container_size, sample_size;
     unsigned int samples_per_block;
     uint32_t ebo, cbo, lbo, ba;
