@@ -525,6 +525,7 @@ void MainMenuDisplayView::Draw()
     if (ChevronCombo("Window size", &g_config.display.window.startup_size,
                      "Last Used\0"
                      "640x480\0"
+                     "720x480\0"
                      "1280x720\0"
                      "1280x800\0"
                      "1280x960\0"
