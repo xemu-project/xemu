@@ -1,0 +1,10 @@
+# = section within an expression comment
+
+##
+# @Enum:
+# == No good here
+# @one: The _one_ {and only}
+#
+# @two is undocumented
+##
+{ 'enum': 'Enum', 'data': [ 'one', 'two' ] }

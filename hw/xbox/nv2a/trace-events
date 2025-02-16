@@ -1,0 +1,32 @@
+# See docs/devel/tracing.rst for syntax documentation.
+
+# nv2a.c
+nv2a_reg_read(const char *block, uint32_t addr, unsigned int size, uint64_t val) "%s addr 0x%"PRIx32" size %d val 0x%"PRIx64
+nv2a_reg_write(const char *block, uint32_t addr, unsigned int size, uint64_t val) "%s addr 0x%"PRIx32" size %d val 0x%"PRIx64
+nv2a_irq(uint32_t pending) "%08"PRIx32
+nv2a_dma_map(uint32_t obj_address, uint32_t dma_class, uint32_t dma_target, uint32_t dma_addr, uint32_t dma_limit) "obj 0x%08"PRIx32" class 0x%08"PRIx32" target 0x%08"PRIx32" addr 0x%08"PRIx32" limit 0x%08"PRIx32
+
+# pgraph.c
+nv2a_pgraph_method(uint32_t subchannel, uint32_t graphics_class, uint32_t method, const char *name, uint32_t offset, uint32_t parameter) "%d: 0x%"PRIx32" -> 0x%04"PRIx32" %s[%"PRId32"] 0x%"PRIx32
+nv2a_pgraph_method_abbrev(uint32_t subchannel, uint32_t graphics_class, uint32_t method, const char *name, unsigned int count) "%d: 0x%"PRIx32" -> 0x%04"PRIx32" %s * %d"
+nv2a_pgraph_method_unhandled(uint32_t subchannel, uint32_t graphics_class, uint32_t method, uint32_t parameter) "%d: 0x%"PRIx32" -> 0x%04"PRIx32" 0x%"PRIx32
+nv2a_pgraph_surface_compare_mismatch(const char *field, long int a, long int b) "%20s -- %8ld vs %8ld"
+nv2a_pgraph_surface_cpu_access(uint32_t addr, uint32_t offset) "0x%08"PRIx32"+0x%"PRIx32
+nv2a_pgraph_surface_create_color(uint32_t addr, uint32_t width, uint32_t height, const char *layout, uint32_t anti_aliasing, uint32_t clip_x, uint32_t clip_width, uint32_t clip_y, uint32_t clip_height, uint32_t pitch) "Create: [COLOR @ 0x%08" PRIx32 " (%dx%d)] (%s) aa:%d, clip:x=%d,w=%d,y=%d,h=%d,p=%d"
+nv2a_pgraph_surface_create_zeta(uint32_t addr, uint32_t width, uint32_t height, const char *layout, uint32_t anti_aliasing, uint32_t clip_x, uint32_t clip_width, uint32_t clip_y, uint32_t clip_height, uint32_t pitch) " Create: [ZETA  @ 0x%08" PRIx32 " (%dx%d)] (%s) aa:%d, clip:x=%d,w=%d,y=%d,h=%d,p=%d"
+nv2a_pgraph_surface_download(const char *binding, const char *layout, uint32_t addr, uint32_t width, uint32_t height, uint32_t pitch, uint32_t bytes_per_pixel) "[GPU->RAM] %s (%s) surface @ 0x%08" PRIx32 " (w=%d,h=%d,p=%d,bpp=%d)"
+nv2a_pgraph_surface_evict_overlapping(uint32_t addr, uint32_t width, uint32_t height, uint32_t pitch) "Evicting overlapping surface @ 0x%08" PRIx32 " (%dx%d,p=%d)"
+nv2a_pgraph_surface_evict_reason(const char *reason, uint32_t addr) "Evicting %s surface @ 0x%08" PRIx32
+nv2a_pgraph_surface_hit_color(uint32_t addr, uint32_t width, uint32_t height, const char *layout, uint32_t anti_aliasing, uint32_t clip_x, uint32_t clip_width, uint32_t clip_y, uint32_t clip_height, uint32_t pitch) "   Hit: [COLOR @ 0x%08" PRIx32 " (%dx%d)] (%s) aa:%d, clip:x=%d,w=%d,y=%d,h=%d,p=%d"
+nv2a_pgraph_surface_hit_zeta(uint32_t addr, uint32_t width, uint32_t height, const char *layout, uint32_t anti_aliasing, uint32_t clip_x, uint32_t clip_width, uint32_t clip_y, uint32_t clip_height, uint32_t pitch) "    Hit: [ZETA  @ 0x%08" PRIx32 " (%dx%d)] (%s) aa:%d, clip:x=%d,w=%d,y=%d,h=%d,p=%d"
+nv2a_pgraph_surface_invalidated(uint32_t addr) "0x%08"PRIx32
+nv2a_pgraph_surface_match_color(uint32_t addr, uint32_t width, uint32_t height, const char *layout, uint32_t anti_aliasing, uint32_t clip_x, uint32_t clip_width, uint32_t clip_y, uint32_t clip_height, uint32_t pitch) " Match: [COLOR @ 0x%08" PRIx32 " (%dx%d)] (%s) aa:%d clip:x=%d,w=%d,y=%d,h=%d,p=%d"
+nv2a_pgraph_surface_match_zeta(uint32_t addr, uint32_t width, uint32_t height, const char *layout, uint32_t anti_aliasing, uint32_t clip_x, uint32_t clip_width, uint32_t clip_y, uint32_t clip_height, uint32_t pitch) "  Match: [ZETA  @ 0x%08" PRIx32 " (%dx%d)] (%s) aa:%d clip:x=%d,w=%d,y=%d,h=%d,p=%d"
+nv2a_pgraph_surface_migrate_type(const char *new_type) "Migrating surface type to %s"
+nv2a_pgraph_surface_render_to_texture(uint32_t addr, uint32_t width, uint32_t height) "Rendering surface 0x%08" PRIx32 " to texture (%dx%d)"
+nv2a_pgraph_surface_target(const char *binding, uint32_t addr, const char *layout, uint32_t anti_aliasing, uint32_t clip_x, uint32_t clip_width, uint32_t clip_y, uint32_t clip_height) "      Target: [%-5s @ 0x%08" PRIx32 "] (%s) aa:%d clip:x=%d,w=%d,y=%d,h=%d"
+nv2a_pgraph_surface_texture_compat_failed(int32_t surface_fmt, int32_t texture_fmt) "Surface->Texture compat failed: %x to %x"
+nv2a_pgraph_surface_upload(const char *binding, const char *layout, uint32_t addr, uint32_t width, uint32_t height, uint32_t pitch, uint32_t bytes_per_pixel) "[RAM->GPU] %s (%s) surface @ 0x%08" PRIx32 " (w=%d,h=%d,p=%d,bpp=%d)"
+nv2a_pgraph_flip_stall(void) ""
+nv2a_pgraph_flip_increment_write(uint32_t write3d_old, uint32_t write3d_new) "0x%"PRIx32" -> 0x%"PRIx32
+

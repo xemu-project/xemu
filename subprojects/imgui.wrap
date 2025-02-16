@@ -1,0 +1,4 @@
+[wrap-git]
+url=https://github.com/xemu-project/imgui
+revision=80cbdab5ecd70db79917c448c333163995e605a5
+depth=1
