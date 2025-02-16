@@ -22,6 +22,8 @@
 #include "font-manager.hh"
 #include "viewport-manager.hh"
 
+#define MAX_VOICES 256
+
 DebugApuWindow::DebugApuWindow() : m_is_open(false)
 {
 }
@@ -60,8 +62,7 @@ void DebugApuWindow::Draw()
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2*g_viewport_mgr.m_scale, 2*g_viewport_mgr.m_scale));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4*g_viewport_mgr.m_scale, 4*g_viewport_mgr.m_scale));
-    for (int i = 0; i < 256; i++)
-    {
+    for (int i = 0; i < MAX_VOICES; i++) {
         if (i % 16) {
             ImGui::SameLine();
         }
@@ -132,8 +133,15 @@ void DebugApuWindow::Draw()
 
         assert(voice->container_size < 4);
         assert(voice->sample_size < 4);
-        ImGui::Text("Container Size: %s, Sample Size: %s, Samples per Block: %d",
-            cs[voice->container_size], ss[voice->sample_size], voice->samples_per_block);
+        const char *spb_or_bin_label = "Samples per Block";
+        unsigned int spb_or_bin = voice->samples_per_block;
+        if (voice->multipass) {
+            spb_or_bin_label = "Multipass Bin";
+            spb_or_bin = voice->multipass_bin;
+        }
+        ImGui::Text("Container Size: %s, Sample Size: %s, %s: %d",
+                    cs[voice->container_size], ss[voice->sample_size],
+                    spb_or_bin_label, spb_or_bin);
         ImGui::Text("Rate: %f (%d Hz)", voice->rate, (int)(48000.0/voice->rate));
         ImGui::Text("EBO=%d CBO=%d LBO=%d BA=%x",
             voice->ebo, voice->cbo, voice->lbo, voice->ba);
@@ -153,6 +161,30 @@ void DebugApuWindow::Draw()
             }
             ImGui::Text("%-17s", buf);
         }
+
+        int mon = mcpx_apu_debug_get_monitor();
+        if (mon == MCPX_APU_DEBUG_MON_VP) {
+            if (voice->multipass_dst_voice != 0xFFFF) {
+                ImGui::Text("Multipass Dest Voice: 0x%02x",
+                            voice->multipass_dst_voice);
+            }
+            if (voice->multipass) {
+                ImGui::Text("Multipass Src Voices:");
+                int n = 0;
+
+                for (int i = 0; i < MAX_VOICES; i++) {
+                    if (dbg->vp.v[i].multipass_dst_voice == voice_info) {
+                        if (n > 0 && ((n & 7) == 0)) {
+                            ImGui::Text("                     ");
+                        }
+                        ImGui::SameLine();
+                        ImGui::Text("0x%02x", i);
+                        n++;
+                    }
+                }
+            }
+        }
+
         ImGui::PopFont();
         ImGui::EndTooltip();
     }
