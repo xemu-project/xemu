@@ -286,9 +286,7 @@ void xemu_hud_render(void)
             g_scene_mgr.PushScene(g_main_menu);
         } else if (ImGui::IsKeyPressed(ImGuiKey_F2)) {
             g_scene_mgr.PushScene(g_popup_menu);
-        } else if (menu_button ||
-                   (ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
-                    !ImGui::IsAnyItemFocused() && !ImGui::IsAnyItemHovered())) {
+        } else if (menu_button) {
             g_scene_mgr.PushScene(g_popup_menu);
         }
         
