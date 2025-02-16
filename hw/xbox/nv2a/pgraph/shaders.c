@@ -91,10 +91,14 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
     }
 
     /* vertex program stuff */
-    state.vertex_program = vertex_program,
+    state.vertex_program = vertex_program;
     state.z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
                           NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
 
+    state.psh.z_perspective = state.z_perspective;
+    state.texture_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3) &
+                                NV_PGRAPH_CONTROL_3_TEXTURE_PERSPECTIVE_ENABLE;
+    state.psh.texture_perspective = state.texture_perspective;
     state.point_params_enable = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
                                          NV_PGRAPH_CSV0_D_POINTPARAMSENABLE);
     state.point_size =
@@ -116,6 +120,13 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
                                     NV_PGRAPH_CONTROL_3_SHADEMODE) ==
                            NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
     state.psh.smooth_shading = state.smooth_shading;
+
+    state.psh.clipping = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_ZCOMPRESSOCCLUDE),
+                                        NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
+                               NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CULL;
+
+    state.psh.near_far = pgraph_reg_r(pg, NV_PGRAPH_ZCOMPRESSOCCLUDE) & 
+                                  NV_PGRAPH_ZCOMPRESSOCCLUDE_CULL_NEAR_FAR_EN;
 
     state.program_length = 0;
 

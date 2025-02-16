@@ -33,6 +33,7 @@
 #include <assert.h>
 
 #include "hw/xbox/nv2a/pgraph/vsh.h"
+#include "hw/xbox/nv2a/pgraph/shaders.h"
 #include "common.h"
 #include "vsh-prog.h"
 
@@ -795,12 +796,13 @@ static const char* vsh_header =
     "}\n";
 
 void pgraph_gen_vsh_prog_glsl(uint16_t version,
-                   const uint32_t *tokens,
-                   unsigned int length,
-                   bool z_perspective,
-                   bool vulkan,
+                   const ShaderState *state,
                    MString *header, MString *body)
 {
+    const uint32_t *tokens = (uint32_t *)state->program_data;
+    unsigned int length = state->program_length;
+    bool texture = state->texture_perspective;
+    bool vulkan = state->vulkan;
 
     mstring_append(header, vsh_header);
 
@@ -830,12 +832,11 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
      * interpolation manually. OpenGL can't, since we give it a W of 1 to work
      * around the perspective divide */
     mstring_append(body,
-        "  if (oPos.w == 0.0 || isinf(oPos.w)) {\n"
-        "    vtx_inv_w = 1.0;\n"
+        "  if (oPos.w < 0.0) {\n"
+        "    oPos.w = clamp(oPos.w, -1.884467e+019, -5.421011e-20);\n"
         "  } else {\n"
-        "    vtx_inv_w = 1.0 / oPos.w;\n"
+        "    oPos.w = clamp(oPos.w, 5.421011e-20, 1.884467e+019);\n"
         "  }\n"
-        "  vtx_inv_w_flat = vtx_inv_w;\n"
     );
 
     mstring_append(body,
@@ -854,21 +855,17 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
                              "/ surfaceSize.y;\n");
     }
 
-    if (z_perspective) {
-        mstring_append(body, "  oPos.z = oPos.w;\n");
-    }
-
     mstring_append(body,
-        "  if (clipRange.y != clipRange.x) {\n");
-    if (vulkan) {
-        mstring_append(body, "      oPos.z /= clipRange.y;\n");
-    } else {
-        mstring_append(body,
-                       "    oPos.z = (oPos.z - clipRange.x)/(0.5*(clipRange.y "
-                       "- clipRange.x)) - 1;\n");
-    }
-    mstring_append(body,
+        "  depthBuf = oPos.w;\n"
+        "  if (clipRange.y != clipRange.x) {\n"
+        "    oPos.z /= clipRange.y;\n"  
         "  }\n"
+    );    
+
+    if (texture) {
+        mstring_append(body, "  oPos.xyz *= oPos.w;\n");
+    } else {   
+        mstring_append(body,
 
         /* Correct for the perspective divide */
         "  if (oPos.w < 0.0) {\n"
@@ -880,6 +877,6 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
              * can't multiply by W because it could be meaningless here */
         "    oPos.w = 1.0;\n"
         "  }\n"
-    );
-
+        );
+    }
 }
