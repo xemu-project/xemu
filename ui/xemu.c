@@ -731,6 +731,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
 
     const int res_table[][2] = {
         {640,  480},
+        {720,  480},
         {1280, 720},
         {1280, 800},
         {1280, 960},
