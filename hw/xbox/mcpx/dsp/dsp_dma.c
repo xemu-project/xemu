@@ -21,31 +21,8 @@
 #include "qemu/osdep.h"
 #include "qemu/compiler.h"
 #include "dsp_dma.h"
+#include "dsp_dma_regs.h"
 #include "dsp_state.h"
-
-
-#define DMA_CONFIGURATION_AUTOSTART (1 << 0)
-#define DMA_CONFIGURATION_AUTOREADY (1 << 1)
-#define DMA_CONFIGURATION_IOC_CLEAR (1 << 2)
-#define DMA_CONFIGURATION_EOL_CLEAR (1 << 3)
-#define DMA_CONFIGURATION_ERR_CLEAR (1 << 4)
-
-#define DMA_CONTROL_ACTION 0x7
-#define DMA_CONTROL_ACTION_NOP 0
-#define DMA_CONTROL_ACTION_START 1
-#define DMA_CONTROL_ACTION_STOP 2
-#define DMA_CONTROL_ACTION_FREEZE 3
-#define DMA_CONTROL_ACTION_UNFREEZE 4
-#define DMA_CONTROL_ACTION_ABORT 5
-#define DMA_CONTROL_FROZEN (1 << 3)
-#define DMA_CONTROL_RUNNING (1 << 4)
-#define DMA_CONTROL_STOPPED (1 << 5)
-
-#define NODE_POINTER_VAL 0x3fff
-#define NODE_POINTER_EOL (1 << 14)
-
-#define NODE_CONTROL_DIRECTION (1 << 1)
-
 
 // #define DEBUG
 #ifdef DEBUG
