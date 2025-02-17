@@ -18,12 +18,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <assert.h>
-
-#include <stddef.h>
+#include "qemu/osdep.h"
 #include "qemu/compiler.h"
 #include "dsp_dma.h"
 #include "dsp_state.h"
@@ -97,8 +92,6 @@ const char *space_names[] = {
 };
 
 #endif
-
-#define MIN(a,b) (((a)<(b))?(a):(b))
 
 static void scratch_circular_copy(
     DSPDMAState *s,
