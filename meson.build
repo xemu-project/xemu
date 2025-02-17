@@ -3746,6 +3746,7 @@ if have_system
     'hw/remote',
     'hw/xbox/nv2a',
     'hw/xbox/mcpx',
+    'hw/xbox/mcpx/dsp',
     'hw/xbox',
   ]
 endif

@@ -2571,7 +2571,7 @@ const VMStateDescription vmstate_vp_dsp_core_state = {
         VMSTATE_UINT32(num_inst, dsp_core_t),
         VMSTATE_UINT32(cur_inst_len, dsp_core_t),
         VMSTATE_UINT32(cur_inst, dsp_core_t),
-        VMSTATE_BOOL(executing_for_disasm, dsp_core_t),
+        VMSTATE_UNUSED(1),
         VMSTATE_UINT32(disasm_memory_ptr, dsp_core_t),
         VMSTATE_BOOL(exception_debugging, dsp_core_t),
         VMSTATE_UINT32(disasm_prev_inst_pc, dsp_core_t),
