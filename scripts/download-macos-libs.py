@@ -18,7 +18,7 @@ MIRROR = 'http://nue.de.packages.macports.org/macports/packages'
 # FIXME: Support multiple mirrors
 
 class LibInstaller:
-	DARWIN_TARGET_X64="darwin_17" # macOS 10.13
+	DARWIN_TARGET_X64="darwin_21" # macOS 12.x
 	DARWIN_TARGET_ARM64="darwin_21" # macOS 12.x
 
 	def __init__(self, arch):
@@ -135,7 +135,7 @@ class LibInstaller:
 			assert extracted_path.startswith(self._extract_path), f'tarball has a global file: {fname}'
 
 		print(f'    [*] Extracting to {self._extract_path}')
-		tb.extractall(self._extract_path, numeric_owner=True)
+		subprocess.check_call(["tar", "--numeric-owner", "-C", self._extract_path, "-xf", dst_pkg_filename])
 
 		for fpath in tb.getnames():
 			# FIXME: Symlinks
@@ -148,7 +148,7 @@ class LibInstaller:
 					if l.strip().startswith('prefix'):
 						new_prefix = f'prefix={self._extract_path}/opt/local\n'
 						if pkg_name.startswith('openssl'): # FIXME
-							new_prefix = f'prefix={self._extract_path}/opt/local/libexec/openssl11\n'
+							new_prefix = f'prefix={self._extract_path}/opt/local/libexec/openssl3\n'
 						lines[i] = new_prefix
 						break
 				with open(extracted_path, 'w') as f:
@@ -185,7 +185,7 @@ def main():
 		'libsamplerate',
 		'libpixman',
 		'libepoxy',
-		'openssl11',
+		'openssl3',
 		'libpcap',
 		'libslirp'])
 
