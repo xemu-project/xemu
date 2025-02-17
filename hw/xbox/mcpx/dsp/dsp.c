@@ -24,16 +24,9 @@
  */
 
 #include "qemu/osdep.h"
-
-#include <stdlib.h>
-#include <ctype.h>
-#include <string.h>
-#include <assert.h>
-
 #include "dsp_cpu.h"
 #include "dsp_dma.h"
 #include "dsp_state.h"
-
 #include "dsp.h"
 #include "debug.h"
 

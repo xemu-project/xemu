@@ -24,13 +24,7 @@
  */
 
 #include "qemu/osdep.h"
-
-#include <stdbool.h>
-#include <string.h>
-#include <assert.h>
-
 #include "qemu/bswap.h"
-
 #include "dsp_cpu.h"
 #include "debug.h"
 
