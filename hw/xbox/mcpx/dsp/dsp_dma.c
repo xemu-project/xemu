@@ -24,14 +24,8 @@
 #include "dsp_dma_regs.h"
 #include "dsp_state.h"
 
-// #define DEBUG
 #ifdef DEBUG
-# define DPRINTF(s, ...) printf(s, ## __VA_ARGS__)
-#else
-# define DPRINTF(s, ...) do { } while (0)
-#endif
 
-#ifdef DEBUG
 const char *buffer_names[] = {
     "fifo0",            /* 0x0 */
     "fifo1",            /* 0x1 */
@@ -111,8 +105,6 @@ static void dsp_dma_run(DSPDMAState *s)
         || (s->control & DMA_CONTROL_FROZEN)) {
         return;
     }
-
-    // DSPState *dsp = container_of(s, DSPState, dma);
 
     while (!(s->next_block & NODE_POINTER_EOL)) {
         uint32_t addr = s->next_block & NODE_POINTER_VAL;
