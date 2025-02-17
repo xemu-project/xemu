@@ -35,6 +35,7 @@
 #include "dsp_state.h"
 
 #include "dsp.h"
+#include "debug.h"
 
 /* Defines */
 #define BITMASK(x)  ((1<<(x))-1)
@@ -42,18 +43,6 @@
 #define INTERRUPT_ABORT_FRAME (1 << 0)
 #define INTERRUPT_START_FRAME (1 << 1)
 #define INTERRUPT_DMA_EOL (1 << 7)
-
-#ifndef DEBUG_DSP
-#define DEBUG_DSP 0
-#endif
-
-#if DEBUG_DSP
-#define DPRINTF(fmt, ...) \
-    do { fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
-#else
-#define DPRINTF(fmt, ...) \
-    do { } while (0)
-#endif
 
 static uint32_t read_peripheral(dsp_core_t* core, uint32_t address);
 static void write_peripheral(dsp_core_t* core, uint32_t address, uint32_t value);
