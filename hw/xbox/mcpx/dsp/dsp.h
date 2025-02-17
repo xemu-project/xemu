@@ -36,7 +36,6 @@ typedef void (*dsp_scratch_rw_func)(
 typedef void (*dsp_fifo_rw_func)(
     void *opaque, uint8_t *ptr, unsigned int index, size_t len, bool dir);
 
-/* Dsp commands */
 DSPState *dsp_init(void *rw_opaque,
                    dsp_scratch_rw_func scratch_rw,
                    dsp_fifo_rw_func fifo_rw);
@@ -49,16 +48,14 @@ void dsp_run(DSPState* dsp, int cycles);
 void dsp_bootstrap(DSPState* dsp);
 void dsp_start_frame(DSPState* dsp);
 
-
-/* Dsp Debugger commands */
 uint32_t dsp_read_memory(DSPState* dsp, char space, uint32_t addr);
 void dsp_write_memory(DSPState* dsp, char space, uint32_t address, uint32_t value);
-uint32_t dsp_disasm_memory(DSPState* dsp, uint32_t dsp_memdump_addr, uint32_t dsp_memdump_upper, char space);
-uint32_t dsp_disasm_address(DSPState* dsp, FILE *out, uint32_t lowerAdr, uint32_t UpperAdr);
+
 void dsp_info(DSPState* dsp);
 void dsp_print_registers(DSPState* dsp);
 int dsp_get_register_address(DSPState* dsp, const char *arg, uint32_t **addr, uint32_t *mask);
+uint32_t dsp_disasm_memory(DSPState* dsp, uint32_t dsp_memdump_addr, uint32_t dsp_memdump_upper, char space);
+uint32_t dsp_disasm_address(DSPState* dsp, FILE *out, uint32_t lowerAdr, uint32_t UpperAdr);
 bool dsp_disasm_set_register(DSPState* dsp, const char *arg, uint32_t value);
-
 
 #endif /* DSP_H */
