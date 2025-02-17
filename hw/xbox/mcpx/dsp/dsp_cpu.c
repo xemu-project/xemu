@@ -595,25 +595,16 @@ static void disasm_reg_compare(dsp_core_t* dsp)
 
 static const char* disasm_get_instruction_text(dsp_core_t* dsp)
 {
-    // const int len = sizeof(dsp->disasm_str_instr);
-    // uint64_t count, cycles;
-    // uint16_t cycle_diff;
-    // float percentage;
-    // int offset;
+    const int len = sizeof(dsp->disasm_str_instr);
 
     if (dsp->disasm_is_looping) {
         dsp->disasm_str_instr2[0] = 0;
     }
-    // if (dsp->disasm_cur_inst_len == 1) {
-    //     offset = sprintf(dsp->disasm_str_instr2, "p:%04x  %06x         (%02d cyc)  %-*s\n", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, dsp->instr_cycle, len, dsp->disasm_str_instr);
-    // } else {
-    //     offset = sprintf(dsp->disasm_str_instr2, "p:%04x  %06x %06x  (%02d cyc)  %-*s\n", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, read_memory_p(dsp, dsp->disasm_prev_inst_pc + 1), dsp->instr_cycle, len, dsp->disasm_str_instr);
-    // }
-    // if (offset > 2 && Profile_DspAddressData(dsp->disasm_prev_inst_pc, &percentage, &count, &cycles, &cycle_diff)) {
-    //     offset -= 2;
-    //     sprintf(str_instr2+offset, "%5.2f%% (%"PRId64", %"PRId64", %d)\n",
-    //             percentage, count, cycles, cycle_diff);
-    // }
+    if (dsp->disasm_cur_inst_len == 1) {
+        snprintf(dsp->disasm_str_instr2, sizeof(dsp->disasm_str_instr2), "p:%04x  %06x         (%02d cyc)  %-*s\n", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, dsp->instr_cycle, len, dsp->disasm_str_instr);
+    } else {
+        snprintf(dsp->disasm_str_instr2, sizeof(dsp->disasm_str_instr2), "p:%04x  %06x %06x  (%02d cyc)  %-*s\n", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, read_memory_p(dsp, dsp->disasm_prev_inst_pc + 1), dsp->instr_cycle, len, dsp->disasm_str_instr);
+    }
     return dsp->disasm_str_instr2;
 }
 
