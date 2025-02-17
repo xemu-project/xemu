@@ -1439,5 +1439,3 @@ static uint32_t dsp_signextend(int bits, uint32_t v) {
     assert(shift > 0);
     return (uint32_t)(((int32_t)v << shift) >> shift);
 }
-
-
