@@ -41,19 +41,6 @@
 #define BITMASK(x)  ((1<<(x))-1)
 
 /**
- * Disassemble DSP code between given addresses, return next PC address
- */
-uint32_t dsp_disasm_address(DSPState* dsp, FILE *out, uint32_t lowerAdr, uint32_t UpperAdr)
-{
-    uint32_t dsp_pc;
-
-    for (dsp_pc=lowerAdr; dsp_pc<=UpperAdr; dsp_pc++) {
-        dsp_pc += dsp56k_execute_one_disasm_instruction(&dsp->core, out, dsp_pc);
-    }
-    return dsp_pc;
-}
-
-/**
  * Output memory values between given addresses in given DSP address space.
  * Return next DSP address value.
  */
