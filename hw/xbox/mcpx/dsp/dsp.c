@@ -202,7 +202,7 @@ void dsp_bootstrap(DSPState* dsp)
         (uint8_t*)dsp->core.pram, 0, 0x800*4, false);
     for (int i = 0; i < 0x800; i++) {
         if (dsp->core.pram[i] & 0xff000000) {
-            DPRINTF(stderr, "Bootstrap %04x: %08x\n", i, dsp->core.pram[i]);
+            DPRINTF("Bootstrap %04x: %08x\n", i, dsp->core.pram[i]);
             dsp->core.pram[i] &= 0x00ffffff;
         }
     }
