@@ -27,6 +27,7 @@
 #include "qemu/bswap.h"
 #include "dsp_cpu.h"
 #include "debug.h"
+#include "trace.h"
 
 #define BITMASK(x)  ((1<<(x))-1)
 
@@ -583,21 +584,21 @@ static void disasm_reg_compare(dsp_core_t* dsp)
 
 static const char* disasm_get_instruction_text(dsp_core_t* dsp)
 {
-    const int len = sizeof(dsp->disasm_str_instr);
-
     if (dsp->disasm_is_looping) {
         dsp->disasm_str_instr2[0] = 0;
     }
     if (dsp->disasm_cur_inst_len == 1) {
-        snprintf(dsp->disasm_str_instr2, sizeof(dsp->disasm_str_instr2), "p:%04x  %06x         (%02d cyc)  %-*s\n", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, dsp->instr_cycle, len, dsp->disasm_str_instr);
+        snprintf(dsp->disasm_str_instr2, sizeof(dsp->disasm_str_instr2), "p:%04x  %06x         (%02d cyc)  %s", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, dsp->instr_cycle, dsp->disasm_str_instr);
     } else {
-        snprintf(dsp->disasm_str_instr2, sizeof(dsp->disasm_str_instr2), "p:%04x  %06x %06x  (%02d cyc)  %-*s\n", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, read_memory_p(dsp, dsp->disasm_prev_inst_pc + 1), dsp->instr_cycle, len, dsp->disasm_str_instr);
+        snprintf(dsp->disasm_str_instr2, sizeof(dsp->disasm_str_instr2), "p:%04x  %06x %06x  (%02d cyc)  %s", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, read_memory_p(dsp, dsp->disasm_prev_inst_pc + 1), dsp->instr_cycle, dsp->disasm_str_instr);
     }
     return dsp->disasm_str_instr2;
 }
 
 void dsp56k_execute_instruction(dsp_core_t* dsp)
 {
+    trace_dsp56k_execute_instruction(dsp->is_gp, dsp->pc);
+
     uint32_t disasm_return = 0;
     dsp->disasm_memory_ptr = 0;
 
@@ -608,11 +609,17 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
     dsp->cur_inst_len = 1;
     dsp->instr_cycle = 2;
 
+    bool tracing = TRACE_DSP_DISASM || trace_event_get_state(TRACE_DSP56K_EXECUTE_INSTRUCTION_DISASM);
+
     /* Disasm current instruction ? (trace mode only) */
-    if (TRACE_DSP_DISASM) {
+    if (tracing) {
         disasm_return = disasm_instruction(dsp, DSP_TRACE_MODE);
         if (disasm_return) {
-            DPRINTF("%s", disasm_get_instruction_text(dsp));
+            const char *text = disasm_get_instruction_text(dsp);
+            trace_dsp56k_execute_instruction_disasm(text);
+            if (TRACE_DSP_DISASM) {
+                DPRINTF("%s\n", text);
+            }
             if (TRACE_DSP_DISASM_REG) {
                 disasm_reg_save(dsp);
             }
@@ -637,7 +644,7 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
     }
 
     /* Disasm current instruction ? (trace mode only) */
-    if (TRACE_DSP_DISASM && disasm_return) {
+    if (tracing && disasm_return) {
         if (TRACE_DSP_DISASM_REG) {
             disasm_reg_compare(dsp);
         }

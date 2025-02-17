@@ -29,6 +29,7 @@
 #include "dsp_state.h"
 #include "dsp.h"
 #include "debug.h"
+#include "trace.h"
 
 /* Defines */
 #define BITMASK(x)  ((1<<(x))-1)
@@ -76,8 +77,6 @@ void dsp_destroy(DSPState* dsp)
 static uint32_t read_peripheral(dsp_core_t* core, uint32_t address) {
     DSPState* dsp = container_of(core, DSPState, core);
 
-    DPRINTF("read_peripheral 0x%06x", address);
-
     uint32_t v = 0xababa;
     switch(address) {
     case 0xFFFFB3:
@@ -103,14 +102,12 @@ static uint32_t read_peripheral(dsp_core_t* core, uint32_t address) {
         break;
     }
 
-    DPRINTF(" -> 0x%06x\n", v);
+    trace_dsp_read_peripheral(address, v);
     return v;
 }
 
 static void write_peripheral(dsp_core_t* core, uint32_t address, uint32_t value) {
     DSPState* dsp = container_of(core, DSPState, core);
-
-    DPRINTF("write_peripheral [0x%06x] = 0x%06x\n", address, value);
 
     switch(address) {
     case 0xFFFFC4:
@@ -137,6 +134,8 @@ static void write_peripheral(dsp_core_t* core, uint32_t address, uint32_t value)
         dsp_dma_write(&dsp->dma, DMA_CONFIGURATION, value);
         break;
     }
+
+    trace_dsp_write_peripheral(address, value);
 }
 
 
