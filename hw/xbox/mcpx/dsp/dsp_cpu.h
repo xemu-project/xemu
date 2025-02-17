@@ -101,10 +101,6 @@ struct dsp_core_s {
     /* Current instruction */
     uint32_t cur_inst;
 
-    /* DSP is in disasm mode ? */
-    /* If yes, stack overflow, underflow and illegal instructions messages are not displayed */
-    bool executing_for_disasm;
-
     char str_disasm_memory[2][50];     /* Buffer for memory change text in disasm mode */
     uint32_t disasm_memory_ptr;        /* Pointer for memory change in disasm mode */
 
@@ -142,7 +138,6 @@ struct dsp_core_s {
 /* Functions */
 void dsp56k_reset_cpu(dsp_core_t* dsp);		/* Set dsp_core to use */
 void dsp56k_execute_instruction(dsp_core_t* dsp);	/* Execute 1 instruction */
-uint16_t dsp56k_execute_one_disasm_instruction(dsp_core_t* dsp, FILE *out, uint32_t pc);	/* Execute 1 instruction in disasm mode */
 
 uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address);
 void dsp56k_write_memory(dsp_core_t* dsp, int space, uint32_t address, uint32_t value);
