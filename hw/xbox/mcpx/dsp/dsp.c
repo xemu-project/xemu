@@ -43,9 +43,11 @@
 #define INTERRUPT_START_FRAME (1 << 1)
 #define INTERRUPT_DMA_EOL (1 << 7)
 
-// #define DEBUG_DSP
+#ifndef DEBUG_DSP
+#define DEBUG_DSP 0
+#endif
 
-#ifdef DEBUG_DSP
+#if DEBUG_DSP
 #define DPRINTF(fmt, ...) \
     do { fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
 #else
