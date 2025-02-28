@@ -154,6 +154,7 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     }
     binding->surface_size_loc = glGetUniformLocation(binding->gl_program, "surfaceSize");
     binding->clip_range_loc = glGetUniformLocation(binding->gl_program, "clipRange");
+    binding->depth_offset_loc = glGetUniformLocation(binding->gl_program, "depthOffset");
     binding->fog_color_loc = glGetUniformLocation(binding->gl_program, "fogColor");
     binding->fog_param_loc = glGetUniformLocation(binding->gl_program, "fogParam");
 
@@ -886,9 +887,34 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         uint32_t v[2];
         v[0] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
         v[1] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMAX);
-        float zclip_min = *(float*)&v[0] / zmax * 2.0 - 1.0;
-        float zclip_max = *(float*)&v[1] / zmax * 2.0 - 1.0;
+        float zclip_min = *(float *)&v[0];
+        float zclip_max = *(float *)&v[1];
         glUniform4f(binding->clip_range_loc, 0, zmax, zclip_min, zclip_max);
+    }
+
+    if (binding->depth_offset_loc != -1) {
+        float zbias = 0.0f;
+
+        if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
+            uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
+            zbias = *(float *)&zbias_u32;
+
+            if (pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR) != 0 &&
+                (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                 NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE)) {
+                /* TODO: emulate zfactor when z_perspective true, i.e.
+                 * w-buffering. Perhaps calculate an additional offset based on
+                 * triangle orientation in geometry shader and pass the result
+                 * to fragment shader and add it to gl_FragDepth as well.
+                 */
+                NV2A_UNIMPLEMENTED("NV_PGRAPH_ZOFFSETFACTOR for w-buffering");
+            }
+        }
+
+        glUniform1f(binding->depth_offset_loc, zbias);
     }
 
     /* Clipping regions */
@@ -956,6 +982,7 @@ static bool test_shaders_dirty(PGRAPHState *pg)
         CR_1(NV_PGRAPH_CSV1_B) \
         CR_1(NV_PGRAPH_SETUPRASTER) \
         CR_1(NV_PGRAPH_SHADERPROG) \
+        CR_1(NV_PGRAPH_ZCOMPRESSOCCLUDE) \
         CR_8(NV_PGRAPH_COMBINECOLORI0) \
         CR_8(NV_PGRAPH_COMBINECOLORO0) \
         CR_8(NV_PGRAPH_COMBINEALPHAI0) \

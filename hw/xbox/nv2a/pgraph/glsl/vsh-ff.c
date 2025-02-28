@@ -422,12 +422,11 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
     mstring_append(body,
     "   oPos = invViewport * (tPosition * compositeMat);\n"
+    "   oPos.w = (2.0f * step(0.0f, oPos.w) - 1.0f) * clamp(abs(oPos.w), 5.421011e-20, 1.8446744e19);\n"
     );
 
     if (state->vulkan) {
         mstring_append(body, "   oPos.y *= -1;\n");
-    } else {
-        mstring_append(body, "   oPos.z = oPos.z * 2.0 - oPos.w;\n");
     }
 
     /* FIXME: Testing */
@@ -445,14 +444,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         mstring_append_fmt(body, "  oPts.x = %f * %d;\n", state->point_size,
                            state->surface_scale_factor);
     }
-
-    mstring_append(body,
-                   "  if (oPos.w == 0.0 || isinf(oPos.w)) {\n"
-                   "    vtx_inv_w = 1.0;\n"
-                   "  } else {\n"
-                   "    vtx_inv_w = 1.0 / oPos.w;\n"
-                   "  }\n"
-                   "  vtx_inv_w_flat = vtx_inv_w;\n");
 }
 
 static void append_skinning_code(MString* str, bool mix,
