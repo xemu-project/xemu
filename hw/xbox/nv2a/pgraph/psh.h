@@ -85,6 +85,8 @@ typedef struct PshState {
     bool window_clip_exclusive;
 
     bool smooth_shading;
+    bool depth_clipping;
+    bool z_perspective;
 } PshState;
 
 #endif
