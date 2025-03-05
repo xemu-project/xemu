@@ -743,7 +743,7 @@ static MString* psh_convert(struct PixelShader *ps)
                            "layout(location = 0) out vec4 fragColor;\n");
     }
 
-    mstring_append_fmt(preflight, "%sfloat alphaRef;\n"
+    mstring_append_fmt(preflight, "%sint alphaRef;\n"
                                   "%svec4  fogColor;\n"
                                   "%sivec4 clipRegion[8];\n",
                                   u, u, u);
@@ -1190,7 +1190,9 @@ static MString* psh_convert(struct PixelShader *ps)
                 assert(false);
                 break;
             }
-            mstring_append_fmt(ps->code, "if (!(fragColor.a %s alphaRef)) discard;\n",
+            mstring_append_fmt(ps->code,
+                               "int fragAlpha = int(round(fragColor.a * 255.0));\n"
+                               "if (!(fragAlpha %s alphaRef)) discard;\n",
                                alpha_op);
         }
     }
