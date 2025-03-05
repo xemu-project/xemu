@@ -180,7 +180,7 @@ jobs:
           build_param:
           artifact_name: xemu-ubuntu-x86_64-release
           artifact_filename: xemu-ubuntu-x86_64-release.tgz
-          runs-on: ubuntu-22.04
+          runs-on: ubuntu-24.04
         - arch: aarch64
           configuration: Debug
           build_param: --debug
