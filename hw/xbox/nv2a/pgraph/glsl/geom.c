@@ -27,7 +27,8 @@ MString *pgraph_gen_geom_glsl(enum ShaderPolygonMode polygon_front_mode,
                               enum ShaderPolygonMode polygon_back_mode,
                               enum ShaderPrimitiveMode primitive_mode,
                               bool smooth_shading,
-                              bool vulkan)
+                              bool vulkan,
+                              bool z_perspective)
 {
     /* FIXME: Missing support for 2-sided-poly mode */
     assert(polygon_front_mode == polygon_back_mode);
@@ -174,18 +175,17 @@ MString *pgraph_gen_geom_glsl(enum ShaderPolygonMode polygon_front_mode,
     mstring_append(s, layout_in);
     mstring_append(s, layout_out);
     mstring_append(s, "\n");
-    pgraph_get_glsl_vtx_header(s, vulkan, smooth_shading, true, true, true);
-    pgraph_get_glsl_vtx_header(s, vulkan, smooth_shading, false, false, false);
+    pgraph_get_glsl_vtx_header(s, vulkan, smooth_shading, true, true, true, z_perspective);
+    pgraph_get_glsl_vtx_header(s, vulkan, smooth_shading, false, false, false, z_perspective);
 
     if (smooth_shading) {
         mstring_append(s,
                        "void emit_vertex(int index, int _unused) {\n"
                        "  gl_Position = gl_in[index].gl_Position;\n"
                        "  gl_PointSize = gl_in[index].gl_PointSize;\n"
+                       "  depthBuf = v_depthBuf[index];\n"
                        // "  gl_ClipDistance[0] = gl_in[index].gl_ClipDistance[0];\n"
                        // "  gl_ClipDistance[1] = gl_in[index].gl_ClipDistance[1];\n"
-                       "  vtx_inv_w = v_vtx_inv_w[index];\n"
-                       "  vtx_inv_w_flat = v_vtx_inv_w[index];\n"
                        "  vtxD0 = v_vtxD0[index];\n"
                        "  vtxD1 = v_vtxD1[index];\n"
                        "  vtxB0 = v_vtxB0[index];\n"
@@ -202,10 +202,9 @@ MString *pgraph_gen_geom_glsl(enum ShaderPolygonMode polygon_front_mode,
                        "void emit_vertex(int index, int provoking_index) {\n"
                        "  gl_Position = gl_in[index].gl_Position;\n"
                        "  gl_PointSize = gl_in[index].gl_PointSize;\n"
+                       "  depthBuf = v_depthBuf[index];\n"
                        // "  gl_ClipDistance[0] = gl_in[index].gl_ClipDistance[0];\n"
                        // "  gl_ClipDistance[1] = gl_in[index].gl_ClipDistance[1];\n"
-                       "  vtx_inv_w = v_vtx_inv_w[index];\n"
-                       "  vtx_inv_w_flat = v_vtx_inv_w[provoking_index];\n"
                        "  vtxD0 = v_vtxD0[provoking_index];\n"
                        "  vtxD1 = v_vtxD1[provoking_index];\n"
                        "  vtxB0 = v_vtxB0[provoking_index];\n"
