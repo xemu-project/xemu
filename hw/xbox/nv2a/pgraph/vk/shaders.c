@@ -477,10 +477,9 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         }
     }
     if (binding->alpha_ref_loc != -1) {
-        float alpha_ref = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0),
-                                   NV_PGRAPH_CONTROL_0_ALPHAREF) /
-                          255.0;
-        uniform1f(&binding->fragment->uniforms, binding->alpha_ref_loc,
+        int alpha_ref = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0),
+                                   NV_PGRAPH_CONTROL_0_ALPHAREF);
+        uniform1i(&binding->fragment->uniforms, binding->alpha_ref_loc,
                          alpha_ref);
     }
 
