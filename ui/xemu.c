@@ -26,7 +26,7 @@
  * THE SOFTWARE.
  */
 /* Ported SDL 1.2 code to 2.0 by Dave Airlie. */
-
+ 
 #include "qemu/osdep.h"
 #include "qemu/module.h"
 #include "qemu/thread.h"
