@@ -229,7 +229,7 @@ jobs:
         export CCACHE_DIR=/tmp/xemu-ccache
         export CCACHE_MAXSIZE=512M
         export PATH="/usr/lib/ccache:$PATH"
-        export XEMU_BUILD_OPTIONS="${{ matrix.build_param }} --extra-cflags='-fuse-ld=gold'"
+        export XEMU_BUILD_OPTIONS="${{ matrix.build_param }}"
         ccache -z
 
         # XXX: dpkg-genbuildinfo takes two minutes on GH runners. Nuke it for now.
