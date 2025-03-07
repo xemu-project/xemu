@@ -72,6 +72,15 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
         "    float y = float(bitfieldExtract(cmp, 11, 11)) / 1023.0;\n"
         "    float z = float(bitfieldExtract(cmp, 22, 10)) / 511.0;\n"
         "    return vec4(x, y, z, 1);\n"
+        "}\n"
+        "\n"
+        "float clampAwayZeroInf(float t) {\n"
+        "  if (t > 0.0 || floatBitsToUint(t) == 0) {\n"
+        "    t = clamp(t, 5.421011e-20, 1.8446744e19);\n"
+        "  } else {\n"
+        "    t = clamp(t, -1.8446744e19, -5.421011e-20);\n"
+        "  }\n"
+        "  return t;\n"
         "}\n");
 
     pgraph_get_glsl_vtx_header(header, state->vulkan, state->smooth_shading,
