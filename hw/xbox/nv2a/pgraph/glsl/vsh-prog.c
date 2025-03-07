@@ -735,8 +735,8 @@ static const char* vsh_header =
     "#define RCC(dest, mask, src) dest.mask = _RCC(_in(src).x).mask\n"
     "vec4 _RCC(float src)\n"
     "{\n"
-    "  src = (2.0f * step(0.0f, src) - 1.0f) * clamp(abs(src), 5.421011e-20, 1.8446744e19);\n"
-    "  return vec4(1.0 / src);\n"
+    "  float t = clampAwayZeroInf(1.0 / src);\n"
+    "  return vec4(t);\n"
     "}\n"
     "\n"
     "#define RSQ(dest, mask, src) dest.mask = _RSQ(_in(src).x).mask\n"
@@ -838,7 +838,7 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
 
     mstring_append(body,
         "  oPos.z = oPos.z / clipRange.y;\n"
-        "  oPos.w = (2.0f * step(0.0f, oPos.w) - 1.0f) * clamp(abs(oPos.w), 5.421011e-20, 1.8446744e19);\n"
+        "  oPos.w = clampAwayZeroInf(oPos.w);\n"
 
         /* Undo perspective divide by w.
          * Note that games may also have vertex shaders that do
