@@ -50,7 +50,7 @@ elif host_os == 'windows'
 elif host_os == 'darwin'
   xemu_ss.add(files('xemu-os-utils-macos.m'))
 endif
-xemu_ss.add(imgui, implot, stb_image, noc, sdl, opengl, openssl, fa, fpng, json, httplib, fatx)
+xemu_ss.add(imgui, implot, stb_image, noc, sdl, opengl, openssl, fa, fpng, json, fatx)
 system_ss.add_all(xemu_ss)
 
 system_ss.add(when: pixman, if_true: files('console-vc.c'), if_false: files('console-vc-stubs.c'))
