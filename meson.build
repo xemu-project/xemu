@@ -1383,12 +1383,9 @@ if not get_option('blkio').auto() or have_block
                      method: 'pkg-config',
                      required: get_option('blkio'))
 endif
-curl = not_found
-if not get_option('curl').auto() or have_block
-  curl = dependency('libcurl', version: '>=7.29.0',
-                    method: 'pkg-config',
-                    required: get_option('curl'))
-endif
+curl = dependency('libcurl', version: '>=7.29.0',
+                  method: 'pkg-config',
+                  required: true)
 libudev = not_found
 if host_os == 'linux' and (have_system or have_tools)
   libudev = dependency('libudev',
