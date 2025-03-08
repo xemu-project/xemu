@@ -341,16 +341,6 @@ Lib('libsamplerate', 'https://github.com/libsndfile/libsamplerate',
 	pkg_mac='libsamplerate',
 	),
 
-Lib('openssl', 'https://www.openssl.org/',
-	apache2, 'https://raw.githubusercontent.com/openssl/openssl/master/LICENSE.txt',
-	ships_static={windows}, ships_dynamic={macos},
-	pkgconfig=PkgConfig('openssl'),
-	pkg_win='openssl',
-	pkg_mac='openssl',
-	pkg_ubuntu='libssl-dev'
-	),
-
-# openssl dep
 Lib('zlib', 'https://zlib.net/',
 	zlib, 'https://raw.githubusercontent.com/madler/zlib/master/README', license_lines=(87,106),
 	ships_static={windows}, ships_dynamic={macos},
