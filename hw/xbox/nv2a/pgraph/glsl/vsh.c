@@ -74,11 +74,12 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
         "    return vec4(x, y, z, 1);\n"
         "}\n"
         "\n"
+        // Clamp to range [2^(-64), 2^64] or [-2^64, -2^(-64)].
         "float clampAwayZeroInf(float t) {\n"
         "  if (t > 0.0 || floatBitsToUint(t) == 0) {\n"
-        "    t = clamp(t, 5.421011e-20, 1.8446744e19);\n"
+        "    t = clamp(t, uintBitsToFloat(0x1F800000), uintBitsToFloat(0x5F800000));\n"
         "  } else {\n"
-        "    t = clamp(t, -1.8446744e19, -5.421011e-20);\n"
+        "    t = clamp(t, uintBitsToFloat(0xDF800000), uintBitsToFloat(0x9F800000));\n"
         "  }\n"
         "  return t;\n"
         "}\n");
