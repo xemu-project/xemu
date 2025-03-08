@@ -1385,7 +1385,32 @@ if not get_option('blkio').auto() or have_block
 endif
 curl = dependency('libcurl', version: '>=7.29.0',
                   method: 'pkg-config',
-                  required: true)
+                  required: false)
+if not curl.found()
+  curl_sub = subproject('curl', default_options: [
+      'schannel=enabled',
+      'sspi=enabled',
+      'ssl=enabled',
+      'http=enabled',
+      'ftp=enabled',
+      'dict=disabled',
+      'file=disabled',
+      'gopher=disabled',
+      'imap=disabled',
+      'ldap=disabled',
+      'ldaps=disabled',
+      'mqtt=disabled',
+      'pop3=disabled',
+      'rtmp=disabled',
+      'rtsp=disabled',
+      'smb=disabled',
+      'smtp=disabled',
+      'telnet=disabled',
+      'tftp=disabled',
+      'default_library=static',
+  ])
+  curl = curl_sub.get_variable('curl_dep')
+endif
 libudev = not_found
 if host_os == 'linux' and (have_system or have_tools)
   libudev = dependency('libudev',
