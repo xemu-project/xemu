@@ -2352,8 +2352,6 @@ if vulkan.found()
                                      dependencies: vulkan)
 endif
 
-openssl = dependency('openssl', method: 'pkg-config', required: true)
-
 if host_os == 'windows'
   libpcap = declare_dependency(include_directories: 'winpcap-loader/include',
                                link_args: ['-lws2_32'])
