@@ -185,7 +185,6 @@ def main():
 		'libsamplerate',
 		'libpixman',
 		'libepoxy',
-		'openssl11',
 		'libpcap',
 		'libslirp'])
 
