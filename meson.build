@@ -1387,9 +1387,15 @@ curl = dependency('libcurl', version: '>=7.29.0',
                   method: 'pkg-config',
                   required: false)
 if not curl.found()
-  curl_sub = subproject('curl', default_options: [
-      'schannel=enabled',
-      'sspi=enabled',
+  if host_os == 'windows'
+    curl_platform_opts = ['schannel=enabled', 'sspi=enabled']
+  elif host_os == 'darwin'
+    curl_platform_opts = ['secure-transport=enabled']
+  else
+    curl_platform_opts = ['openssl=enabled']
+  endif
+  curl_sub = subproject('curl',
+    default_options: [
       'ssl=enabled',
       'http=enabled',
       'ftp=enabled',
@@ -1408,7 +1414,7 @@ if not curl.found()
       'telnet=disabled',
       'tftp=disabled',
       'default_library=static',
-  ])
+    ] + curl_platform_opts)
   curl = curl_sub.get_variable('curl_dep')
 endif
 libudev = not_found
