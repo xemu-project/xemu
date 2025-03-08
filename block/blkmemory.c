@@ -30,7 +30,7 @@
 
 #include "block/blkmemory.h"
 
-// #define DEBUG_BLKMEMORY
+#define DEBUG_BLKMEMORY
 
 typedef struct BDRVMemoryState {
     uint64_t size;

@@ -42,8 +42,8 @@
 #define ISA_LPCSEGA_DEVICE(obj) \
     OBJECT_CHECK(ISALPCSEGAState, (obj), TYPE_ISA_LPCSEGA_DEVICE)
 
-// #define DEBUG
-#ifdef DEBUG
+#define DEBUG_SEGA
+#ifdef DEBUG_SEGA
 # define DPRINTF(format, ...) printf(format, ## __VA_ARGS__)
 #else
 # define DPRINTF(format, ...) do { } while (0)
