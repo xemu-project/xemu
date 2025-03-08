@@ -380,6 +380,12 @@ Lib('miniz', 'https://github.com/richgel999/miniz',
 	ships_static={windows},	platform={windows},
 	version='2.1.0'
 	),
+
+Lib('libcurl', 'https://curl.se/',
+	mit, 'https://raw.githubusercontent.com/curl/curl/refs/heads/master/COPYING',
+	ships_static={windows},	platform={windows},
+	submodule=Submodule('subprojects/curl.wrap')
+	),
 ]
 
 def gen_license():
