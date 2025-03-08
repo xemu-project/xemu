@@ -1376,7 +1376,7 @@ void MainMenuAboutView::Draw()
     SectionTitle("Build Information");
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::InputTextMultiline("##build_info", (char *)build_info_text,
-                              strlen(build_info_text),
+                              strlen(build_info_text) + 1,
                               ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 5),
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
@@ -1384,7 +1384,7 @@ void MainMenuAboutView::Draw()
     SectionTitle("System Information");
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::InputTextMultiline("###systeminformation", (char *)sys_info_text,
-                              strlen(sys_info_text),
+                              strlen(sys_info_text) + 1,
                               ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 8),
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
@@ -1392,7 +1392,7 @@ void MainMenuAboutView::Draw()
     SectionTitle("Config Information");
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::InputTextMultiline("##config_info", (char *)m_config_info_text,
-                              strlen(build_info_text),
+                              strlen(build_info_text) + 1,
                               ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 3),
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
