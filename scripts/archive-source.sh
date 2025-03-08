@@ -36,7 +36,7 @@ sub_deinit=""
 # xemu only
 subprojects="keycodemapdb berkeley-softfloat-3 berkeley-testfloat-3
   glslang SPIRV-Reflect  volk VulkanMemoryAllocator nv2a_vsh_cpu
-  tomlplusplus cpp-httplib xxhash imgui implot genconfig"
+  tomlplusplus xxhash imgui implot genconfig"
 
 function cleanup() {
     local status=$?
