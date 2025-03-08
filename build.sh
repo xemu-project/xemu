@@ -225,7 +225,7 @@ case "$platform" in # Adjust compilation options based on platform
             sys_cflags='-march=ivybridge'
         fi
         sys_ldflags='-headerpad_max_install_names'
-        export PKG_CONFIG_PATH="${lib_prefix}/lib/pkgconfig"
+        export PKG_CONFIG_LIBDIR="${lib_prefix}/lib/pkgconfig"
         opts="$opts --disable-cocoa --cross-prefix="
         postbuild='package_macos'
         ;;
