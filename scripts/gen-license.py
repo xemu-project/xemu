@@ -201,12 +201,6 @@ Lib('implot', 'https://github.com/epezent/implot',
 	submodule=Submodule('subprojects/implot.wrap')
 	),
 
-Lib('cpp-httplib', 'https://github.com/yhirose/cpp-httplib',
-	mit, 'https://raw.githubusercontent.com/yhirose/cpp-httplib/master/LICENSE',
-	ships_static=all_platforms,
-	submodule=Submodule('subprojects/cpp-httplib.wrap')
-	),
-
 Lib('noc', 'https://github.com/guillaumechereau/noc/blob/master/noc_file_dialog.h',
 	mit, 'https://raw.githubusercontent.com/xemu-project/xemu/master/ui/noc_file_dialog.h', license_lines=(1,22),
 	ships_static=all_platforms,
