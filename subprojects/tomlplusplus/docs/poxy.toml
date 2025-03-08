@@ -1,0 +1,104 @@
+# this is a config file for Poxy - a Doxygen + m.css front-end written in Python.
+# https://github.com/marzer/poxy
+#
+# config reference: https://github.com/marzer/poxy/wiki/Configuration-options
+
+name            = 'toml++'
+author          = 'Mark Gillard'
+description     = 'TOML for C++'
+cpp             = 17
+github          = 'marzer/tomlplusplus'
+license         = [ 'MIT', 'https://github.com/marzer/tomlplusplus/blob/master/LICENSE' ]
+show_includes   = false
+changelog       = true
+logo            = 'images/logo.svg'
+favicon         = 'images/favicon.ico'
+navbar          = [ 'namespaces', 'annotated' ]
+theme           = 'dark'
+extra_files     = [
+    'images/badge-awesome.svg',
+    'images/badge-TOML.svg',
+    'images/badge-gitter.svg',
+    'images/badge-sponsor.svg',
+]
+
+
+
+[warnings]
+enabled         = true
+treat_as_errors = false
+undocumented    = true
+
+
+
+[sources]
+paths           = [ 'pages' ]
+recursive_paths = [ '../include' ]
+patterns        = [ '*.h', '*.dox' ]
+strip_paths     = [ '../include' ]
+
+
+
+[images]
+paths           = [ 'images' ]
+
+
+
+[macros]
+'TOML_ASYMMETRICAL_EQUALITY_OPS(...)' = 'static_assert(true)'
+'TOML_ABI_NAMESPACE_START(...)'       = 'static_assert(true)'
+'TOML_ABI_NAMESPACE_BOOL(...)'        = 'static_assert(true)'
+
+
+
+[meta_tags]
+'google-site-verification' = 'gbtcNgKlNiPSMKkYMw4zWFVWGPH_oU93m9n_-nb4qK8'
+
+
+
+[code_blocks]
+macros          = [ 'TOML_[A-Z0-9_]+?', 'print_value' ]
+
+
+
+[badges]
+'1. TOML v1.0.0'  = [
+    'badge-TOML.svg',
+    'https://toml.io/en/v1.0.0'
+]
+'2. CI'     = [
+    'https://github.com/marzer/tomlplusplus/actions/workflows/ci.yaml/badge.svg?branch=master',
+    'https://github.com/marzer/tomlplusplus/actions/workflows/ci.yaml'
+]
+'3. Mentioned in Awesome C++' = [
+    'badge-awesome.svg',
+    'https://github.com/fffaraz/awesome-cpp'
+]
+'4. Sponsor'        = [
+    'badge-sponsor.svg',
+    'https://github.com/sponsors/marzer'
+ ]
+'5. Gitter'        = [
+    'badge-gitter.svg',
+    'https://gitter.im/marzer/tomlplusplus'
+ ]
+
+
+
+[autolinks]
+'(?:toml::)?date[_-]times?'         = 'structtoml_1_1date__time.html'
+'(?:toml::)?default[_ ]formatters?' = 'classtoml_1_1default__formatter.html'
+'(?:toml::)?json[_ ]formatters?'    = 'classtoml_1_1json__formatter.html'
+'(?:toml::)?node[_ ]views?'         = 'classtoml_1_1node__view.html'
+'(?:toml::)?parse[_ ]errors?'       = 'classtoml_1_1parse__error.html'
+'(?:toml::)?parse[_ ]results?'      = 'classtoml_1_1parse__result.html'
+'(?:toml::)?path[_ ]components?'    = 'classtoml_1_1path__component.html'
+'(?:toml::)?source[_ ]positions?'   = 'structtoml_1_1source__position.html'
+'(?:toml::)?source[_ ]regions?'     = 'structtoml_1_1source__region.html'
+'(?:toml::)?time[_ ]offsets?'       = 'structtoml_1_1time__offset.html'
+'(?:toml::)?toml[_ ]formatters?'    = 'classtoml_1_1toml__formatter.html'
+'(?:toml::)?yaml[_ ]formatters?'    = 'classtoml_1_1yaml__formatter.html'
+'toml::dates?'                      = 'structtoml_1_1date.html'
+'toml::keys?'                       = 'classtoml_1_1key.html'
+'toml::times?'                      = 'structtoml_1_1time.html'
+'toml::values?'                     = 'classtoml_1_1value.html'

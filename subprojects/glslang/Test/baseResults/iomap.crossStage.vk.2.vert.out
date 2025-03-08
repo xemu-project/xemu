@@ -1,0 +1,313 @@
+iomap.crossStage.vk.2.vert
+Shader version: 460
+0:? Sequence
+0:8  Function Definition: main( ( global void)
+0:8    Function Parameters: 
+0:10    Sequence
+0:10      move second child to first child ( temp highp 4-component vector of float)
+0:10        val: direct index for structure ( out highp 4-component vector of float)
+0:10          'anon@0' ( out block{ out highp 4-component vector of float val})
+0:10          Constant:
+0:10            0 (const uint)
+0:10        Constant:
+0:10          0.500000
+0:10          0.500000
+0:10          0.500000
+0:10          0.500000
+0:11      move second child to first child ( temp highp 4-component vector of float)
+0:11        'color' ( smooth out highp 4-component vector of float)
+0:11        Constant:
+0:11          1.000000
+0:11          1.000000
+0:11          1.000000
+0:11          1.000000
+0:12      move second child to first child ( temp 4-component vector of float)
+0:12        gl_Position: direct index for structure ( gl_Position 4-component vector of float Position)
+0:12          'anon@1' ( out block{ gl_Position 4-component vector of float Position gl_Position,  gl_PointSize float PointSize gl_PointSize,  out unsized 1-element array of float ClipDistance gl_ClipDistance,  out unsized 1-element array of float CullDistance gl_CullDistance})
+0:12          Constant:
+0:12            0 (const uint)
+0:12        Constant:
+0:12          1.000000
+0:12          1.000000
+0:12          1.000000
+0:12          1.000000
+0:?   Linker Objects
+0:?     'anon@0' ( out block{ out highp 4-component vector of float val})
+0:?     'color' ( smooth out highp 4-component vector of float)
+0:?     'anon@1' ( out block{ gl_Position 4-component vector of float Position gl_Position,  gl_PointSize float PointSize gl_PointSize,  out unsized 1-element array of float ClipDistance gl_ClipDistance,  out unsized 1-element array of float CullDistance gl_CullDistance})
+
+iomap.crossStage.vk.2.geom
+Shader version: 460
+invocations = -1
+max_vertices = 3
+input primitive = points
+output primitive = triangle_strip
+0:? Sequence
+0:23  Function Definition: main( ( global void)
+0:23    Function Parameters: 
+0:25    Sequence
+0:25      Sequence
+0:25        Sequence
+0:25          move second child to first child ( temp highp int)
+0:25            'i' ( temp highp int)
+0:25            Constant:
+0:25              0 (const int)
+0:25        Loop with condition tested first
+0:25          Loop Condition
+0:25          Compare Less Than ( temp bool)
+0:25            'i' ( temp highp int)
+0:25            Constant:
+0:25              3 (const int)
+0:25          Loop Body
+0:26          Sequence
+0:26            move second child to first child ( temp highp 4-component vector of float)
+0:26              'colorOut' (layout( stream=0) out highp 4-component vector of float)
+0:26              component-wise multiply ( temp highp 4-component vector of float)
+0:26                indirect index ( temp highp 4-component vector of float)
+0:26                  'color' ( in 1-element array of highp 4-component vector of float)
+0:26                  'i' ( temp highp int)
+0:26                val: direct index for structure ( in highp 4-component vector of float)
+0:26                  indirect index ( temp block{ in highp 4-component vector of float val})
+0:26                    'vv' ( in 1-element array of block{ in highp 4-component vector of float val})
+0:26                    'i' ( temp highp int)
+0:26                  Constant:
+0:26                    0 (const int)
+0:27            move second child to first child ( temp highp 4-component vector of float)
+0:27              vv2Val: direct index for structure (layout( stream=0) out highp 4-component vector of float)
+0:27                'anon@0' (layout( stream=0) out block{layout( stream=0) out highp 4-component vector of float vv2Val})
+0:27                Constant:
+0:27                  0 (const uint)
+0:27              Constant:
+0:27                1.000000
+0:27                1.000000
+0:27                1.000000
+0:27                1.000000
+0:28            EmitVertex ( global void)
+0:25          Loop Terminal Expression
+0:25          Post-Increment ( temp highp int)
+0:25            'i' ( temp highp int)
+0:30      EndPrimitive ( global void)
+0:?   Linker Objects
+0:?     'vgo1' ( in 1-element array of highp 4-component vector of float)
+0:?     'color' ( in 1-element array of highp 4-component vector of float)
+0:?     'colorOut' (layout( stream=0) out highp 4-component vector of float)
+0:?     'vv' ( in 1-element array of block{ in highp 4-component vector of float val})
+0:?     'anon@0' (layout( stream=0) out block{layout( stream=0) out highp 4-component vector of float vv2Val})
+
+iomap.crossStage.vk.2.frag
+Shader version: 460
+gl_FragCoord origin is upper left
+0:? Sequence
+0:19  Function Definition: main( ( global void)
+0:19    Function Parameters: 
+0:21    Sequence
+0:21      move second child to first child ( temp highp 4-component vector of float)
+0:21        'fragColor' ( out highp 4-component vector of float)
+0:21        add ( temp highp 4-component vector of float)
+0:21          'colorOut' ( smooth in highp 4-component vector of float)
+0:21          component-wise multiply ( temp highp 4-component vector of float)
+0:21            component-wise multiply ( temp highp 4-component vector of float)
+0:21              component-wise multiply ( temp highp 4-component vector of float)
+0:21                'unsetColor' ( smooth in highp 4-component vector of float)
+0:21                Construct vec4 ( temp highp 4-component vector of float)
+0:21                  vector swizzle ( temp highp 4-component vector of float)
+0:21                    val: direct index for structure ( in highp 2-component vector of float)
+0:21                      'iVert' ( in block{ in highp 2-component vector of float val})
+0:21                      Constant:
+0:21                        0 (const int)
+0:21                    Sequence
+0:21                      Constant:
+0:21                        0 (const int)
+0:21                      Constant:
+0:21                        0 (const int)
+0:21                      Constant:
+0:21                        1 (const int)
+0:21                      Constant:
+0:21                        1 (const int)
+0:21              Construct vec4 ( temp highp 4-component vector of float)
+0:21                vector swizzle ( temp highp 4-component vector of float)
+0:21                  val2: direct index for structure ( in highp 2-component vector of float)
+0:21                    'anon@0' ( in block{ in highp 2-component vector of float val2})
+0:21                    Constant:
+0:21                      0 (const uint)
+0:21                  Sequence
+0:21                    Constant:
+0:21                      0 (const int)
+0:21                    Constant:
+0:21                      0 (const int)
+0:21                    Constant:
+0:21                      1 (const int)
+0:21                    Constant:
+0:21                      1 (const int)
+0:22            'vv2Val' ( smooth in highp 4-component vector of float)
+0:?   Linker Objects
+0:?     'unsetColor' ( smooth in highp 4-component vector of float)
+0:?     'colorOut' ( smooth in highp 4-component vector of float)
+0:?     'fragColor' ( out highp 4-component vector of float)
+0:?     'iVert' ( in block{ in highp 2-component vector of float val})
+0:?     'anon@0' ( in block{ in highp 2-component vector of float val2})
+0:?     'vv2Val' ( smooth in highp 4-component vector of float)
+
+
+Linked vertex stage:
+
+
+Linked geometry stage:
+
+
+Linked fragment stage:
+
+ERROR: Linking vertex and geometry stages: Input 'vgo1' in geometry shader has no corresponding output in vertex shader.
+ERROR: Linking geometry and fragment stages: Input 'unsetColor' in fragment shader has no corresponding output in geometry shader.
+ERROR: Linking geometry and fragment stages: Input 'Vertex' in fragment shader has no corresponding output in geometry shader.
+ERROR: Linking geometry and fragment stages: Input 'Vertex2' in fragment shader has no corresponding output in geometry shader.
+ERROR: Linking geometry and fragment stages: Input 'vv2Val' in fragment shader has no corresponding output in geometry shader.
+
+Shader version: 460
+0:? Sequence
+0:8  Function Definition: main( ( global void)
+0:8    Function Parameters: 
+0:10    Sequence
+0:10      move second child to first child ( temp highp 4-component vector of float)
+0:10        val: direct index for structure ( out highp 4-component vector of float)
+0:10          'anon@0' ( out block{ out highp 4-component vector of float val})
+0:10          Constant:
+0:10            0 (const uint)
+0:10        Constant:
+0:10          0.500000
+0:10          0.500000
+0:10          0.500000
+0:10          0.500000
+0:11      move second child to first child ( temp highp 4-component vector of float)
+0:11        'color' ( smooth out highp 4-component vector of float)
+0:11        Constant:
+0:11          1.000000
+0:11          1.000000
+0:11          1.000000
+0:11          1.000000
+0:12      move second child to first child ( temp 4-component vector of float)
+0:12        gl_Position: direct index for structure ( gl_Position 4-component vector of float Position)
+0:12          'anon@1' ( out block{ gl_Position 4-component vector of float Position gl_Position,  gl_PointSize float PointSize gl_PointSize,  out 1-element array of float ClipDistance gl_ClipDistance,  out 1-element array of float CullDistance gl_CullDistance})
+0:12          Constant:
+0:12            0 (const uint)
+0:12        Constant:
+0:12          1.000000
+0:12          1.000000
+0:12          1.000000
+0:12          1.000000
+0:?   Linker Objects
+0:?     'anon@0' ( out block{ out highp 4-component vector of float val})
+0:?     'color' ( smooth out highp 4-component vector of float)
+0:?     'anon@1' ( out block{ gl_Position 4-component vector of float Position gl_Position,  gl_PointSize float PointSize gl_PointSize,  out 1-element array of float ClipDistance gl_ClipDistance,  out 1-element array of float CullDistance gl_CullDistance})
+Shader version: 460
+invocations = 1
+max_vertices = 3
+input primitive = points
+output primitive = triangle_strip
+0:? Sequence
+0:23  Function Definition: main( ( global void)
+0:23    Function Parameters: 
+0:25    Sequence
+0:25      Sequence
+0:25        Sequence
+0:25          move second child to first child ( temp highp int)
+0:25            'i' ( temp highp int)
+0:25            Constant:
+0:25              0 (const int)
+0:25        Loop with condition tested first
+0:25          Loop Condition
+0:25          Compare Less Than ( temp bool)
+0:25            'i' ( temp highp int)
+0:25            Constant:
+0:25              3 (const int)
+0:25          Loop Body
+0:26          Sequence
+0:26            move second child to first child ( temp highp 4-component vector of float)
+0:26              'colorOut' (layout( stream=0) out highp 4-component vector of float)
+0:26              component-wise multiply ( temp highp 4-component vector of float)
+0:26                indirect index ( temp highp 4-component vector of float)
+0:26                  'color' ( in 1-element array of highp 4-component vector of float)
+0:26                  'i' ( temp highp int)
+0:26                val: direct index for structure ( in highp 4-component vector of float)
+0:26                  indirect index ( temp block{ in highp 4-component vector of float val})
+0:26                    'vv' ( in 1-element array of block{ in highp 4-component vector of float val})
+0:26                    'i' ( temp highp int)
+0:26                  Constant:
+0:26                    0 (const int)
+0:27            move second child to first child ( temp highp 4-component vector of float)
+0:27              vv2Val: direct index for structure (layout( stream=0) out highp 4-component vector of float)
+0:27                'anon@0' (layout( stream=0) out block{layout( stream=0) out highp 4-component vector of float vv2Val})
+0:27                Constant:
+0:27                  0 (const uint)
+0:27              Constant:
+0:27                1.000000
+0:27                1.000000
+0:27                1.000000
+0:27                1.000000
+0:28            EmitVertex ( global void)
+0:25          Loop Terminal Expression
+0:25          Post-Increment ( temp highp int)
+0:25            'i' ( temp highp int)
+0:30      EndPrimitive ( global void)
+0:?   Linker Objects
+0:?     'vgo1' ( in 1-element array of highp 4-component vector of float)
+0:?     'color' ( in 1-element array of highp 4-component vector of float)
+0:?     'colorOut' (layout( stream=0) out highp 4-component vector of float)
+0:?     'vv' ( in 1-element array of block{ in highp 4-component vector of float val})
+0:?     'anon@0' (layout( stream=0) out block{layout( stream=0) out highp 4-component vector of float vv2Val})
+Shader version: 460
+gl_FragCoord origin is upper left
+0:? Sequence
+0:19  Function Definition: main( ( global void)
+0:19    Function Parameters: 
+0:21    Sequence
+0:21      move second child to first child ( temp highp 4-component vector of float)
+0:21        'fragColor' ( out highp 4-component vector of float)
+0:21        add ( temp highp 4-component vector of float)
+0:21          'colorOut' ( smooth in highp 4-component vector of float)
+0:21          component-wise multiply ( temp highp 4-component vector of float)
+0:21            component-wise multiply ( temp highp 4-component vector of float)
+0:21              component-wise multiply ( temp highp 4-component vector of float)
+0:21                'unsetColor' ( smooth in highp 4-component vector of float)
+0:21                Construct vec4 ( temp highp 4-component vector of float)
+0:21                  vector swizzle ( temp highp 4-component vector of float)
+0:21                    val: direct index for structure ( in highp 2-component vector of float)
+0:21                      'iVert' ( in block{ in highp 2-component vector of float val})
+0:21                      Constant:
+0:21                        0 (const int)
+0:21                    Sequence
+0:21                      Constant:
+0:21                        0 (const int)
+0:21                      Constant:
+0:21                        0 (const int)
+0:21                      Constant:
+0:21                        1 (const int)
+0:21                      Constant:
+0:21                        1 (const int)
+0:21              Construct vec4 ( temp highp 4-component vector of float)
+0:21                vector swizzle ( temp highp 4-component vector of float)
+0:21                  val2: direct index for structure ( in highp 2-component vector of float)
+0:21                    'anon@0' ( in block{ in highp 2-component vector of float val2})
+0:21                    Constant:
+0:21                      0 (const uint)
+0:21                  Sequence
+0:21                    Constant:
+0:21                      0 (const int)
+0:21                    Constant:
+0:21                      0 (const int)
+0:21                    Constant:
+0:21                      1 (const int)
+0:21                    Constant:
+0:21                      1 (const int)
+0:22            'vv2Val' ( smooth in highp 4-component vector of float)
+0:?   Linker Objects
+0:?     'unsetColor' ( smooth in highp 4-component vector of float)
+0:?     'colorOut' ( smooth in highp 4-component vector of float)
+0:?     'fragColor' ( out highp 4-component vector of float)
+0:?     'iVert' ( in block{ in highp 2-component vector of float val})
+0:?     'anon@0' ( in block{ in highp 2-component vector of float val2})
+0:?     'vv2Val' ( smooth in highp 4-component vector of float)
+Mismatched cross-stage IO
+
+Validation failed
+SPIR-V is not generated for failed compile or link
