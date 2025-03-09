@@ -136,3 +136,4 @@ elif cpu in ['riscv32', 'riscv64']
   util_ss.add(files('cpuinfo-riscv.c'))
 endif
 util_ss.add(files('sha1.c','rc4.c'))
+util_ss.add([curl, files('http.c')])
