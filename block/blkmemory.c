@@ -114,7 +114,7 @@ static BlockDriver bdrv_memory = {
     .instance_size = sizeof(BDRVMemoryState),
     .bdrv_open = memory_open,
     .bdrv_close = memory_close,
-    .bdrv_getlength = memory_getlength,
+    .bdrv_co_getlength = memory_getlength,
 
     // FIXME: Is this what we want? What's the difference between CO and AIO?
     .bdrv_co_preadv = memory_read,
