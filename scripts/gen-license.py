@@ -201,12 +201,6 @@ Lib('implot', 'https://github.com/epezent/implot',
 	submodule=Submodule('subprojects/implot.wrap')
 	),
 
-Lib('cpp-httplib', 'https://github.com/yhirose/cpp-httplib',
-	mit, 'https://raw.githubusercontent.com/yhirose/cpp-httplib/master/LICENSE',
-	ships_static=all_platforms,
-	submodule=Submodule('subprojects/cpp-httplib.wrap')
-	),
-
 Lib('noc', 'https://github.com/guillaumechereau/noc/blob/master/noc_file_dialog.h',
 	mit, 'https://raw.githubusercontent.com/xemu-project/xemu/master/ui/noc_file_dialog.h', license_lines=(1,22),
 	ships_static=all_platforms,
@@ -347,16 +341,6 @@ Lib('libsamplerate', 'https://github.com/libsndfile/libsamplerate',
 	pkg_mac='libsamplerate',
 	),
 
-Lib('openssl', 'https://www.openssl.org/',
-	apache2, 'https://raw.githubusercontent.com/openssl/openssl/master/LICENSE.txt',
-	ships_static={windows}, ships_dynamic={macos},
-	pkgconfig=PkgConfig('openssl'),
-	pkg_win='openssl',
-	pkg_mac='openssl',
-	pkg_ubuntu='libssl-dev'
-	),
-
-# openssl dep
 Lib('zlib', 'https://zlib.net/',
 	zlib, 'https://raw.githubusercontent.com/madler/zlib/master/README', license_lines=(87,106),
 	ships_static={windows}, ships_dynamic={macos},
@@ -379,6 +363,12 @@ Lib('miniz', 'https://github.com/richgel999/miniz',
 	lgplv2_1, 'https://raw.githubusercontent.com/richgel999/miniz/master/LICENSE',
 	ships_static={windows},	platform={windows},
 	version='2.1.0'
+	),
+
+Lib('libcurl', 'https://curl.se/',
+	mit, 'https://raw.githubusercontent.com/curl/curl/refs/heads/master/COPYING',
+	ships_static={windows},	platform={windows},
+	submodule=Submodule('subprojects/curl.wrap')
 	),
 ]
 
