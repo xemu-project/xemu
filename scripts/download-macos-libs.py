@@ -92,7 +92,7 @@ class LibInstaller:
 	                            shell=True, check=True)
 
 	def is_pkg_skipped(self, pkg_name):
-		return any(pkg_name.startswith(n) for n in ('python', 'ncurses', 'mesa', 'llvm'))
+		return any(pkg_name.startswith(n) for n in ('python', 'ncurses', 'mesa', 'llvm', 'libsndfile'))
 
 	def install_pkg(self, pkg_name):
 		if self.is_pkg_installed(pkg_name):
@@ -185,7 +185,6 @@ def main():
 		'libsamplerate',
 		'libpixman',
 		'libepoxy',
-		'openssl11',
 		'libpcap',
 		'libslirp'])
 

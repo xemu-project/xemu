@@ -208,7 +208,7 @@ void xemu_hud_render(void)
 
     ImGui_ImplOpenGL3_NewFrame();
     io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
-    ImGui_ImplSDL2_NewFrame(g_sdl_window);
+    ImGui_ImplSDL2_NewFrame();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
     g_input_mgr.Update();

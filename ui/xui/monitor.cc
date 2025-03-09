@@ -75,7 +75,7 @@ void MonitorWindow::Draw()
         ImGui::PushID("#MonitorOutput");
         ImGui::InputTextMultiline("",
                                   buffer,
-                                  buffer_len,
+                                  buffer_len + 1,
                                   ImVec2(-1.0f, input_height),
                                   ImGuiInputTextFlags_ReadOnly|ImGuiInputTextFlags_NoUndoRedo);
         ImGui::PopID();

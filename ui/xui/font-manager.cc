@@ -21,7 +21,7 @@
 
 #include "data/Roboto-Medium.ttf.h"
 #include "data/RobotoCondensed-Regular.ttf.h"
-#include "data/font_awesome_6_1_1_solid.otf.h"
+#include "data/font_awesome_6_1_1_solid.min.otf.h"
 #include "data/abxy.ttf.h"
 
 FontManager g_font_mgr;
@@ -81,8 +81,8 @@ void FontManager::Rebuild()
             ImVec2(0, -3 * g_viewport_mgr.m_scale * m_font_scale);
         config.GlyphMinAdvanceX = 32.0f * g_viewport_mgr.m_scale * m_font_scale;
         static const ImWchar icon_ranges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
-        io.Fonts->AddFontFromMemoryTTF((void *)font_awesome_6_1_1_solid_data,
-                                       font_awesome_6_1_1_solid_size,
+        io.Fonts->AddFontFromMemoryTTF((void *)font_awesome_6_1_1_solid_min_data,
+                                       font_awesome_6_1_1_solid_min_size,
                                        18.0f * g_viewport_mgr.m_scale *
                                            m_font_scale,
                                        &config, icon_ranges);

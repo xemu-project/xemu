@@ -79,7 +79,7 @@ jobs:
           artifact_name: xemu-win-aarch64-release
           arch: aarch64
     env:
-      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-03e3cd0
+      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-3bdb9e7
 
     steps:
     - name: Download source package
@@ -180,7 +180,7 @@ jobs:
           build_param:
           artifact_name: xemu-ubuntu-x86_64-release
           artifact_filename: xemu-ubuntu-x86_64-release.tgz
-          runs-on: ubuntu-22.04
+          runs-on: ubuntu-24.04
         - arch: aarch64
           configuration: Debug
           build_param: --debug
@@ -213,7 +213,7 @@ jobs:
       run: |
         pushd src
         echo -e "\
-        xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
+        xemu (1:0.0.0-0) unstable; urgency=medium\n\
           Built from $(cat XEMU_VERSION)\n\
          -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" > debian/changelog
         popd
@@ -229,7 +229,7 @@ jobs:
         export CCACHE_DIR=/tmp/xemu-ccache
         export CCACHE_MAXSIZE=512M
         export PATH="/usr/lib/ccache:$PATH"
-        export XEMU_BUILD_OPTIONS="${{ matrix.build_param }} --extra-cflags='-fuse-ld=gold'"
+        export XEMU_BUILD_OPTIONS="${{ matrix.build_param }}"
         ccache -z
 
         # XXX: dpkg-genbuildinfo takes two minutes on GH runners. Nuke it for now.

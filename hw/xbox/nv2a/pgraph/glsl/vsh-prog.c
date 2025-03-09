@@ -735,12 +735,7 @@ static const char* vsh_header =
     "#define RCC(dest, mask, src) dest.mask = _RCC(_in(src).x).mask\n"
     "vec4 _RCC(float src)\n"
     "{\n"
-    "  float t = 1.0 / src;\n"
-    "  if (t > 0.0) {\n"
-    "    t = clamp(t, 5.42101e-020, 1.884467e+019);\n"
-    "  } else {\n"
-    "    t = clamp(t, -1.884467e+019, -5.42101e-020);\n"
-    "  }\n"
+    "  float t = clampAwayZeroInf(1.0 / src);\n"
     "  return vec4(t);\n"
     "}\n"
     "\n"
@@ -797,7 +792,6 @@ static const char* vsh_header =
 void pgraph_gen_vsh_prog_glsl(uint16_t version,
                    const uint32_t *tokens,
                    unsigned int length,
-                   bool z_perspective,
                    bool vulkan,
                    MString *header, MString *body)
 {
@@ -826,18 +820,6 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
     }
     assert(has_final);
 
-    /* pre-divide and output the generated W so we can do persepctive correct
-     * interpolation manually. OpenGL can't, since we give it a W of 1 to work
-     * around the perspective divide */
-    mstring_append(body,
-        "  if (oPos.w == 0.0 || isinf(oPos.w)) {\n"
-        "    vtx_inv_w = 1.0;\n"
-        "  } else {\n"
-        "    vtx_inv_w = 1.0 / oPos.w;\n"
-        "  }\n"
-        "  vtx_inv_w_flat = vtx_inv_w;\n"
-    );
-
     mstring_append(body,
         /* the shaders leave the result in screen space, while
          * opengl expects it in clip space.
@@ -854,32 +836,17 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
                              "/ surfaceSize.y;\n");
     }
 
-    if (z_perspective) {
-        mstring_append(body, "  oPos.z = oPos.w;\n");
-    }
-
     mstring_append(body,
-        "  if (clipRange.y != clipRange.x) {\n");
-    if (vulkan) {
-        mstring_append(body, "      oPos.z /= clipRange.y;\n");
-    } else {
-        mstring_append(body,
-                       "    oPos.z = (oPos.z - clipRange.x)/(0.5*(clipRange.y "
-                       "- clipRange.x)) - 1;\n");
-    }
-    mstring_append(body,
-        "  }\n"
+        "  oPos.z = oPos.z / clipRange.y;\n"
+        "  oPos.w = clampAwayZeroInf(oPos.w);\n"
 
-        /* Correct for the perspective divide */
-        "  if (oPos.w < 0.0) {\n"
-            /* undo the perspective divide in the case where the point would be
-             * clipped so opengl can clip it correctly */
-        "    oPos.xyz *= oPos.w;\n"
-        "  } else {\n"
-            /* we don't want the OpenGL perspective divide to happen, but we
-             * can't multiply by W because it could be meaningless here */
-        "    oPos.w = 1.0;\n"
-        "  }\n"
+        /* Undo perspective divide by w.
+         * Note that games may also have vertex shaders that do
+         * not divide by w (such as 2D-graphics menus or overlays), but since
+         * OpenGL will later on divide by the same w, we get back the same
+         * screen space coordinates (perhaps with some loss of floating point
+         * precision, though.)
+         */
+        "  oPos.xyz *= oPos.w;\n"
     );
-
 }

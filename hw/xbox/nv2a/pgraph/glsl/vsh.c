@@ -72,6 +72,16 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
         "    float y = float(bitfieldExtract(cmp, 11, 11)) / 1023.0;\n"
         "    float z = float(bitfieldExtract(cmp, 22, 10)) / 511.0;\n"
         "    return vec4(x, y, z, 1);\n"
+        "}\n"
+        "\n"
+        // Clamp to range [2^(-64), 2^64] or [-2^64, -2^(-64)].
+        "float clampAwayZeroInf(float t) {\n"
+        "  if (t > 0.0 || floatBitsToUint(t) == 0) {\n"
+        "    t = clamp(t, uintBitsToFloat(0x1F800000), uintBitsToFloat(0x5F800000));\n"
+        "  } else {\n"
+        "    t = clamp(t, uintBitsToFloat(0xDF800000), uintBitsToFloat(0x9F800000));\n"
+        "  }\n"
+        "  return t;\n"
         "}\n");
 
     pgraph_get_glsl_vtx_header(header, state->vulkan, state->smooth_shading,
@@ -79,8 +89,6 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
 
     if (prefix_outputs) {
         mstring_append(header,
-                       "#define vtx_inv_w v_vtx_inv_w\n"
-                       "#define vtx_inv_w_flat v_vtx_inv_w_flat\n"
                        "#define vtxD0 v_vtxD0\n"
                        "#define vtxD1 v_vtxD1\n"
                        "#define vtxB0 v_vtxB0\n"
@@ -142,7 +150,7 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
     } else if (state->vertex_program) {
         pgraph_gen_vsh_prog_glsl(VSH_VERSION_XVS,
                                  (uint32_t *)state->program_data,
-                                 state->program_length, state->z_perspective,
+                                 state->program_length,
                                  state->vulkan, header, body);
     } else {
         assert(false);
@@ -233,27 +241,30 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
     }
 
     /* Set outputs */
-    const char *shade_model_mult = state->smooth_shading ? "vtx_inv_w" : "vtx_inv_w_flat";
-    mstring_append_fmt(body, "\n"
-                      "  vtxD0 = clamp(oD0, 0.0, 1.0) * %s;\n"
-                      "  vtxD1 = clamp(oD1, 0.0, 1.0) * %s;\n"
-                      "  vtxB0 = clamp(oB0, 0.0, 1.0) * %s;\n"
-                      "  vtxB1 = clamp(oB1, 0.0, 1.0) * %s;\n"
-                      "  vtxFog = oFog.x * vtx_inv_w;\n"
-                      "  vtxT0 = oT0 * vtx_inv_w;\n"
-                      "  vtxT1 = oT1 * vtx_inv_w;\n"
-                      "  vtxT2 = oT2 * vtx_inv_w;\n"
-                      "  vtxT3 = oT3 * vtx_inv_w;\n"
-                      "  gl_Position = oPos;\n"
-                      "  gl_PointSize = oPts.x;\n"
-                      // "  gl_ClipDistance[0] = oPos.z - oPos.w*clipRange.z;\n" // Near
-                      // "  gl_ClipDistance[1] = oPos.w*clipRange.w - oPos.z;\n" // Far
-                      "\n"
-                      "}\n",
-                       shade_model_mult,
-                       shade_model_mult,
-                       shade_model_mult,
-                       shade_model_mult);
+    mstring_append(body, "\n"
+                   "  vtxD0 = clamp(oD0, 0.0, 1.0);\n"
+                   "  vtxD1 = clamp(oD1, 0.0, 1.0);\n"
+                   "  vtxB0 = clamp(oB0, 0.0, 1.0);\n"
+                   "  vtxB1 = clamp(oB1, 0.0, 1.0);\n"
+                   "  vtxFog = oFog.x;\n"
+                   "  vtxT0 = oT0;\n"
+                   "  vtxT1 = oT1;\n"
+                   "  vtxT2 = oT2;\n"
+                   "  vtxT3 = oT3;\n"
+                   "  gl_PointSize = oPts.x;\n"
+    );
+
+    if (state->vulkan) {
+        mstring_append(body,
+                   "  gl_Position = oPos;\n"
+        );
+    } else {
+        mstring_append(body,
+                   "  gl_Position = vec4(oPos.x, oPos.y, 2.0*oPos.z - oPos.w, oPos.w);\n"
+        );
+    }
+
+    mstring_append(body, "}\n");
 
     /* Return combined header + source */
     if (state->vulkan) {

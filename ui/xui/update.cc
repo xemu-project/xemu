@@ -1,7 +1,7 @@
 //
 // xemu User Interface
 //
-// Copyright (C) 2020-2022 Matt Borgerson
+// Copyright (C) 2020-2025 Matt Borgerson
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "common.hh"
+#include "qemu/http.h"
 #include "update.hh"
 #include "viewport-manager.hh"
 #include <stdio.h>
@@ -26,13 +27,11 @@
 #include "xemu-version.h"
 
 #if defined(_WIN32)
-const char *version_host = "raw.githubusercontent.com";
-const char *version_uri = "/xemu-project/xemu/ppa-snapshot/XEMU_VERSION";
-const char *download_host = "github.com";
+const char *version_url = "https://raw.githubusercontent.com/xemu-project/xemu/ppa-snapshot/XEMU_VERSION";
 #if defined(__x86_64__)
-const char *download_uri = "/xemu-project/xemu/releases/latest/download/xemu-win-x86_64-release.zip";
+const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-win-x86_64-release.zip";
 #elif defined(__aarch64__)
-const char *download_uri = "/xemu-project/xemu/releases/latest/download/xemu-win-aarch64-release.zip";
+const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-win-aarch64-release.zip";
 #else
 #error Unknown update path
 #endif
@@ -40,7 +39,6 @@ const char *download_uri = "/xemu-project/xemu/releases/latest/download/xemu-win
 FIXME
 #endif
 
-#include <httplib.h>
 
 #define DPRINTF(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__);
 
@@ -153,28 +151,26 @@ void *Updater::checker_thread_worker_func(void *updater)
 
 void Updater::check_for_update_internal()
 {
-    httplib::SSLClient cli(version_host, 443);
-    cli.set_follow_location(true);
-    auto res = cli.Get(version_uri, [this](uint64_t len, uint64_t total) {
-        m_update_percentage = len*100/total;
-        return !m_should_cancel;
-    });
+    g_autoptr(GByteArray) data = g_byte_array_new();
+    int res = http_get(version_url, data, NULL, NULL);
+
     if (m_should_cancel) {
         m_should_cancel = false;
         m_status = UPDATER_IDLE;
         goto finished;
-    } else if (!res || res->status != 200) {
+    } else if (res != 200) {
         m_status = UPDATER_ERROR;
         goto finished;
     }
 
-    if (strcmp(xemu_version, res->body.c_str())) {
+    m_latest_version = std::string((const char *)data->data, data->len);
+
+    if (m_latest_version != xemu_version) {
         m_update_availability = UPDATE_AVAILABLE;
     } else {
         m_update_availability = UPDATE_NOT_AVAILABLE;
     }
 
-    m_latest_version = res->body;
     m_status = UPDATER_IDLE;
 finished:
     if (m_on_complete) {
@@ -198,27 +194,41 @@ void *Updater::update_thread_worker_func(void *updater)
     return NULL;
 }
 
+int Updater::progress_cb(http_progress_cb_info *info)
+{
+    if (info->dltotal == 0) {
+        m_update_percentage = 0;
+    } else {
+        m_update_percentage = info->dlnow*100/info->dltotal;
+    }
+
+    return m_should_cancel;
+}
+
 void Updater::update_internal()
 {
-    httplib::SSLClient cli(download_host, 443);
-    cli.set_follow_location(true);
-    auto res = cli.Get(download_uri, [this](uint64_t len, uint64_t total) {
-        m_update_percentage = len*100/total;
-        return !m_should_cancel;
-    });
+    g_autoptr(GByteArray) data = g_byte_array_new();
+
+    http_progress_cb_info progress_info;
+    progress_info.userptr = this;
+    progress_info.progress = [](http_progress_cb_info *info) {
+        return static_cast<Updater *>(info->userptr)->progress_cb(info);
+    };
+
+    int res = http_get(download_url, data, &progress_info, NULL);
 
     if (m_should_cancel) {
         m_should_cancel = false;
         m_status = UPDATER_IDLE;
         return;
-    } else if (!res || res->status != 200) {
+    } else if (res != 200) {
         m_status = UPDATER_ERROR;
         return;
     }
 
     mz_zip_archive zip;
     mz_zip_zero_struct(&zip);
-    if (!mz_zip_reader_init_mem(&zip, res->body.data(), res->body.size(), 0)) {
+    if (!mz_zip_reader_init_mem(&zip, data->data, data->len, 0)) {
         DPRINTF("mz_zip_reader_init_mem failed\n");
         m_status = UPDATER_ERROR;
         return;
