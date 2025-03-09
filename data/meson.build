@@ -7,7 +7,7 @@ pfiles = [
   'abxy.ttf',
   'Roboto-Medium.ttf',
   'RobotoCondensed-Regular.ttf',
-  'font_awesome_6_1_1_solid.otf',
+  'font_awesome_6_1_1_solid.min.otf',  # Update glyphs with scripts/gen-min-fa-font.sh
 ]
 
 libpfile_targets = []

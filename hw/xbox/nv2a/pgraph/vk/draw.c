@@ -635,11 +635,9 @@ static bool check_pipeline_dirty(PGRAPHState *pg)
     }
 
     const unsigned int regs[] = {
-        NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,
-        NV_PGRAPH_CONTROL_0,   NV_PGRAPH_CONTROL_1,
-        NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
-        NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZCOMPRESSOCCLUDE,
-        NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
+        NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,  NV_PGRAPH_CONTROL_0,
+        NV_PGRAPH_CONTROL_1,   NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
+        NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
     };
 
     for (int i = 0; i < ARRAY_SIZE(regs); i++) {
@@ -682,11 +680,9 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
     // FIXME: Register masking
     // FIXME: Use more dynamic state updates
     const int regs[] = {
-        NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,
-        NV_PGRAPH_CONTROL_0,   NV_PGRAPH_CONTROL_1,
-        NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
-        NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZCOMPRESSOCCLUDE,
-        NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
+        NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,  NV_PGRAPH_CONTROL_0,
+        NV_PGRAPH_CONTROL_1,   NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
+        NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
     };
     assert(ARRAY_SIZE(regs) == ARRAY_SIZE(key->regs));
     for (int i = 0; i < ARRAY_SIZE(regs); i++) {
@@ -816,7 +812,7 @@ static void create_pipeline(PGRAPHState *pg)
 
     VkPipelineRasterizationStateCreateInfo rasterizer = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .depthClampEnable = VK_FALSE,
+        .depthClampEnable = VK_TRUE,
         .rasterizerDiscardEnable = VK_FALSE,
         .polygonMode = pgraph_polygon_mode_vk_map[r->shader_binding->state
                                                       .polygon_front_mode],
@@ -958,10 +954,6 @@ static void create_pipeline(PGRAPHState *pg)
         .pDynamicStates = dynamic_states,
     };
 
-    // /* Clipping */
-    // glEnable(GL_CLIP_DISTANCE0);
-    // glEnable(GL_CLIP_DISTANCE1);
-
     // /* Polygon offset */
     // /* FIXME: GL implementation-specific, maybe do this in VS? */
     // if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
@@ -981,12 +973,6 @@ static void create_pipeline(PGRAPHState *pg)
         rasterizer.depthBiasEnable = VK_TRUE;
         rasterizer.depthBiasSlopeFactor = zfactor;
         rasterizer.depthBiasConstantFactor = zbias;
-    }
-
-    if (GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_ZCOMPRESSOCCLUDE),
-                 NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
-        NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CLAMP) {
-        rasterizer.depthClampEnable = VK_TRUE;
     }
 
     // FIXME: Dither
