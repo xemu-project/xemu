@@ -29,14 +29,6 @@ endif
 libfpng = static_library('fpng', sources: 'fpng/fpng.cpp', cpp_args: libfpng_cpp_args)
 fpng = declare_dependency(include_directories: 'fpng', link_with: libfpng)
 
-json = declare_dependency(include_directories: 'json')
-
-httplib_proj = subproject('cpp-httplib', default_options: ['cpp-httplib_openssl=enabled'])
-httplib_deps = [httplib_proj.get_variable('cpp_httplib_dep')]
-if host_os == 'windows'
-  httplib_deps += [crypt32]
-endif
-httplib = declare_dependency(dependencies: httplib_deps)
-
-libfatx = static_library('fatx', sources: 'fatx/fatx.c')
+json = dependency('nlohmann_json', required: true)
+libfatx = static_library('fatx', sources: files('fatx/fatx.c') + genh)
 fatx = declare_dependency(include_directories: 'fatx', link_with: libfatx)
