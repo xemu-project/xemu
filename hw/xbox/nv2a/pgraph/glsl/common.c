@@ -21,7 +21,7 @@
 #include "common.h"
 
 
-MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bool in, bool prefix, bool array)
+MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bool in, bool prefix, bool array, bool z_perspective)
 {
     const char *flat_s = "flat ";
     const char *smooth_s = "";
@@ -34,6 +34,7 @@ MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bo
 
     const char *float_s = "float";
     const char *vec4_s = "vec4";
+
     const char *types[9] = { vec4_s, vec4_s, vec4_s, vec4_s, float_s,
                              vec4_s, vec4_s, vec4_s, vec4_s };
 
@@ -52,5 +53,9 @@ MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bo
             qualifiers[i], in_out_s, types[i], prefix_s, names[i], suffix_s);
     }
 
+    if (location) {
+        mstring_append(out, " layout(location = 9) ");
+    }
+    mstring_append_fmt(out, "%s float %sdepthBuf%s;\n", in_out_s, prefix_s, suffix_s);
     return out;
 }
