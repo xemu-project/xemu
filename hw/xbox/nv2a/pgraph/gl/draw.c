@@ -203,11 +203,6 @@ void pgraph_gl_draw_begin(NV2AState *d)
         glDisable(GL_CULL_FACE);
     }
 
-    /* Clipping */
-    glEnable(GL_CLIP_DISTANCE0);
-    glEnable(GL_CLIP_DISTANCE1);
-    glEnable(GL_DEPTH_CLAMP);
-
     /* Front-face select */
     glFrontFace(pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER)
                     & NV_PGRAPH_SETUPRASTER_FRONTFACE
@@ -241,6 +236,8 @@ void pgraph_gl_draw_begin(NV2AState *d)
         GLfloat zfactor = *(float*)&zfactor_u32;
         uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
         GLfloat zbias = *(float*)&zbias_u32;
+        // FIXME: with Linux and Mesa, zbias must be multiplied by 0.5 in
+        // order to have the same depth value offset as Xbox.
         glPolygonOffset(zfactor, zbias);
     }
 
@@ -256,6 +253,7 @@ void pgraph_gl_draw_begin(NV2AState *d)
         glDisable(GL_DEPTH_TEST);
     }
 
+    glEnable(GL_DEPTH_CLAMP);
 
     if (GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
                  NV_PGRAPH_CONTROL_3_SHADEMODE) ==

@@ -422,12 +422,9 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
     mstring_append(body,
     "   oPos = tPosition * compositeMat;\n"
-    "   if (oPos.w < 0.0) {\n"
-    "     oPos.w = clamp(oPos.w, -1.884467e+019, -5.421011e-20);\n"
-    "   } else {\n"
-    "     oPos.w = clamp(oPos.w, 5.421011e-20, 1.884467e+019);\n"
-    "   }\n"
+    "   oPos.w = clampAwayZeroInf(oPos.w);\n"
     "   depthBuf = (invViewport * vec4(oPos.xyz/oPos.w, oPos.w)).w;\n"
+    "   oPos = invViewport * oPos;\n"
     );
 
     if (!state->texture_perspective) {
@@ -458,7 +455,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         mstring_append_fmt(body, "  oPts.x = %f * %d;\n", state->point_size,
                            state->surface_scale_factor);
     }
-
 }
 
 static void append_skinning_code(MString* str, bool mix,

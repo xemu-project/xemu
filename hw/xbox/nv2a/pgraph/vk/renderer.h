@@ -65,7 +65,7 @@ typedef struct PipelineKey {
     bool clear;
     RenderPassState render_pass_state;
     ShaderState shader_state;
-    uint32_t regs[10];
+    uint32_t regs[9];
     VkVertexInputBindingDescription binding_descriptions[NV2A_VERTEXSHADER_ATTRIBUTES];
     VkVertexInputAttributeDescription attribute_descriptions[NV2A_VERTEXSHADER_ATTRIBUTES];
 } PipelineKey;
@@ -173,8 +173,9 @@ typedef struct ShaderBinding {
 
     int surface_size_loc;
     int clip_range_loc;
-    int clip_range_loc_frag;
-    int zbias_loc;
+
+    int clip_range_floc;
+    int depth_offset_loc;
 
     int vsh_constant_loc;
     uint32_t vsh_constants[NV2A_VERTEXSHADER_CONSTANTS][4];

@@ -1,7 +1,7 @@
 //
 // xemu User Interface
 //
-// Copyright (C) 2020-2022 Matt Borgerson
+// Copyright (C) 2020-2025 Matt Borgerson
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 extern "C" {
 #include "qemu/osdep.h"
 #include "qemu/thread.h"
+#include "qemu/http.h"
 }
 
 typedef enum {
@@ -52,6 +53,9 @@ private:
     bool                m_should_cancel;
     UpdateStatus        m_status;
     UpdaterCallback     m_on_complete;
+
+protected:
+    int progress_cb(http_progress_cb_info *progress_info);
 
 public:
     Updater();

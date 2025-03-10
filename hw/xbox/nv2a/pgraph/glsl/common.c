@@ -23,26 +23,25 @@
 
 MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bool in, bool prefix, bool array, bool z_perspective)
 {
-    const char *flat_s = "flat";
-    const char *noperspective_s = z_perspective ? "" : "noperspective";
-    const char *qualifier_s = smooth ? noperspective_s : flat_s;
-    const char *qualifiers[9] = {
-        qualifier_s,     qualifier_s,     qualifier_s,     
-        qualifier_s,     noperspective_s, noperspective_s,
-        noperspective_s, noperspective_s, noperspective_s
-    };
+    const char *flat_s = "flat ";
+    const char *smooth_s = "";
+    const char *qualifier_s = smooth ? smooth_s : flat_s;
+    const char *qualifiers[9] = { qualifier_s, qualifier_s, qualifier_s,
+                                  qualifier_s, smooth_s,    smooth_s,
+                                  smooth_s,    smooth_s,    smooth_s };
 
     const char *in_out_s = in ? "in" : "out";
 
     const char *float_s = "float";
     const char *vec4_s = "vec4";
-    const char *types[9] = { vec4_s, vec4_s, vec4_s, vec4_s,
-                              float_s, vec4_s,  vec4_s, vec4_s, vec4_s };
+
+    const char *types[9] = { vec4_s, vec4_s, vec4_s, vec4_s, float_s,
+                             vec4_s, vec4_s, vec4_s, vec4_s };
 
     const char *prefix_s = prefix ? "v_" : "";
     const char *names[9] = {
-        "vtxD0",    "vtxD1",    "vtxB0",    "vtxB1",
-        "vtxFog",   "vtxT0",    "vtxT1",    "vtxT2",    "vtxT3",
+        "vtxD0", "vtxD1", "vtxB0", "vtxB1", "vtxFog",
+        "vtxT0", "vtxT1", "vtxT2", "vtxT3",
     };
     const char *suffix_s = array ? "[]" : "";
 
@@ -50,7 +49,7 @@ MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bo
         if (location) {
             mstring_append_fmt(out, "layout(location = %d) ", i);
         }
-        mstring_append_fmt(out, "%s %s %s %s%s%s;\n",
+        mstring_append_fmt(out, "%s%s %s %s%s%s;\n",
             qualifiers[i], in_out_s, types[i], prefix_s, names[i], suffix_s);
     }
 

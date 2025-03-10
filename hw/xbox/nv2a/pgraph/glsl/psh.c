@@ -744,11 +744,12 @@ static MString* psh_convert(struct PixelShader *ps)
         mstring_append_fmt(preflight,
                            "layout(location = 0) out vec4 fragColor;\n");
     }
-    mstring_append_fmt(preflight, "%sfloat alphaRef;\n"
+
+    mstring_append_fmt(preflight, "%sint alphaRef;\n"
                                   "%svec4  fogColor;\n"
                                   "%sivec4 clipRegion[8];\n"
-                                  "%svec4 clipRange;\n"
-                                  "%sfloat zbias;\n",
+                                  "%svec4  clipRange;\n"
+                                  "%sfloat depthOffset;\n",
                                   u, u, u, u, u);
     for (int i = 0; i < 4; i++) {
         mstring_append_fmt(preflight, "%smat2  bumpMat%d;\n"
@@ -901,7 +902,48 @@ static MString* psh_convert(struct PixelShader *ps)
         );        
     }
 
-    /* calculate perspective-correct inputs */
+    /* calculate perspective-correct inputs
+    if (ps->state.depth_clipping) {
+        if (ps->state.z_perspective) {
+            mstring_append(
+                clip, "float zvalue = 1.0/gl_FragCoord.w + depthOffset;\n"
+                      "if (zvalue < clipRange.z || clipRange.w < zvalue) {\n"
+                      "  discard;\n"
+                      "}\n");
+        } else {
+             Take care of floating point precision problems. MS dashboard
+             * outputs exactly 0.0 z-coordinates and then our fixed function
+             * vertex shader outputs -w as the z-coordinate when OpenGL is
+             * used. Since -w/w = -1, this should give us exactly 0.0 as
+             * gl_FragCoord.z here. Unfortunately, with AMD Radeon RX 6600 the
+             * result is slightly greater than 0. MS dashboard sets the clip
+             * range to [0.0, 0.0] and so the imprecision causes unwanted
+             * clipping. Note that since Vulkan uses NDC range [0,1] it
+             * doesn't suffer from this problem with Radeon. Also, despite the
+             * imprecision OpenGL Radeon writes the correct value 0 to the depth
+             * buffer (if writing is enabled.) Radeon appears to write floored
+             * values. To compare, Intel integrated UHD 770 has gl_FragCoord.z
+             * exactly 0 (and writes rounded to closest integer values to the
+             * depth buffer.) Radeon OpenGL problem could also be fixed by using
+             * glClipControl(), but it requires OpenGL 4.5.
+             * Above is based on experiments with Linux and Mesa.
+             
+            if (ps->state.vulkan) {
+                mstring_append(
+                    clip, "if (gl_FragCoord.z*clipRange.y < clipRange.z ||\n"
+                          "    gl_FragCoord.z*clipRange.y > clipRange.w) {\n"
+                          "  discard;\n"
+                          "}\n");
+            } else {
+                mstring_append(
+                    clip, "if ((gl_FragCoord.z + 1.0f/16777216.0f)*clipRange.y < clipRange.z ||\n"
+                          "    (gl_FragCoord.z - 1.0f/16777216.0f)*clipRange.y > clipRange.w) {\n"
+                          "  discard;\n"
+                          "}\n");
+            }
+        }
+    } */
+
     MString *vars = mstring_new();
     mstring_append(vars, "vec4 pD0 = vtxD0;\n");
     mstring_append(vars, "vec4 pD1 = vtxD1;\n");
@@ -1224,7 +1266,9 @@ static MString* psh_convert(struct PixelShader *ps)
                 assert(false);
                 break;
             }
-            mstring_append_fmt(ps->code, "if (!(fragColor.a %s alphaRef)) discard;\n",
+            mstring_append_fmt(ps->code,
+                               "int fragAlpha = int(round(fragColor.a * 255.0));\n"
+                               "if (!(fragAlpha %s alphaRef)) discard;\n",
                                alpha_op);
         }
     }
@@ -1249,6 +1293,23 @@ static MString* psh_convert(struct PixelShader *ps)
                 mstring_append(vars, "r0.a = 1.0;\n");
             }
         }
+    }
+
+    if (ps->state.z_perspective) {
+        if (!ps->state.depth_clipping) {
+            mstring_append(ps->code,
+                           "float zvalue = 1.0/gl_FragCoord.w + depthOffset;\n");
+        }
+        /* TODO: With integer depth buffers Xbox hardware floors values and so
+         * does Radeon, but Intel UHD 770 rounds to nearest. Should probably
+         * floor here explicitly (in some way that doesn't also cause
+         * imprecision issues due to division by clipRange.y)
+         */
+        mstring_append(ps->code,
+                       "gl_FragDepth = clamp(zvalue, clipRange.z, clipRange.w)/clipRange.y;\n");
+    } else if (!ps->state.depth_clipping) {
+        mstring_append(ps->code,
+                       "gl_FragDepth = clamp(gl_FragCoord.z, clipRange.z/clipRange.y, clipRange.w/clipRange.y);\n");
     }
 
     MString *final = mstring_new();

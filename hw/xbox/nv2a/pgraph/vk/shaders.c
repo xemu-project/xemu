@@ -276,6 +276,10 @@ static void update_shader_constant_locations(ShaderBinding *binding)
         uniform_index(&binding->vertex->uniforms, "surfaceSize");
     binding->clip_range_loc =
         uniform_index(&binding->vertex->uniforms, "clipRange");
+    binding->clip_range_floc =
+        uniform_index(&binding->fragment->uniforms, "clipRange");
+    binding->depth_offset_loc =
+        uniform_index(&binding->fragment->uniforms, "depthOffset");
     binding->fog_param_loc =
         uniform_index(&binding->vertex->uniforms, "fogParam");
 
@@ -483,10 +487,9 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         }
     }
     if (binding->alpha_ref_loc != -1) {
-        float alpha_ref = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0),
-                                   NV_PGRAPH_CONTROL_0_ALPHAREF) /
-                          255.0;
-        uniform1f(&binding->fragment->uniforms, binding->alpha_ref_loc,
+        int alpha_ref = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0),
+                                   NV_PGRAPH_CONTROL_0_ALPHAREF);
+        uniform1i(&binding->fragment->uniforms, binding->alpha_ref_loc,
                          alpha_ref);
     }
 
@@ -644,15 +647,47 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
                          pg->surface_binding_dim.height / aa_height);
     }
 
-    uint32_t v[2];
-    v[0] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
-    v[1] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMAX);
-    float zclip_min = *(float *)&v[0];
-    float zclip_max = *(float *)&v[1];
+    if (binding->clip_range_loc != -1 || binding->clip_range_floc != -1) {
+        uint32_t v[2];
+        v[0] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
+        v[1] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMAX);
+        float zclip_min = *(float *)&v[0];
+        float zclip_max = *(float *)&v[1];
 
-    if (binding->clip_range_loc != -1) {       
-        uniform4f(&binding->vertex->uniforms, binding->clip_range_loc, 0,
-                         zmax, zclip_min, zclip_max);
+        if (binding->clip_range_loc != -1) {
+            uniform4f(&binding->vertex->uniforms, binding->clip_range_loc, 0,
+                      zmax, zclip_min, zclip_max);
+        }
+        if (binding->clip_range_floc != -1) {
+            uniform4f(&binding->fragment->uniforms, binding->clip_range_floc, 0,
+                      zmax, zclip_min, zclip_max);
+        }
+    }
+
+    if (binding->depth_offset_loc != -1) {
+        float zbias = 0.0f;
+
+        if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
+            uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
+            zbias = *(float *)&zbias_u32;
+
+            if (pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR) != 0 &&
+                (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                 NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE)) {
+                /* TODO: emulate zfactor when z_perspective true, i.e.
+                 * w-buffering. Perhaps calculate an additional offset based on
+                 * triangle orientation in geometry shader and pass the result
+                 * to fragment shader and add it to gl_FragDepth as well.
+                 */
+                NV2A_UNIMPLEMENTED("NV_PGRAPH_ZOFFSETFACTOR for w-buffering");
+            }
+        }
+
+        uniform1f(&binding->fragment->uniforms, binding->depth_offset_loc,
+                  zbias);
     }
 
     if (binding->clip_range_loc_frag != -1) {
@@ -748,6 +783,7 @@ static bool check_shaders_dirty(PGRAPHState *pg)
         NV_PGRAPH_SHADERCTL,
         NV_PGRAPH_SHADERPROG,
         NV_PGRAPH_SHADOWCTL,
+        NV_PGRAPH_ZCOMPRESSOCCLUDE,
     };
     for (int i = 0; i < ARRAY_SIZE(regs); i++) {
         if (pgraph_is_reg_dirty(pg, regs[i])) {

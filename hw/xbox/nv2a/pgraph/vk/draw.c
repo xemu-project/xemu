@@ -635,11 +635,9 @@ static bool check_pipeline_dirty(PGRAPHState *pg)
     }
 
     const unsigned int regs[] = {
-        NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,
-        NV_PGRAPH_CONTROL_0,   NV_PGRAPH_CONTROL_1,
-        NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
-        NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZCOMPRESSOCCLUDE,
-        NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
+        NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,  NV_PGRAPH_CONTROL_0,
+        NV_PGRAPH_CONTROL_1,   NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
+        NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
     };
 
     for (int i = 0; i < ARRAY_SIZE(regs); i++) {
@@ -682,11 +680,9 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
     // FIXME: Register masking
     // FIXME: Use more dynamic state updates
     const int regs[] = {
-        NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,
-        NV_PGRAPH_CONTROL_0,   NV_PGRAPH_CONTROL_1,
-        NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
-        NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZCOMPRESSOCCLUDE,
-        NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
+        NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,  NV_PGRAPH_CONTROL_0,
+        NV_PGRAPH_CONTROL_1,   NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
+        NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
     };
     assert(ARRAY_SIZE(regs) == ARRAY_SIZE(key->regs));
     for (int i = 0; i < ARRAY_SIZE(regs); i++) {
@@ -955,10 +951,6 @@ static void create_pipeline(PGRAPHState *pg)
         .dynamicStateCount = ARRAY_SIZE(dynamic_states),
         .pDynamicStates = dynamic_states,
     };
-
-    // /* Clipping */
-    // glEnable(GL_CLIP_DISTANCE0);
-    // glEnable(GL_CLIP_DISTANCE1);
 
     // /* Polygon offset */
     // /* FIXME: GL implementation-specific, maybe do this in VS? */
