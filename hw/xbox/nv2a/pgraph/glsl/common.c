@@ -17,40 +17,39 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-
 #include "common.h"
 
-
-MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bool in, bool prefix, bool array, bool z_perspective)
+MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bool in, bool prefix, bool array)
 {
-    const char *flat_s = "flat ";
     const char *smooth_s = "";
+    const char *flat_s = "flat ";
     const char *qualifier_s = smooth ? smooth_s : flat_s;
-    const char *qualifiers[9] = { qualifier_s, qualifier_s, qualifier_s,
-                                  qualifier_s, smooth_s,    smooth_s,
-                                  smooth_s,    smooth_s,    smooth_s };
-
     const char *in_out_s = in ? "in" : "out";
-
     const char *float_s = "float";
     const char *vec4_s = "vec4";
-
-    const char *types[9] = { vec4_s, vec4_s, vec4_s, vec4_s, float_s,
-                             vec4_s, vec4_s, vec4_s, vec4_s };
-
     const char *prefix_s = prefix ? "v_" : "";
-    const char *names[9] = {
-        "vtxD0", "vtxD1", "vtxB0", "vtxB1", "vtxFog",
-        "vtxT0", "vtxT1", "vtxT2", "vtxT3",
-    };
     const char *suffix_s = array ? "[]" : "";
+    const struct {
+        const char *qualifier, *type, *name;
+    } attr[] = {
+        { qualifier_s, vec4_s,  "vtxD0"  },
+        { qualifier_s, vec4_s,  "vtxD1"  },
+        { qualifier_s, vec4_s,  "vtxB0"  },
+        { qualifier_s, vec4_s,  "vtxB1"  },
+        { smooth_s,    float_s, "vtxFog" },
+        { smooth_s,    vec4_s,  "vtxT0"  },
+        { smooth_s,    vec4_s,  "vtxT1"  },
+        { smooth_s,    vec4_s,  "vtxT2"  },
+        { smooth_s,    vec4_s,  "vtxT3"  },
+    };
 
-    for (int i = 0; i < 9; i++) {
+    for (int i = 0; i < ARRAY_SIZE(attr); i++) {
         if (location) {
             mstring_append_fmt(out, "layout(location = %d) ", i);
         }
-        mstring_append_fmt(out, "%s%s %s %s%s%s;\n",
-            qualifiers[i], in_out_s, types[i], prefix_s, names[i], suffix_s);
+        mstring_append_fmt(out, "%s%s %s %s%s%s;\n", attr[i].qualifier,
+                           in_out_s, attr[i].type, prefix_s, attr[i].name,
+                           suffix_s);
     }
 
     if (location) {
