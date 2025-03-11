@@ -69,6 +69,8 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
         pgraph_reg_r(pg, NV_PGRAPH_SHADOWCTL), NV_PGRAPH_SHADOWCTL_SHADOW_ZFUNC);
 
     state.fixed_function = fixed_function;
+    state.specular_enable = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C),
+                                     NV_PGRAPH_CSV0_C_SPECULAR_ENABLE);
 
     /* fixed function stuff */
     if (fixed_function) {

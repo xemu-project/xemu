@@ -83,6 +83,7 @@ typedef struct ShaderState {
     enum VshLight light[NV2A_MAX_LIGHTS];
 
     bool fixed_function;
+    bool specular_enable;
 
     /* vertex program */
     bool vertex_program;
