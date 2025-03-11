@@ -467,12 +467,9 @@ static void upload_gl_texture(GLenum gl_target,
                         8 : 16;
                 unsigned int physical_width = (width + 3) & ~3,
                              physical_height = (height + 3) & ~3;
-                if (physical_width != width) {
-                    glPixelStorei(GL_UNPACK_ROW_LENGTH, physical_width);
-                }
                 uint8_t *converted = s3tc_decompress_2d(
                     gl_internal_format_to_s3tc_enum(f.gl_internal_format),
-                    texture_data, physical_width, physical_height);
+                    texture_data, width, height);
                 unsigned int tex_width = width;
                 unsigned int tex_height = height;
 
@@ -492,9 +489,6 @@ static void upload_gl_texture(GLenum gl_target,
                 glTexImage2D(gl_target, level, GL_RGBA, tex_width, tex_height, 0,
                              GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV, converted);
                 g_free(converted);
-                if (physical_width != width) {
-                    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-                }
                 if (s.cubemap && adjusted_width != s.width) {
                     glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
                     glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);

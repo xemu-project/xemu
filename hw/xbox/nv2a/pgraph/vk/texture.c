@@ -246,14 +246,11 @@ static TextureLayout *get_texture_layout(PGRAPHState *pg, int texture_idx)
                     unsigned int tex_width = width, tex_height = height;
                     unsigned int physical_width = (width + 3) & ~3,
                                  physical_height = (height + 3) & ~3;
-                    // if (physical_width != width) {
-                    //     glPixelStorei(GL_UNPACK_ROW_LENGTH, physical_width);
-                    // }
 
                     size_t converted_size = width * height * 4;
                     uint8_t *converted = s3tc_decompress_2d(
                         kelvin_format_to_s3tc_format(s.color_format),
-                        texture_data_ptr, physical_width, physical_height);
+                        texture_data_ptr, width, height);
                     assert(converted);
 
                     if (s.cubemap && adjusted_width != s.width) {
