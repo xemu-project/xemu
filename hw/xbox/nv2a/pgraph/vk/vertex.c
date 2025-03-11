@@ -193,13 +193,6 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
         hwaddr attrib_data_addr;
         size_t stride;
 
-        if (needs_conversion) {
-            pg->compressed_attrs |= (1 << i);
-        }
-        if (d3d_swizzle) {
-            pg->swizzle_attrs |= (1 << i);
-        }
-
         hwaddr start = 0;
         if (inline_data) {
             attrib_data_addr = attr->inline_array_offset;
@@ -263,6 +256,13 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
             };
 
         r->vertex_attribute_offsets[i] = attrib_data_addr;
+
+        if (needs_conversion) {
+            pg->compressed_attrs |= (1 << i);
+        }
+        if (d3d_swizzle) {
+            pg->swizzle_attrs |= (1 << i);
+        }
 
         NV2A_VK_DGROUP_END();
     }
