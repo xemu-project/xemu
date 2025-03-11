@@ -576,11 +576,15 @@ static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
         return NULL;
 
     case PS_TEXTUREMODES_PROJECT2D:
-        assert(state->dim_tex[i] == 2);
-        if (state->tex_x8y24[i] && state->vulkan) {
-            return "usampler2D";
+        if (state->dim_tex[i] == 2) {
+            if (state->tex_x8y24[i] && state->vulkan) {
+                return "usampler2D";
+            }
+            return sampler2D;
         }
-        return sampler2D;
+        if (state->dim_tex[i] == 3) return sampler3D;
+        assert(!"Unhandled texture dimensions");
+        return NULL;
 
     case PS_TEXTUREMODES_BUMPENVMAP:
     case PS_TEXTUREMODES_BUMPENVMAP_LUM:
@@ -712,6 +716,7 @@ static void apply_border_adjustment(const struct PixelShader *ps, MString *vars,
 
 static void apply_convolution_filter(const struct PixelShader *ps, MString *vars, int tex)
 {
+    assert(ps->state.dim_tex[tex] == 2);
     // FIXME: Quincunx
 
     g_autofree gchar *normalize_tex_coords = g_strdup_printf("norm%d", tex);
@@ -956,8 +961,15 @@ static MString* psh_convert(struct PixelShader *ps)
                      (ps->state.conv_tex[i] == CONVOLUTION_FILTER_QUINCUNX))) {
                     apply_convolution_filter(ps, vars, i);
                 } else {
-                    mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, %s(pT%d.xyw));\n",
-                                       i, i, tex_remap, i);
+                    if (ps->state.dim_tex[i] == 2) {
+                        mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, %s(pT%d.xyw));\n",
+                                           i, i, tex_remap, i);
+                    } else if (ps->state.dim_tex[i] == 3) {
+                        mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, vec4(pT%d.xy, 0.0, pT%d.w));\n",
+                                           i, i, i, i);
+                    } else {
+                        assert(!"Unhandled texture dimensions");
+                    }
                 }
             }
             break;
