@@ -1619,6 +1619,11 @@ DEF_METHOD(NV097, SET_MATERIAL_ALPHA)
     pg->material_alpha = *(float*)&parameter;
 }
 
+DEF_METHOD(NV097, SET_SPECULAR_ENABLE)
+{
+    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_SPECULAR_ENABLE, parameter);
+}
+
 DEF_METHOD(NV097, SET_LIGHT_ENABLE_MASK)
 {
     PG_SET_MASK(NV_PGRAPH_CSV0_D, NV_PGRAPH_CSV0_D_LIGHTS, parameter);
@@ -3022,4 +3027,3 @@ void pgraph_pre_shutdown_wait(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     pg->renderer->ops.pre_shutdown_wait(d);
 }
-

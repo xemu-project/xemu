@@ -314,6 +314,7 @@
 #       define NV_PGRAPH_CSV0_D_SKIN_4                              6
 #define NV_PGRAPH_CSV0_C                                 0x00000FB8
 #   define NV_PGRAPH_CSV0_C_CHEOPS_PROGRAM_START                0x0000FF00
+#   define NV_PGRAPH_CSV0_C_SPECULAR_ENABLE                     (1 << 16)
 #   define NV_PGRAPH_CSV0_C_SPECULAR                            (3 << 19)
 #   define NV_PGRAPH_CSV0_C_DIFFUSE                             (3 << 21)
 #   define NV_PGRAPH_CSV0_C_AMBIENT                             (3 << 23)
@@ -1015,6 +1016,7 @@
 #   define NV097_SET_NORMALIZATION_ENABLE                     0x000003A4
 #   define NV097_SET_MATERIAL_EMISSION                        0x000003A8
 #   define NV097_SET_MATERIAL_ALPHA                           0x000003B4
+#   define NV097_SET_SPECULAR_ENABLE                          0x000003B8
 #   define NV097_SET_LIGHT_ENABLE_MASK                        0x000003BC
 #           define NV097_SET_LIGHT_ENABLE_MASK_LIGHT0_OFF           0
 #           define NV097_SET_LIGHT_ENABLE_MASK_LIGHT0_INFINITE      1
