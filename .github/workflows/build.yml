@@ -379,6 +379,29 @@ jobs:
         lipo -create -output xemu.app/Contents/MacOS/xemu \
           ../xemu-macos-x86_64-${{ matrix.configuration }}/xemu.app/Contents/MacOS/xemu \
           ../xemu-macos-arm64-${{ matrix.configuration }}/xemu.app/Contents/MacOS/xemu
+        popd
+
+    - name: Prepare for signing
+      # if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+      run: |
+        echo "${{ secrets.APPLE_SIGN_CERT_P12_B64 }}" | base64 -d > cert.p12
+        echo "${{ secrets.APPLE_APPSTORECONNECT_KEY_JSON_B64 }}" | base64 -d > key.json
+
+    - name: Sign xemu.app
+      # if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+      uses: indygreg/apple-code-sign-action@v1.1
+      with:
+        input_path: dist/xemu.app
+        # p12_file: cert.p12
+        # p12_password: "${{ secrets.APPLE_SIGN_CERT_P12_PASSWORD }}"
+        # sign_args: --for-notarization
+        # app_store_connect_api_key_json_file: key.json
+        # notarize: true
+        # staple: true
+
+    - name: Zip release
+      run: |
+        pushd dist
         codesign --force --deep --preserve-metadata=entitlements,requirements,flags,runtime --sign - xemu.app/Contents/MacOS/xemu
         zip -r ../xemu-macos-universal-${{ matrix.configuration }}.zip *
         popd
