@@ -82,7 +82,7 @@ const char *xemu_settings_get_base_path(void)
                  : SDL_GetPrefPath("xemu", "xemu");
     assert(base != NULL);
     base_path = g_strdup(base);
-    SDL_free(base);
+    SDL_free(const_cast<char*>(base));
     fprintf(stderr, "%s: base path: %s\n", __func__, base_path);
     return base_path;
 }
