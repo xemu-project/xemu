@@ -2,7 +2,7 @@
  * xemu Input Management
  *
  * This is the main input abstraction layer for xemu, which is basically just a
- * wrapper around SDL2 GameController/Keyboard API to map specifically to an
+ * wrapper around SDL3 GameController/Keyboard API to map specifically to an
  * Xbox gamepad and support automatic binding, hotplugging, and removal at
  * runtime.
  *

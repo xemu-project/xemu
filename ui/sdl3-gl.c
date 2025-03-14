@@ -28,9 +28,9 @@
 #include "qemu/osdep.h"
 #include "ui/console.h"
 #include "ui/input.h"
-#include "ui/sdl2.h"
+#include "ui/sdl3.h"
 
-static void sdl2_set_scanout_mode(struct sdl2_console *scon, bool scanout)
+static void sdl3_set_scanout_mode(struct sdl3_console *scon, bool scanout)
 {
     if (scon->scanout_mode == scanout) {
         return;
@@ -46,12 +46,12 @@ static void sdl2_set_scanout_mode(struct sdl2_console *scon, bool scanout)
     }
 }
 
-static void sdl2_gl_render_surface(struct sdl2_console *scon)
+static void sdl3_gl_render_surface(struct sdl3_console *scon)
 {
     int ww, wh;
 
     SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
-    sdl2_set_scanout_mode(scon, false);
+    sdl3_set_scanout_mode(scon, false);
 
     SDL_GetWindowSize(scon->real_window, &ww, &wh);
     surface_gl_setup_viewport(scon->gls, scon->surface, ww, wh);
@@ -60,10 +60,10 @@ static void sdl2_gl_render_surface(struct sdl2_console *scon)
     SDL_GL_SwapWindow(scon->real_window);
 }
 
-void sdl2_gl_update(DisplayChangeListener *dcl,
+void sdl3_gl_update(DisplayChangeListener *dcl,
                     int x, int y, int w, int h)
 {
-    struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
+    struct sdl3_console *scon = container_of(dcl, struct sdl3_console, dcl);
 
     assert(scon->opengl);
 
@@ -76,10 +76,10 @@ void sdl2_gl_update(DisplayChangeListener *dcl,
     scon->updates++;
 }
 
-void sdl2_gl_switch(DisplayChangeListener *dcl,
+void sdl3_gl_switch(DisplayChangeListener *dcl,
                     DisplaySurface *new_surface)
 {
-    struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
+    struct sdl3_console *scon = container_of(dcl, struct sdl3_console, dcl);
     DisplaySurface *old_surface = scon->surface;
 
     assert(scon->opengl);
@@ -92,54 +92,54 @@ void sdl2_gl_switch(DisplayChangeListener *dcl,
     if (surface_is_placeholder(new_surface) && qemu_console_get_index(dcl->con)) {
         qemu_gl_fini_shader(scon->gls);
         scon->gls = NULL;
-        sdl2_window_destroy(scon);
+        sdl3_window_destroy(scon);
         return;
     }
 
     if (!scon->real_window) {
-        sdl2_window_create(scon);
+        sdl3_window_create(scon);
         scon->gls = qemu_gl_init_shader();
     } else if (old_surface &&
                ((surface_width(old_surface)  != surface_width(new_surface)) ||
                 (surface_height(old_surface) != surface_height(new_surface)))) {
-        sdl2_window_resize(scon);
+        sdl3_window_resize(scon);
     }
 
     surface_gl_create_texture(scon->gls, scon->surface);
 }
 
-void sdl2_gl_refresh(DisplayChangeListener *dcl)
+void sdl3_gl_refresh(DisplayChangeListener *dcl)
 {
-    struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
+    struct sdl3_console *scon = container_of(dcl, struct sdl3_console, dcl);
 
     assert(scon->opengl);
 
     graphic_hw_update(dcl->con);
     if (scon->updates && scon->real_window) {
         scon->updates = 0;
-        sdl2_gl_render_surface(scon);
+        sdl3_gl_render_surface(scon);
     }
-    sdl2_poll_events(scon);
+    sdl3_poll_events(scon);
 }
 
-void sdl2_gl_redraw(struct sdl2_console *scon)
+void sdl3_gl_redraw(struct sdl3_console *scon)
 {
     assert(scon->opengl);
 
     if (scon->scanout_mode) {
-        /* sdl2_gl_scanout_flush actually only care about
+        /* sdl3_gl_scanout_flush actually only care about
          * the first argument. */
-        return sdl2_gl_scanout_flush(&scon->dcl, 0, 0, 0, 0);
+        return sdl3_gl_scanout_flush(&scon->dcl, 0, 0, 0, 0);
     }
     if (scon->surface) {
-        sdl2_gl_render_surface(scon);
+        sdl3_gl_render_surface(scon);
     }
 }
 
-QEMUGLContext sdl2_gl_create_context(DisplayGLCtx *dgc,
+QEMUGLContext sdl3_gl_create_context(DisplayGLCtx *dgc,
                                      QEMUGLParams *params)
 {
-    struct sdl2_console *scon = container_of(dgc, struct sdl2_console, dgc);
+    struct sdl3_console *scon = container_of(dgc, struct sdl3_console, dgc);
     SDL_GLContext ctx;
 
     assert(scon->opengl);
@@ -171,17 +171,17 @@ QEMUGLContext sdl2_gl_create_context(DisplayGLCtx *dgc,
     return (QEMUGLContext)ctx;
 }
 
-void sdl2_gl_destroy_context(DisplayGLCtx *dgc, QEMUGLContext ctx)
+void sdl3_gl_destroy_context(DisplayGLCtx *dgc, QEMUGLContext ctx)
 {
     SDL_GLContext sdlctx = (SDL_GLContext)ctx;
 
     SDL_GL_DestroyContext(sdlctx);
 }
 
-int sdl2_gl_make_context_current(DisplayGLCtx *dgc,
+int sdl3_gl_make_context_current(DisplayGLCtx *dgc,
                                  QEMUGLContext ctx)
 {
-    struct sdl2_console *scon = container_of(dgc, struct sdl2_console, dgc);
+    struct sdl3_console *scon = container_of(dgc, struct sdl3_console, dgc);
     SDL_GLContext sdlctx = (SDL_GLContext)ctx;
 
     assert(scon->opengl);
@@ -189,17 +189,17 @@ int sdl2_gl_make_context_current(DisplayGLCtx *dgc,
     return SDL_GL_MakeCurrent(scon->real_window, sdlctx);
 }
 
-void sdl2_gl_scanout_disable(DisplayChangeListener *dcl)
+void sdl3_gl_scanout_disable(DisplayChangeListener *dcl)
 {
-    struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
+    struct sdl3_console *scon = container_of(dcl, struct sdl3_console, dcl);
 
     assert(scon->opengl);
     scon->w = 0;
     scon->h = 0;
-    sdl2_set_scanout_mode(scon, false);
+    sdl3_set_scanout_mode(scon, false);
 }
 
-void sdl2_gl_scanout_texture(DisplayChangeListener *dcl,
+void sdl3_gl_scanout_texture(DisplayChangeListener *dcl,
                              uint32_t backing_id,
                              bool backing_y_0_top,
                              uint32_t backing_width,
@@ -208,7 +208,7 @@ void sdl2_gl_scanout_texture(DisplayChangeListener *dcl,
                              uint32_t w, uint32_t h,
                              void *d3d_tex2d)
 {
-    struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
+    struct sdl3_console *scon = container_of(dcl, struct sdl3_console, dcl);
 
     assert(scon->opengl);
     scon->x = x;
@@ -219,15 +219,15 @@ void sdl2_gl_scanout_texture(DisplayChangeListener *dcl,
 
     SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
 
-    sdl2_set_scanout_mode(scon, true);
+    sdl3_set_scanout_mode(scon, true);
     egl_fb_setup_for_tex(&scon->guest_fb, backing_width, backing_height,
                          backing_id, false);
 }
 
-void sdl2_gl_scanout_flush(DisplayChangeListener *dcl,
+void sdl3_gl_scanout_flush(DisplayChangeListener *dcl,
                            uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 {
-    struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
+    struct sdl3_console *scon = container_of(dcl, struct sdl3_console, dcl);
     int ww, wh;
 
     assert(scon->opengl);

@@ -26,12 +26,12 @@
 #include "qemu/osdep.h"
 #include "ui/console.h"
 #include "ui/input.h"
-#include "ui/sdl2.h"
+#include "ui/sdl3.h"
 
-void sdl2_2d_update(DisplayChangeListener *dcl,
+void sdl3_2d_update(DisplayChangeListener *dcl,
                     int x, int y, int w, int h)
 {
-    struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
+    struct sdl3_console *scon = container_of(dcl, struct sdl3_console, dcl);
     DisplaySurface *surf = scon->surface;
     SDL_Rect rect;
     size_t surface_data_offset;
@@ -56,10 +56,10 @@ void sdl2_2d_update(DisplayChangeListener *dcl,
     SDL_RenderPresent(scon->real_renderer);
 }
 
-void sdl2_2d_switch(DisplayChangeListener *dcl,
+void sdl3_2d_switch(DisplayChangeListener *dcl,
                     DisplaySurface *new_surface)
 {
-    struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
+    struct sdl3_console *scon = container_of(dcl, struct sdl3_console, dcl);
     DisplaySurface *old_surface = scon->surface;
     int format = 0;
 
@@ -73,16 +73,16 @@ void sdl2_2d_switch(DisplayChangeListener *dcl,
     }
 
     if (surface_is_placeholder(new_surface) && qemu_console_get_index(dcl->con)) {
-        sdl2_window_destroy(scon);
+        sdl3_window_destroy(scon);
         return;
     }
 
     if (!scon->real_window) {
-        sdl2_window_create(scon);
+        sdl3_window_create(scon);
     } else if (old_surface &&
                ((surface_width(old_surface)  != surface_width(new_surface)) ||
                 (surface_height(old_surface) != surface_height(new_surface)))) {
-        sdl2_window_resize(scon);
+        sdl3_window_resize(scon);
     }
 
     SDL_SetRenderLogicalPresentation(scon->real_renderer,
@@ -121,31 +121,31 @@ void sdl2_2d_switch(DisplayChangeListener *dcl,
                                       SDL_TEXTUREACCESS_STREAMING,
                                       surface_width(new_surface),
                                       surface_height(new_surface));
-    sdl2_2d_redraw(scon);
+    sdl3_2d_redraw(scon);
 }
 
-void sdl2_2d_refresh(DisplayChangeListener *dcl)
+void sdl3_2d_refresh(DisplayChangeListener *dcl)
 {
-    struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
+    struct sdl3_console *scon = container_of(dcl, struct sdl3_console, dcl);
 
     assert(!scon->opengl);
     graphic_hw_update(dcl->con);
-    sdl2_poll_events(scon);
+    sdl3_poll_events(scon);
 }
 
-void sdl2_2d_redraw(struct sdl2_console *scon)
+void sdl3_2d_redraw(struct sdl3_console *scon)
 {
     assert(!scon->opengl);
 
     if (!scon->surface) {
         return;
     }
-    sdl2_2d_update(&scon->dcl, 0, 0,
+    sdl3_2d_update(&scon->dcl, 0, 0,
                    surface_width(scon->surface),
                    surface_height(scon->surface));
 }
 
-bool sdl2_2d_check_format(DisplayChangeListener *dcl,
+bool sdl3_2d_check_format(DisplayChangeListener *dcl,
                           pixman_format_code_t format)
 {
     /*

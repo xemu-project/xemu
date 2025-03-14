@@ -26,10 +26,10 @@
 #include "qemu/osdep.h"
 #include "ui/console.h"
 #include "ui/input.h"
-#include "ui/sdl2.h"
+#include "ui/sdl3.h"
 #include "trace.h"
 
-void sdl2_process_key(struct sdl2_console *scon,
+void sdl3_process_key(struct sdl3_console *scon,
                       SDL_KeyboardEvent *ev)
 {
     int qcode;
@@ -39,7 +39,7 @@ void sdl2_process_key(struct sdl2_console *scon,
         return;
     }
     qcode = qemu_input_map_usb_to_qcode[ev->keysym.scancode];
-    trace_sdl2_process_key(ev->keysym.scancode, qcode,
+    trace_sdl3_process_key(ev->keysym.scancode, qcode,
                            ev->type == SDL_EVENT_KEY_DOWN ? "down" : "up");
     qkbd_state_key_event(scon->kbd, qcode, ev->type == SDL_EVENT_KEY_DOWN);
 
@@ -59,7 +59,7 @@ void sdl2_process_key(struct sdl2_console *scon,
     }
 }
 
-void sdl2_release_modifiers(struct sdl2_console *scon)
+void sdl3_release_modifiers(struct sdl3_console *scon)
 {
     qkbd_state_lift_all_keys(scon->kbd);
 }

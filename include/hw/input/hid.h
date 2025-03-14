@@ -49,7 +49,7 @@ struct HIDState {
 };
 
 #ifdef XBOX
-/* XXX: `hid_init` conflicts with SDL2 package. Redefine it here for now. */
+/* XXX: `hid_init` conflicts with SDL2/3 package. Redefine it here for now. */
 #define hid_init qemu_hid_init
 #endif
 

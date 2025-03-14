@@ -320,7 +320,7 @@ widl="${WIDL-${cross_prefix}widl}"
 windres="${WINDRES-${cross_prefix}windres}"
 windmc="${WINDMC-${cross_prefix}windmc}"
 pkg_config="${PKG_CONFIG-${cross_prefix}pkg-config}"
-sdl2_config="${SDL2_CONFIG-${cross_prefix}sdl2-config}"
+sdl3_config="${sdl3_CONFIG-${cross_prefix}sdl3-config}"
 
 rustc="${RUSTC-rustc}"
 
@@ -1935,8 +1935,8 @@ if test "$skip_meson" = no; then
   echo "pkg-config = [$(meson_quote $pkg_config)]" >> $cross
   echo "ranlib = [$(meson_quote $ranlib)]" >> $cross
   echo "readelf = [$(meson_quote $readelf)]" >> $cross
-  if has $sdl2_config; then
-    echo "sdl2-config = [$(meson_quote $sdl2_config)]" >> $cross
+  if has $sdl3_config; then
+    echo "sdl3-config = [$(meson_quote $sdl3_config)]" >> $cross
   fi
   echo "strip = [$(meson_quote $strip)]" >> $cross
   echo "widl = [$(meson_quote $widl)]" >> $cross
@@ -2055,7 +2055,7 @@ preserve_env PYTHON
 preserve_env QEMU_GA_MANUFACTURER
 preserve_env QEMU_GA_DISTRO
 preserve_env QEMU_GA_VERSION
-preserve_env SDL2_CONFIG
+preserve_env sdl3_CONFIG
 preserve_env SMBD
 preserve_env STRIP
 preserve_env WIDL

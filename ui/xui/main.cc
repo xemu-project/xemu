@@ -145,7 +145,7 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     io.IniFilename = NULL;
 
     // Setup Platform/Renderer bindings
-    ImGui_ImplSDL2_InitForOpenGL(window, sdl_gl_context);
+    ImGui_ImplSDL3_InitForOpenGL(window, sdl_gl_context);
     ImGui_ImplOpenGL3_Init("#version 150");
     g_sdl_window = window;
     ImPlot::CreateContext();
@@ -164,13 +164,13 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
 void xemu_hud_cleanup(void)
 {
     ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplSDL2_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
 }
 
 void xemu_hud_process_sdl_events(SDL_Event *event)
 {
-    ImGui_ImplSDL2_ProcessEvent(event);
+    ImGui_ImplSDL3_ProcessEvent(event);
 }
 
 void xemu_hud_should_capture_kbd_mouse(int *kbd, int *mouse)
@@ -208,7 +208,7 @@ void xemu_hud_render(void)
 
     ImGui_ImplOpenGL3_NewFrame();
     io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
-    ImGui_ImplSDL2_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
     g_input_mgr.Update();
