@@ -1495,7 +1495,7 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
 
             // FIXME: Refactor
             pg->surface_binding_dim.width = target.width;
-            pg->surface_binding_dim.clip_x = target.shape.clip_x - target.width + target.shape.clip_width;;
+            pg->surface_binding_dim.clip_x = target.shape.clip_x - target.width + target.shape.clip_width;
             pg->surface_binding_dim.clip_width = target.shape.clip_width;
             pg->surface_binding_dim.height = target.height;
             pg->surface_binding_dim.clip_y = target.shape.clip_y - target.height + target.shape.clip_height;
