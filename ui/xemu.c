@@ -286,7 +286,7 @@ static void set_full_screen(struct sdl3_console *scon, bool set)
     if (gui_fullscreen) {
         SDL_SetWindowFullscreen(scon->real_window,
                                 (g_config.display.window.fullscreen_exclusive ?
-                                SDL_WINDOW_FULLSCREEN));
+                                SDL_WINDOW_FULLSCREEN : 0));
         gui_saved_grab = gui_grab;
         sdl_grab_start(scon);
     } else {
@@ -338,7 +338,7 @@ static void handle_keydown(SDL_Event *ev)
                 sdl_grab_end(scon);
             }
 
-            win = ev->key.key.scancode - SDL_SCANCODE_1;
+            win = ev->key,scancode - SDL_SCANCODE_1;
             if (win < sdl3_num_outputs) {
                 sdl3_console[win].hidden = !sdl3_console[win].hidden;
                 if (sdl3_console[win].real_window) {
@@ -480,8 +480,8 @@ static void handle_windowevent(SDL_Event *ev)
     }
 
     // Set the timestamp if it's 0
-    if (ev.common.timestamp == 0) {
-        ev.common.timestamp = SDL_GetTicksNS();
+    if (ev->common.timestamp == 0) {
+        ev->common.timestamp = SDL_GetTicksNS();
     }
 
     switch (ev->type) { // Use ev->type instead of ev.window.event
@@ -601,7 +601,7 @@ void sdl3_poll_events(struct sdl3_console *scon)
             if (mouse) break;
             handle_mousewheel(ev);
             break;
-        case SDL_WindowEvent:
+        case SDL_EVENT_WINDOW:
             handle_windowevent(ev);
             break;
         default:
@@ -654,8 +654,7 @@ static void sdl_mouse_define(DisplayChangeListener *dcl,
     }
 
     guest_sprite_surface =
-        SDL_CreateSurfaceFrom(c->data, c->width, c->height, 32, c->width * 4,
-                                 0xff0000, 0x00ff00, 0xff, 0xff000000);
+        SDL_CreateSurfaceFrom(c->data, c->width, c->height, SDL_PIXELFORMAT_RGBA32, c->width * 4);
 
     if (!guest_sprite_surface) {
         fprintf(stderr, "Failed to make rgb surface from %p\n", c);
@@ -707,7 +706,8 @@ static void sdl3_display_very_early_init(DisplayOptions *o)
 #ifdef SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR /* only available since SDL 2.0.8 */
     SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 #endif
-    SDL_SetHint(SDL_HINT_GRAB_KEYBOARD, "1");
+    SDL_Window *window;
+    SDL_SetKeyboardGrab(window, SDL_TRUE);
     SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
 
     // Initialize rendering context
@@ -768,13 +768,13 @@ static void sdl3_display_very_early_init(DisplayOptions *o)
 
     // Create main window
     SDL_PropertiesID props = SDL_CreateProperties();
-    SDL_SetStringProperty(props, SDL_PROPERTY_WINDOW_CREATE_TITLE_STRING, title);
-    SDL_SetNumberProperty(props, SDL_PROPERTY_WINDOW_CREATE_X_NUMBER, SDL_WINDOWPOS_CENTERED);
-    SDL_SetNumberProperty(props, SDL_PROPERTY_WINDOW_CREATE_Y_NUMBER, SDL_WINDOWPOS_CENTERED);
-    SDL_SetNumberProperty(props, SDL_PROPERTY_WINDOW_CREATE_WIDTH_NUMBER, window_width);
-    SDL_SetNumberProperty(props, SDL_PROPERTY_WINDOW_CREATE_HEIGHT_NUMBER, window_height);
-    SDL_SetNumberProperty(props, SDL_PROPERTY_WINDOW_CREATE_FLAGS_NUMBER, SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
-    _window = SDL_CreateWindowWithProperties(props);
+    SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, title);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER, SDL_WINDOWPOS_CENTERED);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, SDL_WINDOWPOS_CENTERED);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, window_width);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, window_height);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    m_window = SDL_CreateWindowWithProperties(props);
     SDL_DestroyProperties(props);
     if (m_window == NULL) {
         fprintf(stderr, "Failed to create main window\n");
@@ -816,7 +816,7 @@ static void sdl3_display_very_early_init(DisplayOptions *o)
     stbi_set_flip_vertically_on_load(0);
     unsigned char *icon_data = stbi_load_from_memory(xemu_64x64_data, xemu_64x64_size, &width, &height, &channels, 4);
     if (icon_data) {
-        SDL_Surface *icon = SDL_CreateSurfaceFrom(icon_data, width, height, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
+        SDL_Surface *icon = SDL_CreateSurfaceWithFormatFrom(icon_data, width, height, SDL_PIXELFORMAT_RGBA32, width * sizeof(uint32_t));
         if (icon) {
             SDL_SetWindowIcon(m_window, icon);
         }
