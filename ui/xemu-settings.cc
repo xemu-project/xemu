@@ -77,7 +77,7 @@ const char *xemu_settings_get_base_path(void)
         return base_path;
     }
 
-    char *base = xemu_settings_detect_portable_mode()
+    const char *base = xemu_settings_detect_portable_mode()
                  ? SDL_GetBasePath()
                  : SDL_GetPrefPath("xemu", "xemu");
     assert(base != NULL);
