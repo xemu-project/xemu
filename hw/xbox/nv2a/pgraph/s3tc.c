@@ -169,23 +169,24 @@ uint8_t *s3tc_decompress_3d(enum S3TC_DECOMPRESS_FORMAT color_format,
                             const uint8_t *data, unsigned int width,
                             unsigned int height, unsigned int depth)
 {
-    assert((width > 0) && (width % 4 == 0));
-    assert((height > 0) && (height % 4 == 0));
-    assert((depth > 0) && (depth < 4 || depth % 4 == 0));
-    int block_depth = MIN(depth, 4);
-    int num_blocks_x = width/4,
-        num_blocks_y = height/4,
-        num_blocks_z = depth/block_depth;
+    assert(width > 0);
+    assert(height > 0);
+    assert(depth > 0);
+    unsigned int physical_width = (width + 3) & ~3,
+                 physical_height = (height + 3) & ~3;
+    int num_blocks_x = physical_width/4,
+        num_blocks_y = physical_height/4,
+        num_blocks_z = (depth + 3)/4;
     uint8_t *converted_data = (uint8_t*)g_malloc(width * height * depth * 4);
+    int cur_depth = 0;
+    int sub_block_index = 0;
     for (int k = 0; k < num_blocks_z; k++) {
+        int residual_depth = depth - cur_depth;
+        int block_depth = MIN(residual_depth, 4);
         for (int j = 0; j < num_blocks_y; j++) {
             for (int i = 0; i < num_blocks_x; i++) {
                 for (int slice = 0; slice < block_depth; slice++) {
-
-                    int block_index = k * num_blocks_y * num_blocks_x + j * num_blocks_x + i;
-                    int sub_block_index = block_index * block_depth + slice;
-                    int z_pos_factor = (k * block_depth + slice) * width * height;
-
+                    int z_pos_factor = (cur_depth + slice) * width * height;
                     if (color_format == S3TC_DECOMPRESS_FORMAT_DXT1) {
                         decompress_dxt1_block(data + 8 * sub_block_index, converted_data,
                                               i, j, width, height, z_pos_factor);
@@ -198,10 +199,11 @@ uint8_t *s3tc_decompress_3d(enum S3TC_DECOMPRESS_FORMAT color_format,
                     } else {
                         assert(false);
                     }
-
+                    sub_block_index++;
                 }
             }
         }
+        cur_depth += block_depth;
     }
     return converted_data;
 }

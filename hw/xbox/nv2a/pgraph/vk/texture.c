@@ -332,11 +332,10 @@ static TextureLayout *get_texture_layout(PGRAPHState *pg, int texture_idx)
 
         for (int level = 0; level < s.levels; level++) {
             if (is_compressed) {
-                assert(width % 4 == 0 && height % 4 == 0 &&
-                       "Compressed 3D texture virtual size");
-
-                width = MAX(width, 4);
-                height = MAX(height, 4);
+                width = MAX(width, 1);
+                height = MAX(height, 1);
+                unsigned int physical_width = (width + 3) & ~3,
+                             physical_height = (height + 3) & ~3;
                 depth = MAX(depth, 1);
 
                 size_t converted_size = width * height * depth * 4;
@@ -353,7 +352,7 @@ static TextureLayout *get_texture_layout(PGRAPHState *pg, int texture_idx)
                     .decoded_data = converted,
                 };
 
-                texture_data_ptr += width / 4 * height / 4 * depth * block_size;
+                texture_data_ptr += physical_width / 4 * physical_height / 4 * depth * block_size;
             } else {
                 width = MAX(width, 1);
                 height = MAX(height, 1);
