@@ -99,7 +99,7 @@ jobs:
           - libpixman-1-dev
           - libpng-dev
           - librados-dev
-          - libsdl2-dev
+          - libsdl3-dev
           - libseccomp-dev
           - liburcu-dev
           - libusb-1.0-0-dev
@@ -135,7 +135,7 @@ jobs:
           - libpixman-1-dev
           - libpng-dev
           - librados-dev
-          - libsdl2-dev
+          - libsdl3-dev
           - libseccomp-dev
           - liburcu-dev
           - libusb-1.0-0-dev
@@ -170,7 +170,7 @@ jobs:
           - libpixman-1-dev
           - libpng-dev
           - librados-dev
-          - libsdl2-dev
+          - libsdl3-dev
           - libseccomp-dev
           - liburcu-dev
           - libusb-1.0-0-dev
@@ -211,8 +211,8 @@ jobs:
           - libncurses-dev
           - libnfs-dev
           - libpixman-1-dev
-          - libsdl2-dev
-          - libsdl2-image-dev
+          - libsdl3-dev
+          - libsdl3-image-dev
           - libseccomp-dev
           - libsnappy-dev
           - libzstd-dev
@@ -261,7 +261,7 @@ jobs:
           - libpixman-1-dev
           - libpng-dev
           - librados-dev
-          - libsdl2-dev
+          - libsdl3-dev
           - libseccomp-dev
           - liburcu-dev
           - libusb-1.0-0-dev
