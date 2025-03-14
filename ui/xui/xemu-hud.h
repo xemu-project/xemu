@@ -23,7 +23,7 @@
 #ifndef XEMU_HUD_H
 #define XEMU_HUD_H
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <epoxy/gl.h>
 
 #ifdef __cplusplus

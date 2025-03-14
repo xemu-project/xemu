@@ -18,7 +18,7 @@
 //
 #pragma once
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <epoxy/gl.h>
 #include "ui/xemu-settings.h"
 

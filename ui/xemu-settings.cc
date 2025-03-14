@@ -19,7 +19,7 @@
 
 #include "qemu/osdep.h"
 #include <stdlib.h>
-#include <SDL_filesystem.h>
+#include <SDL3/SDL_filesystem.h>
 #include <string.h>
 #include <stddef.h>
 #include <stdbool.h>

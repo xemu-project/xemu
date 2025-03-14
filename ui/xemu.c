@@ -887,11 +887,11 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
         sdl2_console[i].kbd = qkbd_state_init(con);
         register_displaychangelistener(&sdl2_console[i].dcl);
 
-#if defined(SDL_VIDEO_DRIVER_WINDOWS) || defined(SDL_VIDEO_DRIVER_X11)
+#if defined(SDL_VIDEO_DRIVER_WINDOWS /* SDL_VIDEO_DRIVER_WINDOWS has been removed in SDL3 */) || defined(SDL_VIDEO_DRIVER_X11 /* SDL_VIDEO_DRIVER_X11 has been removed in SDL3 */)
         if (SDL_GetWindowWMInfo(sdl2_console[i].real_window, &info)) {
-#if defined(SDL_VIDEO_DRIVER_WINDOWS)
+#if defined(SDL_VIDEO_DRIVER_WINDOWS /* SDL_VIDEO_DRIVER_WINDOWS has been removed in SDL3 */)
             qemu_console_set_window_id(con, (uintptr_t)info.info.win.window);
-#elif defined(SDL_VIDEO_DRIVER_X11)
+#elif defined(SDL_VIDEO_DRIVER_X11 /* SDL_VIDEO_DRIVER_X11 has been removed in SDL3 */)
             qemu_console_set_window_id(con, info.info.x11.window);
 #endif
         }

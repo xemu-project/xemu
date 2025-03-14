@@ -22,7 +22,7 @@
 #include "qemu/osdep.h"
 #include <math.h>
 #include <samplerate.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_device.h"
