@@ -6,6 +6,7 @@ on:
       - '.github/**'
       - '!.github/workflows/build.yml'
       - 'README.md'
+      - 'scripts/**'
       - 'ubuntu-win64-cross/**'
   pull_request:
     paths-ignore:
