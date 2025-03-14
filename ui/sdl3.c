@@ -945,7 +945,7 @@ static void sdl3_display_init(DisplayState *ds, DisplayOptions *o)
     dir = get_relocated_path(CONFIG_QEMU_ICONDIR "/hicolor/32x32/apps/qemu.bmp");
     icon = SDL_LoadBMP(dir);
     if (icon) {
-        uint32_t colorkey = SDL_MapRGB(icon->format, 255, 255, 255);
+        uint32_t colorkey = SDL_MapSurfaceRGB(icon->format, 255, 255, 255);
         SDL_SetSurfaceColorKey(icon, true, colorkey);
     }
 #endif
