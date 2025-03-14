@@ -50,7 +50,8 @@ const char *xemu_settings_get_error_message(void)
 static bool xemu_settings_detect_portable_mode(void)
 {
     bool val = false;
-    char *portable_path = g_strdup_printf("%s%s", SDL_GetBasePath(), filename);
+    const char *base_path = SDL_GetBasePath();
+    char *portable_path = g_strdup_printf("%s%s", base_path, filename);
     FILE *tmpfile;
     if ((tmpfile = qemu_fopen(portable_path, "r"))) {
         fclose(tmpfile);
