@@ -202,7 +202,7 @@ void xemu_hud_render(void)
 
     if (!first_boot_window.is_open) {
         int ww, wh;
-        SDL_GL_GetDrawableSize(g_sdl_window, &ww, &wh);
+        SDL_GetWindowSizeInPixels(g_sdl_window, &ww, &wh);
         RenderFramebuffer(g_tex, ww, wh, g_flip_req);
     }
 
