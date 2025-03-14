@@ -209,7 +209,7 @@ static void sdl_hide_cursor(struct sdl3_console *scon)
         return;
     }
 
-    SDL_ShowCursor(SDL_DISABLE);
+    SDL_HideCursor();
     SDL_SetCursor(sdl_cursor_hidden);
 
     if (!qemu_input_is_absolute(scon->dcl.con)) {
@@ -234,7 +234,7 @@ static void sdl_show_cursor(struct sdl3_console *scon)
         SDL_SetCursor(sdl_cursor_normal);
     }
 
-    SDL_ShowCursor(SDL_ENABLE);
+    SDL_ShowCursor();
 }
 
 static void sdl_grab_start(struct sdl3_console *scon)
