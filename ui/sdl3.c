@@ -397,7 +397,7 @@ static void handle_keydown(SDL_Event *ev)
     scon->gui_keysym = false;
 
     if (!scon->ignore_hotkeys && gui_key_modifier_pressed && !ev->key.repeat) {
-        switch (ev->key.keysym.scancode) {
+        switch (ev->key.scancode) {
         case SDL_SCANCODE_2:
         case SDL_SCANCODE_3:
         case SDL_SCANCODE_4:
@@ -594,11 +594,11 @@ static void handle_windowevent(SDL_Event *ev)
     }
 
     // Set the timestamp if it's 0
-    if (ev.common.timestamp == 0) {
-        ev.common.timestamp = SDL_GetTicksNS();
+    if (ev->common.timestamp == 0) {
+        ev->common.timestamp = SDL_GetTicksNS();
     }
 
-    switch (ev.type) { // Use ev.type instead of ev.window.event
+    switch (ev->type) { // Use ev->type instead of ev.window.event
     case SDL_EVENT_WINDOW_RESIZED:
         {
             QemuUIInfo info;
@@ -715,7 +715,7 @@ void sdl3_poll_events(struct sdl3_console *scon)
             idle = 0;
             handle_mousewheel(ev);
             break;
-        case SDL_WINDOWEVENT:
+        case SDL_WindowEvent:
             handle_windowevent(ev);
             break;
         default:
@@ -856,7 +856,6 @@ static void sdl3_display_init(DisplayState *ds, DisplayOptions *o)
 {
     uint8_t data = 0;
     int i;
-    SDL_SysWMinfo info;
     SDL_Surface *icon = NULL;
     char *dir;
 

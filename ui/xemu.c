@@ -325,7 +325,7 @@ static void handle_keydown(SDL_Event *ev)
     int gui_keysym = 0;
 
     if (!scon->ignore_hotkeys && gui_key_modifier_pressed && !ev->key.repeat) {
-        switch (ev->key.key.scancode) {
+        switch (ev->key.scancode) {
         case SDL_SCANCODE_2:
         case SDL_SCANCODE_3:
         case SDL_SCANCODE_4:
@@ -484,7 +484,7 @@ static void handle_windowevent(SDL_Event *ev)
         ev.common.timestamp = SDL_GetTicksNS();
     }
 
-    switch (ev.type) { // Use ev.type instead of ev.window.event
+    switch (ev->type) { // Use ev->type instead of ev.window.event
     case SDL_EVENT_WINDOW_RESIZED:
         {
             QemuUIInfo info;
@@ -601,7 +601,7 @@ void sdl3_poll_events(struct sdl3_console *scon)
             if (mouse) break;
             handle_mousewheel(ev);
             break;
-        case SDL_WINDOWEVENT:
+        case SDL_WindowEvent:
             handle_windowevent(ev);
             break;
         default:
@@ -654,7 +654,7 @@ static void sdl_mouse_define(DisplayChangeListener *dcl,
     }
 
     guest_sprite_surface =
-        SDL_CreateRGBSurfaceFrom(c->data, c->width, c->height, 32, c->width * 4,
+        SDL_CreateSurfaceFrom(c->data, c->width, c->height, 32, c->width * 4,
                                  0xff0000, 0x00ff00, 0xff, 0xff000000);
 
     if (!guest_sprite_surface) {
@@ -767,9 +767,15 @@ static void sdl3_display_very_early_init(DisplayOptions *o)
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
 
     // Create main window
-    m_window = SDL_CreateWindowWithProperties(
-        title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width, window_height,
-        window_flags);
+    SDL_PropertiesID props = SDL_CreateProperties();
+    SDL_SetStringProperty(props, SDL_PROPERTY_WINDOW_CREATE_TITLE_STRING, title);
+    SDL_SetNumberProperty(props, SDL_PROPERTY_WINDOW_CREATE_X_NUMBER, SDL_WINDOWPOS_CENTERED);
+    SDL_SetNumberProperty(props, SDL_PROPERTY_WINDOW_CREATE_Y_NUMBER, SDL_WINDOWPOS_CENTERED);
+    SDL_SetNumberProperty(props, SDL_PROPERTY_WINDOW_CREATE_WIDTH_NUMBER, window_width);
+    SDL_SetNumberProperty(props, SDL_PROPERTY_WINDOW_CREATE_HEIGHT_NUMBER, window_height);
+    SDL_SetNumberProperty(props, SDL_PROPERTY_WINDOW_CREATE_FLAGS_NUMBER, SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    _window = SDL_CreateWindowWithProperties(props);
+    SDL_DestroyProperties(props);
     if (m_window == NULL) {
         fprintf(stderr, "Failed to create main window\n");
         SDL_Quit();
@@ -779,7 +785,7 @@ static void sdl3_display_very_early_init(DisplayOptions *o)
     SDL_SetWindowMinimumSize(m_window, min_window_width, min_window_height);
 
     SDL_DisplayMode disp_mode;
-    SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(m_window), &disp_mode);
+    SDL_GetWindowDisplayMode(m_window, &disp_mode);
     if (disp_mode.w < window_width || disp_mode.h < window_height) {
         SDL_SetWindowSize(m_window, min_window_width, min_window_height);
         SDL_SetWindowPosition(m_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
@@ -810,8 +816,7 @@ static void sdl3_display_very_early_init(DisplayOptions *o)
     stbi_set_flip_vertically_on_load(0);
     unsigned char *icon_data = stbi_load_from_memory(xemu_64x64_data, xemu_64x64_size, &width, &height, &channels, 4);
     if (icon_data) {
-        SDL_Surface *icon = SDL_CreateRGBSurfaceFrom(icon_data, width, height, 32, width*4,
-            0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
+        SDL_Surface *icon = SDL_CreateSurfaceFrom(icon_data, width, height, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
         if (icon) {
             SDL_SetWindowIcon(m_window, icon);
         }
@@ -1235,7 +1240,7 @@ void sdl3_process_key(struct sdl3_console *scon,
 {
     int qcode;
 
-    if (ev->keysym.scancode >= qemu_input_map_usb_to_qcode_len) {
+    if (ev->scancode >= qemu_input_map_usb_to_qcode_len) {
         return;
     }
     qcode = qemu_input_map_usb_to_qcode[ev->keysym.scancode];

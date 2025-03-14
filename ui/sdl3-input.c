@@ -35,11 +35,11 @@ void sdl3_process_key(struct sdl3_console *scon,
     int qcode;
     QemuConsole *con = scon->dcl.con;
 
-    if (ev->keysym.scancode >= qemu_input_map_usb_to_qcode_len) {
+    if (ev->scancode >= qemu_input_map_usb_to_qcode_len) {
         return;
     }
-    qcode = qemu_input_map_usb_to_qcode[ev->keysym.scancode];
-    trace_sdl3_process_key(ev->keysym.scancode, qcode,
+    qcode = qemu_input_map_usb_to_qcode[ev->scancode];
+    trace_sdl3_process_key(ev->scancode, qcode,
                            ev->type == SDL_EVENT_KEY_DOWN ? "down" : "up");
     qkbd_state_key_event(scon->kbd, qcode, ev->type == SDL_EVENT_KEY_DOWN);
 
