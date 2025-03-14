@@ -286,8 +286,7 @@ static void set_full_screen(struct sdl3_console *scon, bool set)
     if (gui_fullscreen) {
         SDL_SetWindowFullscreen(scon->real_window,
                                 (g_config.display.window.fullscreen_exclusive ?
-                                SDL_WINDOW_FULLSCREEN :
-                                SDL_WINDOW_FULLSCREEN_DESKTOP));
+                                SDL_WINDOW_FULLSCREEN));
         gui_saved_grab = gui_grab;
         sdl_grab_start(scon);
     } else {
@@ -326,7 +325,7 @@ static void handle_keydown(SDL_Event *ev)
     int gui_keysym = 0;
 
     if (!scon->ignore_hotkeys && gui_key_modifier_pressed && !ev->key.repeat) {
-        switch (ev->key.keysym.scancode) {
+        switch (ev->key.key.scancode) {
         case SDL_SCANCODE_2:
         case SDL_SCANCODE_3:
         case SDL_SCANCODE_4:
@@ -339,7 +338,7 @@ static void handle_keydown(SDL_Event *ev)
                 sdl_grab_end(scon);
             }
 
-            win = ev->key.keysym.scancode - SDL_SCANCODE_1;
+            win = ev->key.key.scancode - SDL_SCANCODE_1;
             if (win < sdl3_num_outputs) {
                 sdl3_console[win].hidden = !sdl3_console[win].hidden;
                 if (sdl3_console[win].real_window) {
@@ -480,7 +479,12 @@ static void handle_windowevent(SDL_Event *ev)
         return;
     }
 
-    switch (ev->window.event) {
+    // Set the timestamp if it's 0
+    if (ev.common.timestamp == 0) {
+        ev.common.timestamp = SDL_GetTicksNS();
+    }
+
+    switch (ev.type) { // Use ev.type instead of ev.window.event
     case SDL_EVENT_WINDOW_RESIZED:
         {
             QemuUIInfo info;

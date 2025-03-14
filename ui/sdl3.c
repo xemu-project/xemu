@@ -86,7 +86,7 @@ void sdl3_window_create(struct sdl3_console *scon)
     assert(!scon->real_window);
 
     if (gui_fullscreen) {
-        flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        flags |= SDL_WINDOW_FULLSCREEN;
     } else {
         flags |= SDL_WINDOW_RESIZABLE;
     }
@@ -345,7 +345,7 @@ static void toggle_full_screen(struct sdl3_console *scon)
     gui_fullscreen = !gui_fullscreen;
     if (gui_fullscreen) {
         SDL_SetWindowFullscreen(scon->real_window,
-                                SDL_WINDOW_FULLSCREEN_DESKTOP);
+                                SDL_WINDOW_FULLSCREEN);
         gui_saved_grab = gui_grab;
         sdl_grab_start(scon);
     } else {
@@ -410,7 +410,7 @@ static void handle_keydown(SDL_Event *ev)
                 sdl_grab_end(scon);
             }
 
-            win = ev->key.keysym.scancode - SDL_SCANCODE_1;
+            win = ev->key.key.scancode - SDL_SCANCODE_1;
             if (win < sdl3_num_outputs) {
                 sdl3_console[win].hidden = !sdl3_console[win].hidden;
                 if (sdl3_console[win].real_window) {
@@ -452,7 +452,7 @@ static void handle_keydown(SDL_Event *ev)
                 int width, height;
                 SDL_GetWindowSize(scon->real_window, &scr_w, &scr_h);
 
-                width = MAX(scr_w + (ev->key.keysym.scancode ==
+                width = MAX(scr_w + (ev->key.key.scancode ==
                                      SDL_SCANCODE_KP_PLUS ? 50 : -50),
                             160);
                 height = (surface_height(scon->surface) * width) /
@@ -593,7 +593,12 @@ static void handle_windowevent(SDL_Event *ev)
         return;
     }
 
-    switch (ev->window.event) {
+    // Set the timestamp if it's 0
+    if (ev.common.timestamp == 0) {
+        ev.common.timestamp = SDL_GetTicksNS();
+    }
+
+    switch (ev.type) { // Use ev.type instead of ev.window.event
     case SDL_EVENT_WINDOW_RESIZED:
         {
             QemuUIInfo info;
