@@ -763,7 +763,7 @@ static void sdl3_display_very_early_init(DisplayOptions *o)
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
 
     // Create main window
-    m_window = SDL_CreateWindow(
+    m_window = SDL_CreateWindowWithProperties(
         title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width, window_height,
         window_flags);
     if (m_window == NULL) {

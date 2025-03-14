@@ -57,7 +57,7 @@ GloContext *glo_context_create(void)
         SDL_GL_CONTEXT_PROFILE_CORE);
 
     // Create main window
-    context->window = SDL_CreateWindow(
+    context->window = SDL_CreateWindowWithProperties(
         "SDL Offscreen Window",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,

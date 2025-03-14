@@ -99,7 +99,7 @@ void sdl3_window_create(struct sdl3_console *scon)
     }
 #endif
 
-    scon->real_window = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED,
+    scon->real_window = SDL_CreateWindowWithProperties("", SDL_WINDOWPOS_UNDEFINED,
                                          SDL_WINDOWPOS_UNDEFINED,
                                          surface_width(scon->surface),
                                          surface_height(scon->surface),
