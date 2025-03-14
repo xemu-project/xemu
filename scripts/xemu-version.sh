@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 set -eu
 
@@ -25,6 +25,10 @@ XEMU_VERSION=$( \
   elif test -e XEMU_VERSION; then \
     cat XEMU_VERSION; \
   fi)
+
+if [[ "${XEMU_VERSION}" == "" ]]; then
+  XEMU_VERSION="0.0.0"
+fi
 
 get_version_field() {
   echo ${XEMU_VERSION}-0 | cut -d- -f$1

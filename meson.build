@@ -1143,7 +1143,7 @@ endif
 
 libnfs = not_found
 if not get_option('libnfs').auto() or have_block
-  libnfs = dependency('libnfs', version: '>=1.9.3',
+  libnfs = dependency('libnfs', version: ['>=1.9.3', '<6.0.0'],
                       required: get_option('libnfs'),
                       method: 'pkg-config')
 endif
@@ -1383,11 +1383,39 @@ if not get_option('blkio').auto() or have_block
                      method: 'pkg-config',
                      required: get_option('blkio'))
 endif
-curl = not_found
-if not get_option('curl').auto() or have_block
-  curl = dependency('libcurl', version: '>=7.29.0',
-                    method: 'pkg-config',
-                    required: get_option('curl'))
+curl = dependency('libcurl', version: '>=7.29.0',
+                  method: 'pkg-config',
+                  required: false)
+if not curl.found()
+  if host_os == 'windows'
+    curl_platform_opts = ['schannel=enabled', 'sspi=enabled']
+  elif host_os == 'darwin'
+    curl_platform_opts = ['secure-transport=enabled']
+  else
+    curl_platform_opts = ['openssl=enabled']
+  endif
+  curl_sub = subproject('curl',
+    default_options: [
+      'ssl=enabled',
+      'http=enabled',
+      'ftp=enabled',
+      'dict=disabled',
+      'file=disabled',
+      'gopher=disabled',
+      'imap=disabled',
+      'ldap=disabled',
+      'ldaps=disabled',
+      'mqtt=disabled',
+      'pop3=disabled',
+      'rtmp=disabled',
+      'rtsp=disabled',
+      'smb=disabled',
+      'smtp=disabled',
+      'telnet=disabled',
+      'tftp=disabled',
+      'default_library=static',
+    ] + curl_platform_opts)
+  curl = curl_sub.get_variable('curl_dep')
 endif
 libudev = not_found
 if host_os == 'linux' and (have_system or have_tools)
@@ -2297,10 +2325,11 @@ elif host_os == 'linux'
 endif
 
 if vulkan.found()
+  libglslang = dependency('glslang', version: '>=15.0.0', required: false)
   if not libglslang.found()
     # FIXME: Get spirv-tools to enable opt.
     glslang_opts = cmake.subproject_options()
-    glslang_opts.add_cmake_defines({'ENABLE_OPT': false})
+    glslang_opts.add_cmake_defines({'ENABLE_OPT': false, 'ENABLE_HLSL': false})
     glslang_subpro = cmake.subproject('glslang', options: glslang_opts)
     libglslang = declare_dependency(link_with: [
           glslang_subpro.target('glslang'),
@@ -2329,8 +2358,6 @@ if vulkan.found()
                                      link_with: spirv_reflect_subproj.target('spirv-reflect-static'),
                                      dependencies: vulkan)
 endif
-
-openssl = dependency('openssl', method: 'pkg-config', required: true)
 
 if host_os == 'windows'
   libpcap = declare_dependency(include_directories: 'winpcap-loader/include',
@@ -3524,11 +3551,9 @@ if have_libvduse
   libvduse = libvduse_proj.get_variable('libvduse_dep')
 endif
 
-tomlplusplus_proj = subproject('tomlplusplus', default_options: ['default_library=static'])
-tomlplusplus = tomlplusplus_proj.get_variable('tomlplusplus_dep')
+tomlplusplus = dependency('tomlplusplus', fallback: ['tomlplusplus', 'tomlplusplus_dep'], default_options: ['default_library=static'])
 
-xxhash_proj = subproject('xxhash', default_options: ['default_library=static'])
-xxhash = xxhash_proj.get_variable('xxhash_dep')
+xxhash = dependency('libxxhash', fallback: ['xxhash', 'xxhash_dep'], default_options: ['default_library=static'])
 
 #####################
 # Generated sources #

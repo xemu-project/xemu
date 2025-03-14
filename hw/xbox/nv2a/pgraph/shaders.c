@@ -94,6 +94,7 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
     state.vertex_program = vertex_program,
     state.z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
                           NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
+    state.psh.z_perspective = state.z_perspective;
 
     state.point_params_enable = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
                                          NV_PGRAPH_CSV0_D_POINTPARAMSENABLE);
@@ -116,6 +117,10 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
                                     NV_PGRAPH_CONTROL_3_SHADEMODE) ==
                            NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
     state.psh.smooth_shading = state.smooth_shading;
+
+    state.psh.depth_clipping = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_ZCOMPRESSOCCLUDE),
+                                        NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
+                               NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CULL;
 
     state.program_length = 0;
 

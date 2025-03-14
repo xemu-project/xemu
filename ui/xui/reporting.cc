@@ -3,7 +3,7 @@
 //
 // Title compatibility and bug report submission.
 //
-// Copyright (C) 2020-2021 Matt Borgerson
+// Copyright (C) 2020-2025 Matt Borgerson
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -18,15 +18,18 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+
+#include "qemu/osdep.h"
+#include "qemu/http.h"
+
 #include <glib.h>
 #include <glib/gi18n.h>
 #include <stdio.h>
 #include "reporting.hh"
-#include <httplib.h>
-#include <json.hpp>
+#include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
-#define DEBUG_COMPAT_SERVICE 0
+static const char *compat_report_endpoint_url = "https://reports.xemu.app/compatibility";
 
 CompatibilityReport::CompatibilityReport()
 {
@@ -61,38 +64,16 @@ const std::string &CompatibilityReport::GetSerializedReport()
 
 bool CompatibilityReport::Send()
 {
-	// Serialize the report
 	const std::string &s = GetSerializedReport();
 
-#if DEBUG_COMPAT_SERVICE
-	httplib::SSLClient cli("127.0.0.1", 443);
-#else
-	httplib::SSLClient cli("reports.xemu.app", 443);
-#endif
-
-	cli.set_follow_location(true);
-	// cli.enable_server_certificate_verification(true); // FIXME: Package cert bundle
-
-	auto res = cli.Post("/compatibility", s, "application/json");
-
-	if (!res) {
-#if 0 // FIXME: Handle SSL certificate verification failure
-#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-	    auto result = cli.get_openssl_verify_result();
-	    if (result) {
-	      fprintf(stderr, "verify error: %s\n", X509_verify_cert_error_string(result));
-	    }
-#endif
-#endif
-
+	int res = http_post_json(compat_report_endpoint_url, s.c_str(), NULL);
+	if (res < 0) {
 		result_code = -1;
 		result_msg = "Failed to connect";
 	    return false;
 	}
 
-	result_code = res->status;
-
-	switch(res->status) {
+	switch(res) {
 	case 200:
 		result_msg = "Ok";
 		return true;
@@ -110,7 +91,7 @@ bool CompatibilityReport::Send()
 		result_msg = "Report too long";
 		return false;
 	default:
-		result_msg = "Unknown error occured";
+		result_msg = "Unknown error occurred";
 		return false;
 	}
 }

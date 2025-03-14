@@ -130,12 +130,15 @@ void MainMenuInputView::Draw()
         float x = b_x + i * b_x_stride;
         ImGui::PushStyleColor(ImGuiCol_Button,
                               is_selected ? color_active : color_inactive);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                            g_viewport_mgr.Scale(ImVec2(port_padding, port_padding)));
         bool activated = ImGui::ImageButton(
+            "port_image_button",
             id,
             ImVec2(b_w * g_viewport_mgr.m_scale, b_h * g_viewport_mgr.m_scale),
             ImVec2(x / t_w, (b_y + b_h) / t_h),
-            ImVec2((x + b_w) / t_w, b_y / t_h),
-            port_padding * g_viewport_mgr.m_scale);
+            ImVec2((x + b_w) / t_w, b_y / t_h));
+        ImGui::PopStyleVar();
         ImGui::PopStyleColor();
 
         if (activated) {
@@ -525,6 +528,7 @@ void MainMenuDisplayView::Draw()
     if (ChevronCombo("Window size", &g_config.display.window.startup_size,
                      "Last Used\0"
                      "640x480\0"
+                     "720x480\0"
                      "1280x720\0"
                      "1280x800\0"
                      "1280x960\0"
@@ -1372,7 +1376,7 @@ void MainMenuAboutView::Draw()
     SectionTitle("Build Information");
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::InputTextMultiline("##build_info", (char *)build_info_text,
-                              strlen(build_info_text),
+                              strlen(build_info_text) + 1,
                               ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 5),
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
@@ -1380,7 +1384,7 @@ void MainMenuAboutView::Draw()
     SectionTitle("System Information");
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::InputTextMultiline("###systeminformation", (char *)sys_info_text,
-                              strlen(sys_info_text),
+                              strlen(sys_info_text) + 1,
                               ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 8),
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
@@ -1388,7 +1392,7 @@ void MainMenuAboutView::Draw()
     SectionTitle("Config Information");
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::InputTextMultiline("##config_info", (char *)m_config_info_text,
-                              strlen(build_info_text),
+                              strlen(build_info_text) + 1,
                               ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 3),
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
