@@ -175,7 +175,7 @@ void sdl2_gl_destroy_context(DisplayGLCtx *dgc, QEMUGLContext ctx)
 {
     SDL_GLContext sdlctx = (SDL_GLContext)ctx;
 
-    SDL_GL_DeleteContext(sdlctx);
+    SDL_GL_DestroyContext(sdlctx);
 }
 
 int sdl2_gl_make_context_current(DisplayGLCtx *dgc,

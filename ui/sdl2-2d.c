@@ -52,7 +52,7 @@ void sdl2_2d_update(DisplayChangeListener *dcl,
                       surface_data(surf) + surface_data_offset,
                       surface_stride(surf));
     SDL_RenderClear(scon->real_renderer);
-    SDL_RenderCopy(scon->real_renderer, scon->texture, NULL, NULL);
+    SDL_RenderTexture(scon->real_renderer, scon->texture, NULL, NULL);
     SDL_RenderPresent(scon->real_renderer);
 }
 
@@ -85,7 +85,7 @@ void sdl2_2d_switch(DisplayChangeListener *dcl,
         sdl2_window_resize(scon);
     }
 
-    SDL_RenderSetLogicalSize(scon->real_renderer,
+    SDL_SetRenderLogicalPresentation(scon->real_renderer,
                              surface_width(new_surface),
                              surface_height(new_surface));
 

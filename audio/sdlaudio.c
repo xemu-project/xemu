@@ -71,48 +71,48 @@ static int aud_to_sdlfmt (AudioFormat fmt)
 {
     switch (fmt) {
     case AUDIO_FORMAT_S8:
-        return AUDIO_S8;
+        return SDL_AUDIO_S8;
 
     case AUDIO_FORMAT_U8:
-        return AUDIO_U8;
+        return SDL_AUDIO_U8;
 
     case AUDIO_FORMAT_S16:
-        return AUDIO_S16LSB;
+        return SDL_AUDIO_S16LE;
 
     case AUDIO_FORMAT_U16:
         return AUDIO_U16LSB;
 
     case AUDIO_FORMAT_S32:
-        return AUDIO_S32LSB;
+        return SDL_AUDIO_S32LE;
 
     /* no unsigned 32-bit support in SDL */
 
     case AUDIO_FORMAT_F32:
-        return AUDIO_F32LSB;
+        return SDL_AUDIO_F32LE;
 
     default:
         dolog ("Internal logic error: Bad audio format %d\n", fmt);
 #ifdef DEBUG_AUDIO
         abort ();
 #endif
-        return AUDIO_U8;
+        return SDL_AUDIO_U8;
     }
 }
 
 static int sdl_to_audfmt(int sdlfmt, AudioFormat *fmt, int *endianness)
 {
     switch (sdlfmt) {
-    case AUDIO_S8:
+    case SDL_AUDIO_S8:
         *endianness = 0;
         *fmt = AUDIO_FORMAT_S8;
         break;
 
-    case AUDIO_U8:
+    case SDL_AUDIO_U8:
         *endianness = 0;
         *fmt = AUDIO_FORMAT_U8;
         break;
 
-    case AUDIO_S16LSB:
+    case SDL_AUDIO_S16LE:
         *endianness = 0;
         *fmt = AUDIO_FORMAT_S16;
         break;
@@ -122,7 +122,7 @@ static int sdl_to_audfmt(int sdlfmt, AudioFormat *fmt, int *endianness)
         *fmt = AUDIO_FORMAT_U16;
         break;
 
-    case AUDIO_S16MSB:
+    case SDL_AUDIO_S16BE:
         *endianness = 1;
         *fmt = AUDIO_FORMAT_S16;
         break;
@@ -132,22 +132,22 @@ static int sdl_to_audfmt(int sdlfmt, AudioFormat *fmt, int *endianness)
         *fmt = AUDIO_FORMAT_U16;
         break;
 
-    case AUDIO_S32LSB:
+    case SDL_AUDIO_S32LE:
         *endianness = 0;
         *fmt = AUDIO_FORMAT_S32;
         break;
 
-    case AUDIO_S32MSB:
+    case SDL_AUDIO_S32BE:
         *endianness = 1;
         *fmt = AUDIO_FORMAT_S32;
         break;
 
-    case AUDIO_F32LSB:
+    case SDL_AUDIO_F32LE:
         *endianness = 0;
         *fmt = AUDIO_FORMAT_F32;
         break;
 
-    case AUDIO_F32MSB:
+    case SDL_AUDIO_F32BE:
         *endianness = 1;
         *fmt = AUDIO_FORMAT_F32;
         break;

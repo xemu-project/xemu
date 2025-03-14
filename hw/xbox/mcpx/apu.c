@@ -2760,7 +2760,7 @@ void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
 
     struct SDL_AudioSpec sdl_audio_spec = {
         .freq = 48000,
-        .format = AUDIO_S16LSB,
+        .format = SDL_AUDIO_S16LE,
         .channels = 2,
         .samples = 512,
         .callback = mcpx_vp_out_cb,
