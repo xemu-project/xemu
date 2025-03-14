@@ -224,6 +224,12 @@ jobs:
         sudo apt-get install ccache libfuse2
         pushd src
         sudo apt-get -qy build-dep .
+    - name: Setup SDL3
+      id: sdl
+      with:
+        install-linux-dependencies: true
+        version: 3-latest
+        version-sdl-image: 3-latest
     - name: Compile
       run: |
         export CCACHE_DIR=/tmp/xemu-ccache
