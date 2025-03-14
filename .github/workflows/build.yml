@@ -224,13 +224,23 @@ jobs:
         sudo apt-get install ccache libfuse2
         pushd src
         sudo apt-get -qy build-dep .
-    - name: Setup SDL3
-      uses: libsdl-org/setup-sdl@main
-      id: sdl
+    - name: Install SDL3
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake git
+        git clone https://github.com/libsdl-org/SDL.git
+        cd SDL
+        mkdir build && cd build
+        cmake -S .. -B .
+        make -j$(nproc)
+        sudo make install
+    - name: Cache SDL3 Build
+      uses: actions/cache@v3
       with:
-        install-linux-dependencies: true
-        version: 3-latest
-        version-sdl-image: 3-latest
+        path: /usr/local/lib
+        key: ${{ runner.os }}-sdl3
+        restore-keys: |
+          ${{ runner.os }}-sdl3
     - name: Compile
       run: |
         export CCACHE_DIR=/tmp/xemu-ccache
@@ -321,10 +331,27 @@ jobs:
         export HOMEBREW_NO_INSTALL_CLEANUP=1
         brew install \
           ccache \
+          cmake \
           coreutils \
           dylibbundler \
+          git \
           ninja
         pip install pyyaml requests
+    - name: Install SDL3
+      run: |
+        git clone https://github.com/libsdl-org/SDL.git
+        cd SDL
+        mkdir build && cd build
+        cmake -S .. -B .
+        make -j$(sysctl -n hw.ncpu)
+        sudo make install
+    - name: Cache SDL3 Build
+      uses: actions/cache@v3
+      with:
+        path: /usr/local/lib
+        key: ${{ runner.os }}-sdl3
+        restore-keys: |
+          ${{ runner.os }}-sdl3
     - name: Initialize compiler, library cache
       id: cache
       uses: actions/cache@v4
