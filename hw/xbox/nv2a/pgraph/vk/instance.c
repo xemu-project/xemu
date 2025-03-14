@@ -23,7 +23,6 @@
 #include "xemu-version.h"
 
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_syswm.h>
 #include <SDL3/SDL_vulkan.h>
 
 #include <volk.h>

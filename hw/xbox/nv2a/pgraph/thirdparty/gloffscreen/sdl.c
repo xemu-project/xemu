@@ -29,7 +29,6 @@
 #include "gloffscreen.h"
 
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_syswm.h>
 
 struct _GloContext {
     SDL_Window    *window;

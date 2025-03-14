@@ -1596,7 +1596,6 @@ if sdl.found()
   # Some versions of SDL have problems with -Wundef
   if not cc.compiles('''
                      #include <SDL.h>
-                     #include <SDL_syswm.h>
                      int main(int argc, char *argv[]) { return 0; }
                      ''', dependencies: sdl, args: '-Werror=undef')
     sdl = declare_dependency(compile_args: '-Wno-undef',

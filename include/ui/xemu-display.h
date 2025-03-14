@@ -5,7 +5,6 @@
 #undef WIN32_LEAN_AND_MEAN
 
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_syswm.h>
 
 #include "ui/kbd-state.h"
 
