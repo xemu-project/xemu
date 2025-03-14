@@ -82,7 +82,8 @@ const char *xemu_settings_get_base_path(void)
                  : SDL_GetPrefPath("xemu", "xemu");
     assert(base != NULL);
     base_path = g_strdup(base);
-    SDL_free(const_cast<char*>(base));
+    // SDL3 now requires using SDL_free even for const pointers
+    SDL_free(const_cast<void*>(static_cast<const void*>(base)));
     fprintf(stderr, "%s: base path: %s\n", __func__, base_path);
     return base_path;
 }
