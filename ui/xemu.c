@@ -853,13 +853,9 @@ static void sdl3_display_init(DisplayState *ds, DisplayOptions *o)
 {
     uint8_t data = 0;
     int i;
-    SDL_SysWMinfo info;
 
     assert(o->type == DISPLAY_TYPE_XEMU);
     SDL_GL_MakeCurrent(m_window, m_context);
-
-    memset(&info, 0, sizeof(info));
-    SDL_VERSION(&info.version);
 
     gui_fullscreen = o->has_full_screen && o->full_screen;
 
@@ -1243,7 +1239,7 @@ void sdl3_process_key(struct sdl3_console *scon,
     if (ev->scancode >= qemu_input_map_usb_to_qcode_len) {
         return;
     }
-    qcode = qemu_input_map_usb_to_qcode[ev->keysym.scancode];
+    qcode = qemu_input_map_usb_to_qcode[ev->scancode];
     qkbd_state_key_event(scon->kbd, qcode, ev->type == SDL_EVENT_KEY_DOWN);
 }
 

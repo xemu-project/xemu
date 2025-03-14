@@ -374,12 +374,8 @@ static int get_mod_state(void)
 static void *sdl3_win32_get_hwnd(struct sdl3_console *scon)
 {
 #ifdef CONFIG_WIN32
-    SDL_SysWMinfo info;
-
-    SDL_VERSION(&info.version);
-    if (SDL_GetWindowWMInfo(scon->real_window, &info)) {
-        return info.info.win.window;
-    }
+    void *hwnd = SDL_GetWindowData(scon->real_window, "hwnd_key");
+    return hwnd;
 #endif
     return NULL;
 }
@@ -883,7 +879,8 @@ static void sdl3_display_init(DisplayState *ds, DisplayOptions *o)
     SDL_SetHint(SDL_HINT_WINDOWS_NO_CLOSE_ON_ALT_F4, "1");
     SDL_EnableScreenSaver();
     memset(&info, 0, sizeof(info));
-    SDL_VERSION(&info.version);
+    SDL_GetVersion(&info.version);
+
 
     gui_fullscreen = o->has_full_screen && o->full_screen;
 
