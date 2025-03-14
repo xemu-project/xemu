@@ -56,23 +56,38 @@ GloContext *glo_context_create(void)
         SDL_GL_CONTEXT_PROFILE_MASK,
         SDL_GL_CONTEXT_PROFILE_CORE);
 
-    // Create main window
-    context->window = SDL_CreateWindowWithProperties(
-        "SDL Offscreen Window",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        640, 480,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+    // Create properties for the window
+    SDL_PropertiesID props = SDL_CreateProperties();
+    const char* title = "SDL Offscreen Window";
+    int x = SDL_WINDOWPOS_CENTERED;
+    int y = SDL_WINDOWPOS_CENTERED;
+    int width = 640;
+    int height = 480;
+    Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN;
+
+    // Set window properties
+    SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, title);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER, x);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, y);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, width);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, height);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, flags);
+
+    // Create the window with properties
+    context->window = SDL_CreateWindowWithProperties(props);
     if (context->window == NULL) {
-        fprintf(stderr, "%s: Failed to create window\n", __func__);
+        fprintf(stderr, "%s: Failed to create window: %s\n", __func__);
+        free(context); // Free allocated memory
         SDL_Quit();
         exit(1);
     }
 
+    // Create OpenGL context
     context->gl_context = SDL_GL_CreateContext(context->window);
     if (context->gl_context == NULL) {
-        fprintf(stderr, "%s: Failed to create GL context\n", __func__);
+        fprintf(stderr, "%s: Failed to create GL context: %s\n", __func__);
         SDL_DestroyWindow(context->window);
+        free(context); // Free allocated memory
         SDL_Quit();
         exit(1);
     }
