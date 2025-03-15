@@ -984,8 +984,8 @@ static MString* psh_convert(struct PixelShader *ps)
             }
             break;
         case PS_TEXTUREMODES_CUBEMAP:
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xyz / pT%d.w);\n",
-                               i, i, i, i);
+            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xyz);\n",
+                               i, i, i);
             break;
         case PS_TEXTUREMODES_PASSTHRU:
             assert(ps->state.border_logical_size[i][0] == 0.0f && "Unexpected border texture on passthru");
