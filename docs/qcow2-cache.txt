@@ -1,0 +1,241 @@
+qcow2 L2/refcount cache configuration
+=====================================
+Copyright (C) 2015, 2018-2020 Igalia, S.L.
+Author: Alberto Garcia <berto@igalia.com>
+
+This work is licensed under the terms of the GNU GPL, version 2 or
+later. See the COPYING file in the top-level directory.
+
+Introduction
+------------
+The QEMU qcow2 driver has two caches that can improve the I/O
+performance significantly. However, setting the right cache sizes is
+not a straightforward operation.
+
+This document attempts to give an overview of the L2 and refcount
+caches, and how to configure them.
+
+Please refer to the docs/interop/qcow2.txt file for an in-depth
+technical description of the qcow2 file format.
+
+
+Clusters
+--------
+A qcow2 file is organized in units of constant size called clusters.
+
+The cluster size is configurable, but it must be a power of two and
+its value 512 bytes or higher. QEMU currently defaults to 64 KB
+clusters, and it does not support sizes larger than 2MB.
+
+The 'qemu-img create' command supports specifying the size using the
+cluster_size option:
+
+   qemu-img create -f qcow2 -o cluster_size=128K hd.qcow2 4G
+
+
+The L2 tables
+-------------
+The qcow2 format uses a two-level structure to map the virtual disk as
+seen by the guest to the disk image in the host. These structures are
+called the L1 and L2 tables.
+
+There is one single L1 table per disk image. The table is small and is
+always kept in memory.
+
+There can be many L2 tables, depending on how much space has been
+allocated in the image. Each table is one cluster in size. In order to
+read or write data from the virtual disk, QEMU needs to read its
+corresponding L2 table to find out where that data is located. Since
+reading the table for each I/O operation can be expensive, QEMU keeps
+an L2 cache in memory to speed up disk access.
+
+The size of the L2 cache can be configured, and setting the right
+value can improve the I/O performance significantly.
+
+
+The refcount blocks
+-------------------
+The qcow2 format also maintains a reference count for each cluster.
+Reference counts are used for cluster allocation and internal
+snapshots. The data is stored in a two-level structure similar to the
+L1/L2 tables described above.
+
+The second level structures are called refcount blocks, are also one
+cluster in size and the number is also variable and dependent on the
+amount of allocated space.
+
+Each block contains a number of refcount entries. Their size (in bits)
+is a power of two and must not be higher than 64. It defaults to 16
+bits, but a different value can be set using the refcount_bits option:
+
+   qemu-img create -f qcow2 -o refcount_bits=8 hd.qcow2 4G
+
+QEMU keeps a refcount cache to speed up I/O much like the
+aforementioned L2 cache, and its size can also be configured.
+
+
+Choosing the right cache sizes
+------------------------------
+In order to choose the cache sizes we need to know how they relate to
+the amount of allocated space.
+
+The part of the virtual disk that can be mapped by the L2 and refcount
+caches (in bytes) is:
+
+   disk_size = l2_cache_size * cluster_size / 8
+   disk_size = refcount_cache_size * cluster_size * 8 / refcount_bits
+
+With the default values for cluster_size (64KB) and refcount_bits
+(16), this becomes:
+
+   disk_size = l2_cache_size * 8192
+   disk_size = refcount_cache_size * 32768
+
+So in order to cover n GB of disk space with the default values we
+need:
+
+   l2_cache_size = disk_size_GB * 131072
+   refcount_cache_size = disk_size_GB * 32768
+
+For example, 1MB of L2 cache is needed to cover every 8 GB of the virtual
+image size (given that the default cluster size is used):
+
+   8 GB / 8192 = 1 MB
+
+The refcount cache is 4 times the cluster size by default. With the default
+cluster size of 64 KB, it is 256 KB (262144 bytes). This is sufficient for
+8 GB of image size:
+
+   262144 * 32768 = 8 GB
+
+
+How to configure the cache sizes
+--------------------------------
+Cache sizes can be configured using the -drive option in the
+command-line, or the 'blockdev-add' QMP command.
+
+There are three options available, and all of them take bytes:
+
+"l2-cache-size":         maximum size of the L2 table cache
+"refcount-cache-size":   maximum size of the refcount block cache
+"cache-size":            maximum size of both caches combined
+
+There are a few things that need to be taken into account:
+
+ - Both caches must have a size that is a multiple of the cluster size
+   (or the cache entry size: see "Using smaller cache sizes" below).
+
+ - The maximum L2 cache size is 32 MB by default on Linux platforms (enough
+   for full coverage of 256 GB images, with the default cluster size). This
+   value can be modified using the "l2-cache-size" option. QEMU will not use
+   more memory than needed to hold all of the image's L2 tables, regardless
+   of this max. value.
+   On non-Linux platforms the maximal value is smaller by default (8 MB) and
+   this difference stems from the fact that on Linux the cache can be cleared
+   periodically if needed, using the "cache-clean-interval" option (see below).
+   The minimal L2 cache size is 2 clusters (or 2 cache entries, see below).
+
+ - The default (and minimum) refcount cache size is 4 clusters.
+
+ - If only "cache-size" is specified then QEMU will assign as much
+   memory as possible to the L2 cache before increasing the refcount
+   cache size.
+
+ - At most two of "l2-cache-size", "refcount-cache-size", and "cache-size"
+   can be set simultaneously.
+
+Unlike L2 tables, refcount blocks are not used during normal I/O but
+only during allocations and internal snapshots. In most cases they are
+accessed sequentially (even during random guest I/O) so increasing the
+refcount cache size won't have any measurable effect in performance
+(this can change if you are using internal snapshots, so you may want
+to think about increasing the cache size if you use them heavily).
+
+Before QEMU 2.12 the refcount cache had a default size of 1/4 of the
+L2 cache size. This resulted in unnecessarily large caches, so now the
+refcount cache is as small as possible unless overridden by the user.
+
+
+Using smaller cache entries
+---------------------------
+The qcow2 L2 cache can store complete tables. This means that if QEMU
+needs an entry from an L2 table then the whole table is read from disk
+and is kept in the cache. If the cache is full then a complete table
+needs to be evicted first.
+
+This can be inefficient with large cluster sizes since it results in
+more disk I/O and wastes more cache memory.
+
+Since QEMU 2.12 you can change the size of the L2 cache entry and make
+it smaller than the cluster size. This can be configured using the
+"l2-cache-entry-size" parameter:
+
+   -drive file=hd.qcow2,l2-cache-size=2097152,l2-cache-entry-size=4096
+
+Since QEMU 4.0 the value of l2-cache-entry-size defaults to 4KB (or
+the cluster size if it's smaller).
+
+Some things to take into account:
+
+ - The L2 cache entry size has the same restrictions as the cluster
+   size (power of two, at least 512 bytes).
+
+ - Smaller entry sizes generally improve the cache efficiency and make
+   disk I/O faster. This is particularly true with solid state drives
+   so it's a good idea to reduce the entry size in those cases. With
+   rotating hard drives the situation is a bit more complicated so you
+   should test it first and stay with the default size if unsure.
+
+ - Try different entry sizes to see which one gives faster performance
+   in your case. The block size of the host filesystem is generally a
+   good default (usually 4096 bytes in the case of ext4, hence the
+   default).
+
+ - Only the L2 cache can be configured this way. The refcount cache
+   always uses the cluster size as the entry size.
+
+ - If the L2 cache is big enough to hold all of the image's L2 tables
+   (as explained in the "Choosing the right cache sizes" and "How to
+   configure the cache sizes" sections in this document) then none of
+   this is necessary and you can omit the "l2-cache-entry-size"
+   parameter altogether. In this case QEMU makes the entry size
+   equal to the cluster size by default.
+
+
+Reducing the memory usage
+-------------------------
+It is possible to clean unused cache entries in order to reduce the
+memory usage during periods of low I/O activity.
+
+The parameter "cache-clean-interval" defines an interval (in seconds),
+after which all the cache entries that haven't been accessed during the
+interval are removed from memory. Setting this parameter to 0 disables this
+feature.
+
+The following example removes all unused cache entries every 15 minutes:
+
+   -drive file=hd.qcow2,cache-clean-interval=900
+
+If unset, the default value for this parameter is 600 on platforms which
+support this functionality, and is 0 (disabled) on other platforms.
+
+This functionality currently relies on the MADV_DONTNEED argument for
+madvise() to actually free the memory. This is a Linux-specific feature,
+so cache-clean-interval is not supported on other systems.
+
+
+Extended L2 Entries
+-------------------
+All numbers shown in this document are valid for qcow2 images with normal
+64-bit L2 entries.
+
+Images with extended L2 entries need twice as much L2 metadata, so the L2
+cache size must be twice as large for the same disk space.
+
+   disk_size = l2_cache_size * cluster_size / 16
+
+i.e.
+
+   l2_cache_size = disk_size * 16 / cluster_size
+
+Refcount blocks are not affected by this.
