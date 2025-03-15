@@ -180,7 +180,7 @@ def main():
 	args = ap.parse_args()
 	li = LibInstaller(args.arch)
 	li.install_pkgs([
-		'libsdl2',
+		'libsdl3',
 		'glib2',
 		'libsamplerate',
 		'libpixman',
