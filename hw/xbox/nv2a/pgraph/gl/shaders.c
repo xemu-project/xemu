@@ -219,7 +219,9 @@ static void generate_shaders(ShaderBinding *binding)
                                  state->polygon_back_mode,
                                  state->primitive_mode,
                                  state->smooth_shading,
-                                 false);
+                                 false,
+                                 state->z_perspective || state->texture_perspective
+            );
     if (geometry_shader_code) {
         const char* geometry_shader_code_str =
              mstring_get_str(geometry_shader_code);
@@ -891,6 +893,17 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         float zclip_max = *(float *)&v[1];
         glUniform4f(binding->clip_range_loc, 0, zmax, zclip_min, zclip_max);
     }
+    if (binding->zbias_loc != -1) {
+        float zbias = 0.0f;
+        if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
+            uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
+            zbias = *(float *)&zbias_u32;
+        }
+        glUniform1f(binding->zbias_loc, zbias);
+    }
 
     if (binding->depth_offset_loc != -1) {
         float zbias = 0.0f;
@@ -1029,7 +1042,6 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
     bool binding_changed = false;
     if (r->shader_binding && !test_shaders_dirty(pg) && !pg->program_data_dirty) {
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND_NOTDIRTY);
-        goto update_constants;
     }
 
     ShaderBinding *old_binding = r->shader_binding;
@@ -1069,7 +1081,6 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
 
     NV2A_GL_DGROUP_END();
 
-update_constants:
     assert(r->shader_binding);
     assert(r->shader_binding->initialized);
     shader_update_constants(pg, r->shader_binding, binding_changed);

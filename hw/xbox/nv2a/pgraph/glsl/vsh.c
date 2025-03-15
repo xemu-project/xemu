@@ -85,10 +85,11 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
         "}\n");
 
     pgraph_get_glsl_vtx_header(header, state->vulkan, state->smooth_shading,
-                             false, prefix_outputs, false);
+                             false, prefix_outputs, false, state->texture_perspective || state->z_perspective);
 
     if (prefix_outputs) {
         mstring_append(header,
+                       "#define depthBuf v_depthBuf\n"
                        "#define vtxD0 v_vtxD0\n"
                        "#define vtxD1 v_vtxD1\n"
                        "#define vtxB0 v_vtxB0\n"
@@ -148,10 +149,8 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
     if (state->fixed_function) {
         pgraph_gen_vsh_ff_glsl(state, header, body, uniforms);
     } else if (state->vertex_program) {
-        pgraph_gen_vsh_prog_glsl(VSH_VERSION_XVS,
-                                 (uint32_t *)state->program_data,
-                                 state->program_length,
-                                 state->vulkan, header, body);
+        pgraph_gen_vsh_prog_glsl(VSH_VERSION_XVS, state, header, body);
+
     } else {
         assert(false);
     }
@@ -241,6 +240,7 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
     }
 
     /* Set outputs */
+
     mstring_append(body, "\n"
                    "  vtxD0 = clamp(oD0, 0.0, 1.0);\n"
                    "  vtxD1 = clamp(oD1, 0.0, 1.0);\n"
@@ -252,19 +252,9 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
                    "  vtxT2 = oT2;\n"
                    "  vtxT3 = oT3;\n"
                    "  gl_PointSize = oPts.x;\n"
-    );
-
-    if (state->vulkan) {
-        mstring_append(body,
                    "  gl_Position = oPos;\n"
-        );
-    } else {
-        mstring_append(body,
-                   "  gl_Position = vec4(oPos.x, oPos.y, 2.0*oPos.z - oPos.w, oPos.w);\n"
-        );
-    }
-
-    mstring_append(body, "}\n");
+                   "}\n"
+    );
 
     /* Return combined header + source */
     if (state->vulkan) {

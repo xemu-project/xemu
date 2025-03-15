@@ -173,6 +173,7 @@ typedef struct ShaderBinding {
 
     int surface_size_loc;
     int clip_range_loc;
+
     int clip_range_floc;
     int depth_offset_loc;
 
