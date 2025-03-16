@@ -1152,7 +1152,6 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
                 pg->surface_binding_dim.height = found->height;
                 pg->surface_binding_dim.clip_y = found->shape.clip_y;
                 pg->surface_binding_dim.clip_height = found->shape.clip_height;
-
                 found->upload_pending |= mem_dirty;
                 pg->surface_zeta.buffer_dirty |= color;
                 should_create = false;
