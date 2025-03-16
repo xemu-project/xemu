@@ -1463,14 +1463,10 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
             if (is_compatible) {
                 // FIXME: Refactor
                 pg->surface_binding_dim.width = surface->width;
-                pg->surface_binding_dim.clip_x = surface->shape.clip_x - surface->width + surface->shape.clip_width;
-                if (pg->surface_binding_dim.clip_x < 0)
-                    pg->surface_binding_dim.clip_x = 0;
+                pg->surface_binding_dim.clip_x = surface->shape.clip_x;
                 pg->surface_binding_dim.clip_width = surface->shape.clip_width;
                 pg->surface_binding_dim.height = surface->height;
-                pg->surface_binding_dim.clip_y = surface->shape.clip_y - surface->height + surface->shape.clip_height;
-                if (pg->surface_binding_dim.clip_y < 0)
-                    pg->surface_binding_dim.clip_y = 0;
+                pg->surface_binding_dim.clip_y = surface->shape.clip_y;
                 pg->surface_binding_dim.clip_height = surface->shape.clip_height;
                 surface->upload_pending |= mem_dirty;
                 pg->surface_zeta.buffer_dirty |= color;
@@ -1499,14 +1495,10 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
 
             // FIXME: Refactor
             pg->surface_binding_dim.width = target.width;
-            pg->surface_binding_dim.clip_x = target.shape.clip_x - target.width + target.shape.clip_width;
-            if (pg->surface_binding_dim.clip_x < 0)
-                pg->surface_binding_dim.clip_x = 0;
+            pg->surface_binding_dim.clip_x = target.shape.clip_x;
             pg->surface_binding_dim.clip_width = target.shape.clip_width;
             pg->surface_binding_dim.height = target.height;
-            pg->surface_binding_dim.clip_y = target.shape.clip_y - target.height + target.shape.clip_height;
-            if (pg->surface_binding_dim.clip_y < 0)
-                pg->surface_binding_dim.clip_y = 0;
+            pg->surface_binding_dim.clip_y = target.shape.clip_y;
             pg->surface_binding_dim.clip_height = target.shape.clip_height;
 
             if (color && r->zeta_binding &&

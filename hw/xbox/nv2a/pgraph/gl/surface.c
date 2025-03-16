@@ -1147,15 +1147,12 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
             if (is_compatible) {
                 /* FIXME: Refactor */
                 pg->surface_binding_dim.width = found->width;
-                pg->surface_binding_dim.clip_x = found->shape.clip_x - found->width + found->shape.clip_width;
-                if (pg->surface_binding_dim.clip_x < 0)
-                    pg->surface_binding_dim.clip_x = 0;
+                pg->surface_binding_dim.clip_x = found->shape.clip_x;
                 pg->surface_binding_dim.clip_width = found->shape.clip_width;
                 pg->surface_binding_dim.height = found->height;
-                pg->surface_binding_dim.clip_y = found->shape.clip_y - found->height + found->shape.clip_height;
-                if (pg->surface_binding_dim.clip_y < 0)
-                    pg->surface_binding_dim.clip_y = 0;
+                pg->surface_binding_dim.clip_y = found->shape.clip_y;
                 pg->surface_binding_dim.clip_height = found->shape.clip_height;
+
                 found->upload_pending |= mem_dirty;
                 pg->surface_zeta.buffer_dirty |= color;
                 should_create = false;
@@ -1190,14 +1187,10 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
 
             /* FIXME: Refactor */
             pg->surface_binding_dim.width = entry.width;
-            pg->surface_binding_dim.clip_x = entry.shape.clip_x - entry.width + entry.shape.clip_width;
-            if (pg->surface_binding_dim.clip_x < 0)
-                pg->surface_binding_dim.clip_x = 0;
+            pg->surface_binding_dim.clip_x = entry.shape.clip_x;
             pg->surface_binding_dim.clip_width = entry.shape.clip_width;
             pg->surface_binding_dim.height = entry.height;
-            pg->surface_binding_dim.clip_y = entry.shape.clip_y - entry.height + entry.shape.clip_height;
-            if (pg->surface_binding_dim.clip_y < 0)
-                pg->surface_binding_dim.clip_y = 0;
+            pg->surface_binding_dim.clip_y = entry.shape.clip_y;
             pg->surface_binding_dim.clip_height = entry.shape.clip_height;
 
             if (color && r->zeta_binding && (r->zeta_binding->width != entry.width || r->zeta_binding->height != entry.height)) {
