@@ -442,6 +442,11 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
             to_process -= chunk_len;
         }
 
+        // Ensure we fill the entire packet regardless of if we have audio data so we don't
+        // cause an underrun error.
+        if (p->actual_length < p->iov.size)
+            usb_packet_copy(p, (void *)silence, p->iov.size - p->actual_length);
+
         break;
     case USB_TOKEN_OUT:
         // Speaker data - get data from usb packet then push to fifo.
@@ -456,12 +461,6 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
         assert(false);
         break;
     }
-
-    // Ensure we fill the entire packet regardless of if we have audio data so we don't
-    // cause an underrun error.
-    if (p->actual_length < p->iov.size)
-        usb_packet_copy(p, (void *)silence, p->iov.size - p->actual_length);
-
 }
 
 static void usb_xbox_communicator_unrealize(USBDevice *dev)
