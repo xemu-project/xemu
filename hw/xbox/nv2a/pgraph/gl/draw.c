@@ -334,11 +334,10 @@ void pgraph_gl_draw_begin(NV2AState *d)
     /* FIXME: Consider moving to PSH w/ window clip */
     unsigned int xmin = pg->surface_shape.clip_x,
                  ymin = pg->surface_shape.clip_y;
-    unsigned int xmax = xmin + pg->surface_shape.clip_width - 1,
-                 ymax = ymin + pg->surface_shape.clip_height - 1;
 
-    unsigned int scissor_width = xmax - xmin + 1,
-                 scissor_height = ymax - ymin + 1;
+    unsigned int scissor_width = pg->surface_shape.clip_width,
+                 scissor_height = pg->surface_shape.clip_height;
+
     pgraph_apply_anti_aliasing_factor(pg, &xmin, &ymin);
     pgraph_apply_anti_aliasing_factor(pg, &scissor_width, &scissor_height);
     ymin = pg->surface_binding_dim.height - (ymin + scissor_height);
