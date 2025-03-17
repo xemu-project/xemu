@@ -146,6 +146,9 @@ display:
     surface_scale:
       type: integer
       default: 1
+    anisotropic_filter_level:
+      type: integer
+      default: 1
   window:
     fullscreen_on_startup: bool
     fullscreen_exclusive: bool

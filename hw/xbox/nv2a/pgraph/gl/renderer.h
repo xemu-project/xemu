@@ -284,6 +284,9 @@ bool pgraph_gl_shader_load_from_memory(ShaderBinding *snode);
 void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg);
 void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale);
 unsigned int pgraph_gl_get_surface_scale_factor(NV2AState *d);
+void pgraph_gl_set_anisotropic_filter_level(NV2AState *d, unsigned int level_po2);
+unsigned int pgraph_gl_get_anisotropic_filter_level(NV2AState *d);
+void pgraph_gl_reload_anisotropic_filter_level(PGRAPHState *pg);
 int pgraph_gl_get_framebuffer_surface(NV2AState *d);
 
 #endif

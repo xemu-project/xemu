@@ -406,6 +406,35 @@ unsigned int nv2a_get_surface_scale_factor(void)
     return s;
 }
 
+void nv2a_set_anisotropic_filter_level(unsigned int level_po2)
+{
+    NV2AState *d = g_nv2a;
+
+    bql_unlock();
+    qemu_mutex_lock(&d->pgraph.renderer_lock);
+    if (d->pgraph.renderer->ops.set_anisotropic_filter_level) {
+        d->pgraph.renderer->ops.set_anisotropic_filter_level(d, level_po2);
+    }
+    qemu_mutex_unlock(&d->pgraph.renderer_lock);
+    bql_lock();
+}
+
+unsigned int nv2a_get_anisotropic_filter_level(void)
+{
+    NV2AState *d = g_nv2a;
+    int s = 1;
+
+    bql_unlock();
+    qemu_mutex_lock(&d->pgraph.renderer_lock);
+    if (d->pgraph.renderer->ops.get_anisotropic_filter_level) {
+        s = d->pgraph.renderer->ops.get_anisotropic_filter_level(d);
+    }
+    qemu_mutex_unlock(&d->pgraph.renderer_lock);
+    bql_lock();
+
+    return s;
+}
+
 #define METHOD_ADDR(gclass, name) \
     gclass ## _ ## name
 #define METHOD_ADDR_TO_INDEX(x) ((x)>>2)
@@ -3022,4 +3051,3 @@ void pgraph_pre_shutdown_wait(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     pg->renderer->ops.pre_shutdown_wait(d);
 }
-

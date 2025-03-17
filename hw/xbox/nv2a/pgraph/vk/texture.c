@@ -28,6 +28,7 @@
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "qemu/fast-hash.h"
 #include "qemu/lru.h"
+#include "ui/xemu-settings.h"
 #include "renderer.h"
 
 static void texture_cache_release_node_resources(PGRAPHVkState *r, TextureBinding *snode);
@@ -1345,9 +1346,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
             GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV)),
         .addressModeW = lookup_texture_address_mode(
             GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP)),
-        .anisotropyEnable = VK_FALSE,
-        // .anisotropyEnable = VK_TRUE,
-        // .maxAnisotropy = properties.limits.maxSamplerAnisotropy,
+        .anisotropyEnable = pg->anisotropic_filter_level >= 1,
+        .maxAnisotropy = 1 << pg->anisotropic_filter_level,
         .borderColor = vk_border_color,
         .compareEnable = VK_FALSE,
         .compareOp = VK_COMPARE_OP_ALWAYS,
@@ -1527,6 +1527,50 @@ void pgraph_vk_trim_texture_cache(PGRAPHState *pg)
     }
 
     NV2A_VK_DPRINTF("Evicted %d textures, %d remain", num_evicted, r->texture_cache.num_used);
+}
+
+void pgraph_vk_set_anisotropic_filter_level(NV2AState *d, unsigned int level_po2)
+{
+    g_config.display.quality.anisotropic_filter_level = level_po2;
+
+    qemu_mutex_lock(&d->pfifo.lock);
+    qatomic_set(&d->pfifo.halt, true);
+    qemu_mutex_unlock(&d->pfifo.lock);
+
+    qemu_mutex_lock(&d->pgraph.lock);
+    qemu_event_reset(&d->pgraph.vk_renderer_state->dirty_surfaces_download_complete);
+    qatomic_set(&d->pgraph.vk_renderer_state->download_dirty_surfaces_pending, true);
+    qemu_mutex_unlock(&d->pgraph.lock);
+    qemu_mutex_lock(&d->pfifo.lock);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_event_wait(&d->pgraph.vk_renderer_state->dirty_surfaces_download_complete);
+
+    qemu_mutex_lock(&d->pgraph.lock);
+    qemu_event_reset(&d->pgraph.flush_complete);
+    qatomic_set(&d->pgraph.flush_pending, true);
+    qemu_mutex_unlock(&d->pgraph.lock);
+    qemu_mutex_lock(&d->pfifo.lock);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_event_wait(&d->pgraph.flush_complete);
+
+    qemu_mutex_lock(&d->pfifo.lock);
+    qatomic_set(&d->pfifo.halt, false);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+
+    pgraph_vk_reload_anisotropic_filter_level(&d->pgraph);
+}
+
+unsigned int pgraph_vk_get_anisotropic_filter_level(NV2AState *d)
+{
+    return d->pgraph.anisotropic_filter_level;
+}
+
+void pgraph_vk_reload_anisotropic_filter_level(PGRAPHState *pg)
+{
+    pg->anisotropic_filter_level = g_config.display.quality.anisotropic_filter_level;
 }
 
 void pgraph_vk_init_textures(PGRAPHState *pg)
