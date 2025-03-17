@@ -10,8 +10,7 @@ import os.path
 from tarfile import TarFile
 import subprocess
 
-# MIRROR = 'http://packages.macports.org/macports/packages'
-MIRROR = 'http://nue.de.packages.macports.org/macports/packages'
+MIRROR = 'https://packages.macports.org'
 
 # FIXME: Inline macports key
 # FIXME: Move packages to archive directory to track used vs unused
