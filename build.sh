@@ -196,7 +196,7 @@ case "$platform" in # Adjust compilation options based on platform
     Darwin)
         echo "Compiling for MacOS for $target_arch..."
         if [ "$target_arch" == "arm64" ]; then
-            macos_min_ver=12.7.5
+            macos_min_ver=13.7.4
         elif [ "$target_arch" == "x86_64" ]; then
             macos_min_ver=12.7.5
         else

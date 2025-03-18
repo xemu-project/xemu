@@ -63,9 +63,10 @@ static void decode_bc1_colors(uint16_t c0, uint16_t c1, uint8_t r[4],
 }
 
 static void write_block_to_texture(uint8_t *converted_data, uint32_t indices,
-                                   int i, int j, int width, int z_pos_factor,
-                                   uint8_t r[4], uint8_t g[4], uint8_t b[4],
-                                   uint8_t a[16], bool separate_alpha)
+                                   int i, int j, int width, int height,
+                                   int z_pos_factor, uint8_t r[4],
+                                   uint8_t g[4], uint8_t b[4], uint8_t a[16],
+                                   bool separate_alpha)
 {
     int x0 = i * 4,
         y0 = j * 4;
@@ -73,10 +74,10 @@ static void write_block_to_texture(uint8_t *converted_data, uint32_t indices,
     int x1 = x0 + 4,
         y1 = y0 + 4;
 
-    for (int y = y0; y < y1; y++) {
+    for (int y = y0; y < y1 && y < height; y++) {
         int y_index = 4 * (y - y0);
         int z_plus_y_pos_factor = z_pos_factor + y * width;
-        for (int x = x0; x < x1; x++) {
+        for (int x = x0; x < x1 && x < width; x++) {
             int xy_index = y_index + x - x0;
             uint8_t index = (indices >> 2 * xy_index) & 0x03;
             uint8_t alpha_index = separate_alpha ? xy_index : index;
@@ -91,7 +92,7 @@ static void write_block_to_texture(uint8_t *converted_data, uint32_t indices,
 
 static void decompress_dxt1_block(const uint8_t block_data[8],
                                   uint8_t *converted_data, int i, int j,
-                                  int width, int z_pos_factor)
+                                  int width, int height, int z_pos_factor)
 {
     uint16_t c0 = ((uint16_t*)block_data)[0],
              c1 = ((uint16_t*)block_data)[1];
@@ -100,13 +101,13 @@ static void decompress_dxt1_block(const uint8_t block_data[8],
 
     uint32_t indices = ((uint32_t*)block_data)[1];
     write_block_to_texture(converted_data, indices,
-                           i, j, width, z_pos_factor,
+                           i, j, width, height, z_pos_factor,
                            r, g, b, a, false);
 }
 
 static void decompress_dxt3_block(const uint8_t block_data[16],
                                   uint8_t *converted_data, int i, int j,
-                                  int width, int z_pos_factor)
+                                  int width, int height, int z_pos_factor)
 {
     uint16_t c0 = ((uint16_t*)block_data)[4],
              c1 = ((uint16_t*)block_data)[5];
@@ -120,13 +121,13 @@ static void decompress_dxt3_block(const uint8_t block_data[16],
 
     uint32_t indices = ((uint32_t*)block_data)[3];
     write_block_to_texture(converted_data, indices,
-                           i, j, width, z_pos_factor,
+                           i, j, width, height, z_pos_factor,
                            r, g, b, a, true);
 }
 
 static void decompress_dxt5_block(const uint8_t block_data[16],
                                   uint8_t *converted_data, int i, int j,
-                                  int width, int z_pos_factor)
+                                  int width, int height, int z_pos_factor)
 {
     uint16_t c0 = ((uint16_t*)block_data)[4],
              c1 = ((uint16_t*)block_data)[5];
@@ -160,7 +161,7 @@ static void decompress_dxt5_block(const uint8_t block_data[16],
 
     uint32_t indices = ((uint32_t*)block_data)[3];
     write_block_to_texture(converted_data, indices,
-                           i, j, width, z_pos_factor,
+                           i, j, width, height, z_pos_factor,
                            r, g, b, a, true);
 }
 
@@ -168,39 +169,41 @@ uint8_t *s3tc_decompress_3d(enum S3TC_DECOMPRESS_FORMAT color_format,
                             const uint8_t *data, unsigned int width,
                             unsigned int height, unsigned int depth)
 {
-    assert((width > 0) && (width % 4 == 0));
-    assert((height > 0) && (height % 4 == 0));
-    assert((depth > 0) && (depth < 4 || depth % 4 == 0));
-    int block_depth = MIN(depth, 4);
-    int num_blocks_x = width/4,
-        num_blocks_y = height/4,
-        num_blocks_z = depth/block_depth;
+    assert(width > 0);
+    assert(height > 0);
+    assert(depth > 0);
+    unsigned int physical_width = (width + 3) & ~3,
+                 physical_height = (height + 3) & ~3;
+    int num_blocks_x = physical_width/4,
+        num_blocks_y = physical_height/4,
+        num_blocks_z = (depth + 3)/4;
     uint8_t *converted_data = (uint8_t*)g_malloc(width * height * depth * 4);
+    int cur_depth = 0;
+    int sub_block_index = 0;
     for (int k = 0; k < num_blocks_z; k++) {
+        int residual_depth = depth - cur_depth;
+        int block_depth = MIN(residual_depth, 4);
         for (int j = 0; j < num_blocks_y; j++) {
             for (int i = 0; i < num_blocks_x; i++) {
                 for (int slice = 0; slice < block_depth; slice++) {
-
-                    int block_index = k * num_blocks_y * num_blocks_x + j * num_blocks_x + i;
-                    int sub_block_index = block_index * block_depth + slice;
-                    int z_pos_factor = (k * block_depth + slice) * width * height;
-
+                    int z_pos_factor = (cur_depth + slice) * width * height;
                     if (color_format == S3TC_DECOMPRESS_FORMAT_DXT1) {
                         decompress_dxt1_block(data + 8 * sub_block_index, converted_data,
-                                              i, j, width, z_pos_factor);
+                                              i, j, width, height, z_pos_factor);
                     } else if (color_format == S3TC_DECOMPRESS_FORMAT_DXT3) {
                         decompress_dxt3_block(data + 16 * sub_block_index, converted_data,
-                                              i, j, width, z_pos_factor);
+                                              i, j, width, height, z_pos_factor);
                     } else if (color_format == S3TC_DECOMPRESS_FORMAT_DXT5) {
                         decompress_dxt5_block(data + 16 * sub_block_index, converted_data,
-                                              i, j, width, z_pos_factor);
+                                              i, j, width, height, z_pos_factor);
                     } else {
                         assert(false);
                     }
-
+                    sub_block_index++;
                 }
             }
         }
+        cur_depth += block_depth;
     }
     return converted_data;
 }
@@ -209,22 +212,24 @@ uint8_t *s3tc_decompress_2d(enum S3TC_DECOMPRESS_FORMAT color_format,
                             const uint8_t *data, unsigned int width,
                             unsigned int height)
 {
-    assert((width > 0) && (width % 4 == 0));
-    assert((height > 0) && (height % 4 == 0));
-    int num_blocks_x = width / 4, num_blocks_y = height / 4;
+    assert(width > 0);
+    assert(height > 0);
+    unsigned int physical_width = (width + 3) & ~3,
+                 physical_height = (height + 3) & ~3;
+    int num_blocks_x = physical_width / 4, num_blocks_y = physical_height / 4;
     uint8_t *converted_data = (uint8_t *)g_malloc(width * height * 4);
     for (int j = 0; j < num_blocks_y; j++) {
         for (int i = 0; i < num_blocks_x; i++) {
             int block_index = j * num_blocks_x + i;
             if (color_format == S3TC_DECOMPRESS_FORMAT_DXT1) {
                 decompress_dxt1_block(data + 8 * block_index,
-                                      converted_data, i, j, width, 0);
+                                      converted_data, i, j, width, height, 0);
             } else if (color_format == S3TC_DECOMPRESS_FORMAT_DXT3) {
                 decompress_dxt3_block(data + 16 * block_index,
-                                      converted_data, i, j, width, 0);
+                                      converted_data, i, j, width, height, 0);
             } else if (color_format == S3TC_DECOMPRESS_FORMAT_DXT5) {
                 decompress_dxt5_block(data + 16 * block_index,
-                                      converted_data, i, j, width, 0);
+                                      converted_data, i, j, width, height, 0);
             } else {
                 assert(false);
             }
