@@ -890,9 +890,7 @@ static bool check_surface_compatibility(SurfaceBinding const *s1,
     bool format_compatible =
         (s1->color == s2->color) &&
         (s1->host_fmt.vk_format == s2->host_fmt.vk_format) &&
-        (s1->pitch == s2->pitch) &&
-        (s1->shape.clip_x <= s2->shape.clip_x) &&
-        (s1->shape.clip_y <= s2->shape.clip_y);
+        (s1->pitch == s2->pitch);
     if (!format_compatible) {
         return false;
     }
