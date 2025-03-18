@@ -467,12 +467,9 @@ static void upload_gl_texture(GLenum gl_target,
                         8 : 16;
                 unsigned int physical_width = (width + 3) & ~3,
                              physical_height = (height + 3) & ~3;
-                if (physical_width != width) {
-                    glPixelStorei(GL_UNPACK_ROW_LENGTH, physical_width);
-                }
                 uint8_t *converted = s3tc_decompress_2d(
                     gl_internal_format_to_s3tc_enum(f.gl_internal_format),
-                    texture_data, physical_width, physical_height);
+                    texture_data, width, height);
                 unsigned int tex_width = width;
                 unsigned int tex_height = height;
 
@@ -492,9 +489,6 @@ static void upload_gl_texture(GLenum gl_target,
                 glTexImage2D(gl_target, level, GL_RGBA, tex_width, tex_height, 0,
                              GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV, converted);
                 g_free(converted);
-                if (physical_width != width) {
-                    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-                }
                 if (s.cubemap && adjusted_width != s.width) {
                     glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
                     glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
@@ -557,10 +551,10 @@ static void upload_gl_texture(GLenum gl_target,
         int level;
         for (level = 0; level < s.levels; level++) {
             if (f.gl_format == 0) { /* compressed */
-                assert(width % 4 == 0 && height % 4 == 0 &&
-                       "Compressed 3D texture virtual size");
-                width = MAX(width, 4);
-                height = MAX(height, 4);
+                width = MAX(width, 1);
+                height = MAX(height, 1);
+                unsigned int physical_width = (width + 3) & ~3,
+                             physical_height = (height + 3) & ~3;
                 depth = MAX(depth, 1);
 
                 unsigned int block_size;
@@ -570,7 +564,7 @@ static void upload_gl_texture(GLenum gl_target,
                     block_size = 16;
                 }
 
-                size_t texture_size = width/4 * height/4 * depth * block_size;
+                size_t texture_size = physical_width/4 * physical_height/4 * depth * block_size;
 
                 uint8_t *converted = s3tc_decompress_3d(
                     gl_internal_format_to_s3tc_enum(f.gl_internal_format),

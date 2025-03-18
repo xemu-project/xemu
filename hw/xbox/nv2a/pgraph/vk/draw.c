@@ -1472,16 +1472,11 @@ static void begin_draw(PGRAPHState *pg)
 
         /* Surface clip */
         /* FIXME: Consider moving to PSH w/ window clip */
-        unsigned int xmin = pg->surface_shape.clip_x -
-                            pg->surface_binding_dim.clip_x,
-                     ymin = pg->surface_shape.clip_y -
-                            pg->surface_binding_dim.clip_y;
+        unsigned int xmin = pg->surface_shape.clip_x,
+                     ymin = pg->surface_shape.clip_y;
 
-        unsigned int xmax = xmin + pg->surface_shape.clip_width - 1,
-                     ymax = ymin + pg->surface_shape.clip_height - 1;
-
-        unsigned int scissor_width = xmax - xmin + 1,
-                     scissor_height = ymax - ymin + 1;
+        unsigned int scissor_width = pg->surface_shape.clip_width,
+                     scissor_height = pg->surface_shape.clip_height;
 
         pgraph_apply_anti_aliasing_factor(pg, &xmin, &ymin);
         pgraph_apply_anti_aliasing_factor(pg, &scissor_width, &scissor_height);
