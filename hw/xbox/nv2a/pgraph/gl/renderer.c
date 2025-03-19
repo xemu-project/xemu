@@ -194,6 +194,8 @@ static PGRAPHRenderer pgraph_gl_renderer = {
         .surface_update = pgraph_gl_surface_update,
         .set_surface_scale_factor = pgraph_gl_set_surface_scale_factor,
         .get_surface_scale_factor = pgraph_gl_get_surface_scale_factor,
+        .set_anisotropic_filter_level = pgraph_gl_set_anisotropic_filter_level,
+        .get_anisotropic_filter_level = pgraph_gl_get_anisotropic_filter_level,
         .get_framebuffer_surface = pgraph_gl_get_framebuffer_surface,
     }
 };
