@@ -1,10 +1,10 @@
-#ifndef SDL2_H
-#define SDL2_H
+#ifndef SDL3_H
+#define SDL3_H
 
 /* Avoid compiler warning because macro is redefined in SDL_syswm.h. */
 #undef WIN32_LEAN_AND_MEAN
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 /* with Alpine / muslc SDL headers pull in directfb headers
  * which in turn trigger warning about redundant decls for
@@ -13,12 +13,10 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wredundant-decls"
 
-#include <SDL_syswm.h>
-
 #pragma GCC diagnostic pop
 
 #ifdef CONFIG_SDL_IMAGE
-# include <SDL_image.h>
+# include <SDL3_image/SDL_image.h>
 #endif
 
 #include "ui/kbd-state.h"
@@ -26,7 +24,7 @@
 # include "ui/egl-helpers.h"
 #endif
 
-struct sdl2_console {
+struct sdl3_console {
     DisplayGLCtx dgc;
     DisplayChangeListener dcl;
     DisplaySurface *surface;
@@ -54,39 +52,39 @@ struct sdl2_console {
 #endif
 };
 
-void sdl2_window_create(struct sdl2_console *scon);
-void sdl2_window_destroy(struct sdl2_console *scon);
-void sdl2_window_resize(struct sdl2_console *scon);
-void sdl2_poll_events(struct sdl2_console *scon);
+void sdl3_window_create(struct sdl3_console *scon);
+void sdl3_window_destroy(struct sdl3_console *scon);
+void sdl3_window_resize(struct sdl3_console *scon);
+void sdl3_poll_events(struct sdl3_console *scon);
 
-void sdl2_process_key(struct sdl2_console *scon,
+void sdl3_process_key(struct sdl3_console *scon,
                       SDL_KeyboardEvent *ev);
-void sdl2_release_modifiers(struct sdl2_console *scon);
+void sdl3_release_modifiers(struct sdl3_console *scon);
 
-void sdl2_2d_update(DisplayChangeListener *dcl,
+void sdl3_2d_update(DisplayChangeListener *dcl,
                     int x, int y, int w, int h);
-void sdl2_2d_switch(DisplayChangeListener *dcl,
+void sdl3_2d_switch(DisplayChangeListener *dcl,
                     DisplaySurface *new_surface);
-void sdl2_2d_refresh(DisplayChangeListener *dcl);
-void sdl2_2d_redraw(struct sdl2_console *scon);
-bool sdl2_2d_check_format(DisplayChangeListener *dcl,
+void sdl3_2d_refresh(DisplayChangeListener *dcl);
+void sdl3_2d_redraw(struct sdl3_console *scon);
+bool sdl3_2d_check_format(DisplayChangeListener *dcl,
                           pixman_format_code_t format);
 
-void sdl2_gl_update(DisplayChangeListener *dcl,
+void sdl3_gl_update(DisplayChangeListener *dcl,
                     int x, int y, int w, int h);
-void sdl2_gl_switch(DisplayChangeListener *dcl,
+void sdl3_gl_switch(DisplayChangeListener *dcl,
                     DisplaySurface *new_surface);
-void sdl2_gl_refresh(DisplayChangeListener *dcl);
-void sdl2_gl_redraw(struct sdl2_console *scon);
+void sdl3_gl_refresh(DisplayChangeListener *dcl);
+void sdl3_gl_redraw(struct sdl3_console *scon);
 
-QEMUGLContext sdl2_gl_create_context(DisplayGLCtx *dgc,
+QEMUGLContext sdl3_gl_create_context(DisplayGLCtx *dgc,
                                      QEMUGLParams *params);
-void sdl2_gl_destroy_context(DisplayGLCtx *dgc, QEMUGLContext ctx);
-int sdl2_gl_make_context_current(DisplayGLCtx *dgc,
+void sdl3_gl_destroy_context(DisplayGLCtx *dgc, QEMUGLContext ctx);
+int sdl3_gl_make_context_current(DisplayGLCtx *dgc,
                                  QEMUGLContext ctx);
 
-void sdl2_gl_scanout_disable(DisplayChangeListener *dcl);
-void sdl2_gl_scanout_texture(DisplayChangeListener *dcl,
+void sdl3_gl_scanout_disable(DisplayChangeListener *dcl);
+void sdl3_gl_scanout_texture(DisplayChangeListener *dcl,
                              uint32_t backing_id,
                              bool backing_y_0_top,
                              uint32_t backing_width,
@@ -94,7 +92,7 @@ void sdl2_gl_scanout_texture(DisplayChangeListener *dcl,
                              uint32_t x, uint32_t y,
                              uint32_t w, uint32_t h,
                              void *d3d_tex2d);
-void sdl2_gl_scanout_flush(DisplayChangeListener *dcl,
+void sdl3_gl_scanout_flush(DisplayChangeListener *dcl,
                            uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 
-#endif /* SDL2_H */
+#endif /* SDL3_H */

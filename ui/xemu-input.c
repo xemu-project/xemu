@@ -155,7 +155,7 @@ void xemu_input_init(void)
         SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     }
 
-    if (SDL_Init(SDL_INIT_GAMECONTROLLER) < 0) {
+    if (SDL_Init(SDL_INIT_GAMEPAD) < 0) {
         fprintf(stderr, "Failed to initialize SDL gamecontroller subsystem: %s\n", SDL_GetError());
         exit(1);
     }
@@ -199,7 +199,7 @@ void xemu_input_init(void)
 
     for (int i = 0; i < 25; i++) {
         if( (sdl_kbd_scancode_map[i] < SDL_SCANCODE_UNKNOWN) ||
-            (sdl_kbd_scancode_map[i] >= SDL_NUM_SCANCODES) ) {
+            (sdl_kbd_scancode_map[i] >= SDL_SCANCODE_COUNT) ) {
             fprintf(stderr, "WARNING: Keyboard controller map scancode out of range (%d) : Disabled\n", sdl_kbd_scancode_map[i]);
             sdl_kbd_scancode_map[i] = SDL_SCANCODE_UNKNOWN;
         }
@@ -261,12 +261,12 @@ void xemu_save_peripheral_settings(int player_index, int peripheral_index,
 
 void xemu_input_process_sdl_events(const SDL_Event *event)
 {
-    if (event->type == SDL_CONTROLLERDEVICEADDED) {
+    if (event->type == SDL_EVENT_GAMEPAD_ADDED) {
         DPRINTF("Controller Added: %d\n", event->cdevice.which);
 
         // Attempt to open the added controller
-        SDL_GameController *sdl_con;
-        sdl_con = SDL_GameControllerOpen(event->cdevice.which);
+        SDL_Gamepad *sdl_con;
+        sdl_con = SDL_OpenGamepad(event->cdevice.which);
         if (sdl_con == NULL) {
             DPRINTF("Could not open joystick %d as a game controller\n", event->cdevice.which);
             return;
@@ -276,12 +276,12 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         ControllerState *new_con = malloc(sizeof(ControllerState));
         memset(new_con, 0, sizeof(ControllerState));
         new_con->type                 = INPUT_DEVICE_SDL_GAMECONTROLLER;
-        new_con->name                 = SDL_GameControllerName(sdl_con);
+        new_con->name                 = SDL_GetGamepadName(sdl_con);
         new_con->rumble_enabled       = true;
         new_con->sdl_gamecontroller   = sdl_con;
-        new_con->sdl_joystick         = SDL_GameControllerGetJoystick(new_con->sdl_gamecontroller);
-        new_con->sdl_joystick_id      = SDL_JoystickInstanceID(new_con->sdl_joystick);
-        new_con->sdl_joystick_guid    = SDL_JoystickGetGUID(new_con->sdl_joystick);
+        new_con->sdl_joystick         = SDL_GetGamepadJoystick(new_con->sdl_gamecontroller);
+        new_con->sdl_joystick_id      = SDL_GetJoystickID(new_con->sdl_joystick);
+        new_con->sdl_joystick_guid    = SDL_GetJoystickGUID(new_con->sdl_joystick);
         new_con->bound                = -1;
         new_con->peripheral_types[0] = PERIPHERAL_NONE;
         new_con->peripheral_types[1] = PERIPHERAL_NONE;
@@ -342,7 +342,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
             xemu_queue_notification(buf);
             xemu_input_rebind_xmu(port);
         }
-    } else if (event->type == SDL_CONTROLLERDEVICEREMOVED) {
+    } else if (event->type == SDL_EVENT_GAMEPAD_REMOVED) {
         DPRINTF("Controller Removed: %d\n", event->cdevice.which);
         int handled = 0;
         ControllerState *iter, *next;
@@ -371,7 +371,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
 
                 // Deallocate
                 if (iter->sdl_gamecontroller) {
-                    SDL_GameControllerClose(iter->sdl_gamecontroller);
+                    SDL_CloseGamepad(iter->sdl_gamecontroller);
                 }
 
                 for (int i = 0; i < 2; i++) {
@@ -387,7 +387,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         if (!handled) {
             DPRINTF("Could not find handle for joystick instance\n");
         }
-    } else if (event->type == SDL_CONTROLLERDEVICEREMAPPED) {
+    } else if (event->type == SDL_EVENT_GAMEPAD_REMAPPED) {
         DPRINTF("Controller Remapped: %d\n", event->cdevice.which);
     }
 }
@@ -449,36 +449,36 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
     state->buttons = 0;
     memset(state->axis, 0, sizeof(state->axis));
 
-    const SDL_GameControllerButton sdl_button_map[15] = {
-        SDL_CONTROLLER_BUTTON_A,
-        SDL_CONTROLLER_BUTTON_B,
-        SDL_CONTROLLER_BUTTON_X,
-        SDL_CONTROLLER_BUTTON_Y,
-        SDL_CONTROLLER_BUTTON_DPAD_LEFT,
-        SDL_CONTROLLER_BUTTON_DPAD_UP,
-        SDL_CONTROLLER_BUTTON_DPAD_RIGHT,
-        SDL_CONTROLLER_BUTTON_DPAD_DOWN,
-        SDL_CONTROLLER_BUTTON_BACK,
-        SDL_CONTROLLER_BUTTON_START,
-        SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
-        SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
-        SDL_CONTROLLER_BUTTON_LEFTSTICK,
-        SDL_CONTROLLER_BUTTON_RIGHTSTICK,
-        SDL_CONTROLLER_BUTTON_GUIDE
+    const SDL_GamepadButton sdl_button_map[15] = {
+        SDL_GAMEPAD_BUTTON_SOUTH,
+        SDL_GAMEPAD_BUTTON_EAST,
+        SDL_GAMEPAD_BUTTON_WEST,
+        SDL_GAMEPAD_BUTTON_NORTH,
+        SDL_GAMEPAD_BUTTON_DPAD_LEFT,
+        SDL_GAMEPAD_BUTTON_DPAD_UP,
+        SDL_GAMEPAD_BUTTON_DPAD_RIGHT,
+        SDL_GAMEPAD_BUTTON_DPAD_DOWN,
+        SDL_GAMEPAD_BUTTON_BACK,
+        SDL_GAMEPAD_BUTTON_START,
+        SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
+        SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,
+        SDL_GAMEPAD_BUTTON_LEFT_STICK,
+        SDL_GAMEPAD_BUTTON_RIGHT_STICK,
+        SDL_GAMEPAD_BUTTON_GUIDE
     };
 
     for (int i = 0; i < 15; i++) {
-        state->buttons |= SDL_GameControllerGetButton(state->sdl_gamecontroller, sdl_button_map[i]) << i;
+        state->buttons |= SDL_GetGamepadButton(state->sdl_gamecontroller, sdl_button_map[i]) << i;
     }
 
-    const SDL_GameControllerAxis sdl_axis_map[6] = {
-        SDL_CONTROLLER_AXIS_TRIGGERLEFT, SDL_CONTROLLER_AXIS_TRIGGERRIGHT,
-        SDL_CONTROLLER_AXIS_LEFTX,       SDL_CONTROLLER_AXIS_LEFTY,
-        SDL_CONTROLLER_AXIS_RIGHTX,      SDL_CONTROLLER_AXIS_RIGHTY,
+    const SDL_GamepadAxis sdl_axis_map[6] = {
+        SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER,
+        SDL_GAMEPAD_AXIS_LEFTX,       SDL_GAMEPAD_AXIS_LEFTY,
+        SDL_GAMEPAD_AXIS_RIGHTX,      SDL_GAMEPAD_AXIS_RIGHTY,
     };
 
     for (int i = 0; i < 6; i++) {
-        state->axis[i] = SDL_GameControllerGetAxis(state->sdl_gamecontroller, sdl_axis_map[i]);
+        state->axis[i] = SDL_GetGamepadAxis(state->sdl_gamecontroller, sdl_axis_map[i]);
     }
 
     // FIXME: Check range
@@ -500,7 +500,7 @@ void xemu_input_update_rumble(ControllerState *state)
         return;
     }
 
-    SDL_GameControllerRumble(state->sdl_gamecontroller, state->rumble_l, state->rumble_r, 250);
+    SDL_RumbleGamepad(state->sdl_gamecontroller, state->rumble_l, state->rumble_r, 250);
     state->last_rumble_updated_ts = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
 }
 

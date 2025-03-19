@@ -28,15 +28,15 @@
 #include "qemu/cutils.h"
 #include "ui/console.h"
 #include "ui/input.h"
-#include "ui/sdl2.h"
+#include "ui/sdl3.h"
 #include "sysemu/runstate.h"
 #include "sysemu/runstate-action.h"
 #include "sysemu/sysemu.h"
 #include "ui/win32-kbd-hook.h"
 #include "qemu/log.h"
 
-static int sdl2_num_outputs;
-static struct sdl2_console *sdl2_console;
+static int sdl3_num_outputs;
+static struct sdl3_console *sdl3_console;
 
 static SDL_Surface *guest_sprite_surface;
 static int gui_grab; /* if true, all keyboard/mouse events are grabbed */
@@ -45,7 +45,7 @@ static bool ctrl_grab;
 
 static int gui_saved_grab;
 static int gui_fullscreen;
-static int gui_grab_code = KMOD_LALT | KMOD_LCTRL;
+static int gui_grab_code = SDL_KMOD_LALT | SDL_KMOD_LCTRL;
 static SDL_Cursor *sdl_cursor_normal;
 static SDL_Cursor *sdl_cursor_hidden;
 static int absolute_enabled;
@@ -54,29 +54,29 @@ static int guest_x, guest_y;
 static SDL_Cursor *guest_sprite;
 static Notifier mouse_mode_notifier;
 
-#define SDL2_REFRESH_INTERVAL_BUSY 10
-#define SDL2_MAX_IDLE_COUNT (2 * GUI_REFRESH_INTERVAL_DEFAULT \
-                             / SDL2_REFRESH_INTERVAL_BUSY + 1)
+#define SDL3_REFRESH_INTERVAL_BUSY 10
+#define SDL3_MAX_IDLE_COUNT (2 * GUI_REFRESH_INTERVAL_DEFAULT \
+                             / SDL3_REFRESH_INTERVAL_BUSY + 1)
 
 /* introduced in SDL 2.0.10 */
 #ifndef SDL_HINT_RENDER_BATCHING
 #define SDL_HINT_RENDER_BATCHING "SDL_RENDER_BATCHING"
 #endif
 
-static void sdl_update_caption(struct sdl2_console *scon);
+static void sdl_update_caption(struct sdl3_console *scon);
 
-static struct sdl2_console *get_scon_from_window(uint32_t window_id)
+static struct sdl3_console *get_scon_from_window(uint32_t window_id)
 {
     int i;
-    for (i = 0; i < sdl2_num_outputs; i++) {
-        if (sdl2_console[i].real_window == SDL_GetWindowFromID(window_id)) {
-            return &sdl2_console[i];
+    for (i = 0; i < sdl3_num_outputs; i++) {
+        if (sdl3_console[i].real_window == SDL_GetWindowFromID(window_id)) {
+            return &sdl3_console[i];
         }
     }
     return NULL;
 }
 
-void sdl2_window_create(struct sdl2_console *scon)
+void sdl3_window_create(struct sdl3_console *scon)
 {
     int flags = 0;
 
@@ -86,7 +86,7 @@ void sdl2_window_create(struct sdl2_console *scon)
     assert(!scon->real_window);
 
     if (gui_fullscreen) {
-        flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        flags |= SDL_WINDOW_FULLSCREEN;
     } else {
         flags |= SDL_WINDOW_RESIZABLE;
     }
@@ -99,7 +99,7 @@ void sdl2_window_create(struct sdl2_console *scon)
     }
 #endif
 
-    scon->real_window = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED,
+    scon->real_window = SDL_CreateWindowWithProperties("", SDL_WINDOWPOS_UNDEFINED,
                                          SDL_WINDOWPOS_UNDEFINED,
                                          surface_width(scon->surface),
                                          surface_height(scon->surface),
@@ -117,20 +117,20 @@ void sdl2_window_create(struct sdl2_console *scon)
         scon->winctx = SDL_GL_CreateContext(scon->real_window);
         SDL_GL_SetSwapInterval(0);
     } else {
-        /* The SDL renderer is only used by sdl2-2D, when OpenGL is disabled */
+        /* The SDL renderer is only used by sdl3-2D, when OpenGL is disabled */
         scon->real_renderer = SDL_CreateRenderer(scon->real_window, -1, 0);
     }
     sdl_update_caption(scon);
 }
 
-void sdl2_window_destroy(struct sdl2_console *scon)
+void sdl3_window_destroy(struct sdl3_console *scon)
 {
     if (!scon->real_window) {
         return;
     }
 
     if (scon->winctx) {
-        SDL_GL_DeleteContext(scon->winctx);
+        SDL_GL_DestroyContext(scon->winctx);
         scon->winctx = NULL;
     }
     if (scon->real_renderer) {
@@ -141,7 +141,7 @@ void sdl2_window_destroy(struct sdl2_console *scon)
     scon->real_window = NULL;
 }
 
-void sdl2_window_resize(struct sdl2_console *scon)
+void sdl3_window_resize(struct sdl3_console *scon)
 {
     if (!scon->real_window) {
         return;
@@ -152,18 +152,18 @@ void sdl2_window_resize(struct sdl2_console *scon)
                       surface_height(scon->surface));
 }
 
-static void sdl2_redraw(struct sdl2_console *scon)
+static void sdl3_redraw(struct sdl3_console *scon)
 {
     if (scon->opengl) {
 #ifdef CONFIG_OPENGL
-        sdl2_gl_redraw(scon);
+        sdl3_gl_redraw(scon);
 #endif
     } else {
-        sdl2_2d_redraw(scon);
+        sdl3_2d_redraw(scon);
     }
 }
 
-static void sdl_update_caption(struct sdl2_console *scon)
+static void sdl_update_caption(struct sdl3_console *scon)
 {
     char win_title[1024];
     char icon_title[1024];
@@ -203,28 +203,28 @@ static void sdl_update_caption(struct sdl2_console *scon)
     }
 }
 
-static void sdl_hide_cursor(struct sdl2_console *scon)
+static void sdl_hide_cursor(struct sdl3_console *scon)
 {
     if (scon->opts->has_show_cursor && scon->opts->show_cursor) {
         return;
     }
 
-    SDL_ShowCursor(SDL_DISABLE);
+    SDL_HideCursor();
     SDL_SetCursor(sdl_cursor_hidden);
 
     if (!qemu_input_is_absolute(scon->dcl.con)) {
-        SDL_SetRelativeMouseMode(SDL_TRUE);
+        SDL_SetRelativeMouseMode(true);
     }
 }
 
-static void sdl_show_cursor(struct sdl2_console *scon)
+static void sdl_show_cursor(struct sdl3_console *scon)
 {
     if (scon->opts->has_show_cursor && scon->opts->show_cursor) {
         return;
     }
 
     if (!qemu_input_is_absolute(scon->dcl.con)) {
-        SDL_SetRelativeMouseMode(SDL_FALSE);
+        SDL_SetRelativeMouseMode(false);
     }
 
     if (guest_cursor &&
@@ -234,10 +234,10 @@ static void sdl_show_cursor(struct sdl2_console *scon)
         SDL_SetCursor(sdl_cursor_normal);
     }
 
-    SDL_ShowCursor(SDL_ENABLE);
+    SDL_ShowCursor();
 }
 
-static void sdl_grab_start(struct sdl2_console *scon)
+static void sdl_grab_start(struct sdl3_console *scon)
 {
     QemuConsole *con = scon ? scon->dcl.con : NULL;
 
@@ -260,22 +260,22 @@ static void sdl_grab_start(struct sdl2_console *scon)
     } else {
         sdl_hide_cursor(scon);
     }
-    SDL_SetWindowGrab(scon->real_window, SDL_TRUE);
+    SDL_SetWindowGrab(scon->real_window, true);
     gui_grab = 1;
     win32_kbd_set_grab(true);
     sdl_update_caption(scon);
 }
 
-static void sdl_grab_end(struct sdl2_console *scon)
+static void sdl_grab_end(struct sdl3_console *scon)
 {
-    SDL_SetWindowGrab(scon->real_window, SDL_FALSE);
+    SDL_SetWindowGrab(scon->real_window, false);
     gui_grab = 0;
     win32_kbd_set_grab(false);
     sdl_show_cursor(scon);
     sdl_update_caption(scon);
 }
 
-static void absolute_mouse_grab(struct sdl2_console *scon)
+static void absolute_mouse_grab(struct sdl3_console *scon)
 {
     int mouse_x, mouse_y;
     int scr_w, scr_h;
@@ -289,29 +289,29 @@ static void absolute_mouse_grab(struct sdl2_console *scon)
 
 static void sdl_mouse_mode_change(Notifier *notify, void *data)
 {
-    if (qemu_input_is_absolute(sdl2_console[0].dcl.con)) {
+    if (qemu_input_is_absolute(sdl3_console[0].dcl.con)) {
         if (!absolute_enabled) {
             absolute_enabled = 1;
-            SDL_SetRelativeMouseMode(SDL_FALSE);
-            absolute_mouse_grab(&sdl2_console[0]);
+            SDL_SetRelativeMouseMode(false);
+            absolute_mouse_grab(&sdl3_console[0]);
         }
     } else if (absolute_enabled) {
         if (!gui_fullscreen) {
-            sdl_grab_end(&sdl2_console[0]);
+            sdl_grab_end(&sdl3_console[0]);
         }
         absolute_enabled = 0;
     }
 }
 
-static void sdl_send_mouse_event(struct sdl2_console *scon, int dx, int dy,
+static void sdl_send_mouse_event(struct sdl3_console *scon, int dx, int dy,
                                  int x, int y, int state)
 {
     static uint32_t bmap[INPUT_BUTTON__MAX] = {
-        [INPUT_BUTTON_LEFT]       = SDL_BUTTON(SDL_BUTTON_LEFT),
-        [INPUT_BUTTON_MIDDLE]     = SDL_BUTTON(SDL_BUTTON_MIDDLE),
-        [INPUT_BUTTON_RIGHT]      = SDL_BUTTON(SDL_BUTTON_RIGHT),
-        [INPUT_BUTTON_SIDE]       = SDL_BUTTON(SDL_BUTTON_X1),
-        [INPUT_BUTTON_EXTRA]      = SDL_BUTTON(SDL_BUTTON_X2)
+        [INPUT_BUTTON_LEFT]       = SDL_BUTTON_MASK(SDL_BUTTON_LEFT),
+        [INPUT_BUTTON_MIDDLE]     = SDL_BUTTON_MASK(SDL_BUTTON_MIDDLE),
+        [INPUT_BUTTON_RIGHT]      = SDL_BUTTON_MASK(SDL_BUTTON_RIGHT),
+        [INPUT_BUTTON_SIDE]       = SDL_BUTTON_MASK(SDL_BUTTON_X1),
+        [INPUT_BUTTON_EXTRA]      = SDL_BUTTON_MASK(SDL_BUTTON_X2)
     };
     static uint32_t prev_state;
 
@@ -340,12 +340,12 @@ static void sdl_send_mouse_event(struct sdl2_console *scon, int dx, int dy,
     qemu_input_event_sync();
 }
 
-static void toggle_full_screen(struct sdl2_console *scon)
+static void toggle_full_screen(struct sdl3_console *scon)
 {
     gui_fullscreen = !gui_fullscreen;
     if (gui_fullscreen) {
         SDL_SetWindowFullscreen(scon->real_window,
-                                SDL_WINDOW_FULLSCREEN_DESKTOP);
+                                SDL_WINDOW_FULLSCREEN);
         gui_saved_grab = gui_grab;
         sdl_grab_start(scon);
     } else {
@@ -354,7 +354,7 @@ static void toggle_full_screen(struct sdl2_console *scon)
         }
         SDL_SetWindowFullscreen(scon->real_window, 0);
     }
-    sdl2_redraw(scon);
+    sdl3_redraw(scon);
 }
 
 static int get_mod_state(void)
@@ -362,24 +362,20 @@ static int get_mod_state(void)
     SDL_Keymod mod = SDL_GetModState();
 
     if (alt_grab) {
-        return (mod & (gui_grab_code | KMOD_LSHIFT)) ==
-            (gui_grab_code | KMOD_LSHIFT);
+        return (mod & (gui_grab_code | SDL_KMOD_LSHIFT)) ==
+            (gui_grab_code | SDL_KMOD_LSHIFT);
     } else if (ctrl_grab) {
-        return (mod & KMOD_RCTRL) == KMOD_RCTRL;
+        return (mod & SDL_KMOD_RCTRL) == SDL_KMOD_RCTRL;
     } else {
         return (mod & gui_grab_code) == gui_grab_code;
     }
 }
 
-static void *sdl2_win32_get_hwnd(struct sdl2_console *scon)
+static void *sdl3_win32_get_hwnd(struct sdl3_console *scon)
 {
 #ifdef CONFIG_WIN32
-    SDL_SysWMinfo info;
-
-    SDL_VERSION(&info.version);
-    if (SDL_GetWindowWMInfo(scon->real_window, &info)) {
-        return info.info.win.window;
-    }
+    void *hwnd = SDL_GetWindowData(scon->real_window, "hwnd_key");
+    return hwnd;
 #endif
     return NULL;
 }
@@ -387,7 +383,7 @@ static void *sdl2_win32_get_hwnd(struct sdl2_console *scon)
 static void handle_keydown(SDL_Event *ev)
 {
     int win;
-    struct sdl2_console *scon = get_scon_from_window(ev->key.windowID);
+    struct sdl3_console *scon = get_scon_from_window(ev->key.windowID);
     int gui_key_modifier_pressed = get_mod_state();
 
     if (!scon) {
@@ -397,7 +393,7 @@ static void handle_keydown(SDL_Event *ev)
     scon->gui_keysym = false;
 
     if (!scon->ignore_hotkeys && gui_key_modifier_pressed && !ev->key.repeat) {
-        switch (ev->key.keysym.scancode) {
+        switch (ev->key.scancode) {
         case SDL_SCANCODE_2:
         case SDL_SCANCODE_3:
         case SDL_SCANCODE_4:
@@ -410,17 +406,17 @@ static void handle_keydown(SDL_Event *ev)
                 sdl_grab_end(scon);
             }
 
-            win = ev->key.keysym.scancode - SDL_SCANCODE_1;
-            if (win < sdl2_num_outputs) {
-                sdl2_console[win].hidden = !sdl2_console[win].hidden;
-                if (sdl2_console[win].real_window) {
-                    if (sdl2_console[win].hidden) {
-                        SDL_HideWindow(sdl2_console[win].real_window);
+            win = ev->key.key.scancode - SDL_SCANCODE_1;
+            if (win < sdl3_num_outputs) {
+                sdl3_console[win].hidden = !sdl3_console[win].hidden;
+                if (sdl3_console[win].real_window) {
+                    if (sdl3_console[win].hidden) {
+                        SDL_HideWindow(sdl3_console[win].real_window);
                     } else {
-                        SDL_ShowWindow(sdl2_console[win].real_window);
+                        SDL_ShowWindow(sdl3_console[win].real_window);
                     }
                 }
-                sdl2_release_modifiers(scon);
+                sdl3_release_modifiers(scon);
                 scon->gui_keysym = true;
             }
             break;
@@ -437,10 +433,10 @@ static void handle_keydown(SDL_Event *ev)
             }
             break;
         case SDL_SCANCODE_U:
-            sdl2_window_resize(scon);
+            sdl3_window_resize(scon);
             if (!scon->opengl) {
                 /* re-create scon->texture */
-                sdl2_2d_switch(&scon->dcl, scon->surface);
+                sdl3_2d_switch(&scon->dcl, scon->surface);
             }
             scon->gui_keysym = true;
             break;
@@ -452,7 +448,7 @@ static void handle_keydown(SDL_Event *ev)
                 int width, height;
                 SDL_GetWindowSize(scon->real_window, &scr_w, &scr_h);
 
-                width = MAX(scr_w + (ev->key.keysym.scancode ==
+                width = MAX(scr_w + (ev->key.key.scancode ==
                                      SDL_SCANCODE_KP_PLUS ? 50 : -50),
                             160);
                 height = (surface_height(scon->surface) * width) /
@@ -460,7 +456,7 @@ static void handle_keydown(SDL_Event *ev)
                 fprintf(stderr, "%s: scale to %dx%d\n",
                         __func__, width, height);
                 sdl_scale(scon, width, height);
-                sdl2_redraw(scon);
+                sdl3_redraw(scon);
                 scon->gui_keysym = true;
             }
 #endif
@@ -469,25 +465,25 @@ static void handle_keydown(SDL_Event *ev)
         }
     }
     if (!scon->gui_keysym) {
-        sdl2_process_key(scon, &ev->key);
+        sdl3_process_key(scon, &ev->key);
     }
 }
 
 static void handle_keyup(SDL_Event *ev)
 {
-    struct sdl2_console *scon = get_scon_from_window(ev->key.windowID);
+    struct sdl3_console *scon = get_scon_from_window(ev->key.windowID);
 
     if (!scon) {
         return;
     }
 
     scon->ignore_hotkeys = false;
-    sdl2_process_key(scon, &ev->key);
+    sdl3_process_key(scon, &ev->key);
 }
 
 static void handle_textinput(SDL_Event *ev)
 {
-    struct sdl2_console *scon = get_scon_from_window(ev->text.windowID);
+    struct sdl3_console *scon = get_scon_from_window(ev->text.windowID);
     QemuConsole *con = scon ? scon->dcl.con : NULL;
 
     if (!con) {
@@ -502,7 +498,7 @@ static void handle_textinput(SDL_Event *ev)
 static void handle_mousemotion(SDL_Event *ev)
 {
     int max_x, max_y;
-    struct sdl2_console *scon = get_scon_from_window(ev->motion.windowID);
+    struct sdl3_console *scon = get_scon_from_window(ev->motion.windowID);
 
     if (!scon || !qemu_console_is_graphic(scon->dcl.con)) {
         return;
@@ -534,7 +530,7 @@ static void handle_mousebutton(SDL_Event *ev)
 {
     int buttonstate = SDL_GetMouseState(NULL, NULL);
     SDL_MouseButtonEvent *bev;
-    struct sdl2_console *scon = get_scon_from_window(ev->button.windowID);
+    struct sdl3_console *scon = get_scon_from_window(ev->button.windowID);
 
     if (!scon || !qemu_console_is_graphic(scon->dcl.con)) {
         return;
@@ -542,15 +538,15 @@ static void handle_mousebutton(SDL_Event *ev)
 
     bev = &ev->button;
     if (!gui_grab && !qemu_input_is_absolute(scon->dcl.con)) {
-        if (ev->type == SDL_MOUSEBUTTONUP && bev->button == SDL_BUTTON_LEFT) {
+        if (ev->type == SDL_EVENT_MOUSE_BUTTON_UP && bev->button == SDL_BUTTON_LEFT) {
             /* start grabbing all events */
             sdl_grab_start(scon);
         }
     } else {
-        if (ev->type == SDL_MOUSEBUTTONDOWN) {
-            buttonstate |= SDL_BUTTON(bev->button);
+        if (ev->type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            buttonstate |= SDL_BUTTON_MASK(bev->button);
         } else {
-            buttonstate &= ~SDL_BUTTON(bev->button);
+            buttonstate &= ~SDL_BUTTON_MASK(bev->button);
         }
         sdl_send_mouse_event(scon, 0, 0, bev->x, bev->y, buttonstate);
     }
@@ -558,7 +554,7 @@ static void handle_mousebutton(SDL_Event *ev)
 
 static void handle_mousewheel(SDL_Event *ev)
 {
-    struct sdl2_console *scon = get_scon_from_window(ev->wheel.windowID);
+    struct sdl3_console *scon = get_scon_from_window(ev->wheel.windowID);
     SDL_MouseWheelEvent *wev = &ev->wheel;
     InputButton btn;
 
@@ -586,15 +582,20 @@ static void handle_mousewheel(SDL_Event *ev)
 
 static void handle_windowevent(SDL_Event *ev)
 {
-    struct sdl2_console *scon = get_scon_from_window(ev->window.windowID);
+    struct sdl3_console *scon = get_scon_from_window(ev->window.windowID);
     bool allow_close = true;
 
     if (!scon) {
         return;
     }
 
-    switch (ev->window.event) {
-    case SDL_WINDOWEVENT_RESIZED:
+    // Set the timestamp if it's 0
+    if (ev->common.timestamp == 0) {
+        ev->common.timestamp = SDL_GetTicksNS();
+    }
+
+    switch (ev->type) { // Use ev->type instead of ev.window.event
+    case SDL_EVENT_WINDOW_RESIZED:
         {
             QemuUIInfo info;
             memset(&info, 0, sizeof(info));
@@ -602,18 +603,18 @@ static void handle_windowevent(SDL_Event *ev)
             info.height = ev->window.data2;
             dpy_set_ui_info(scon->dcl.con, &info, true);
         }
-        sdl2_redraw(scon);
+        sdl3_redraw(scon);
         break;
-    case SDL_WINDOWEVENT_EXPOSED:
-        sdl2_redraw(scon);
+    case SDL_EVENT_WINDOW_EXPOSED:
+        sdl3_redraw(scon);
         break;
-    case SDL_WINDOWEVENT_FOCUS_GAINED:
+    case SDL_EVENT_WINDOW_FOCUS_GAINED:
         win32_kbd_set_grab(gui_grab);
         if (qemu_console_is_graphic(scon->dcl.con)) {
-            win32_kbd_set_window(sdl2_win32_get_hwnd(scon));
+            win32_kbd_set_window(sdl3_win32_get_hwnd(scon));
         }
         /* fall through */
-    case SDL_WINDOWEVENT_ENTER:
+    case SDL_EVENT_WINDOW_MOUSE_ENTER:
         if (!gui_grab && (qemu_input_is_absolute(scon->dcl.con) || absolute_enabled)) {
             absolute_mouse_grab(scon);
         }
@@ -626,7 +627,7 @@ static void handle_windowevent(SDL_Event *ev)
          */
         scon->ignore_hotkeys = get_mod_state();
         break;
-    case SDL_WINDOWEVENT_FOCUS_LOST:
+    case SDL_EVENT_WINDOW_FOCUS_LOST:
         if (qemu_console_is_graphic(scon->dcl.con)) {
             win32_kbd_set_window(NULL);
         }
@@ -634,13 +635,13 @@ static void handle_windowevent(SDL_Event *ev)
             sdl_grab_end(scon);
         }
         break;
-    case SDL_WINDOWEVENT_RESTORED:
+    case SDL_EVENT_WINDOW_RESTORED:
         update_displaychangelistener(&scon->dcl, GUI_REFRESH_INTERVAL_DEFAULT);
         break;
-    case SDL_WINDOWEVENT_MINIMIZED:
+    case SDL_EVENT_WINDOW_MINIMIZED:
         update_displaychangelistener(&scon->dcl, 500);
         break;
-    case SDL_WINDOWEVENT_CLOSE:
+    case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
         if (qemu_console_is_graphic(scon->dcl.con)) {
             if (scon->opts->has_window_close && !scon->opts->window_close) {
                 allow_close = false;
@@ -654,16 +655,16 @@ static void handle_windowevent(SDL_Event *ev)
             scon->hidden = true;
         }
         break;
-    case SDL_WINDOWEVENT_SHOWN:
+    case SDL_EVENT_WINDOW_SHOWN:
         scon->hidden = false;
         break;
-    case SDL_WINDOWEVENT_HIDDEN:
+    case SDL_EVENT_WINDOW_HIDDEN:
         scon->hidden = true;
         break;
     }
 }
 
-void sdl2_poll_events(struct sdl2_console *scon)
+void sdl3_poll_events(struct sdl3_console *scon)
 {
     SDL_Event ev1, *ev = &ev1;
     bool allow_close = true;
@@ -676,19 +677,19 @@ void sdl2_poll_events(struct sdl2_console *scon)
 
     while (SDL_PollEvent(ev)) {
         switch (ev->type) {
-        case SDL_KEYDOWN:
+        case SDL_EVENT_KEY_DOWN:
             idle = 0;
             handle_keydown(ev);
             break;
-        case SDL_KEYUP:
+        case SDL_EVENT_KEY_UP:
             idle = 0;
             handle_keyup(ev);
             break;
-        case SDL_TEXTINPUT:
+        case SDL_EVENT_TEXT_INPUT:
             idle = 0;
             handle_textinput(ev);
             break;
-        case SDL_QUIT:
+        case SDL_EVENT_QUIT:
             if (scon->opts->has_window_close && !scon->opts->window_close) {
                 allow_close = false;
             }
@@ -697,20 +698,20 @@ void sdl2_poll_events(struct sdl2_console *scon)
                 qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);
             }
             break;
-        case SDL_MOUSEMOTION:
+        case SDL_EVENT_MOUSE_MOTION:
             idle = 0;
             handle_mousemotion(ev);
             break;
-        case SDL_MOUSEBUTTONDOWN:
-        case SDL_MOUSEBUTTONUP:
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP:
             idle = 0;
             handle_mousebutton(ev);
             break;
-        case SDL_MOUSEWHEEL:
+        case SDL_EVENT_MOUSE_WHEEL:
             idle = 0;
             handle_mousewheel(ev);
             break;
-        case SDL_WINDOWEVENT:
+        case SDL_WindowEvent:
             handle_windowevent(ev);
             break;
         default:
@@ -719,22 +720,22 @@ void sdl2_poll_events(struct sdl2_console *scon)
     }
 
     if (idle) {
-        if (scon->idle_counter < SDL2_MAX_IDLE_COUNT) {
+        if (scon->idle_counter < SDL3_MAX_IDLE_COUNT) {
             scon->idle_counter++;
-            if (scon->idle_counter >= SDL2_MAX_IDLE_COUNT) {
+            if (scon->idle_counter >= SDL3_MAX_IDLE_COUNT) {
                 scon->dcl.update_interval = GUI_REFRESH_INTERVAL_DEFAULT;
             }
         }
     } else {
         scon->idle_counter = 0;
-        scon->dcl.update_interval = SDL2_REFRESH_INTERVAL_BUSY;
+        scon->dcl.update_interval = SDL3_REFRESH_INTERVAL_BUSY;
     }
 }
 
 static void sdl_mouse_warp(DisplayChangeListener *dcl,
                            int x, int y, bool on)
 {
-    struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
+    struct sdl3_console *scon = container_of(dcl, struct sdl3_console, dcl);
 
     if (!qemu_console_is_graphic(scon->dcl.con)) {
         return;
@@ -762,11 +763,11 @@ static void sdl_mouse_define(DisplayChangeListener *dcl,
 {
 
     if (guest_sprite) {
-        SDL_FreeCursor(guest_sprite);
+        SDL_DestroyCursor(guest_sprite);
     }
 
     if (guest_sprite_surface) {
-        SDL_FreeSurface(guest_sprite_surface);
+        SDL_DestroySurface(guest_sprite_surface);
     }
 
     guest_sprite_surface =
@@ -792,52 +793,52 @@ static void sdl_mouse_define(DisplayChangeListener *dcl,
 static void sdl_cleanup(void)
 {
     if (guest_sprite) {
-        SDL_FreeCursor(guest_sprite);
+        SDL_DestroyCursor(guest_sprite);
     }
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
 static const DisplayChangeListenerOps dcl_2d_ops = {
-    .dpy_name             = "sdl2-2d",
-    .dpy_gfx_update       = sdl2_2d_update,
-    .dpy_gfx_switch       = sdl2_2d_switch,
-    .dpy_gfx_check_format = sdl2_2d_check_format,
-    .dpy_refresh          = sdl2_2d_refresh,
+    .dpy_name             = "sdl3-2d",
+    .dpy_gfx_update       = sdl3_2d_update,
+    .dpy_gfx_switch       = sdl3_2d_switch,
+    .dpy_gfx_check_format = sdl3_2d_check_format,
+    .dpy_refresh          = sdl3_2d_refresh,
     .dpy_mouse_set        = sdl_mouse_warp,
     .dpy_cursor_define    = sdl_mouse_define,
 };
 
 #ifdef CONFIG_OPENGL
 static const DisplayChangeListenerOps dcl_gl_ops = {
-    .dpy_name                = "sdl2-gl",
-    .dpy_gfx_update          = sdl2_gl_update,
-    .dpy_gfx_switch          = sdl2_gl_switch,
+    .dpy_name                = "sdl3-gl",
+    .dpy_gfx_update          = sdl3_gl_update,
+    .dpy_gfx_switch          = sdl3_gl_switch,
     .dpy_gfx_check_format    = console_gl_check_format,
-    .dpy_refresh             = sdl2_gl_refresh,
+    .dpy_refresh             = sdl3_gl_refresh,
     .dpy_mouse_set           = sdl_mouse_warp,
     .dpy_cursor_define       = sdl_mouse_define,
 
-    .dpy_gl_scanout_disable  = sdl2_gl_scanout_disable,
-    .dpy_gl_scanout_texture  = sdl2_gl_scanout_texture,
-    .dpy_gl_update           = sdl2_gl_scanout_flush,
+    .dpy_gl_scanout_disable  = sdl3_gl_scanout_disable,
+    .dpy_gl_scanout_texture  = sdl3_gl_scanout_texture,
+    .dpy_gl_update           = sdl3_gl_scanout_flush,
 };
 
 static bool
-sdl2_gl_is_compatible_dcl(DisplayGLCtx *dgc,
+sdl3_gl_is_compatible_dcl(DisplayGLCtx *dgc,
                           DisplayChangeListener *dcl)
 {
     return dcl->ops == &dcl_gl_ops;
 }
 
 static const DisplayGLCtxOps gl_ctx_ops = {
-    .dpy_gl_ctx_is_compatible_dcl = sdl2_gl_is_compatible_dcl,
-    .dpy_gl_ctx_create       = sdl2_gl_create_context,
-    .dpy_gl_ctx_destroy      = sdl2_gl_destroy_context,
-    .dpy_gl_ctx_make_current = sdl2_gl_make_context_current,
+    .dpy_gl_ctx_is_compatible_dcl = sdl3_gl_is_compatible_dcl,
+    .dpy_gl_ctx_create       = sdl3_gl_create_context,
+    .dpy_gl_ctx_destroy      = sdl3_gl_destroy_context,
+    .dpy_gl_ctx_make_current = sdl3_gl_make_context_current,
 };
 #endif
 
-static void sdl2_display_early_init(DisplayOptions *o)
+static void sdl3_display_early_init(DisplayOptions *o)
 {
     assert(o->type == DISPLAY_TYPE_SDL);
     if (o->has_gl && o->gl) {
@@ -847,18 +848,17 @@ static void sdl2_display_early_init(DisplayOptions *o)
     }
 }
 
-static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
+static void sdl3_display_init(DisplayState *ds, DisplayOptions *o)
 {
     uint8_t data = 0;
     int i;
-    SDL_SysWMinfo info;
     SDL_Surface *icon = NULL;
     char *dir;
 
     assert(o->type == DISPLAY_TYPE_SDL);
 
-    if (SDL_GetHintBoolean("QEMU_ENABLE_SDL_LOGGING", SDL_FALSE)) {
-        SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
+    if (SDL_GetHintBoolean("QEMU_ENABLE_SDL_LOGGING", false)) {
+        SDL_SetLogPriorities(SDL_LOG_PRIORITY_VERBOSE);
     }
 
     if (SDL_Init(SDL_INIT_VIDEO)) {
@@ -879,7 +879,8 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
     SDL_SetHint(SDL_HINT_WINDOWS_NO_CLOSE_ON_ALT_F4, "1");
     SDL_EnableScreenSaver();
     memset(&info, 0, sizeof(info));
-    SDL_VERSION(&info.version);
+    SDL_GetVersion(&info.version);
+
 
     gui_fullscreen = o->has_full_screen && o->full_screen;
 
@@ -897,40 +898,40 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
             break;
         }
     }
-    sdl2_num_outputs = i;
-    if (sdl2_num_outputs == 0) {
+    sdl3_num_outputs = i;
+    if (sdl3_num_outputs == 0) {
         return;
     }
-    sdl2_console = g_new0(struct sdl2_console, sdl2_num_outputs);
-    for (i = 0; i < sdl2_num_outputs; i++) {
+    sdl3_console = g_new0(struct sdl3_console, sdl3_num_outputs);
+    for (i = 0; i < sdl3_num_outputs; i++) {
         QemuConsole *con = qemu_console_lookup_by_index(i);
         assert(con != NULL);
         if (!qemu_console_is_graphic(con) &&
             qemu_console_get_index(con) != 0) {
-            sdl2_console[i].hidden = true;
+            sdl3_console[i].hidden = true;
         }
-        sdl2_console[i].idx = i;
-        sdl2_console[i].opts = o;
+        sdl3_console[i].idx = i;
+        sdl3_console[i].opts = o;
 #ifdef CONFIG_OPENGL
-        sdl2_console[i].opengl = display_opengl;
-        sdl2_console[i].dcl.ops = display_opengl ? &dcl_gl_ops : &dcl_2d_ops;
-        sdl2_console[i].dgc.ops = display_opengl ? &gl_ctx_ops : NULL;
+        sdl3_console[i].opengl = display_opengl;
+        sdl3_console[i].dcl.ops = display_opengl ? &dcl_gl_ops : &dcl_2d_ops;
+        sdl3_console[i].dgc.ops = display_opengl ? &gl_ctx_ops : NULL;
 #else
-        sdl2_console[i].opengl = 0;
-        sdl2_console[i].dcl.ops = &dcl_2d_ops;
+        sdl3_console[i].opengl = 0;
+        sdl3_console[i].dcl.ops = &dcl_2d_ops;
 #endif
-        sdl2_console[i].dcl.con = con;
-        sdl2_console[i].kbd = qkbd_state_init(con);
+        sdl3_console[i].dcl.con = con;
+        sdl3_console[i].kbd = qkbd_state_init(con);
         if (display_opengl) {
-            qemu_console_set_display_gl_ctx(con, &sdl2_console[i].dgc);
+            qemu_console_set_display_gl_ctx(con, &sdl3_console[i].dgc);
         }
-        register_displaychangelistener(&sdl2_console[i].dcl);
+        register_displaychangelistener(&sdl3_console[i].dcl);
 
-#if defined(SDL_VIDEO_DRIVER_WINDOWS) || defined(SDL_VIDEO_DRIVER_X11)
-        if (SDL_GetWindowWMInfo(sdl2_console[i].real_window, &info)) {
-#if defined(SDL_VIDEO_DRIVER_WINDOWS)
+#if defined(SDL_VIDEO_DRIVER_WINDOWS /* SDL_VIDEO_DRIVER_WINDOWS has been removed in SDL3 */) || defined(SDL_VIDEO_DRIVER_X11 /* SDL_VIDEO_DRIVER_X11 has been removed in SDL3 */)
+        if (SDL_GetWindowWMInfo(sdl3_console[i].real_window, &info)) {
+#if defined(SDL_VIDEO_DRIVER_WINDOWS /* SDL_VIDEO_DRIVER_WINDOWS has been removed in SDL3 */)
             qemu_console_set_window_id(con, (uintptr_t)info.info.win.window);
-#elif defined(SDL_VIDEO_DRIVER_X11)
+#elif defined(SDL_VIDEO_DRIVER_X11 /* SDL_VIDEO_DRIVER_X11 has been removed in SDL3 */)
             qemu_console_set_window_id(con, info.info.x11.window);
 #endif
         }
@@ -945,13 +946,13 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
     dir = get_relocated_path(CONFIG_QEMU_ICONDIR "/hicolor/32x32/apps/qemu.bmp");
     icon = SDL_LoadBMP(dir);
     if (icon) {
-        uint32_t colorkey = SDL_MapRGB(icon->format, 255, 255, 255);
-        SDL_SetColorKey(icon, SDL_TRUE, colorkey);
+        uint32_t colorkey = SDL_MapSurfaceRGB(icon->format, 255, 255, 255);
+        SDL_SetSurfaceColorKey(icon, true, colorkey);
     }
 #endif
     g_free(dir);
     if (icon) {
-        SDL_SetWindowIcon(sdl2_console[0].real_window, icon);
+        SDL_SetWindowIcon(sdl3_console[0].real_window, icon);
     }
 
     mouse_mode_notifier.notify = sdl_mouse_mode_change;
@@ -961,21 +962,21 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
     sdl_cursor_normal = SDL_GetCursor();
 
     if (gui_fullscreen) {
-        sdl_grab_start(&sdl2_console[0]);
+        sdl_grab_start(&sdl3_console[0]);
     }
 
     atexit(sdl_cleanup);
 }
 
-static QemuDisplay qemu_display_sdl2 = {
+static QemuDisplay qemu_display_sdl3 = {
     .type       = DISPLAY_TYPE_SDL,
-    .early_init = sdl2_display_early_init,
-    .init       = sdl2_display_init,
+    .early_init = sdl3_display_early_init,
+    .init       = sdl3_display_init,
 };
 
 static void register_sdl1(void)
 {
-    qemu_display_register(&qemu_display_sdl2);
+    qemu_display_register(&qemu_display_sdl3);
 }
 
 type_init(register_sdl1);

@@ -19,7 +19,7 @@
 
 #include "qemu/osdep.h"
 #include <stdlib.h>
-#include <SDL_filesystem.h>
+#include <SDL3/SDL_filesystem.h>
 #include <string.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -50,7 +50,8 @@ const char *xemu_settings_get_error_message(void)
 static bool xemu_settings_detect_portable_mode(void)
 {
     bool val = false;
-    char *portable_path = g_strdup_printf("%s%s", SDL_GetBasePath(), filename);
+    const char *base_path = SDL_GetBasePath();
+    char *portable_path = g_strdup_printf("%s%s", base_path, filename);
     FILE *tmpfile;
     if ((tmpfile = qemu_fopen(portable_path, "r"))) {
         fclose(tmpfile);
@@ -76,12 +77,13 @@ const char *xemu_settings_get_base_path(void)
         return base_path;
     }
 
-    char *base = xemu_settings_detect_portable_mode()
+    const char *base = xemu_settings_detect_portable_mode()
                  ? SDL_GetBasePath()
                  : SDL_GetPrefPath("xemu", "xemu");
     assert(base != NULL);
     base_path = g_strdup(base);
-    SDL_free(base);
+    // SDL3 now requires using SDL_free even for const pointers
+    SDL_free(const_cast<void*>(static_cast<const void*>(base)));
     fprintf(stderr, "%s: base path: %s\n", __func__, base_path);
     return base_path;
 }

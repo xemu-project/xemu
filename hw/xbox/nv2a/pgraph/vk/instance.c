@@ -22,9 +22,8 @@
 #include "renderer.h"
 #include "xemu-version.h"
 
-#include <SDL.h>
-#include <SDL_syswm.h>
-#include <SDL_vulkan.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
 
 #include <volk.h>
 
@@ -99,12 +98,12 @@ static bool check_validation_layer_support(void)
 
 static void create_window(PGRAPHVkState *r, Error **errp)
 {
-    r->window = SDL_CreateWindow(
+    r->window = SDL_CreateWindowWithProperties(
         "SDL Offscreen Window", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         640, 480, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
 
     if (r->window == NULL) {
-        error_setg(errp, "SDL_CreateWindow failed: %s", SDL_GetError());
+        error_setg(errp, "SDL_CreateWindowWithProperties failed: %s", SDL_GetError());
     }
 }
 

@@ -18,14 +18,14 @@
 //
 #pragma once
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <epoxy/gl.h>
 #include "ui/xemu-settings.h"
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include <imgui.h>
 #include <imgui_internal.h>
-#include <imgui_impl_sdl2.h>
+#include <imgui_impl_sdl3.h>
 #include <imgui_impl_opengl3.h>
 #include <implot.h>
 #include <misc/cpp/imgui_stdlib.h>

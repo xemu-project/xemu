@@ -2,7 +2,7 @@
  * xemu Input Management
  *
  * This is the main input abstraction layer for xemu, which is basically just a
- * wrapper around SDL2 GameController/Keyboard API to map specifically to an
+ * wrapper around SDL3 GameController/Keyboard API to map specifically to an
  * Xbox gamepad and support automatic binding, hotplugging, and removal at
  * runtime.
  *
@@ -25,7 +25,7 @@
 #ifndef XEMU_INPUT_H
 #define XEMU_INPUT_H
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <stdbool.h>
 
 #include "qemu/queue.h"
@@ -98,10 +98,10 @@ typedef struct ControllerState {
 
     enum controller_input_device_type type;
     const char         *name;
-    SDL_GameController *sdl_gamecontroller; // if type == INPUT_DEVICE_SDL_GAMECONTROLLER
+    SDL_Gamepad *sdl_gamecontroller; // if type == INPUT_DEVICE_SDL_GAMECONTROLLER
     SDL_Joystick       *sdl_joystick;
     SDL_JoystickID      sdl_joystick_id;
-    SDL_JoystickGUID    sdl_joystick_guid;
+    SDL_GUID    sdl_joystick_guid;
 
     enum peripheral_type peripheral_types[2];
     void *peripherals[2];
@@ -120,7 +120,7 @@ extern "C" {
 #endif
 
 void xemu_input_init(void);
-void xemu_input_process_sdl_events(const SDL_Event *event); // SDL_CONTROLLERDEVICEADDED, SDL_CONTROLLERDEVICEREMOVED
+void xemu_input_process_sdl_events(const SDL_Event *event); // SDL_EVENT_GAMEPAD_ADDED, SDL_EVENT_GAMEPAD_REMOVED
 void xemu_input_update_controllers(void);
 void xemu_input_update_controller(ControllerState *state);
 void xemu_input_update_sdl_kbd_controller_state(ControllerState *state);
