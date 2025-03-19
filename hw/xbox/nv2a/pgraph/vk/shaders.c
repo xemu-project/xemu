@@ -313,6 +313,12 @@ static void update_shader_constant_locations(ShaderBinding *binding)
 
     binding->uniform_attrs_loc =
         uniform_index(&binding->vertex->uniforms, "inlineValue");
+
+    binding->clip_range_loc_frag =
+        uniform_index(&binding->fragment->uniforms, "clipRange");
+
+    binding->zbias_loc =
+        uniform_index(&binding->fragment->uniforms, "zbias");
 }
 
 static void shader_cache_entry_init(Lru *lru, LruNode *node, void *state)
@@ -396,7 +402,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
 
         MString *geometry_shader_code = pgraph_gen_geom_glsl(
             state->polygon_front_mode, state->polygon_back_mode,
-            state->primitive_mode, state->smooth_shading, true);
+            state->primitive_mode, state->smooth_shading, true, state->z_perspective || state->texture_perspective);
         if (geometry_shader_code) {
             NV2A_VK_DPRINTF("geometry shader: \n%s",
                             mstring_get_str(geometry_shader_code));
@@ -682,6 +688,22 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
 
         uniform1f(&binding->fragment->uniforms, binding->depth_offset_loc,
                   zbias);
+    }
+
+    if (binding->clip_range_loc_frag != -1) {
+        uniform4f(&binding->fragment->uniforms, binding->clip_range_loc_frag, 0,
+                  zmax, zclip_min, zclip_max);
+    }
+    if (binding->zbias_loc != -1) {
+        float zbias = 0.0f;
+        if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
+            uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
+            zbias = *(float *)&zbias_u32;
+        }
+        uniform1f(&binding->fragment->uniforms, binding->zbias_loc, zbias);
     }
 
     /* Clipping regions */
