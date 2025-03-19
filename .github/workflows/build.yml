@@ -23,6 +23,11 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+    - name: Cache Meson dependencies
+      uses: actions/cache@v4
+      with:
+        path: /path/to/meson/cache
+        key: meson-cache-${{ runner.os }}-${{ hashFiles('**/meson.build') }}
     - name: Install dependencies
       run: sudo apt-get install meson
     # On push to master, increment patch version and create a new tag on release
