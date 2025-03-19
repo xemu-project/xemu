@@ -69,6 +69,7 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
         pgraph_reg_r(pg, NV_PGRAPH_SHADOWCTL), NV_PGRAPH_SHADOWCTL_SHADOW_ZFUNC);
 
     state.fixed_function = fixed_function;
+    state.specular_enable = pg->specular_enable;
 
     /* fixed function stuff */
     if (fixed_function) {
@@ -89,6 +90,9 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
         state.specular_src = (enum MaterialColorSource)GET_MASK(
             pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_SPECULAR);
     }
+
+    state.ignore_specular_alpha = !GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C),
+                                            NV_PGRAPH_CSV0_C_ALPHA_FROM_MATERIAL_SPECULAR);
 
     /* vertex program stuff */
     state.vertex_program = vertex_program,

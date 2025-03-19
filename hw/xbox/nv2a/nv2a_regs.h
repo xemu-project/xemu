@@ -312,11 +312,14 @@
 #       define NV_PGRAPH_CSV0_D_SKIN_4                              6
 #define NV_PGRAPH_CSV0_C                                 0x00000FB8
 #   define NV_PGRAPH_CSV0_C_CHEOPS_PROGRAM_START                0x0000FF00
+#   define NV_PGRAPH_CSV0_C_ALPHA_FROM_MATERIAL_SPECULAR        (1 << 17)
+#   define NV_PGRAPH_CSV0_C_SEPARATE_SPECULAR                   (1 << 18)
 #   define NV_PGRAPH_CSV0_C_SPECULAR                            (3 << 19)
 #   define NV_PGRAPH_CSV0_C_DIFFUSE                             (3 << 21)
 #   define NV_PGRAPH_CSV0_C_AMBIENT                             (3 << 23)
 #   define NV_PGRAPH_CSV0_C_EMISSION                            (3 << 25)
 #   define NV_PGRAPH_CSV0_C_NORMALIZATION_ENABLE                (1 << 27)
+#   define NV_PGRAPH_CSV0_C_LOCALEYE                            (1 << 30)
 #   define NV_PGRAPH_CSV0_C_LIGHTING                            (1 << 31)
 #define NV_PGRAPH_CSV1_B                                 0x00000FBC
 #define NV_PGRAPH_CSV1_A                                 0x00000FC0
@@ -879,6 +882,12 @@
 #       define NV097_SET_CONTROL0_STENCIL_WRITE_ENABLE            (1 << 0)
 #       define NV097_SET_CONTROL0_Z_FORMAT                        (1 << 12)
 #       define NV097_SET_CONTROL0_Z_PERSPECTIVE_ENABLE            (1 << 16)
+#   define NV097_SET_LIGHT_CONTROL                            0x00000294
+#       define NV097_SET_LIGHT_CONTROL_V_INCLUDE_SPECULAR         0
+#       define NV097_SET_LIGHT_CONTROL_V_SEPARATE_SPECULAR        1
+#       define NV097_SET_LIGHT_CONTROL_V_LOCALEYE                 (1 << 16)
+#       define NV097_SET_LIGHT_CONTROL_V_ALPHA_OPAQUE             0
+#       define NV097_SET_LIGHT_CONTROL_V_ALPHA_FROM_MATERIAL_SPECULAR (1 << 17)
 #   define NV097_SET_COLOR_MATERIAL                           0x00000298
 #   define NV097_SET_FOG_MODE                                 0x0000029C
 #       define NV097_SET_FOG_MODE_V_LINEAR                        0x2601
@@ -1013,6 +1022,7 @@
 #   define NV097_SET_NORMALIZATION_ENABLE                     0x000003A4
 #   define NV097_SET_MATERIAL_EMISSION                        0x000003A8
 #   define NV097_SET_MATERIAL_ALPHA                           0x000003B4
+#   define NV097_SET_SPECULAR_ENABLE                          0x000003B8
 #   define NV097_SET_LIGHT_ENABLE_MASK                        0x000003BC
 #           define NV097_SET_LIGHT_ENABLE_MASK_LIGHT0_OFF           0
 #           define NV097_SET_LIGHT_ENABLE_MASK_LIGHT0_INFINITE      1
