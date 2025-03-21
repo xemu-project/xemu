@@ -810,9 +810,16 @@ static void create_pipeline(PGRAPHState *pg)
         // FIXME: Handle in shader?
     }
     
-    float lineWidth = MIN(r->device_props.limits.lineWidthRange[1], 
-                          MAX(r->device_props.limits.lineWidthRange[0],
-                              (float)pg->surface_scale_factor));
+    VkPhysicalDeviceFeatures available_features;
+    vkGetPhysicalDeviceFeatures(r->physical_device, &available_features);
+
+    float lineWidth = 1.0f;
+    if(available_features.wideLines == VK_TRUE)
+    {
+        lineWidth = MIN(r->device_props.limits.lineWidthRange[1], 
+                    MAX(r->device_props.limits.lineWidthRange[0],
+                        (float)pg->surface_scale_factor));
+    }
 
     VkPipelineRasterizationStateCreateInfo rasterizer = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
