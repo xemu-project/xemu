@@ -810,11 +810,8 @@ static void create_pipeline(PGRAPHState *pg)
         // FIXME: Handle in shader?
     }
     
-    VkPhysicalDeviceFeatures available_features;
-    vkGetPhysicalDeviceFeatures(r->physical_device, &available_features);
-
     float lineWidth = 1.0f;
-    if(available_features.wideLines == VK_TRUE)
+    if(r->physical_device_features.wideLines == VK_TRUE)
     {
         lineWidth = MIN(r->device_props.limits.lineWidthRange[1], 
                     MAX(r->device_props.limits.lineWidthRange[0],
@@ -956,7 +953,7 @@ static void create_pipeline(PGRAPHState *pg)
         .blendConstants[3] = blend_constant[3],
     };
 
-    VkDynamicState dynamic_states[] = { VK_DYNAMIC_STATE_VIEWPORT,
+    VkDynamicState dynamic_states[2] = { VK_DYNAMIC_STATE_VIEWPORT,
                                         VK_DYNAMIC_STATE_SCISSOR };
 
     VkPipelineDynamicStateCreateInfo dynamic_state = {
