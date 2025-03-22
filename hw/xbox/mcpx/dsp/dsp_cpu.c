@@ -2,6 +2,7 @@
  * DSP56300 emulator
  *
  * Copyright (c) 2015 espes
+ * Copyright (c) 2020-2025 Matt Borgerson
  *
  * Adapted from Hatari DSP M56001 emulation
  * (C) 2003-2008 ARAnyM developer team
@@ -23,20 +24,10 @@
  */
 
 #include "qemu/osdep.h"
-
-#include <stdbool.h>
-#include <string.h>
-#include <assert.h>
-
 #include "qemu/bswap.h"
-
 #include "dsp_cpu.h"
-
-#define TRACE_DSP_DISASM 0
-#define TRACE_DSP_DISASM_REG 0
-#define TRACE_DSP_DISASM_MEM 0
-
-#define DPRINTF(s, ...) printf(s, ## __VA_ARGS__)
+#include "debug.h"
+#include "trace.h"
 
 #define BITMASK(x)  ((1<<(x))-1)
 
@@ -415,7 +406,6 @@ void dsp56k_reset_cpu(dsp_core_t* dsp)
 
     /* runtime shit */
 
-    dsp->executing_for_disasm = false;
     // start_time = SDL_GetTicks();
     dsp->num_inst = 0;
 
@@ -462,7 +452,7 @@ static uint16_t disasm_instruction(dsp_core_t* dsp, dsp_trace_disasm_t mode)
     if (mode == DSP_TRACE_MODE) {
         if (dsp->disasm_prev_inst_pc == dsp->pc) {
             if (!dsp->disasm_is_looping) {
-                printf( "Looping on DSP instruction at PC = $%04x\n", dsp->disasm_prev_inst_pc);
+                DPRINTF("Looping on DSP instruction at PC = $%04x\n", dsp->disasm_prev_inst_pc);
                 dsp->disasm_is_looping = true;
             }
             return 0;
@@ -520,7 +510,7 @@ static void disasm_reg_compare(dsp_core_t* dsp)
             case DSP_REG_X1:
             case DSP_REG_Y0:
             case DSP_REG_Y1:
-                printf("\tReg: %s  $%06x -> $%06x\n",
+                DPRINTF("\tReg: %s  $%06x -> $%06x\n",
                     registers_name[i], dsp->disasm_registers_save[i], dsp->registers[i]);
                 break;
             case DSP_REG_R0:
@@ -550,21 +540,21 @@ static void disasm_reg_compare(dsp_core_t* dsp)
             case DSP_REG_SR:
             case DSP_REG_LA:
             case DSP_REG_LC:
-                printf("\tReg: %s  $%04x -> $%04x\n",
+                DPRINTF("\tReg: %s  $%04x -> $%04x\n",
                     registers_name[i], dsp->disasm_registers_save[i], dsp->registers[i]);
                 break;
             case DSP_REG_OMR:
             case DSP_REG_SP:
             case DSP_REG_SSH:
             case DSP_REG_SSL:
-                printf("\tReg: %s  $%02x -> $%02x\n",
+                DPRINTF("\tReg: %s  $%02x -> $%02x\n",
                     registers_name[i], dsp->disasm_registers_save[i], dsp->registers[i]);
                 break;
             case DSP_REG_A0:
             case DSP_REG_A1:
             case DSP_REG_A2:
                 if (bRegA == false) {
-                    printf("\tReg: a   $%02x:%06x:%06x -> $%02x:%06x:%06x\n",
+                    DPRINTF("\tReg: a   $%02x:%06x:%06x -> $%02x:%06x:%06x\n",
                         dsp->disasm_registers_save[DSP_REG_A2], dsp->disasm_registers_save[DSP_REG_A1], dsp->disasm_registers_save[DSP_REG_A0],
                         dsp->registers[DSP_REG_A2], dsp->registers[DSP_REG_A1], dsp->registers[DSP_REG_A0]
                     );
@@ -575,7 +565,7 @@ static void disasm_reg_compare(dsp_core_t* dsp)
             case DSP_REG_B1:
             case DSP_REG_B2:
                 if (bRegB == false) {
-                    printf("\tReg: b   $%02x:%06x:%06x -> $%02x:%06x:%06x\n",
+                    DPRINTF("\tReg: b   $%02x:%06x:%06x -> $%02x:%06x:%06x\n",
                         dsp->disasm_registers_save[DSP_REG_B2], dsp->disasm_registers_save[DSP_REG_B1], dsp->disasm_registers_save[DSP_REG_B0],
                         dsp->registers[DSP_REG_B2], dsp->registers[DSP_REG_B1], dsp->registers[DSP_REG_B0]
                     );
@@ -587,70 +577,28 @@ static void disasm_reg_compare(dsp_core_t* dsp)
 
 #ifdef DSP_DISASM_REG_PC
     if (pc_save != dsp->pc) {
-        printf("\tReg: pc  $%04x -> $%04x\n", pc_save, dsp->pc);
+        DPRINTF("\tReg: pc  $%04x -> $%04x\n", pc_save, dsp->pc);
     }
 #endif
 }
 
 static const char* disasm_get_instruction_text(dsp_core_t* dsp)
 {
-    // const int len = sizeof(dsp->disasm_str_instr);
-    // uint64_t count, cycles;
-    // uint16_t cycle_diff;
-    // float percentage;
-    // int offset;
-
     if (dsp->disasm_is_looping) {
         dsp->disasm_str_instr2[0] = 0;
     }
-    // if (dsp->disasm_cur_inst_len == 1) {
-    //     offset = sprintf(dsp->disasm_str_instr2, "p:%04x  %06x         (%02d cyc)  %-*s\n", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, dsp->instr_cycle, len, dsp->disasm_str_instr);
-    // } else {
-    //     offset = sprintf(dsp->disasm_str_instr2, "p:%04x  %06x %06x  (%02d cyc)  %-*s\n", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, read_memory_p(dsp, dsp->disasm_prev_inst_pc + 1), dsp->instr_cycle, len, dsp->disasm_str_instr);
-    // }
-    // if (offset > 2 && Profile_DspAddressData(dsp->disasm_prev_inst_pc, &percentage, &count, &cycles, &cycle_diff)) {
-    //     offset -= 2;
-    //     sprintf(str_instr2+offset, "%5.2f%% (%"PRId64", %"PRId64", %d)\n",
-    //             percentage, count, cycles, cycle_diff);
-    // }
+    if (dsp->disasm_cur_inst_len == 1) {
+        snprintf(dsp->disasm_str_instr2, sizeof(dsp->disasm_str_instr2), "p:%04x  %06x         (%02d cyc)  %s", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, dsp->instr_cycle, dsp->disasm_str_instr);
+    } else {
+        snprintf(dsp->disasm_str_instr2, sizeof(dsp->disasm_str_instr2), "p:%04x  %06x %06x  (%02d cyc)  %s", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, read_memory_p(dsp, dsp->disasm_prev_inst_pc + 1), dsp->instr_cycle, dsp->disasm_str_instr);
+    }
     return dsp->disasm_str_instr2;
-}
-
-/**
- * Execute one instruction in trace mode at a given PC address.
- * */
-uint16_t dsp56k_execute_one_disasm_instruction(dsp_core_t* dsp, FILE *out, uint32_t pc)
-{
-    dsp_core_t dsp_core_save;
-
-    /* Set DSP in disasm mode */
-    dsp->executing_for_disasm = true;
-
-    /* Save DSP context before executing instruction */
-    memcpy(&dsp_core_save, dsp, sizeof(dsp_core_t));
-
-    /* execute and disasm instruction */
-    dsp->pc = pc;
-
-    /* Disasm instruction */
-    uint16_t instruction_length = disasm_instruction(dsp, DSP_DISASM_MODE) - 1;
-
-    /* Execute instruction at address given in parameter to get the number of cycles it takes */
-    dsp56k_execute_instruction(dsp);
-
-    fprintf(out, "%s", disasm_get_instruction_text(dsp));
-
-    /* Restore DSP context after executing instruction */
-    memcpy(dsp, &dsp_core_save, sizeof(dsp_core_t));
-
-    /* Unset DSP in disasm mode */
-    dsp->executing_for_disasm = false;
-
-    return instruction_length;
 }
 
 void dsp56k_execute_instruction(dsp_core_t* dsp)
 {
+    trace_dsp56k_execute_instruction(dsp->is_gp, dsp->pc);
+
     uint32_t disasm_return = 0;
     dsp->disasm_memory_ptr = 0;
 
@@ -661,17 +609,18 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
     dsp->cur_inst_len = 1;
     dsp->instr_cycle = 2;
 
-    /* Disasm current instruction ? (trace mode only) */
-    if (TRACE_DSP_DISASM) {
-        /* Call disasm_instruction only when DSP is called in trace mode */
-        if (!dsp->executing_for_disasm) {
-            disasm_return = disasm_instruction(dsp, DSP_TRACE_MODE);
+    bool tracing = TRACE_DSP_DISASM || trace_event_get_state(TRACE_DSP56K_EXECUTE_INSTRUCTION_DISASM);
 
-            if (disasm_return) {
-                printf( "%s", disasm_get_instruction_text(dsp));
+    /* Disasm current instruction ? (trace mode only) */
+    if (tracing) {
+        disasm_return = disasm_instruction(dsp, DSP_TRACE_MODE);
+        if (disasm_return) {
+            const char *text = disasm_get_instruction_text(dsp);
+            trace_dsp56k_execute_instruction_disasm(text);
+            if (TRACE_DSP_DISASM) {
+                DPRINTF("%s\n", text);
             }
-            if (disasm_return != 0 && TRACE_DSP_DISASM_REG) {
-                /* DSP regs trace enabled only if DSP DISASM is enabled */
+            if (TRACE_DSP_DISASM_REG) {
                 disasm_reg_save(dsp);
             }
         }
@@ -686,7 +635,7 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
         if (op->emu_func) {
             op->emu_func(dsp);
         } else {
-            printf("%x - %s\n", dsp->cur_inst, op->name);
+            DPRINTF("%x - %s\n", dsp->cur_inst, op->name);
             emu_undefined(dsp);
         }
     } else {
@@ -695,26 +644,18 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
     }
 
     /* Disasm current instruction ? (trace mode only) */
-    if (TRACE_DSP_DISASM) {
-        /* Display only when DSP is called in trace mode */
-        if (!dsp->executing_for_disasm) {
-            if (disasm_return != 0) {
-                // printf( "%s", disasm_get_instruction_text(dsp));
-
-                /* DSP regs trace enabled only if DSP DISASM is enabled */
-                if (TRACE_DSP_DISASM_REG)
-                    disasm_reg_compare(dsp);
-
-                if (TRACE_DSP_DISASM_MEM) {
-                    /* 1 memory change to display ? */
-                    if (dsp->disasm_memory_ptr == 1)
-                        printf( "\t%s\n", dsp->str_disasm_memory[0]);
-                    /* 2 memory changes to display ? */
-                    else if (dsp->disasm_memory_ptr == 2) {
-                        printf( "\t%s\n", dsp->str_disasm_memory[0]);
-                        printf( "\t%s\n", dsp->str_disasm_memory[1]);
-                    }
-                }
+    if (tracing && disasm_return) {
+        if (TRACE_DSP_DISASM_REG) {
+            disasm_reg_compare(dsp);
+        }
+        if (TRACE_DSP_DISASM_MEM) {
+            /* 1 memory change to display ? */
+            if (dsp->disasm_memory_ptr == 1)
+                DPRINTF("\t%s\n", dsp->str_disasm_memory[0]);
+            /* 2 memory changes to display ? */
+            else if (dsp->disasm_memory_ptr == 2) {
+                DPRINTF("\t%s\n", dsp->str_disasm_memory[0]);
+                DPRINTF("\t%s\n", dsp->str_disasm_memory[1]);
             }
         }
     }
@@ -734,7 +675,7 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
         /* Evaluate time after <N> instructions have been executed to avoid asking too frequently */
         uint32_t cur_time = SDL_GetTicks();
         if (cur_time-start_time>1000) {
-            printf( "Dsp: %d i/s\n", (dsp->num_inst*1000)/(cur_time-start_time));
+            DPRINTF("Dsp: %d i/s\n", (dsp->num_inst*1000)/(cur_time-start_time));
             start_time=cur_time;
             dsp->num_inst=0;
         }
@@ -1122,9 +1063,7 @@ static void dsp_write_reg(dsp_core_t* dsp, uint32_t numreg, uint32_t value)
                 /* Stack underflow or overflow detected, raise interrupt */
                 dsp56k_add_interrupt(dsp, DSP_INTER_STACK_ERROR);
                 dsp->registers[DSP_REG_SP] = value & (3<<DSP_SP_SE);
-                if (!dsp->executing_for_disasm) {
-                    printf( "Dsp: Stack Overflow or Underflow\n");
-                }
+                DPRINTF("Dsp: Stack Overflow or Underflow\n");
                 if (dsp->exception_debugging) {
                     assert(false);
                 }
@@ -1167,8 +1106,7 @@ static void dsp_stack_push(dsp_core_t* dsp, uint32_t curpc, uint32_t cursr, uint
     if ((stack_error==0) && (stack & (1<<DSP_SP_SE))) {
         /* Stack full, raise interrupt */
         dsp56k_add_interrupt(dsp, DSP_INTER_STACK_ERROR);
-        if (!dsp->executing_for_disasm)
-            printf("Dsp: Stack Overflow\n");
+        DPRINTF("Dsp: Stack Overflow\n");
         if (dsp->exception_debugging)
             assert(false);
     }
@@ -1204,8 +1142,7 @@ static void dsp_stack_pop(dsp_core_t* dsp, uint32_t *newpc, uint32_t *newsr)
     if ((stack_error==0) && (stack & (1<<DSP_SP_SE))) {
         /* Stack empty*/
         dsp56k_add_interrupt(dsp, DSP_INTER_STACK_ERROR);
-        if (!dsp->executing_for_disasm)
-            printf("Dsp: Stack underflow\n");
+        DPRINTF("Dsp: Stack underflow\n");
         if (dsp->exception_debugging)
             assert(false);
     }
@@ -1458,5 +1395,3 @@ static uint32_t dsp_signextend(int bits, uint32_t v) {
     assert(shift > 0);
     return (uint32_t)(((int32_t)v << shift) >> shift);
 }
-
-
