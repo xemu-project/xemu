@@ -461,6 +461,7 @@
 #       define NV_PGRAPH_CONTROL_2_STENCIL_OP_V_INCR                7
 #       define NV_PGRAPH_CONTROL_2_STENCIL_OP_V_DECR                8
 #define NV_PGRAPH_CONTROL_3                              0x00001958
+#   define NV_PGRAPH_CONTROL_3_TEXTURE_PERSPECTIVE_ENABLE       (1 << 6)
 #   define NV_PGRAPH_CONTROL_3_SHADEMODE                        (1 << 7)
 #       define NV_PGRAPH_CONTROL_3_SHADEMODE_FLAT                   0
 #       define NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH                 1
@@ -619,6 +620,7 @@
 #define NV_PGRAPH_WINDOWCLIPY6                           0x00001A7C
 #define NV_PGRAPH_WINDOWCLIPY7                           0x00001A80
 #define NV_PGRAPH_ZCOMPRESSOCCLUDE                       0x00001A84
+#   define NV_PGRAPH_ZCOMPRESSOCCLUDE_CULL_NEAR_FAR_EN          (1 << 0)
 #   define NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN                 (1 << 4)
 #       define NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CULL            0
 #       define NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CLAMP           1
@@ -879,6 +881,7 @@
 #       define NV097_SET_CONTROL0_STENCIL_WRITE_ENABLE            (1 << 0)
 #       define NV097_SET_CONTROL0_Z_FORMAT                        (1 << 12)
 #       define NV097_SET_CONTROL0_Z_PERSPECTIVE_ENABLE            (1 << 16)
+#       define NV097_SET_CONTROL0_TEXTURE_PERSPECTIVE_ENABLE      (1 << 20)
 #   define NV097_SET_COLOR_MATERIAL                           0x00000298
 #   define NV097_SET_FOG_MODE                                 0x0000029C
 #       define NV097_SET_FOG_MODE_V_LINEAR                        0x2601
@@ -1233,6 +1236,7 @@
 #       define NV097_SET_ZMIN_MAX_CONTROL_ZCLAMP_EN               0x000000F0
 #       define NV097_SET_ZMIN_MAX_CONTROL_ZCLAMP_EN_CULL              0
 #       define NV097_SET_ZMIN_MAX_CONTROL_ZCLAMP_EN_CLAMP             1
+#       define NV097_SET_ZMIN_MAX_CONTROL_CULL_NEAR_FAR_EN_TRUE   (1 << 0)
 #   define NV097_SET_ANTI_ALIASING_CONTROL                    0x00001D7C
 #       define NV097_SET_ANTI_ALIASING_CONTROL_ENABLE             (1 << 0)
 #   define NV097_SET_ZSTENCIL_CLEAR_VALUE                     0x00001D8C

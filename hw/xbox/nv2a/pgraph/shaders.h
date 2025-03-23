@@ -89,6 +89,7 @@ typedef struct ShaderState {
     uint32_t program_data[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH][VSH_TOKEN_SIZE];
     int program_length;
     bool z_perspective;
+    bool texture_perspective;
 
     /* primitive format for geometry shader */
     enum ShaderPolygonMode polygon_front_mode;

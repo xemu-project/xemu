@@ -33,6 +33,7 @@
 #include <assert.h>
 
 #include "hw/xbox/nv2a/pgraph/vsh.h"
+#include "hw/xbox/nv2a/pgraph/shaders.h"
 #include "common.h"
 #include "vsh-prog.h"
 
@@ -790,11 +791,13 @@ static const char* vsh_header =
     "}\n";
 
 void pgraph_gen_vsh_prog_glsl(uint16_t version,
-                   const uint32_t *tokens,
-                   unsigned int length,
-                   bool vulkan,
+                   const ShaderState *state,
                    MString *header, MString *body)
 {
+    const uint32_t *tokens = (uint32_t *)state->program_data;
+    unsigned int length = state->program_length;
+    bool texture = state->texture_perspective;
+    bool vulkan = state->vulkan;
 
     mstring_append(header, vsh_header);
 
@@ -837,6 +840,7 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
     }
 
     mstring_append(body,
+        "  depthBuf = oPos.w;\n"
         "  oPos.z = oPos.z / clipRange.y;\n"
         "  oPos.w = clampAwayZeroInf(oPos.w);\n"
 

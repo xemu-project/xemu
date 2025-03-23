@@ -52,5 +52,9 @@ MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bo
                            suffix_s);
     }
 
+    if (location) {
+        mstring_append(out, " layout(location = 9) ");
+    }
+    mstring_append_fmt(out, "%s float %sdepthBuf%s;\n", in_out_s, prefix_s, suffix_s);
     return out;
 }
