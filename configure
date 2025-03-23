@@ -1192,17 +1192,6 @@ EOF
 fi
 
 ##########################################
-# epoxy probe
-
-if $pkg_config --libs --silence-errors epoxy > /dev/null 2>&1 ; then
-    epoxy_libs=$($pkg_config --libs --silence-errors epoxy)
-    epoxy_cflags=$($pkg_config --cflags --silence-errors epoxy)
-else
-    error_exit "epoxy not present." \
-        "Please install the epoxy devel package."
-fi
-
-##########################################
 # detect rust triple
 
 if test "$rust" != disabled && has "$rustc" && $rustc -vV > "${TMPDIR1}/${TMPB}.out"; then
@@ -1806,10 +1795,6 @@ echo "EXESUF=$EXESUF" >> $config_host_mak
 if test "$default_targets" = "yes"; then
   echo "CONFIG_DEFAULT_TARGETS=y" >> $config_host_mak
 fi
-
-# FIXME: Use meson
-echo "EPOXY_CFLAGS=$epoxy_cflags" >> $config_host_mak
-echo "EPOXY_LIBS=$epoxy_libs" >> $config_host_mak
 
 # tests/tcg configuration
 mkdir -p tests/tcg
