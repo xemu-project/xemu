@@ -315,8 +315,7 @@ jobs:
         brew install \
           ccache \
           coreutils \
-          dylibbundler \
-          ninja
+          dylibbundler
         pip install pyyaml requests
     - name: Initialize compiler, library cache
       id: cache
