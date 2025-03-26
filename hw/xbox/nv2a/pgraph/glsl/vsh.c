@@ -256,6 +256,13 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
                        "  vtxD1 = clamp(oD1, 0.0, 1.0);\n"
                        "  vtxB1 = clamp(oB1, 0.0, 1.0);\n"
         );
+
+        if (state->ignore_specular_alpha) {
+            mstring_append(body,
+                           "  vtxD1.w = 1.0;\n"
+                           "  vtxB1.w = 1.0;\n"
+            );
+        }
     } else {
         mstring_append(body,
                        "  vtxD1 = vec4(0.0, 0.0, 0.0, 1.0);\n"
