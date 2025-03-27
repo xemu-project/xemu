@@ -439,7 +439,7 @@ jobs:
           dist/xemu-ubuntu-aarch64-debug/xemu/xemu-v${{ env.XEMU_VERSION }}-dbg-aarch64.AppImage
           dist/xemu-ubuntu-aarch64-release/xemu/xemu-v${{ env.XEMU_VERSION }}-aarch64.AppImage
     - name: Trigger website update
-      uses: benc-uk/workflow-dispatch@798e70c97009500150087d30d9f11c5444830385 # v1.2.2
+      uses: benc-uk/workflow-dispatch@e2e5e9a103e331dad343f381a29e654aea3cf8fc # v1.2.4
       with:
         workflow: build.yml
         repo: xemu-project/xemu-website
