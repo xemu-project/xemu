@@ -17,11 +17,11 @@ jobs:
       pull-requests: write
     steps:
       - name: Clone tree
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           fetch-depth: 0
       - name: Check formatting/lints
-        uses: cpp-linter/cpp-linter-action@v2.13.4
+        uses: cpp-linter/cpp-linter-action@832a609fe16e1c98ea764641f07dec5d39db5a56 # v2.13.4
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
