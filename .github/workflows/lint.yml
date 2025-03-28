@@ -1,0 +1,36 @@
+name: Lint
+
+on:
+  pull_request:
+    paths-ignore:
+      - '.github/**'
+      - '!.github/workflows/lint.yml'
+      - 'README.md'
+      - 'ubuntu-win64-cross/**'
+
+jobs:
+  Check:
+    name: Check formatting and lints
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Clone tree
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
+      - name: Check formatting/lints
+        uses: cpp-linter/cpp-linter-action@832a609fe16e1c98ea764641f07dec5d39db5a56 # v2.13.4
+        id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          version: '16'
+          style: file
+          lines-changed-only: true
+          format-review: true
+      - name: Report result
+        if: steps.linter.outputs.checks-failed > 0
+        run: exit 1
+
