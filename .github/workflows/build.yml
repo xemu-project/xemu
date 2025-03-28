@@ -270,19 +270,6 @@ jobs:
       with:
         name: ${{ matrix.artifact_name }}
         path: ${{ matrix.artifact_filename }}
-    - name: Lint
-      if: matrix.configuration == 'Debug' && matrix.arch == 'x86_64'
-      uses: cpp-linter/cpp-linter-action@8ae6cfaea8cc035c6155b5fe79d7991a9bf638af # v2.14.0
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        version: '18' # clang-format version
-        repo-root: ${{ github.workspace }}/src
-        style: file:${{ github.workspace }}/src/.clang-format
-        database: ${{ github.workspace }}/src/build/compile_commands.json
-        lines-changed-only: true
-        format-review: true
-        passive-reviews: true
 
   macOS:
     name: Build for macOS (${{ matrix.arch }}, ${{ matrix.configuration }})
