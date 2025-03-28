@@ -124,15 +124,6 @@
 #define NV_PAPU_EPPMEM                                   0x0000A000
 #define NV_PAPU_EPRST                                    0x0000FFFC
 
-static const struct {
-    hwaddr top, current, next;
-} voice_list_regs[] = {
-    {NV_PAPU_TVL2D, NV_PAPU_CVL2D, NV_PAPU_NVL2D}, //2D
-    {NV_PAPU_TVL3D, NV_PAPU_CVL3D, NV_PAPU_NVL3D}, //3D
-    {NV_PAPU_TVLMP, NV_PAPU_CVLMP, NV_PAPU_NVLMP}, //MP
-};
-
-
 /* audio processor object / front-end messages */
 #define NV1BA0_PIO_FREE                                  0x00000010
 #define NV1BA0_PIO_SET_ANTECEDENT_VOICE                  0x00000120
