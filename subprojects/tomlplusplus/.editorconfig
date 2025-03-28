@@ -1,0 +1,25 @@
+root = true
+
+[*]
+insert_final_newline = true
+indent_style = tab
+indent_size = 4
+tab_width = 4
+end_of_line = lf
+trim_trailing_whitespace = true
+charset = utf-8
+
+[*.{md,markdown}]
+trim_trailing_whitespace = false
+
+[*.{gitattributes,yaml,yml,vcxproj,vcxproj.filters,sln,rc,clang-format,toml}]
+indent_style = space
+
+[{Doxyfile,Doxyfile-mcss}]
+indent_style = space
+
+[*.{hlsl,rc,sln,vcxproj,vcxproj.filters}]
+end_of_line = crlf
+
+[*.{sln,vcxproj,vcxproj.filters}]
+charset = utf-8-bom

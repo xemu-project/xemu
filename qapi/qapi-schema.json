@@ -1,0 +1,83 @@
+# -*- Mode: Python -*-
+# vim: filetype=python
+##
+# = Introduction
+#
+# This document describes all commands currently supported by QMP.
+#
+# Most of the time their usage is exactly the same as in the user
+# Monitor, this means that any other document which also describe
+# commands (the manpage, QEMU's manual, etc) can and should be
+# consulted.
+#
+# QMP has two types of commands: regular and query commands.  Regular
+# commands usually change the Virtual Machine's state someway, while
+# query commands just return information.  The sections below are
+# divided accordingly.
+#
+# It's important to observe that all communication examples are
+# formatted in a reader-friendly way, so that they're easier to
+# understand.  However, in real protocol usage, they're emitted as a
+# single line.
+#
+# Also, the following notation is used to denote data flow:
+#
+# Example:
+#
+# ::
+#
+#   -> data issued by the Client
+#   <- Server data response
+#
+# Please refer to the
+# :doc:`QEMU Machine Protocol Specification </interop/qmp-spec>`
+# for detailed information on the Server command and response formats.
+##
+
+{ 'include': 'pragma.json' }
+
+# Documentation generated with qapi-gen.py is in source order, with
+# included sub-schemas inserted at the first include directive
+# (subsequent include directives have no effect).  To get a sane and
+# stable order, it's best to include each sub-schema just once, or
+# include it first right here.
+
+{ 'include': 'error.json' }
+{ 'include': 'common.json' }
+{ 'include': 'sockets.json' }
+{ 'include': 'run-state.json' }
+{ 'include': 'crypto.json' }
+{ 'include': 'job.json' }
+{ 'include': 'block.json' }
+{ 'include': 'block-export.json' }
+{ 'include': 'char.json' }
+{ 'include': 'dump.json' }
+{ 'include': 'net.json' }
+{ 'include': 'ebpf.json' }
+{ 'include': 'rocker.json' }
+{ 'include': 'tpm.json' }
+{ 'include': 'ui.json' }
+{ 'include': 'authz.json' }
+{ 'include': 'migration.json' }
+{ 'include': 'transaction.json' }
+{ 'include': 'trace.json' }
+{ 'include': 'compat.json' }
+{ 'include': 'control.json' }
+{ 'include': 'introspect.json' }
+{ 'include': 'qom.json' }
+{ 'include': 'qdev.json' }
+{ 'include': 'machine-common.json' }
+{ 'include': 'machine.json' }
+{ 'include': 'machine-target.json' }
+{ 'include': 'replay.json' }
+{ 'include': 'yank.json' }
+{ 'include': 'misc.json' }
+{ 'include': 'misc-target.json' }
+{ 'include': 'audio.json' }
+{ 'include': 'acpi.json' }
+{ 'include': 'pci.json' }
+{ 'include': 'stats.json' }
+{ 'include': 'virtio.json' }
+{ 'include': 'vfio.json' }
+{ 'include': 'cryptodev.json' }
+{ 'include': 'cxl.json' }
