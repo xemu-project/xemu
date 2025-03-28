@@ -431,7 +431,7 @@ unsigned int nv2a_get_surface_scale_factor(void)
 #define DEF_METHOD_CASE_4_OFFSET(gclass, name, offset, stride) /* Drop */
 #define DEF_METHOD_CASE_4(gclass, name, stride) \
     DEF_METHOD_PROTO(gclass, name);
-#include "methods.h"
+#include "methods.h.inc"
 #undef DEF_METHOD
 #undef DEF_METHOD_RANGE
 #undef DEF_METHOD_CASE_4_OFFSET
@@ -485,7 +485,7 @@ static const struct {
     },
 #define DEF_METHOD_CASE_4(gclass, name, stride) \
     DEF_METHOD_CASE_4_OFFSET(gclass, name, 0, stride)
-#include "methods.h"
+#include "methods.h.inc"
 #undef DEF_METHOD
 #undef DEF_METHOD_RANGE
 #undef DEF_METHOD_CASE_4_OFFSET
@@ -504,7 +504,7 @@ static const struct {
 #define DEF_METHOD_CASE_4(gclass, name, stride) \
     static const size_t METHOD_RANGE_END_NAME(gclass, name) = \
         METHOD_ADDR(gclass, name) + 4*stride;
-#include "methods.h"
+#include "methods.h.inc"
 #undef DEF_METHOD
 #undef DEF_METHOD_RANGE
 #undef DEF_METHOD_CASE_4_OFFSET
