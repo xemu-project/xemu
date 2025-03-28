@@ -22,6 +22,8 @@
 #ifndef MCPX_APU_REGS_H
 #define MCPX_APU_REGS_H
 
+// clang-format off
+
 #define NV_PAPU_ISTS                                     0x00001000
 #   define NV_PAPU_ISTS_GINTSTS                               (1 << 0)
 #   define NV_PAPU_ISTS_FETINTSTS                             (1 << 4)
@@ -342,5 +344,7 @@ enum MCPX_HW_NOTIFIER {
 };
 #define NV1BA0_NOTIFICATION_STATUS_DONE_SUCCESS       0x01
 #define NV1BA0_NOTIFICATION_STATUS_IN_PROGRESS        0x80
+
+// clang-format on
 
 #endif

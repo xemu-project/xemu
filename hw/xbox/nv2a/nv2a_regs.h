@@ -32,6 +32,8 @@
         (v) |= ((__val) << ctz32(__mask)) & (__mask);     \
     })
 
+// clang-format off
+
 #define NV_NUM_BLOCKS 21
 #define NV_PMC          0   /* card master control */
 #define NV_PBUS         1   /* bus control */
@@ -1462,5 +1464,7 @@
 #define NV2A_LTC1_COUNT    20
 
 #define NV2A_CUBEMAP_FACE_ALIGNMENT 128
+
+// clang-format on
 
 #endif
