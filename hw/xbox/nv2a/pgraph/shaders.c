@@ -97,6 +97,9 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
     state.ignore_specular_alpha = !GET_MASK(
         pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_ALPHA_FROM_MATERIAL_SPECULAR);
 
+    state.specular_power = pg->specular_power;
+    state.specular_power_back = pg->specular_power_back;
+
     /* vertex program stuff */
     state.vertex_program = vertex_program,
     state.z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
