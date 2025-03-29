@@ -19,6 +19,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <math.h>
+
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "ui/xemu-notifications.h"
 #include "ui/xemu-settings.h"
@@ -1803,6 +1805,113 @@ DEF_METHOD_INC(NV097, SET_FOG_PLANE)
     pg->vsh_constants_dirty[NV_IGRAPH_XF_XFCTX_FOG] = true;
 }
 
+struct CurveCoefficients {
+  float a;
+  float b;
+  float c;
+};
+
+static const struct CurveCoefficients curve_coefficients[] = {
+  {1.000108475163, -9.838607076280, 54.829089549713},
+  {1.199164441703, -3.292603784852, 7.799987995214},
+  {8.653441252033, 29.189473787191, 43.586027561823},
+  {-531.307758450301, 117.398468683934, 113.155490738338},
+  {-4.662713151292, 1.221108944572, 1.217360986939},
+  {-124.435242105211, 35.401219563514, 35.408114377045},
+  {10672560.259502287954, 21565843.555823743343, 10894794.336297152564},
+  {-51973801.463933646679, -104199997.554352939129, -52225454.356278456748},
+  {972270.324080004124, 2025882.096547174733, 1054898.052467488218},
+};
+
+static const float kCoefficient0StepPoints[] = {
+  -0.022553957999, // power = 1.25
+  -0.421539008617, // power = 4.00
+  -0.678715527058, // power = 9.00
+  -0.838916420937, // power = 20.00
+  -0.961754500866, // power = 90.00
+  -0.990773200989, // power = 375.00
+  -0.994858562946, // power = 650.00
+  -0.996561050415, // power = 1000.00
+  -0.999547004700, // power = 1250.00
+};
+
+static float reconstruct_quadratic(float c0, const struct CurveCoefficients *coefficients) {
+  return coefficients->a + coefficients->b * c0 + coefficients->c * c0 * c0;
+}
+
+static float reconstruct_saturation_growth_rate(float c0, const struct CurveCoefficients *coefficients) {
+  return (coefficients->a * c0) / (coefficients->b + coefficients->c * c0);
+}
+
+static float (* const reconstruct_func_map[])(float, const struct CurveCoefficients *) = {
+  reconstruct_quadratic, // 1.0..1.25 max error 0.01 %
+  reconstruct_quadratic, // 1.25..4.0 max error 2.2 %
+  reconstruct_quadratic, // 4.0..9.0 max error 2.3 %
+  reconstruct_saturation_growth_rate, // 9.0..20.0 max error 1.4 %
+  reconstruct_saturation_growth_rate, // 20.0..90.0 max error 2.1 %
+  reconstruct_saturation_growth_rate, // 90.0..375.0 max error 2.8%
+  reconstruct_quadratic, // 375..650 max error 1.0 %
+  reconstruct_quadratic, // 650..1000 max error 1.7%
+  reconstruct_quadratic, // 1000..1250 max error 1.0%
+};
+
+static float reconstruct_specular_power(const float *params) {
+  // See https://github.com/dracc/xgu/blob/db3172d8c983629f0dc971092981846da22438ae/xgux.h#L279
+
+  // Values < 1.0 will result in a positive c1 and (c2 - c0 * 2) will be very
+  // close to the original value.
+  if (params[1] > 0.0f && params[2] < 1.0f) {
+    return params[2] - (params[0] * 2.0f);
+  }
+
+  float c0 = params[0];
+  float c3 = params[3];
+  // FIXME: This handling is not correct, but is distinct without crashing.
+  // It does not appear possible for a DirectX-generated value to be positive,
+  // so while this differs from hardware behavior, it may be irrelevant in
+  // practice.
+  if (c0 > 0.0f || c3 > 0.0f) {
+    return 0.0001f;
+  }
+
+  float reconstructed_power = 0.f;
+  for (uint32_t i = 0; i < sizeof(kCoefficient0StepPoints) / sizeof(kCoefficient0StepPoints[0]); ++i) {
+    if (c0 > kCoefficient0StepPoints[i]) {
+      reconstructed_power = reconstruct_func_map[i](c0, &curve_coefficients[i]);
+      break;
+    }
+  }
+
+  float reconstructed_half_power = 0.f;
+  for (uint32_t i = 0; i < sizeof(kCoefficient0StepPoints) / sizeof(kCoefficient0StepPoints[0]); ++i) {
+    if (c3 > kCoefficient0StepPoints[i]) {
+      reconstructed_half_power = reconstruct_func_map[i](c3, &curve_coefficients[i]);
+      break;
+    }
+  }
+
+  // The range can be extended beyond 1250 by using the half power params. This
+  // will only work for DirectX generated values, arbitrary params could
+  // erroneously trigger this.
+  //
+  // There are some very low power (~1) values that have inverted powers, but
+  // they are easily identified by comparatively high c0 parameters.
+  if (reconstructed_power == 0.f || (reconstructed_half_power > reconstructed_power && c0 < -0.1f)) {
+    return reconstructed_half_power * 2.f;
+  }
+
+  return reconstructed_power;
+}
+
+DEF_METHOD_INC(NV097, SET_SPECULAR_PARAMS)
+{
+    int slot = (method - NV097_SET_SPECULAR_PARAMS) / 4;
+    pg->specular_params[slot] = *(float *)&parameter;
+    if (slot == 5) {
+        pg->specular_power = reconstruct_specular_power(pg->specular_params);
+    }
+}
+
 DEF_METHOD_INC(NV097, SET_SCENE_AMBIENT_COLOR)
 {
     int slot = (method - NV097_SET_SCENE_AMBIENT_COLOR) / 4;
@@ -2783,6 +2892,15 @@ DEF_METHOD_INC(NV097, SET_SPECULAR_FOG_FACTOR)
 {
     int slot = (method - NV097_SET_SPECULAR_FOG_FACTOR) / 4;
     pgraph_reg_w(pg, NV_PGRAPH_SPECFOGFACTOR0 + slot*4, parameter);
+}
+
+DEF_METHOD_INC(NV097, SET_SPECULAR_PARAMS_BACK)
+{
+    int slot = (method - NV097_SET_SPECULAR_PARAMS_BACK) / 4;
+    pg->specular_params_back[slot] = *(float *)&parameter;
+    if (slot == 5) {
+        pg->specular_power_back = reconstruct_specular_power(pg->specular_params_back);
+    }
 }
 
 DEF_METHOD(NV097, SET_SHADER_CLIP_PLANE_MODE)

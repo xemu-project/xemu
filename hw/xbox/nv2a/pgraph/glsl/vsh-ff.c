@@ -230,9 +230,15 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     }
 
     /* Lighting */
-    if (state->lighting) {
-
+    if (!state->lighting) {
+        mstring_append(body, "  oD0 = diffuse;\n");
+        mstring_append(body, "  oD1 = specular;\n");
+        mstring_append(body, "  oB0 = backDiffuse;\n");
+        mstring_append(body, "  oB1 = backSpecular;\n");
+    } else {
         //FIXME: Do 2 passes if we want 2 sided-lighting?
+
+        mstring_append_fmt(uniforms, "%sfloat specularPower;\n", u);
 
         static char alpha_source_diffuse[] = "diffuse.a";
         static char alpha_source_specular[] = "specular.a";
@@ -269,12 +275,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 continue;
             }
 
-            /* FIXME: It seems that we only have to handle the surface colors if
-             *        they are not part of the material [= vertex colors].
-             *        If they are material the cpu will premultiply light
-             *        colors
-             */
-
             mstring_append_fmt(body, "/* Light %d */ {\n", i);
 
             if (state->light[i] == LIGHT_LOCAL
@@ -310,13 +310,9 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                     u, i, u, i);
                 mstring_append_fmt(body,
                     "  float attenuation = 1.0;\n"
-                    "  float nDotVP = max(0.0, dot(tNormal, normalize(vec3(lightInfiniteDirection%d))));\n"
-                    "  float nDotHV = max(0.0, dot(tNormal, vec3(lightInfiniteHalfVector%d)));\n",
+                    "  float nDotVP = max(0.0, dot(tNormal, normalize(lightInfiniteDirection%d)));\n"
+                    "  float nDotHV = max(0.0, dot(tNormal, lightInfiniteHalfVector%d));\n",
                     i, i);
-
-                /* FIXME: Do specular */
-
-                /* FIXME: tBackDiffuse */
 
                 break;
             case LIGHT_LOCAL:
@@ -349,11 +345,11 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 "  if (nDotVP == 0.0) {\n"
                 "    pf = 0.0;\n"
                 "  } else {\n"
-                "    pf = pow(nDotHV, /* specular(l, m, n, l1, m1, n1) */ 0.001);\n"
+                "    pf = pow(nDotHV, specularPower);\n"
                 "  }\n"
                 "  vec3 lightAmbient = lightAmbientColor(%d) * attenuation;\n"
                 "  vec3 lightDiffuse = lightDiffuseColor(%d) * attenuation * nDotVP;\n"
-                "  vec3 lightSpecular = lightSpecularColor(%d) * pf;\n",
+                "  vec3 lightSpecular = lightSpecularColor(%d) * attenuation * pf;\n",
                 i, i, i);
 
             mstring_append(body,
@@ -374,26 +370,44 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 break;
             }
 
-            mstring_append(body,
-                "  oD1.xyz += specular.xyz * lightSpecular;\n");
+            switch (state->specular_src) {
+            case MATERIAL_COLOR_SRC_MATERIAL:
+                mstring_append(body,
+                               "  oD1.xyz += lightSpecular;\n");
+                break;
+            case MATERIAL_COLOR_SRC_DIFFUSE:
+                mstring_append(body,
+                               "  oD1.xyz += diffuse.xyz * lightSpecular;\n");
+                break;
+            case MATERIAL_COLOR_SRC_SPECULAR:
+                mstring_append(body,
+                               "  oD1.xyz += specular.xyz * lightSpecular;\n");
+                break;
+            }
 
             mstring_append(body, "}\n");
         }
-    } else {
-        mstring_append(body, "  oD0 = diffuse;\n");
-        mstring_append(body, "  oD1 = specular;\n");
-    }
 
-    mstring_append(body, "  oB0 = backDiffuse;\n");
-    mstring_append(body, "  oB1 = backSpecular;\n");
+        /* TODO: Implement two-sided lighting */
+        mstring_append(body, "  oB0 = backDiffuse;\n");
+        mstring_append(body, "  oB1 = backSpecular;\n");
+    }
 
     if (!state->specular_enable) {
         mstring_append(body, "  oD1 = vec4(0.0, 0.0, 0.0, 1.0);\n");
         mstring_append(body, "  oB1 = vec4(0.0, 0.0, 0.0, 1.0);\n");
     } else {
         if (!state->separate_specular) {
-            mstring_append(body, "  oD1 = specular;\n");
-            mstring_append(body, "  oB1 = backSpecular;\n");
+            if (state->lighting) {
+				mstring_append(body,
+				               "  oD0.xyz += oD1.xyz;\n"
+				               "  oB0.xyz += oB1.xyz;\n"
+				);
+            }
+			mstring_append(body,
+				           "  oD1 = specular;\n"
+				           "  oB1 = backSpecular;\n"
+			);
         }
         if (state->ignore_specular_alpha) {
             mstring_append(body,
