@@ -129,9 +129,8 @@ static const int registers_mask[64] = {
     16, 16, 16, 16
 };
 
-#include "dsp_emu.inl"
-
-#include "dsp_dis.inl"
+#include "dsp_emu.c.inc"
+#include "dsp_dis.c.inc"
 
 typedef bool (*match_func_t)(uint32_t op);
 
