@@ -961,9 +961,6 @@ uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address)
 
 void dsp56k_write_memory(dsp_core_t* dsp, int space, uint32_t address, uint32_t value)
 {
-    assert((value & 0xFF000000) == 0);
-    assert((address & 0xFF000000) == 0);
-
     if (TRACE_DSP_DISASM_MEM)
         write_memory_disasm(dsp, space, address, value);
     else
