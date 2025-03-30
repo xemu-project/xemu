@@ -71,18 +71,18 @@ static void dsp_rnd56(dsp_core_t* dsp, uint32_t *dest);
 static uint32_t dsp_signextend(int bits, uint32_t v);
 
 static const dsp_interrupt_t dsp_interrupt[12] = {
-    {DSP_INTER_RESET    ,   0x00, 0, "Reset"},
-    {DSP_INTER_ILLEGAL  ,   0x3e, 0, "Illegal"},
-    {DSP_INTER_STACK_ERROR  ,   0x02, 0, "Stack Error"},
-    {DSP_INTER_TRACE    ,   0x04, 0, "Trace"},
-    {DSP_INTER_SWI      ,   0x06, 0, "Swi"},
-    {DSP_INTER_HOST_COMMAND ,   0xff, 1, "Host Command"},
-    {DSP_INTER_HOST_RCV_DATA,   0x20, 1, "Host receive"},
-    {DSP_INTER_HOST_TRX_DATA,   0x22, 1, "Host transmit"},
-    {DSP_INTER_SSI_RCV_DATA_E,  0x0e, 2, "SSI receive with exception"},
-    {DSP_INTER_SSI_RCV_DATA ,   0x0c, 2, "SSI receive"},
-    {DSP_INTER_SSI_TRX_DATA_E,  0x12, 2, "SSI transmit with exception"},
-    {DSP_INTER_SSI_TRX_DATA ,   0x10, 2, "SSI tramsmit"}
+    { DSP_INTER_RESET, 0x00, 0, "Reset" },
+    { DSP_INTER_ILLEGAL, 0x3e, 0, "Illegal" },
+    { DSP_INTER_STACK_ERROR, 0x02, 0, "Stack Error" },
+    { DSP_INTER_TRACE, 0x04, 0, "Trace" },
+    { DSP_INTER_SWI, 0x06, 0, "Swi" },
+    { DSP_INTER_HOST_COMMAND, 0xff, 1, "Host Command" },
+    { DSP_INTER_HOST_RCV_DATA, 0x20, 1, "Host receive" },
+    { DSP_INTER_HOST_TRX_DATA, 0x22, 1, "Host transmit" },
+    { DSP_INTER_SSI_RCV_DATA_E, 0x0e, 2, "SSI receive with exception" },
+    { DSP_INTER_SSI_RCV_DATA, 0x0c, 2, "SSI receive" },
+    { DSP_INTER_SSI_TRX_DATA_E, 0x12, 2, "SSI transmit with exception" },
+    { DSP_INTER_SSI_TRX_DATA, 0x10, 2, "SSI transmit" }
 };
 
 static const int registers_tcc[16][2] = {
