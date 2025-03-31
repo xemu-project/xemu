@@ -268,6 +268,12 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
         mstring_append(body, "oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n");
 
+        if (state->local_eye) {
+            mstring_append(body,
+                "vec3 VPeye = normalize(eyePosition.xyz / eyePosition.w - tPosition.xyz / tPosition.w);\n"
+            );
+        }
+
         for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
             if (state->light[i] == LIGHT_OFF) {
                 continue;
@@ -283,18 +289,20 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                     "%svec3 lightLocalAttenuation%d;\n",
                     u, i, u, i);
                 mstring_append_fmt(body,
-                    "  vec3 VP = lightLocalPosition%d - tPosition.xyz/tPosition.w;\n"
+                    "  vec3 tPos = tPosition.xyz/tPosition.w;\n"
+                    "  vec3 VP = lightLocalPosition%d - tPos;\n"
                     "  float d = length(VP);\n"
                     "  if (d <= lightLocalRange(%d)) {\n"  /* FIXME: Double check that range is inclusive */
                     "    VP = normalize(VP);\n"
                     "    float attenuation = 1.0 / (lightLocalAttenuation%d.x\n"
                     "                                 + lightLocalAttenuation%d.y * d\n"
                     "                                 + lightLocalAttenuation%d.z * d * d);\n"
-                    "    vec3 halfVector = normalize(VP + eyePosition.xyz / eyePosition.w);\n" /* FIXME: Not sure if eyePosition is correct */
+                    "    vec3 halfVector = normalize(VP + %s);\n"
                     "    float nDotVP = max(0.0, dot(tNormal, VP));\n"
                     "    float nDotHV = max(0.0, dot(tNormal, halfVector));\n",
-                    i, i, i, i, i);
-
+                    i, i, i, i, i,
+                    state->local_eye ? "VPeye" : "vec3(0.0, 0.0, -1.0)"
+                );
             }
 
             switch(state->light[i]) {
@@ -309,10 +317,19 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 mstring_append_fmt(body,
                     "  {\n"
                     "    float attenuation = 1.0;\n"
-                    "    float nDotVP = max(0.0, dot(tNormal, normalize(lightInfiniteDirection%d)));\n"
-                    "    float nDotHV = max(0.0, dot(tNormal, lightInfiniteHalfVector%d));\n",
-                    i, i);
-
+                    "    vec3 lightDirection = normalize(lightInfiniteDirection%d);\n"
+                    "    float nDotVP = max(0.0, dot(tNormal, lightDirection));\n",
+                    i);
+                if (state->local_eye) {
+                    mstring_append(body,
+                        "    float nDotHV = max(0.0, dot(tNormal, normalize(lightDirection + VPeye)));\n"
+                    );
+                } else {
+                    mstring_append_fmt(body,
+                        "    float nDotHV = max(0.0, dot(tNormal, lightInfiniteHalfVector%d));\n",
+                        i
+                    );
+                }
                 break;
             case LIGHT_LOCAL:
                 /* Everything done already */
@@ -411,7 +428,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         }
         if (state->ignore_specular_alpha) {
             mstring_append(body,
-                           "  oD1.w = 1.0;\n"
+                           "  oD1.a = 1.0;\n"
                            "  oB1.a = 1.0;\n"
             );
         }
