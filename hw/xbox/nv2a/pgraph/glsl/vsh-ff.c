@@ -285,15 +285,15 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 mstring_append_fmt(body,
                     "  vec3 VP = lightLocalPosition%d - tPosition.xyz/tPosition.w;\n"
                     "  float d = length(VP);\n"
-//FIXME: if (d > lightLocalRange) { .. don't process this light .. } /* inclusive?! */ - what about directional lights?
-                    "  VP = normalize(VP);\n"
-                    "  float attenuation = 1.0 / (lightLocalAttenuation%d.x\n"
-                    "                               + lightLocalAttenuation%d.y * d\n"
-                    "                               + lightLocalAttenuation%d.z * d * d);\n"
-                    "  vec3 halfVector = normalize(VP + eyePosition.xyz / eyePosition.w);\n" /* FIXME: Not sure if eyePosition is correct */
-                    "  float nDotVP = max(0.0, dot(tNormal, VP));\n"
-                    "  float nDotHV = max(0.0, dot(tNormal, halfVector));\n",
-                    i, i, i, i);
+                    "  if (d <= lightLocalRange(%d)) {\n"  /* FIXME: Double check that range is inclusive */
+                    "    VP = normalize(VP);\n"
+                    "    float attenuation = 1.0 / (lightLocalAttenuation%d.x\n"
+                    "                                 + lightLocalAttenuation%d.y * d\n"
+                    "                                 + lightLocalAttenuation%d.z * d * d);\n"
+                    "    vec3 halfVector = normalize(VP + eyePosition.xyz / eyePosition.w);\n" /* FIXME: Not sure if eyePosition is correct */
+                    "    float nDotVP = max(0.0, dot(tNormal, VP));\n"
+                    "    float nDotHV = max(0.0, dot(tNormal, halfVector));\n",
+                    i, i, i, i, i);
 
             }
 
@@ -307,9 +307,10 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                     "%svec3 lightInfiniteDirection%d;\n",
                     u, i, u, i);
                 mstring_append_fmt(body,
-                    "  float attenuation = 1.0;\n"
-                    "  float nDotVP = max(0.0, dot(tNormal, normalize(lightInfiniteDirection%d)));\n"
-                    "  float nDotHV = max(0.0, dot(tNormal, lightInfiniteHalfVector%d));\n",
+                    "  {\n"
+                    "    float attenuation = 1.0;\n"
+                    "    float nDotVP = max(0.0, dot(tNormal, normalize(lightInfiniteDirection%d)));\n"
+                    "    float nDotHV = max(0.0, dot(tNormal, lightInfiniteHalfVector%d));\n",
                     i, i);
 
                 break;
@@ -319,18 +320,18 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             case LIGHT_SPOT:
                 /* https://docs.microsoft.com/en-us/windows/win32/direct3d9/attenuation-and-spotlight-factor#spotlight-factor */
                 mstring_append_fmt(body,
-                    "  vec4 spotDir = lightSpotDirection(%d);\n"
-                    "  float invScale = 1/length(spotDir.xyz);\n"
-                    "  float cosHalfPhi = -invScale*spotDir.w;\n"
-                    "  float cosHalfTheta = invScale + cosHalfPhi;\n"
-                    "  float spotDirDotVP = dot(spotDir.xyz, VP);\n"
-                    "  float rho = invScale*spotDirDotVP;\n"
-                    "  if (rho > cosHalfTheta) {\n"
-                    "  } else if (rho <= cosHalfPhi) {\n"
-                    "    attenuation = 0.0;\n"
-                    "  } else {\n"
-                    "    attenuation *= spotDirDotVP + spotDir.w;\n" /* FIXME: lightSpotFalloff */
-                    "  }\n",
+                    "    vec4 spotDir = lightSpotDirection(%d);\n"
+                    "    float invScale = 1/length(spotDir.xyz);\n"
+                    "    float cosHalfPhi = -invScale*spotDir.w;\n"
+                    "    float cosHalfTheta = invScale + cosHalfPhi;\n"
+                    "    float spotDirDotVP = dot(spotDir.xyz, VP);\n"
+                    "    float rho = invScale*spotDirDotVP;\n"
+                    "    if (rho > cosHalfTheta) {\n"
+                    "    } else if (rho <= cosHalfPhi) {\n"
+                    "      attenuation = 0.0;\n"
+                    "    } else {\n"
+                    "      attenuation *= spotDirDotVP + spotDir.w;\n" /* FIXME: lightSpotFalloff */
+                    "    }\n",
                     i);
                 break;
             default:
@@ -339,51 +340,52 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             }
 
             mstring_append_fmt(body,
-                "  float pf;\n"
-                "  if (nDotVP == 0.0) {\n"
-                "    pf = 0.0;\n"
-                "  } else {\n"
-                "    pf = pow(nDotHV, %f);\n"
-                "  }\n"
-                "  vec3 lightAmbient = lightAmbientColor(%d) * attenuation;\n"
-                "  vec3 lightDiffuse = lightDiffuseColor(%d) * attenuation * nDotVP;\n"
-                "  vec3 lightSpecular = lightSpecularColor(%d) * attenuation * pf;\n",
+                "    float pf;\n"
+                "    if (nDotVP == 0.0) {\n"
+                "      pf = 0.0;\n"
+                "    } else {\n"
+                "      pf = pow(nDotHV, %f);\n"
+                "    }\n"
+                "    vec3 lightAmbient = lightAmbientColor(%d) * attenuation;\n"
+                "    vec3 lightDiffuse = lightDiffuseColor(%d) * attenuation * nDotVP;\n"
+                "    vec3 lightSpecular = lightSpecularColor(%d) * attenuation * pf;\n",
                 state->specular_power, i, i, i);
 
             mstring_append(body,
-                "  oD0.xyz += lightAmbient;\n");
+                "    oD0.xyz += lightAmbient;\n");
 
             switch (state->diffuse_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
                 mstring_append(body,
-                               "  oD0.xyz += lightDiffuse;\n");
+                               "    oD0.xyz += lightDiffuse;\n");
                 break;
             case MATERIAL_COLOR_SRC_DIFFUSE:
                 mstring_append(body,
-                               "  oD0.xyz += diffuse.xyz * lightDiffuse;\n");
+                               "    oD0.xyz += diffuse.xyz * lightDiffuse;\n");
                 break;
             case MATERIAL_COLOR_SRC_SPECULAR:
                 mstring_append(body,
-                               "  oD0.xyz += specular.xyz * lightDiffuse;\n");
+                               "    oD0.xyz += specular.xyz * lightDiffuse;\n");
                 break;
             }
 
             switch (state->specular_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
                 mstring_append(body,
-                               "  oD1.xyz += lightSpecular;\n");
+                               "    oD1.xyz += lightSpecular;\n");
                 break;
             case MATERIAL_COLOR_SRC_DIFFUSE:
                 mstring_append(body,
-                               "  oD1.xyz += diffuse.xyz * lightSpecular;\n");
+                               "    oD1.xyz += diffuse.xyz * lightSpecular;\n");
                 break;
             case MATERIAL_COLOR_SRC_SPECULAR:
                 mstring_append(body,
-                               "  oD1.xyz += specular.xyz * lightSpecular;\n");
+                               "    oD1.xyz += specular.xyz * lightSpecular;\n");
                 break;
             }
 
-            mstring_append(body, "}\n");
+            mstring_append(body, "  }\n"
+                                 "}\n");
         }
 
         /* TODO: Implement two-sided lighting */
