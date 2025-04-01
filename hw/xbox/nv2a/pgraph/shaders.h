@@ -81,6 +81,9 @@ typedef struct ShaderState {
 
     bool separate_specular;
     bool ignore_specular_alpha;
+    bool local_eye;
+    float specular_power;
+    float specular_power_back;
 
     bool lighting;
     enum VshLight light[NV2A_MAX_LIGHTS];

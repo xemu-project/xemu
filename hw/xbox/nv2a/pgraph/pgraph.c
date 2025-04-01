@@ -19,6 +19,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <math.h>
+
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "ui/xemu-notifications.h"
 #include "ui/xemu-settings.h"
@@ -1812,6 +1814,42 @@ DEF_METHOD_INC(NV097, SET_FOG_PLANE)
     pg->vsh_constants_dirty[NV_IGRAPH_XF_XFCTX_FOG] = true;
 }
 
+// Based on curve fitting to observed values from DirectX uses.
+//    x = -log2(30.80722523) / power
+//    c3_param = -1.01441946 * pow(exp2( x ), 2) + 0.01451685
+#define SPECULAR_POWER_NUMERATOR_CONSTANT    30.80722523f
+#define SPECULAR_POWER_COEFFICIENT_A         -1.0141946f
+#define SPECULAR_POWER_CONSTANT_COEFFICIENT  0.01451685f
+//#define SPECULAR_POWER_LOG_CONSTANT  (-2.f * log2(SPECULAR_POWER_NUMERATOR_CONSTANT))
+#define SPECULAR_POWER_LOG_CONSTANT -9.8903942108154297f
+static float reconstruct_specular_power_from_c3(uint32_t c3_parameter)
+{
+    float c3 = *(float*)&c3_parameter;
+
+    // FIXME: This handling is not correct, but is visually distinct without causing a crash.
+    // It does not appear possible for a DirectX-generated value to be positive, so while this differs from hardware
+    // behavior, it may be irrelevant in practice.
+    float invert = 1.f;
+    if (c3 > 0.0f) {
+        invert = -1.f;
+        c3 *= invert;
+    }
+
+    c3 -= SPECULAR_POWER_CONSTANT_COEFFICIENT;
+    float ret = SPECULAR_POWER_LOG_CONSTANT / log2(c3 / SPECULAR_POWER_COEFFICIENT_A);
+    assert(!isnan(ret) && "Failed to reconstruct specular power factor");
+    return ret * invert;
+}
+
+DEF_METHOD_INC(NV097, SET_SPECULAR_PARAMS)
+{
+    int slot = (method - NV097_SET_SPECULAR_PARAMS) / 4;
+    NV2A_DPRINTF("NV097_SET_SPECULAR_PARAMS[%d] 0x%X\n", slot, parameter);
+    if (slot == 3) {
+        pg->specular_power = reconstruct_specular_power_from_c3(parameter);
+    }
+}
+
 DEF_METHOD_INC(NV097, SET_SCENE_AMBIENT_COLOR)
 {
     int slot = (method - NV097_SET_SCENE_AMBIENT_COLOR) / 4;
@@ -2788,6 +2826,15 @@ DEF_METHOD_INC(NV097, SET_SPECULAR_FOG_FACTOR)
 {
     int slot = (method - NV097_SET_SPECULAR_FOG_FACTOR) / 4;
     pgraph_reg_w(pg, NV_PGRAPH_SPECFOGFACTOR0 + slot*4, parameter);
+}
+
+DEF_METHOD_INC(NV097, SET_SPECULAR_PARAMS_BACK)
+{
+    int slot = (method - NV097_SET_SPECULAR_PARAMS_BACK) / 4;
+    NV2A_DPRINTF("SET_SPECULAR_PARAMS_BACK[%d] 0x%X\n", slot, parameter);
+    if (slot == 3) {
+        pg->specular_power_back = reconstruct_specular_power_from_c3(parameter);
+    }
 }
 
 DEF_METHOD(NV097, SET_SHADER_CLIP_PLANE_MODE)
