@@ -1,0 +1,37 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '.github/**'
+      - '!.github/workflows/**'
+  pull_request:
+    paths-ignore:
+      - '.github/**'
+      - '!.github/workflows/**'
+      - 'README.md'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -yq libboost-test-dev
+      - name: Build
+        run: |
+          mkdir build
+          cmake -Bbuild -S.
+          cmake --build build/ --target all
+          ls build
+      - name: Test Operations
+        run: build/operations_tests
+      - name: Test Disassembler
+        run: build/disassembler_tests
+      - name: Test Emulator
+        run: build/emulator_tests
