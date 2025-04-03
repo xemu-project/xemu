@@ -809,6 +809,14 @@ static void create_pipeline(PGRAPHState *pg)
     } else {
         // FIXME: Handle in shader?
     }
+    
+    float lineWidth = 1.0f;
+    if(r->physical_device_features.wideLines == VK_TRUE)
+    {
+        lineWidth = MIN(r->device_props.limits.lineWidthRange[1], 
+                    MAX(r->device_props.limits.lineWidthRange[0],
+                        (float)pg->surface_scale_factor));
+    }
 
     VkPipelineRasterizationStateCreateInfo rasterizer = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
@@ -816,7 +824,7 @@ static void create_pipeline(PGRAPHState *pg)
         .rasterizerDiscardEnable = VK_FALSE,
         .polygonMode = pgraph_polygon_mode_vk_map[r->shader_binding->state
                                                       .polygon_front_mode],
-        .lineWidth = 1.0f,
+        .lineWidth = lineWidth,
         .frontFace = (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                       NV_PGRAPH_SETUPRASTER_FRONTFACE) ?
                          VK_FRONT_FACE_COUNTER_CLOCKWISE :
@@ -946,7 +954,7 @@ static void create_pipeline(PGRAPHState *pg)
     };
 
     VkDynamicState dynamic_states[2] = { VK_DYNAMIC_STATE_VIEWPORT,
-                                         VK_DYNAMIC_STATE_SCISSOR };
+                                        VK_DYNAMIC_STATE_SCISSOR };
 
     VkPipelineDynamicStateCreateInfo dynamic_state = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
