@@ -34,7 +34,6 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
     mstring_append_fmt(output, "#version %d\n\n", state->vulkan ? 450 : 400);
 
     MString *header = mstring_from_str("");
-    
     MString *uniforms = mstring_from_str("");
 
     const char *u = state->vulkan ? "" : "uniform "; // FIXME: Remove
@@ -243,9 +242,7 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
     /* Set outputs */
     mstring_append(body, "\n"
                    "  vtxD0 = clamp(oD0, 0.0, 1.0);\n"
-                   "  vtxD1 = clamp(oD1, 0.0, 1.0);\n"
                    "  vtxB0 = clamp(oB0, 0.0, 1.0);\n"
-                   "  vtxB1 = clamp(oB1, 0.0, 1.0);\n"
                    "  vtxFog = oFog.x;\n"
                    "  vtxT0 = oT0;\n"
                    "  vtxT1 = oT1;\n"
@@ -253,6 +250,18 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
                    "  vtxT3 = oT3;\n"
                    "  gl_PointSize = oPts.x;\n"
     );
+
+    if (state->specular_enable) {
+        mstring_append(body,
+                       "  vtxD1 = clamp(oD1, 0.0, 1.0);\n"
+                       "  vtxB1 = clamp(oB1, 0.0, 1.0);\n"
+        );
+    } else {
+        mstring_append(body,
+                       "  vtxD1 = vec4(0.0, 0.0, 0.0, 1.0);\n"
+                       "  vtxB1 = vec4(0.0, 0.0, 0.0, 1.0);\n"
+        );
+    }
 
     if (state->vulkan) {
         mstring_append(body,

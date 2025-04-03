@@ -19,7 +19,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "../nv2a_int.h"
+#include "hw/xbox/nv2a/nv2a_int.h"
 #include "ui/xemu-notifications.h"
 #include "ui/xemu-settings.h"
 #include "util.h"
@@ -431,7 +431,7 @@ unsigned int nv2a_get_surface_scale_factor(void)
 #define DEF_METHOD_CASE_4_OFFSET(gclass, name, offset, stride) /* Drop */
 #define DEF_METHOD_CASE_4(gclass, name, stride) \
     DEF_METHOD_PROTO(gclass, name);
-#include "methods.h"
+#include "methods.h.inc"
 #undef DEF_METHOD
 #undef DEF_METHOD_RANGE
 #undef DEF_METHOD_CASE_4_OFFSET
@@ -485,7 +485,7 @@ static const struct {
     },
 #define DEF_METHOD_CASE_4(gclass, name, stride) \
     DEF_METHOD_CASE_4_OFFSET(gclass, name, 0, stride)
-#include "methods.h"
+#include "methods.h.inc"
 #undef DEF_METHOD
 #undef DEF_METHOD_RANGE
 #undef DEF_METHOD_CASE_4_OFFSET
@@ -504,7 +504,7 @@ static const struct {
 #define DEF_METHOD_CASE_4(gclass, name, stride) \
     static const size_t METHOD_RANGE_END_NAME(gclass, name) = \
         METHOD_ADDR(gclass, name) + 4*stride;
-#include "methods.h"
+#include "methods.h.inc"
 #undef DEF_METHOD
 #undef DEF_METHOD_RANGE
 #undef DEF_METHOD_CASE_4_OFFSET
@@ -1617,6 +1617,11 @@ DEF_METHOD_INC(NV097, SET_MATERIAL_EMISSION)
 DEF_METHOD(NV097, SET_MATERIAL_ALPHA)
 {
     pg->material_alpha = *(float*)&parameter;
+}
+
+DEF_METHOD(NV097, SET_SPECULAR_ENABLE)
+{
+    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_SPECULAR_ENABLE, parameter);
 }
 
 DEF_METHOD(NV097, SET_LIGHT_ENABLE_MASK)
@@ -3022,4 +3027,3 @@ void pgraph_pre_shutdown_wait(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     pg->renderer->ops.pre_shutdown_wait(d);
 }
-
