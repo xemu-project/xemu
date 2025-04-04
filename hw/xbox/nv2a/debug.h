@@ -156,7 +156,9 @@ void nv2a_dbg_renderdoc_init(void);
 void *nv2a_dbg_renderdoc_get_api(void);
 bool nv2a_dbg_renderdoc_available(void);
 void nv2a_dbg_renderdoc_capture_frames(int num_frames);
+void nv2a_dbg_renderdoc_trace_frames(int num_frames);
 extern int renderdoc_capture_frames;
+extern int renderdoc_trace_frames;
 #endif
 
 #ifdef __cplusplus

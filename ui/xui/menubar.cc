@@ -89,6 +89,10 @@ void ProcessKeyboardShortcuts(void)
     if (ImGui::IsKeyPressed(ImGuiKey_F10) && nv2a_dbg_renderdoc_available()) {
         nv2a_dbg_renderdoc_capture_frames(1);
     }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_F11) && nv2a_dbg_renderdoc_available()) {
+        nv2a_dbg_renderdoc_trace_frames(1);
+    }
 #endif
 }
 

@@ -28,6 +28,8 @@
 #include <stdarg.h>
 #include <assert.h>
 
+#include "trace/control.h"
+
 #ifdef CONFIG_RENDERDOC
 #pragma GCC diagnostic ignored "-Wstrict-prototypes"
 #include "thirdparty/renderdoc_app.h"
@@ -257,6 +259,15 @@ void gl_debug_frame_terminator(void)
                             "Renderdoc EndFrameCapture triggered GL error 0x%X - ignoring\n",
                             error);
                 }
+
+                if (renderdoc_trace_frames > 0) {
+                    if (--renderdoc_trace_frames == 0) {
+                        trace_enable_events("-nv2a_pgraph_*");
+                    }
+                }
+            }
+            if (renderdoc_trace_frames > 0) {
+                trace_enable_events("nv2a_pgraph_*");
             }
             if (renderdoc_capture_frames > 0) {
                 rdoc_api->StartFrameCapture(NULL, NULL);
