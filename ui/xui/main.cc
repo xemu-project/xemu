@@ -218,7 +218,7 @@ void xemu_hud_render(void)
 
 #if defined(CONFIG_RENDERDOC)
     if (g_capture_renderdoc_frame) {
-        nv2a_dbg_renderdoc_capture_frames(1);
+        nv2a_dbg_renderdoc_capture_frames(1, false);
         g_capture_renderdoc_frame = false;
     }
 #endif
@@ -291,7 +291,7 @@ void xemu_hud_render(void)
                     !ImGui::IsAnyItemFocused() && !ImGui::IsAnyItemHovered())) {
             g_scene_mgr.PushScene(g_popup_menu);
         }
-        
+
         bool mod_key_down = ImGui::IsKeyDown(ImGuiKey_ModShift);
         for (int f_key = 0; f_key < 4; ++f_key) {
             if (ImGui::IsKeyPressed((enum ImGuiKey)(ImGuiKey_F5 + f_key))) {
