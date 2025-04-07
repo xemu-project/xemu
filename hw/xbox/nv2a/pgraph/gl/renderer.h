@@ -219,6 +219,7 @@ typedef struct PGRAPHGLState {
         GLuint display_size_loc;
         GLuint line_offset_loc;
         GLuint tex_loc;
+        GLuint vga_framebuffer_tex;
         GLuint pvideo_tex;
         GLint pvideo_enable_loc;
         GLint pvideo_tex_loc;
@@ -285,5 +286,7 @@ void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg);
 void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale);
 unsigned int pgraph_gl_get_surface_scale_factor(NV2AState *d);
 int pgraph_gl_get_framebuffer_surface(NV2AState *d);
+void pgraph_gl_download_overlapping_surfaces(NV2AState *d, hwaddr start, hwaddr end);
+void pgraph_gl_upload_vram_to_bound_texture(NV2AState *d, hwaddr vram_addr, bool swizzle, unsigned int surface_width, unsigned int surface_height, unsigned int pitch, size_t size, const SurfaceFormatInfo *fmt);
 
 #endif
