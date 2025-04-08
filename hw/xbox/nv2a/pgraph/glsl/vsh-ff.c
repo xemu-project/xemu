@@ -414,7 +414,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             mstring_append(body, "  float fogDistance = fogCoord;\n");
             break;
         default:
-            assert(false);
+            assert(!"Invalid foggen mode");
             break;
         }
 

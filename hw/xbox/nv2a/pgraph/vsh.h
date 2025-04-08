@@ -55,8 +55,6 @@ enum VshFoggen {
     FOGGEN_RADIAL,
     FOGGEN_PLANAR,
     FOGGEN_ABS_PLANAR,
-    FOGGEN_ERROR4,
-    FOGGEN_ERROR5,
     FOGGEN_FOG_X
 };
 
