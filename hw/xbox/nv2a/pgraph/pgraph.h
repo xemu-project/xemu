@@ -120,6 +120,8 @@ typedef struct PGRAPHRenderer {
         void (*surface_update)(NV2AState *d, bool upload, bool color_write, bool zeta_write);
         void (*set_surface_scale_factor)(NV2AState *d, unsigned int scale);
         unsigned int (*get_surface_scale_factor)(NV2AState *d);
+        void (*set_anisotropic_filter_level)(NV2AState *d, unsigned int level_po2);
+        unsigned int (*get_anisotropic_filter_level)(NV2AState *d);
         int (*get_framebuffer_surface)(NV2AState *d);
     } ops;
 } PGRAPHRenderer;
@@ -240,6 +242,9 @@ typedef struct PGRAPHState {
 
     unsigned int surface_scale_factor;
     uint8_t *scale_buf;
+
+    // Defined as a power of 2
+    unsigned int anisotropic_filter_level;
 
     const PGRAPHRenderer *renderer;
     union {
