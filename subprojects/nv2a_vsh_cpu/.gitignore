@@ -1,0 +1,17 @@
+*.c.d
+*.cpp.d
+*.obj
+*.iso
+*.lib
+*.exe
+*.xbe
+*.pdb
+
+.DS_Store
+.vscode/
+.vs/
+.idea/
+bin/
+__pycache__/
+build/
+cmake-build*/
