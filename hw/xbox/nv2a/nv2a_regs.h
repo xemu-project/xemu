@@ -315,11 +315,14 @@
 #define NV_PGRAPH_CSV0_C                                 0x00000FB8
 #   define NV_PGRAPH_CSV0_C_CHEOPS_PROGRAM_START                0x0000FF00
 #   define NV_PGRAPH_CSV0_C_SPECULAR_ENABLE                     (1 << 16)
+#   define NV_PGRAPH_CSV0_C_ALPHA_FROM_MATERIAL_SPECULAR        (1 << 17)
+#   define NV_PGRAPH_CSV0_C_SEPARATE_SPECULAR                   (1 << 18)
 #   define NV_PGRAPH_CSV0_C_SPECULAR                            (3 << 19)
 #   define NV_PGRAPH_CSV0_C_DIFFUSE                             (3 << 21)
 #   define NV_PGRAPH_CSV0_C_AMBIENT                             (3 << 23)
 #   define NV_PGRAPH_CSV0_C_EMISSION                            (3 << 25)
 #   define NV_PGRAPH_CSV0_C_NORMALIZATION_ENABLE                (1 << 27)
+#   define NV_PGRAPH_CSV0_C_LOCALEYE                            (1 << 30)
 #   define NV_PGRAPH_CSV0_C_LIGHTING                            (1 << 31)
 #define NV_PGRAPH_CSV1_B                                 0x00000FBC
 #define NV_PGRAPH_CSV1_A                                 0x00000FC0
@@ -882,6 +885,10 @@
 #       define NV097_SET_CONTROL0_STENCIL_WRITE_ENABLE            (1 << 0)
 #       define NV097_SET_CONTROL0_Z_FORMAT                        (1 << 12)
 #       define NV097_SET_CONTROL0_Z_PERSPECTIVE_ENABLE            (1 << 16)
+#   define NV097_SET_LIGHT_CONTROL                            0x00000294
+#       define NV097_SET_LIGHT_CONTROL_SEPARATE_SPECULAR          1
+#       define NV097_SET_LIGHT_CONTROL_LOCALEYE                   (1 << 16)
+#       define NV097_SET_LIGHT_CONTROL_ALPHA_FROM_MATERIAL_SPECULAR (1 << 17)
 #   define NV097_SET_COLOR_MATERIAL                           0x00000298
 #   define NV097_SET_FOG_MODE                                 0x0000029C
 #       define NV097_SET_FOG_MODE_V_LINEAR                        0x2601
@@ -1049,6 +1056,7 @@
 #       define NV097_SET_TEXGEN_VIEW_MODEL_LOCAL_VIEWER           0
 #       define NV097_SET_TEXGEN_VIEW_MODEL_INFINITE_VIEWER        1
 #   define NV097_SET_FOG_PLANE                                0x000009D0
+#   define NV097_SET_SPECULAR_PARAMS                          0x000009E0
 #   define NV097_SET_SCENE_AMBIENT_COLOR                      0x00000A10
 #   define NV097_SET_VIEWPORT_OFFSET                          0x00000A20
 #   define NV097_SET_POINT_PARAMS                             0x00000A30
@@ -1252,6 +1260,7 @@
 #   define NV097_SET_CLEAR_RECT_HORIZONTAL                    0x00001D98
 #   define NV097_SET_CLEAR_RECT_VERTICAL                      0x00001D9C
 #   define NV097_SET_SPECULAR_FOG_FACTOR                      0x00001E20
+#   define NV097_SET_SPECULAR_PARAMS_BACK                     0x00001E28
 #   define NV097_SET_COMBINER_COLOR_OCW                       0x00001E40
 #   define NV097_SET_COMBINER_CONTROL                         0x00001E60
 #   define NV097_SET_SHADOW_ZSLOPE_THRESHOLD                  0x00001E68

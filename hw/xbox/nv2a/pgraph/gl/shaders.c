@@ -193,8 +193,11 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     if (binding->state.fixed_function) {
         binding->material_alpha_loc =
             glGetUniformLocation(binding->gl_program, "material_alpha");
+        binding->specular_power_loc =
+            glGetUniformLocation(binding->gl_program, "specularPower");
     } else {
         binding->material_alpha_loc = -1;
+        binding->specular_power_loc = -1;
     }
 }
 
@@ -835,6 +838,10 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
                 glUniform3fv(loc, 1, pg->light_local_attenuation[i]);
             }
         }
+
+        if (binding->specular_power_loc != -1) {
+    	    glUniform1f(binding->specular_power_loc, pg->specular_power);
+	    }
 
         /* estimate the viewport by assuming it matches the surface ... */
         unsigned int aa_width = 1, aa_height = 1;
