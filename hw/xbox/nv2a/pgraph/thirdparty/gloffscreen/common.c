@@ -46,7 +46,9 @@ void glo_readpixels(GLenum gl_format, GLenum gl_type,
     glPixelStorei(GL_PACK_ROW_LENGTH, stride / bytes_per_pixel);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
 
-    glReadPixels(0, 0, width, height, gl_format, gl_type, data);
+    const size_t max_read_size = stride * height;
+    glReadnPixels(0, 0, width, height, gl_format, gl_type, max_read_size, data);
+    assert(glGetError() == GL_NO_ERROR);
 
     if (vflip) {
         GLubyte *b = (GLubyte *) data;
