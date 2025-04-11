@@ -298,7 +298,7 @@ static const SurfaceFormatInfo kelvin_surface_color_format_gl_map[] = {
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_B8] =
         {1, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_COLOR_ATTACHMENT0},
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_G8B8] =
-        {2, GL_RG8, GL_RG, GL_UNSIGNED_SHORT, GL_COLOR_ATTACHMENT0},
+        {2, GL_RG8, GL_RG, GL_UNSIGNED_BYTE, GL_COLOR_ATTACHMENT0},
 };
 
 static const SurfaceFormatInfo kelvin_surface_zeta_float_format_gl_map[] = {
