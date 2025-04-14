@@ -238,6 +238,8 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     } else {
         //FIXME: Do 2 passes if we want 2 sided-lighting?
 
+        mstring_append_fmt(uniforms, "%sfloat specularPower;\n", u);
+
         static char alpha_source_diffuse[] = "diffuse.a";
         static char alpha_source_specular[] = "specular.a";
         static char alpha_source_material[] = "material_alpha";
@@ -301,7 +303,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                     "    float nDotVP = max(0.0, dot(tNormal, VP));\n"
                     "    float nDotHV = max(0.0, dot(tNormal, halfVector));\n",
                     i, i, i, i, i,
-                    state->local_eye ? "VPeye" : "vec3(0.0, 0.0, -1.0)"
+                    state->local_eye ? "VPeye" : "vec3(0.0, 0.0, 0.0)"
                 );
             }
 
@@ -361,27 +363,15 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 "    if (nDotVP == 0.0) {\n"
                 "      pf = 0.0;\n"
                 "    } else {\n"
-                "      pf = pow(nDotHV, %f);\n"
+                "      pf = pow(nDotHV, specularPower);\n"
                 "    }\n"
                 "    vec3 lightAmbient = lightAmbientColor(%d) * attenuation;\n"
                 "    vec3 lightDiffuse = lightDiffuseColor(%d) * attenuation * nDotVP;\n"
                 "    vec3 lightSpecular = lightSpecularColor(%d) * attenuation * pf;\n",
-                state->specular_power, i, i, i);
+                i, i, i);
 
-            switch (state->ambient_src) {
-            case MATERIAL_COLOR_SRC_MATERIAL:
-                mstring_append(body,
-                               "    oD0.rgb += lightAmbient;\n");
-                break;
-            case MATERIAL_COLOR_SRC_DIFFUSE:
-                mstring_append(body,
-                               "    oD0.rgb += diffuse.rgb * lightAmbient;\n");
-                break;
-            case MATERIAL_COLOR_SRC_SPECULAR:
-                mstring_append(body,
-                               "    oD0.rgb += specular.rgb * lightAmbient;\n");
-                break;
-            }
+            mstring_append(body,
+                "    oD0.xyz += lightAmbient;\n");
 
             switch (state->diffuse_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
