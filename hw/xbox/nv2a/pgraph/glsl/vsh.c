@@ -143,7 +143,7 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
         "  if (!any(nans)) {\n"
         "    return src;\n"
         "  }\n"
-        "  return mix(src, sign(floatBitsToInt(src)), nans);\n"
+        "  return mix(src, vec4(1.0), nans);\n"
         "}\n");
 
     mstring_append(header, "\n");
