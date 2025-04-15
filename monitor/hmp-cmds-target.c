@@ -163,6 +163,37 @@ static char *parse_hex_string(const char *data_str, int *buffer_size) {
     return buffer;
 }
 
+
+#ifdef _WIN32
+void *memmem(const void *haystack, int haystack_size, const void *needle, int needle_size)
+{
+    unsigned char *search_array = (unsigned char *)haystack;
+    unsigned char *needle_array = (unsigned char *)needle;
+    int searchlen, start_index=0;
+
+    while (start_index <= haystack_size) {
+        unsigned char *search_region = &search_array[start_index];
+
+        if ((searchlen = haystack_size - start_index - needle_size + 1) <= 0) {
+            return NULL;
+        }
+
+        unsigned char *byte_match = memchr(search_region, *needle_array, searchlen);
+        if (!byte_match) {
+            return NULL;
+        }
+
+        if (!memcmp(byte_match, needle_array, needle_size)) {
+            return byte_match;
+        }
+
+        start_index += byte_match - search_region + 1;
+    }
+
+    return NULL;
+}
+#endif
+
 /* simple memory search for a byte sequence. The sequence is generated from
  * a numeric value to look for in guest memory, or from a string.
  */
