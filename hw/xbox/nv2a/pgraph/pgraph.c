@@ -2010,6 +2010,26 @@ DEF_METHOD_INC(NV097, SET_VERTEX4F)
     }
 }
 
+DEF_METHOD(NV097, SET_FOG_COORD)
+{
+    VertexAttribute *attribute = &pg->vertex_attributes[NV2A_VERTEX_ATTR_FOG];
+    pgraph_allocate_inline_buffer_vertices(pg, NV2A_VERTEX_ATTR_FOG);
+    attribute->inline_value[0] = *(float*)&parameter;
+    attribute->inline_value[1] = attribute->inline_value[0];
+    attribute->inline_value[2] = attribute->inline_value[0];
+    attribute->inline_value[3] = attribute->inline_value[0];
+}
+
+DEF_METHOD(NV097, SET_WEIGHT1F)
+{
+    VertexAttribute *attribute = &pg->vertex_attributes[NV2A_VERTEX_ATTR_WEIGHT];
+    pgraph_allocate_inline_buffer_vertices(pg, NV2A_VERTEX_ATTR_WEIGHT);
+    attribute->inline_value[0] = *(float*)&parameter;
+    attribute->inline_value[1] = 0.f;
+    attribute->inline_value[2] = 0.f;
+    attribute->inline_value[3] = 1.f;
+}
+
 DEF_METHOD_INC(NV097, SET_NORMAL3S)
 {
     int slot = (method - NV097_SET_NORMAL3S) / 4;
@@ -2144,7 +2164,6 @@ DEF_METHOD_INC(NV097, SET_TEXCOORD1_4F)
     SET_VERTEX_ATTRIBUTE_F(NV097_SET_TEXCOORD1_4F, NV2A_VERTEX_ATTR_TEXTURE1);
 }
 
-
 DEF_METHOD_INC(NV097, SET_TEXCOORD2_4F)
 {
     SET_VERTEX_ATTRIBUTE_F(NV097_SET_TEXCOORD2_4F, NV2A_VERTEX_ATTR_TEXTURE2);
@@ -2155,7 +2174,33 @@ DEF_METHOD_INC(NV097, SET_TEXCOORD3_4F)
     SET_VERTEX_ATTRIBUTE_F(NV097_SET_TEXCOORD3_4F, NV2A_VERTEX_ATTR_TEXTURE3);
 }
 
+DEF_METHOD_INC(NV097, SET_WEIGHT4F)
+{
+    SET_VERTEX_ATTRIBUTE_F(NV097_SET_WEIGHT4F, NV2A_VERTEX_ATTR_WEIGHT);
+}
+
 #undef SET_VERTEX_ATTRIBUTE_F
+
+DEF_METHOD_INC(NV097, SET_WEIGHT2F)
+{
+    int slot = (method - NV097_SET_WEIGHT2F) / 4;
+    VertexAttribute *attribute =
+        &pg->vertex_attributes[NV2A_VERTEX_ATTR_WEIGHT];
+    pgraph_allocate_inline_buffer_vertices(pg, NV2A_VERTEX_ATTR_WEIGHT);
+    attribute->inline_value[slot] = *(float*)&parameter;
+    attribute->inline_value[2] = 0.0f;
+    attribute->inline_value[3] = 1.0f;
+}
+
+DEF_METHOD_INC(NV097, SET_WEIGHT3F)
+{
+    int slot = (method - NV097_SET_WEIGHT3F) / 4;
+    VertexAttribute *attribute =
+        &pg->vertex_attributes[NV2A_VERTEX_ATTR_WEIGHT];
+    pgraph_allocate_inline_buffer_vertices(pg, NV2A_VERTEX_ATTR_WEIGHT);
+    attribute->inline_value[slot] = *(float*)&parameter;
+    attribute->inline_value[3] = 1.0f;
+}
 
 #define SET_VERTEX_ATRIBUTE_TEX_2F(command, attr_index)                    \
     do {                                                                   \
