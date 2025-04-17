@@ -313,6 +313,9 @@ static void update_shader_constant_locations(ShaderBinding *binding)
 
     binding->uniform_attrs_loc =
         uniform_index(&binding->vertex->uniforms, "inlineValue");
+
+    binding->specular_power_loc =
+        uniform_index(&binding->vertex->uniforms, "specularPower");
 }
 
 static void shader_cache_entry_init(Lru *lru, LruNode *node, void *state)
@@ -605,6 +608,11 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
                 uniform1fv(&binding->vertex->uniforms, loc, 3,
                                  pg->light_local_attenuation[i]);
             }
+        }
+
+        if (binding->specular_power_loc != -1) {
+            uniform1f(&binding->vertex->uniforms, binding->specular_power_loc,
+                      pg->specular_power);
         }
 
         /* estimate the viewport by assuming it matches the surface ... */
