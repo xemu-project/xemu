@@ -284,14 +284,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
 
             // Writeback any surfaces which this texture may index
             hwaddr tex_vram_end = texture_vram_offset + length - 1;
-            QTAILQ_FOREACH(surface, &r->surfaces, entry) {
-                hwaddr surf_vram_end = surface->vram_addr + surface->size - 1;
-                bool overlapping = !(surface->vram_addr >= tex_vram_end
-                                     || texture_vram_offset >= surf_vram_end);
-                if (overlapping) {
-                    pgraph_gl_surface_download_if_dirty(d, surface);
-                }
-            }
+            pgraph_gl_download_overlapping_surfaces(d, texture_vram_offset, tex_vram_end);
         }
 
         TextureKey key;
