@@ -1467,7 +1467,18 @@
 #define NV2A_NUM_SUBCHANNELS 8
 #define NV2A_CACHE1_SIZE 128
 
-#define NV2A_MAX_BATCH_LENGTH 0x1FFFF
+/* This is a multi-use limit. Testing on an Xbox 1.0, it is possible to send
+ * arrays of at least 0x0FFFFF elements without issue, however sending
+ * NV097_DRAW_ARRAYS with a start value > 0xFFFF raises an exception implying
+ * that there may be a vertex limit. Since xemu uses batch length for vertex
+ * elements in NV097_INLINE_ARRAY the size should ideally be high enough to
+ * accommodate 0xFFFF vertices with maximum attributes specified.
+ *
+ * Retail games are known to send at least 0x410FA elements in a single draw, so
+ * a somewhat larger value is selected to balance memory use with real-world
+ * limits.
+ */
+#define NV2A_MAX_BATCH_LENGTH 0x07FFFF
 #define NV2A_VERTEXSHADER_ATTRIBUTES 16
 #define NV2A_MAX_TEXTURES 4
 

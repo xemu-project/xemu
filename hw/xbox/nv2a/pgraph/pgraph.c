@@ -2692,7 +2692,11 @@ DEF_METHOD(NV097, DRAW_ARRAYS)
     int32_t count = GET_MASK(parameter, NV097_DRAW_ARRAYS_COUNT) + 1;
 
     if (pg->inline_elements_length) {
-        /* FIXME: Determine HW behavior for overflow case. */
+        /* FIXME: HW throws an exception if the start index is > 0xFFFF. This
+         * would prevent this assert from firing for any reasonable choice of
+         * NV2A_MAX_BATCH_LENGTH (which must be larger to accommodate
+         * NV097_INLINE_ARRAY anyway)
+         */
         assert((pg->inline_elements_length + count) < NV2A_MAX_BATCH_LENGTH);
         assert(!pg->draw_arrays_prevent_connect);
 
