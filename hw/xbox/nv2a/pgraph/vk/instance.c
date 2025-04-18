@@ -523,15 +523,15 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
     };
 
     // Ensure device supports required features
-    VkPhysicalDeviceFeatures available_features, enabled_features;
-    vkGetPhysicalDeviceFeatures(r->physical_device, &available_features);
+    VkPhysicalDeviceFeatures enabled_features;
+    vkGetPhysicalDeviceFeatures(r->physical_device, &r->physical_device_features);
     memset(&enabled_features, 0, sizeof(enabled_features));
 
     struct {
         const char *name;
         VkBool32 available, *enabled;
     } required_features[] = {
-        #define F(n) { #n, available_features.n, &enabled_features.n }
+        #define F(n) { #n, r->physical_device_features.n, &enabled_features.n }
         F(shaderClipDistance),
         F(geometryShader),
         F(shaderTessellationAndGeometryPointSize),
