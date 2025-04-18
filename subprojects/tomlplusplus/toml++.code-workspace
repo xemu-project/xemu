@@ -1,0 +1,22 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"type_traits": "cpp",
+			"concepts": "cpp",
+			"cstddef": "cpp",
+			"cstdint": "cpp",
+			"cstdlib": "cpp",
+			"initializer_list": "cpp",
+			"xstddef": "cpp",
+			"xtr1common": "cpp",
+			"version": "cpp",
+			"xstring": "cpp"
+		},
+		"explorer.sortOrder": "type"
+	}
+}
