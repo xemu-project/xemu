@@ -128,6 +128,23 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
             }
         }
     }
+
+    // It is unclear from the specifications whether sign(-nan) is guaranteed to
+    // return -1. Ideally we would use floatBitsToInt and check the sign, but
+    // that does not work on the Steam Deck w/ Windows AMD drivers.
+    mstring_append(header,
+        "/* Converts the input to vec4, pads with last component */\n"
+        "vec4 _in(float v) { return vec4(v); }\n"
+        "vec4 _in(vec2 v) { return v.xyyy; }\n"
+        "vec4 _in(vec3 v) { return v.xyzz; }\n"
+        "vec4 _in(vec4 v) { return v.xyzw; }\n"
+        "\n"
+        "#define FixNaNClamped(src, mask) _FixNaNClamped(_in(src)).mask\n"
+        "vec4 _FixNaNClamped(vec4 src)\n"
+        "{\n"
+        "  return mix(src, (sign(src) + 1.0) * 0.5, isnan(src));\n"
+        "}\n");
+
     mstring_append(header, "\n");
 
     MString *body = mstring_from_str("void main() {\n");
@@ -232,11 +249,11 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
             break;
         }
 
-        mstring_append(body, "  oFog.xyzw = vec4(fogFactor);\n");
+        mstring_append(body, "  oFog = FixNaNClamped(fogFactor, xyzw);\n");
     } else {
         /* FIXME: Is the fog still calculated / passed somehow?!
          */
-        mstring_append(body, "  oFog.xyzw = vec4(1.0);\n");
+        mstring_append(body, "  oFog = vec4(1.0);\n");
     }
 
     /* Set outputs */
