@@ -420,7 +420,7 @@ jobs:
       run: |
         cp dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release.zip dist/xemu-win-x86_64-release-pdb/xemu-win-release.zip
     - name: Publish release
-      uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
+      uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
       with:
         tag_name: v${{ env.XEMU_VERSION }}
         name: v${{ env.XEMU_VERSION }}
