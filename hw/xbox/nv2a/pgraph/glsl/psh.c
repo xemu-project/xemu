@@ -949,7 +949,7 @@ static MString* psh_convert(struct PixelShader *ps)
 
         switch (ps->tex_modes[i]) {
         case PS_TEXTUREMODES_NONE:
-            mstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_NONE */\n",
+            mstring_append_fmt(vars, "vec4 t%d = vec4(0.0, 0.0, 0.0, 1.0); /* PS_TEXTUREMODES_NONE */\n",
                                i);
             break;
         case PS_TEXTUREMODES_PROJECT2D: {
