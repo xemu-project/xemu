@@ -2,3 +2,6 @@
 url=https://github.com/KhronosGroup/glslang
 revision=vulkan-sdk-1.4.309.0
 depth=1
+
+[update]
+tag_regex = ^(vulkan-sdk-)?[\d\.]+$
