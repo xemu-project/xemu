@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/KhronosGroup/SPIRV-Reflect
-revision = vulkan-sdk-1.4.309.0
+revision = c637858562fbce1b6f5dc7ca48d4e8a5bd117b70
 depth = 1
 
 [update]
