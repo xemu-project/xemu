@@ -190,9 +190,10 @@ typedef struct ShaderBinding {
     int light_infinite_direction_loc[NV2A_MAX_LIGHTS];
     int light_local_position_loc[NV2A_MAX_LIGHTS];
     int light_local_attenuation_loc[NV2A_MAX_LIGHTS];
+    int specular_power_loc;
+    int point_params_loc;
 
     int clip_region_loc;
-
     int material_alpha_loc;
 
     int uniform_attrs_loc;

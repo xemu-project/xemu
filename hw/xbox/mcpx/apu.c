@@ -154,6 +154,14 @@ typedef struct MCPXAPUState {
     int16_t apu_fifo_output[256][2]; // 1 EP frame (0x400 bytes), 8 buffered
 } MCPXAPUState;
 
+static const struct {
+    hwaddr top, current, next;
+} voice_list_regs[] = {
+    { NV_PAPU_TVL2D, NV_PAPU_CVL2D, NV_PAPU_NVL2D }, // 2D
+    { NV_PAPU_TVL3D, NV_PAPU_CVL3D, NV_PAPU_NVL3D }, // 3D
+    { NV_PAPU_TVLMP, NV_PAPU_CVLMP, NV_PAPU_NVLMP }, // MP
+};
+
 static MCPXAPUState *g_state; // Used via debug handlers
 static struct McpxApuDebug g_dbg, g_dbg_cache;
 static int g_dbg_voice_monitor = -1;
@@ -2571,7 +2579,7 @@ const VMStateDescription vmstate_vp_dsp_core_state = {
         VMSTATE_UINT32(num_inst, dsp_core_t),
         VMSTATE_UINT32(cur_inst_len, dsp_core_t),
         VMSTATE_UINT32(cur_inst, dsp_core_t),
-        VMSTATE_BOOL(executing_for_disasm, dsp_core_t),
+        VMSTATE_UNUSED(1),
         VMSTATE_UINT32(disasm_memory_ptr, dsp_core_t),
         VMSTATE_BOOL(exception_debugging, dsp_core_t),
         VMSTATE_UINT32(disasm_prev_inst_pc, dsp_core_t),

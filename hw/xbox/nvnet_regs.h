@@ -68,6 +68,8 @@
 #ifndef HW_NVNET_REGS_H
 #define HW_NVNET_REGS_H
 
+// clang-format on
+
 #define DEV_NEED_LASTPACKET1 0x0001
 #define DEV_IRQMASK_1        0x0002
 #define DEV_IRQMASK_2        0x0004
@@ -290,5 +292,7 @@ enum {
 #define LPA_RFAULT   0x2000  /* Link partner faulted        */
 #define LPA_LPACK    0x4000  /* Link partner acked us       */
 #define LPA_NPAGE    0x8000  /* Next page bit               */
+
+// clang-format off
 
 #endif /* HW_NVNET_REGS_H */
