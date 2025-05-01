@@ -308,6 +308,9 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     binding->clip_region_loc =
         uniform_index(&binding->fragment->uniforms, "clipRegion");
 
+    binding->point_params_loc =
+        uniform_index(&binding->vertex->uniforms, "pointParams");
+
     binding->material_alpha_loc =
         uniform_index(&binding->vertex->uniforms, "material_alpha");
 
@@ -719,6 +722,11 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
     }
     uniform1iv(&binding->fragment->uniforms, binding->clip_region_loc,
                      8 * 4, (void *)clip_regions);
+
+    if (binding->point_params_loc != -1) {
+        uniform1iv(&binding->vertex->uniforms, binding->point_params_loc,
+                   ARRAY_SIZE(pg->point_params), (void *)pg->point_params);
+    }
 
     if (binding->material_alpha_loc != -1) {
         uniform1f(&binding->vertex->uniforms, binding->material_alpha_loc,

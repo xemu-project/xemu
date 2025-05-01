@@ -126,6 +126,7 @@ typedef struct ShaderBinding {
 
     GLint clip_region_loc[8];
 
+    GLint point_params_loc[8];
     GLint material_alpha_loc;
 } ShaderBinding;
 

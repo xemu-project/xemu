@@ -190,6 +190,11 @@ static void update_shader_constant_locations(ShaderBinding *binding)
         binding->clip_region_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
     }
 
+    for (int i = 0; i < 8; ++i) {
+        snprintf(tmp, sizeof(tmp), "pointParams[%d]", i);
+        binding->point_params_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+    }
+
     if (binding->state.fixed_function) {
         binding->material_alpha_loc =
             glGetUniformLocation(binding->gl_program, "material_alpha");
@@ -948,6 +953,13 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
 
         glUniform4i(r->shader_binding->clip_region_loc[i],
                     x_min, y_min_xlat, x_max, y_max_xlat);
+    }
+
+    for (i = 0; i < 8; ++i) {
+        GLint loc = binding->point_params_loc[i];
+        if (loc != -1) {
+            glUniform1f(loc, pg->point_params[i]);
+        }
     }
 
     if (binding->material_alpha_loc != -1) {

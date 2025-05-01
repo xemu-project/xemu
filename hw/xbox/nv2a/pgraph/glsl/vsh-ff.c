@@ -482,14 +482,12 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
     /* FIXME: Testing */
     if (state->point_params_enable) {
-        mstring_append_fmt(
+        mstring_append_fmt(uniforms, "%sfloat pointParams[8];\n", u);
+        mstring_append(
             body,
             "  float d_e = length(position * modelViewMat0);\n"
-            "  oPts.x = 1/sqrt(%f + %f*d_e + %f*d_e*d_e) + %f;\n",
-            state->point_params[0], state->point_params[1], state->point_params[2],
-            state->point_params[6]);
-        mstring_append_fmt(body, "  oPts.x = min(oPts.x*%f + %f, 64.0) * %d;\n",
-                           state->point_params[3], state->point_params[7],
+            "  oPts.x = 1/sqrt(pointParams[0] + pointParams[1] * d_e + pointParams[2] * d_e * d_e) + pointParams[6];\n");
+        mstring_append_fmt(body, "  oPts.x = min(oPts.x * pointParams[3] + pointParams[7], 64.0) * %d;\n",
                            state->surface_scale_factor);
     } else {
         mstring_append_fmt(body, "  oPts.x = %f * %d;\n", state->point_size,
