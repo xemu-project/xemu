@@ -1,0 +1,47 @@
+name: Code formatting check
+
+on:
+  pull_request:
+
+# Cancel previous runs if a more recent commit is pushed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+permissions: read-all
+
+jobs:
+  clang-format-check:
+    name: clang-format
+    runs-on: "ubuntu-20.04"
+    steps:
+      - name: Setup clang-format
+        run: |
+          sudo apt-get install -yqq clang-format-12
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: '0'
+      - name: Switch to pull request branch
+        run: |
+          git checkout ${GITHUB_SHA}
+      - name: Run clang-format
+        run: |
+          git diff origin/${{ github.base_ref }} -U0 --no-color -- '**/*.cpp' '**/*.cc' '**/*.h' '**/*.hh' '**/*.hpp' \
+            | clang-format-diff-12 -p1 >not-formatted.diff 2>&1
+      - name: Check formatting
+        run: |
+          if ! grep -q '[^[:space:]]' not-formatted.diff ; then
+            echo "Code is formatted."
+          else
+            echo "Code is not formatted."
+            echo "Run clang-format-diff on your changes:"
+            echo "    git diff origin/${{ github.base_ref }} -U0 --no-color | clang-format-diff -p1 -i"
+            echo ""
+            echo "You can disable clang-format for specific code blocks. Follow https://clang.llvm.org/docs/ClangFormatStyleOptions.html#disabling-formatting-on-a-piece-of-code."
+            echo ""
+            echo "Diff:"
+            cat not-formatted.diff
+            echo ""
+            exit 3
+          fi

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Terminal=false
+Exec=xemu
+Name=xemu
+Comment=Emulator for the original Xbox console
+Icon=xemu
+Categories=Game;Emulator;
