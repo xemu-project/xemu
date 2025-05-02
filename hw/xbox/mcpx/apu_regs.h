@@ -22,6 +22,8 @@
 #ifndef MCPX_APU_REGS_H
 #define MCPX_APU_REGS_H
 
+// clang-format off
+
 #define NV_PAPU_ISTS                                     0x00001000
 #   define NV_PAPU_ISTS_GINTSTS                               (1 << 0)
 #   define NV_PAPU_ISTS_FETINTSTS                             (1 << 4)
@@ -121,15 +123,6 @@
 #define NV_PAPU_EPYMEM                                   0x00006000
 #define NV_PAPU_EPPMEM                                   0x0000A000
 #define NV_PAPU_EPRST                                    0x0000FFFC
-
-static const struct {
-    hwaddr top, current, next;
-} voice_list_regs[] = {
-    {NV_PAPU_TVL2D, NV_PAPU_CVL2D, NV_PAPU_NVL2D}, //2D
-    {NV_PAPU_TVL3D, NV_PAPU_CVL3D, NV_PAPU_NVL3D}, //3D
-    {NV_PAPU_TVLMP, NV_PAPU_CVLMP, NV_PAPU_NVLMP}, //MP
-};
-
 
 /* audio processor object / front-end messages */
 #define NV1BA0_PIO_FREE                                  0x00000010
@@ -342,5 +335,7 @@ enum MCPX_HW_NOTIFIER {
 };
 #define NV1BA0_NOTIFICATION_STATUS_DONE_SUCCESS       0x01
 #define NV1BA0_NOTIFICATION_STATUS_IN_PROGRESS        0x80
+
+// clang-format on
 
 #endif

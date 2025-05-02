@@ -79,10 +79,17 @@ typedef struct ShaderState {
     enum MaterialColorSource diffuse_src;
     enum MaterialColorSource specular_src;
 
+    bool separate_specular;
+    bool ignore_specular_alpha;
+    bool local_eye;
+    float specular_power;
+    float specular_power_back;
+
     bool lighting;
     enum VshLight light[NV2A_MAX_LIGHTS];
 
     bool fixed_function;
+    bool specular_enable;
 
     /* vertex program */
     bool vertex_program;

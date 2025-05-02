@@ -32,6 +32,8 @@
         (v) |= ((__val) << ctz32(__mask)) & (__mask);     \
     })
 
+// clang-format off
+
 #define NV_NUM_BLOCKS 21
 #define NV_PMC          0   /* card master control */
 #define NV_PBUS         1   /* bus control */
@@ -312,11 +314,15 @@
 #       define NV_PGRAPH_CSV0_D_SKIN_4                              6
 #define NV_PGRAPH_CSV0_C                                 0x00000FB8
 #   define NV_PGRAPH_CSV0_C_CHEOPS_PROGRAM_START                0x0000FF00
+#   define NV_PGRAPH_CSV0_C_SPECULAR_ENABLE                     (1 << 16)
+#   define NV_PGRAPH_CSV0_C_ALPHA_FROM_MATERIAL_SPECULAR        (1 << 17)
+#   define NV_PGRAPH_CSV0_C_SEPARATE_SPECULAR                   (1 << 18)
 #   define NV_PGRAPH_CSV0_C_SPECULAR                            (3 << 19)
 #   define NV_PGRAPH_CSV0_C_DIFFUSE                             (3 << 21)
 #   define NV_PGRAPH_CSV0_C_AMBIENT                             (3 << 23)
 #   define NV_PGRAPH_CSV0_C_EMISSION                            (3 << 25)
 #   define NV_PGRAPH_CSV0_C_NORMALIZATION_ENABLE                (1 << 27)
+#   define NV_PGRAPH_CSV0_C_LOCALEYE                            (1 << 30)
 #   define NV_PGRAPH_CSV0_C_LIGHTING                            (1 << 31)
 #define NV_PGRAPH_CSV1_B                                 0x00000FBC
 #define NV_PGRAPH_CSV1_A                                 0x00000FC0
@@ -879,6 +885,10 @@
 #       define NV097_SET_CONTROL0_STENCIL_WRITE_ENABLE            (1 << 0)
 #       define NV097_SET_CONTROL0_Z_FORMAT                        (1 << 12)
 #       define NV097_SET_CONTROL0_Z_PERSPECTIVE_ENABLE            (1 << 16)
+#   define NV097_SET_LIGHT_CONTROL                            0x00000294
+#       define NV097_SET_LIGHT_CONTROL_SEPARATE_SPECULAR          1
+#       define NV097_SET_LIGHT_CONTROL_LOCALEYE                   (1 << 16)
+#       define NV097_SET_LIGHT_CONTROL_ALPHA_FROM_MATERIAL_SPECULAR (1 << 17)
 #   define NV097_SET_COLOR_MATERIAL                           0x00000298
 #   define NV097_SET_FOG_MODE                                 0x0000029C
 #       define NV097_SET_FOG_MODE_V_LINEAR                        0x2601
@@ -1013,6 +1023,7 @@
 #   define NV097_SET_NORMALIZATION_ENABLE                     0x000003A4
 #   define NV097_SET_MATERIAL_EMISSION                        0x000003A8
 #   define NV097_SET_MATERIAL_ALPHA                           0x000003B4
+#   define NV097_SET_SPECULAR_ENABLE                          0x000003B8
 #   define NV097_SET_LIGHT_ENABLE_MASK                        0x000003BC
 #           define NV097_SET_LIGHT_ENABLE_MASK_LIGHT0_OFF           0
 #           define NV097_SET_LIGHT_ENABLE_MASK_LIGHT0_INFINITE      1
@@ -1045,6 +1056,7 @@
 #       define NV097_SET_TEXGEN_VIEW_MODEL_LOCAL_VIEWER           0
 #       define NV097_SET_TEXGEN_VIEW_MODEL_INFINITE_VIEWER        1
 #   define NV097_SET_FOG_PLANE                                0x000009D0
+#   define NV097_SET_SPECULAR_PARAMS                          0x000009E0
 #   define NV097_SET_SCENE_AMBIENT_COLOR                      0x00000A10
 #   define NV097_SET_VIEWPORT_OFFSET                          0x00000A20
 #   define NV097_SET_POINT_PARAMS                             0x00000A30
@@ -1095,6 +1107,11 @@
 #   define NV097_SET_TEXCOORD3_4F                             0x00001620
 #   define NV097_SET_TEXCOORD3_2S                             0x00001610
 #   define NV097_SET_TEXCOORD3_4S                             0x00001630
+#   define NV097_SET_FOG_COORD                                0x00001698
+#   define NV097_SET_WEIGHT1F                                 0x0000169C
+#   define NV097_SET_WEIGHT2F                                 0x000016A0
+#   define NV097_SET_WEIGHT3F                                 0x000016B0
+#   define NV097_SET_WEIGHT4F                                 0x000016C0
 #   define NV097_SET_VERTEX_DATA_ARRAY_OFFSET                 0x00001720
 #   define NV097_SET_VERTEX_DATA_ARRAY_FORMAT                 0x00001760
 #       define NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE            0x0000000F
@@ -1248,6 +1265,7 @@
 #   define NV097_SET_CLEAR_RECT_HORIZONTAL                    0x00001D98
 #   define NV097_SET_CLEAR_RECT_VERTICAL                      0x00001D9C
 #   define NV097_SET_SPECULAR_FOG_FACTOR                      0x00001E20
+#   define NV097_SET_SPECULAR_PARAMS_BACK                     0x00001E28
 #   define NV097_SET_COMBINER_COLOR_OCW                       0x00001E40
 #   define NV097_SET_COMBINER_CONTROL                         0x00001E60
 #   define NV097_SET_SHADOW_ZSLOPE_THRESHOLD                  0x00001E68
@@ -1449,7 +1467,22 @@
 #define NV2A_NUM_SUBCHANNELS 8
 #define NV2A_CACHE1_SIZE 128
 
-#define NV2A_MAX_BATCH_LENGTH 0x1FFFF
+/* This is a multi-use limit. Testing on an Xbox 1.0, it is possible to send
+ * arrays of at least 0x0FFFFF elements without issue, however sending
+ * NV097_DRAW_ARRAYS with a start value > 0xFFFF raises an exception implying
+ * that there may be a vertex limit. Since xemu uses batch length for vertex
+ * elements in NV097_INLINE_ARRAY the size should ideally be high enough to
+ * accommodate 0xFFFF vertices with maximum attributes specified.
+ *
+ * Retail games are known to send at least 0x410FA elements in a single draw, so
+ * a somewhat larger value is selected to balance memory use with real-world
+ * limits.
+ *
+ * NV2A_MAX_BATCH_LENGTH_V2 is the previous limit, for migration.
+ * FIXME: Remove NV2A_MAX_BATCH_LENGTH_V2 at some point in the future.
+ */
+#define NV2A_MAX_BATCH_LENGTH 0x07FFFF
+#define NV2A_MAX_BATCH_LENGTH_V2 0x1FFFF
 #define NV2A_VERTEXSHADER_ATTRIBUTES 16
 #define NV2A_MAX_TEXTURES 4
 
@@ -1462,5 +1495,7 @@
 #define NV2A_LTC1_COUNT    20
 
 #define NV2A_CUBEMAP_FACE_ALIGNMENT 128
+
+// clang-format on
 
 #endif

@@ -1,0 +1,74 @@
+name: Bump Meson subprojects
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump_wraps:
+    name: "Bump Meson subprojects"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@c7f87aa956e4c323abf06d5dec078e358f6b4d04 # v6
+        with:
+          enable-cache: false
+
+      - name: Check for updates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          uv run -s scripts/bump-subproject-wraps.py -m \
+              subprojects/curl.wrap \
+              subprojects/genconfig.wrap \
+              subprojects/glslang.wrap \
+              subprojects/imgui.wrap \
+              subprojects/implot.wrap \
+              subprojects/json.wrap \
+              subprojects/nv2a_vsh_cpu.wrap \
+              subprojects/SPIRV-Reflect.wrap \
+              subprojects/tomlplusplus.wrap \
+              subprojects/volk.wrap \
+              subprojects/VulkanMemoryAllocator.wrap \
+              subprojects/xxhash.wrap \
+            > updated.json
+
+      - name: Create PRs for updates
+        env:
+          GH_TOKEN: ${{ secrets.XEMU_ROBOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name  "xemu-robot"
+          git config user.email "robot@xemu.app"
+
+          jq -c '.[]' updated.json | while read -r item; do
+            path=$(echo "$item" | jq -r '.path')
+            file_basename=$(basename "$path")
+            name="${file_basename%%.*}"
+
+            owner=$(echo "$item" | jq -r '.owner')
+            repo=$(echo "$item" | jq -r '.repo')
+            old_rev=$(echo "$item" | jq -r '.old_rev')
+            new_rev=$(echo "$item" | jq -r '.new_rev')
+            new_tag=$(echo "$item" | jq -r '.new_tag')
+
+            echo "➤ Processing $name"
+            branch="sync/bump-${name//\//-}-${GITHUB_RUN_ID}"
+
+            git switch --quiet -c "$branch" origin/master
+            git add "$path"
+            git commit -m "meson: Bump ${name} to ${new_tag}"
+            git push -u origin "$branch"
+
+            gh pr create \
+              --title "meson: Bump ${name} to ${new_tag}" \
+              --body  "Automatic bump of \`${name}\` to [${new_tag}](https://github.com/${owner}/${repo}/compare/${old_rev}..${new_rev})." \
+              --base  master
+          done
