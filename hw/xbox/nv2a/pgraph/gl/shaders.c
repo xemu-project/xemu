@@ -31,10 +31,6 @@
 
 static GLenum get_gl_primitive_mode(enum ShaderPolygonMode polygon_mode, enum ShaderPrimitiveMode primitive_mode)
 {
-    if (polygon_mode == POLY_MODE_POINT) {
-        return GL_POINTS;
-    }
-
     switch (primitive_mode) {
     case PRIM_TYPE_POINTS: return GL_POINTS;
     case PRIM_TYPE_LINES: return GL_LINES;
@@ -704,6 +700,9 @@ static void apply_uniform_updates(const UniformInfo *info, int *locs,
             break;
         case UniformElementType_int:
             glUniform1iv(locs[i], info[i].count, value);
+            break;
+        case UniformElementType_ivec2:
+            glUniform2iv(locs[i], info[i].count, value);
             break;
         case UniformElementType_ivec4:
             glUniform4iv(locs[i], info[i].count, value);
