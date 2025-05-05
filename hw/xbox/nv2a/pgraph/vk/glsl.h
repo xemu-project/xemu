@@ -196,6 +196,13 @@ void uniform1i(ShaderUniformLayout *layout, int idx, int32_t value)
 }
 
 static inline
+void uniform2i(ShaderUniformLayout *layout, int idx, int v0, int v1)
+{
+	int values[] = { v0, v1 };
+	uniform1iv(layout, idx, 2, values);
+}
+
+static inline
 void uniform4i(ShaderUniformLayout *layout, int idx, int v0, int v1, int v2, int v3)
 {
 	int values[] = { v0, v1, v2, v3 };

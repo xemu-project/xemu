@@ -274,12 +274,16 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     binding->vsh_constant_loc = uniform_index(&binding->vertex->uniforms, "c");
     binding->surface_size_loc =
         uniform_index(&binding->vertex->uniforms, "surfaceSize");
+    binding->surface_scale_loc =
+        uniform_index(&binding->fragment->uniforms, "surfaceScale");
     binding->clip_range_loc =
         uniform_index(&binding->vertex->uniforms, "clipRange");
     binding->clip_range_floc =
         uniform_index(&binding->fragment->uniforms, "clipRange");
     binding->depth_offset_loc =
         uniform_index(&binding->fragment->uniforms, "depthOffset");
+    binding->depth_factor_loc =
+        uniform_index(&binding->fragment->uniforms, "depthFactor");
     binding->fog_param_loc =
         uniform_index(&binding->vertex->uniforms, "fogParam");
 
@@ -398,9 +402,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
         /* Ensure numeric values are printed with '.' radix, no grouping */
         setlocale(LC_NUMERIC, "C");
 
-        MString *geometry_shader_code = pgraph_gen_geom_glsl(
-            state->polygon_front_mode, state->polygon_back_mode,
-            state->primitive_mode, state->smooth_shading, true);
+        MString *geometry_shader_code = pgraph_gen_geom_glsl(state);
         if (geometry_shader_code) {
             NV2A_VK_DPRINTF("geometry shader: \n%s",
                             mstring_get_str(geometry_shader_code));
@@ -629,6 +631,14 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
                          pg->surface_binding_dim.height / aa_height);
     }
 
+    if (binding->surface_scale_loc != -1) {
+        unsigned int wscale = 1, hscale = 1;
+        pgraph_apply_anti_aliasing_factor(pg, &wscale, &hscale);
+        pgraph_apply_scaling_factor(pg, &wscale, &hscale);
+        uniform2i(&binding->fragment->uniforms, binding->surface_scale_loc,
+                  wscale, hscale);
+    }
+
     if (binding->clip_range_loc != -1 || binding->clip_range_floc != -1) {
         uint32_t v[2];
         v[0] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
@@ -646,30 +656,54 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         }
     }
 
+    bool polygon_offset_enabled = false;
+    if (pg->primitive_mode >= PRIM_TYPE_TRIANGLES) {
+        uint32_t raster = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER);
+        uint32_t polygon_mode =
+            GET_MASK(raster, NV_PGRAPH_SETUPRASTER_FRONTFACEMODE);
+
+        if ((polygon_mode == NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_FILL &&
+             (raster & NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE)) ||
+            (polygon_mode == NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_LINE &&
+             (raster & NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE)) ||
+            (polygon_mode == NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_POINT &&
+             (raster & NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE))) {
+            polygon_offset_enabled = true;
+        }
+    }
+
     if (binding->depth_offset_loc != -1) {
         float zbias = 0.0f;
 
-        if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
+        if (polygon_offset_enabled) {
             uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
             zbias = *(float *)&zbias_u32;
-
-            if (pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR) != 0 &&
-                (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
-                 NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE)) {
-                /* TODO: emulate zfactor when z_perspective true, i.e.
-                 * w-buffering. Perhaps calculate an additional offset based on
-                 * triangle orientation in geometry shader and pass the result
-                 * to fragment shader and add it to gl_FragDepth as well.
-                 */
-                NV2A_UNIMPLEMENTED("NV_PGRAPH_ZOFFSETFACTOR for w-buffering");
-            }
         }
 
         uniform1f(&binding->fragment->uniforms, binding->depth_offset_loc,
                   zbias);
+    }
+
+    if (binding->depth_factor_loc != -1) {
+        float zfactor = 0.0f;
+
+        if (polygon_offset_enabled) {
+            uint32_t zfactor_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR);
+            zfactor = *(float *)&zfactor_u32;
+            if (zfactor != 0.0f &&
+                (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                 NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE)) {
+                /* FIXME: for w-buffering, polygon slope in screen-space is
+                 * computed per-pixel, but Xbox appears to use constant that
+                 * is the polygon slope at the first visible pixel in top-left
+                 * order.
+                 */
+                NV2A_UNIMPLEMENTED("NV_PGRAPH_ZOFFSETFACTOR only partially implemented for w-buffering");
+            }
+        }
+
+        uniform1f(&binding->fragment->uniforms, binding->depth_factor_loc,
+                  zfactor);
     }
 
     /* Clipping regions */
@@ -767,7 +801,8 @@ static bool check_shaders_dirty(PGRAPHState *pg)
         pg->swizzle_attrs != state->swizzle_attrs ||
         pg->compressed_attrs != state->compressed_attrs ||
         pg->primitive_mode != state->primitive_mode ||
-        pg->surface_scale_factor != state->surface_scale_factor) {
+        pg->surface_scale_factor != state->surface_scale_factor ||
+        pg->surface_shape.zeta_format != state->surface_zeta_format) {
         return true;
     }
 

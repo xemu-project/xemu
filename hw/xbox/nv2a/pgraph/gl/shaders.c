@@ -36,10 +36,6 @@
 
 static GLenum get_gl_primitive_mode(enum ShaderPolygonMode polygon_mode, enum ShaderPrimitiveMode primitive_mode)
 {
-    if (polygon_mode == POLY_MODE_POINT) {
-        return GL_POINTS;
-    }
-
     switch (primitive_mode) {
     case PRIM_TYPE_POINTS: return GL_POINTS;
     case PRIM_TYPE_LINES: return GL_LINES;
@@ -153,8 +149,10 @@ static void update_shader_constant_locations(ShaderBinding *binding)
         binding->vsh_constant_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
     }
     binding->surface_size_loc = glGetUniformLocation(binding->gl_program, "surfaceSize");
+    binding->surface_scale_loc = glGetUniformLocation(binding->gl_program, "surfaceScale");
     binding->clip_range_loc = glGetUniformLocation(binding->gl_program, "clipRange");
     binding->depth_offset_loc = glGetUniformLocation(binding->gl_program, "depthOffset");
+    binding->depth_factor_loc = glGetUniformLocation(binding->gl_program, "depthFactor");
     binding->fog_color_loc = glGetUniformLocation(binding->gl_program, "fogColor");
     binding->fog_param_loc = glGetUniformLocation(binding->gl_program, "fogParam");
 
@@ -221,12 +219,7 @@ static void generate_shaders(ShaderBinding *binding)
     /* Create an optional geometry shader and find primitive type */
     GLenum gl_primitive_mode =
         get_gl_primitive_mode(state->polygon_front_mode, state->primitive_mode);
-    MString* geometry_shader_code =
-        pgraph_gen_geom_glsl(state->polygon_front_mode,
-                                 state->polygon_back_mode,
-                                 state->primitive_mode,
-                                 state->smooth_shading,
-                                 false);
+    MString* geometry_shader_code = pgraph_gen_geom_glsl(state);
     if (geometry_shader_code) {
         const char* geometry_shader_code_str =
              mstring_get_str(geometry_shader_code);
@@ -872,6 +865,13 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
                     pg->surface_binding_dim.height / aa_height);
     }
 
+    if (binding->surface_scale_loc != -1) {
+        unsigned int wscale = 1, hscale = 1;
+        pgraph_apply_anti_aliasing_factor(pg, &wscale, &hscale);
+        pgraph_apply_scaling_factor(pg, &wscale, &hscale);
+        glUniform2i(binding->surface_scale_loc, wscale, hscale);
+    }
+
     if (binding->clip_range_loc != -1) {
         uint32_t v[2];
         v[0] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
@@ -881,29 +881,52 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         glUniform4f(binding->clip_range_loc, 0, zmax, zclip_min, zclip_max);
     }
 
+    bool polygon_offset_enabled = false;
+    if (pg->primitive_mode >= PRIM_TYPE_TRIANGLES) {
+        uint32_t raster = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER);
+        uint32_t polygon_mode =
+            GET_MASK(raster, NV_PGRAPH_SETUPRASTER_FRONTFACEMODE);
+
+        if ((polygon_mode == NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_FILL &&
+             (raster & NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE)) ||
+            (polygon_mode == NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_LINE &&
+             (raster & NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE)) ||
+            (polygon_mode == NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_POINT &&
+             (raster & NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE))) {
+            polygon_offset_enabled = true;
+        }
+    }
+
     if (binding->depth_offset_loc != -1) {
         float zbias = 0.0f;
 
-        if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
+        if (polygon_offset_enabled) {
             uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
             zbias = *(float *)&zbias_u32;
-
-            if (pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR) != 0 &&
-                (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
-                 NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE)) {
-                /* TODO: emulate zfactor when z_perspective true, i.e.
-                 * w-buffering. Perhaps calculate an additional offset based on
-                 * triangle orientation in geometry shader and pass the result
-                 * to fragment shader and add it to gl_FragDepth as well.
-                 */
-                NV2A_UNIMPLEMENTED("NV_PGRAPH_ZOFFSETFACTOR for w-buffering");
-            }
         }
 
         glUniform1f(binding->depth_offset_loc, zbias);
+    }
+
+    if (binding->depth_factor_loc != -1) {
+        float zfactor = 0.0f;
+
+        if (polygon_offset_enabled) {
+            uint32_t zfactor_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR);
+            zfactor = *(float *)&zfactor_u32;
+            if (zfactor != 0.0f &&
+                (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                 NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE)) {
+                /* FIXME: for w-buffering, polygon slope in screen-space is
+                 * computed per-pixel, but Xbox appears to use constant that
+                 * is the polygon slope at the first visible pixel in top-left
+                 * order.
+                 */
+                NV2A_UNIMPLEMENTED("NV_PGRAPH_ZOFFSETFACTOR only partially implemented for w-buffering");
+            }
+        }
+
+        glUniform1f(binding->depth_factor_loc, zfactor);
     }
 
     /* Clipping regions */
@@ -989,6 +1012,7 @@ static bool test_shaders_dirty(PGRAPHState *pg)
         CR_8(NV_PGRAPH_WINDOWCLIPY0) \
         CF(pg->primitive_mode, primitive_mode) \
         CF(pg->surface_scale_factor, surface_scale_factor) \
+        CF(pg->surface_shape.zeta_format, surface_shape_zeta_format) \
         CF(pg->compressed_attrs, compressed_attrs) \
         CFA(pg->texture_matrix_enable, texture_matrix_enable)
 

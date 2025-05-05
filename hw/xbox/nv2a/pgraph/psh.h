@@ -51,6 +51,13 @@ enum ConvolutionFilter {
     CONVOLUTION_FILTER_GAUSSIAN,
 };
 
+enum PshDepthFormat {
+    DEPTH_FORMAT_D24,
+    DEPTH_FORMAT_D16,
+    DEPTH_FORMAT_F24,
+    DEPTH_FORMAT_F16,
+};
+
 typedef struct PshState {
     bool vulkan;
 
@@ -87,6 +94,8 @@ typedef struct PshState {
     bool smooth_shading;
     bool depth_clipping;
     bool z_perspective;
+
+    enum PshDepthFormat depth_format;
 } PshState;
 
 #endif

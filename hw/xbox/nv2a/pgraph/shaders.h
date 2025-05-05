@@ -57,6 +57,7 @@ typedef struct ShaderState {
     bool vulkan;
     bool use_push_constants_for_uniform_attrs;
     unsigned int surface_scale_factor;
+    unsigned int surface_zeta_format;
 
     PshState psh;
     uint16_t compressed_attrs;
