@@ -85,6 +85,13 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
         "\n"
         "vec4 NaNToOne(vec4 src) {\n"
         "  return mix(src, vec4(1.0), isnan(src));\n"
+        "}\n"
+        "\n"
+        // Xbox NV2A rasterizer appears to have 4 bit precision fixed-point
+        // fractional part and to convert floating-point coordinates by
+        // by truncating (not flooring).
+        "vec2 roundScreenCoords(vec2 pos) {\n"
+        "  return trunc(pos * 16.0f) / 16.0f;\n"
         "}\n");
 
     pgraph_get_glsl_vtx_header(header, state->vulkan, state->smooth_shading,
