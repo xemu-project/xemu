@@ -822,11 +822,9 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
 
     mstring_append(body,
         /* The shaders leave the result in screen space, while OpenGL expects it
-         * in clip space. Xbox NV2A rasterizer appears to have 4 bit precision
-         * fixed point fractional part and to convert floating point coordinates
-         * by flooring.
+         * in clip space.
          */
-        "  oPos.xy = floor(oPos.xy * 16.0f) / 16.0f;\n"
+        "  oPos.xy = roundScreenCoords(oPos.xy);\n"
         "  oPos.xy = (2.0f * oPos.xy - surfaceSize) / surfaceSize;\n"
 
         "  oPos.z = oPos.z / clipRange.y;\n"
