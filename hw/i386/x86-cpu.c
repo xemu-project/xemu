@@ -31,11 +31,19 @@
 #include "hw/irq.h"
 #include "sysemu/kvm.h"
 
+#ifdef XBOX
+#include "ui/xemu-settings.h"
+#endif
+
 /* TSC handling */
 uint64_t cpu_get_tsc(CPUX86State *env)
 {
 #ifdef XBOX
-    return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), 733333333,
+    float clockspeed_scale = 1.0f;
+    if (g_config.perf.override_clockspeed) {
+        clockspeed_scale = g_config.perf.cpu_clockspeed_scale;
+    }
+    return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), 733333333 * clockspeed_scale,
                     NANOSECONDS_PER_SECOND);
 #else
     return cpus_get_elapsed_ticks();
