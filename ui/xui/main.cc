@@ -290,8 +290,10 @@ void xemu_hud_render(void)
                    (ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
                     !ImGui::IsAnyItemFocused() && !ImGui::IsAnyItemHovered())) {
             g_scene_mgr.PushScene(g_popup_menu);
+        } else if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            xemu_toggle_fullscreen();
         }
-        
+
         bool mod_key_down = ImGui::IsKeyDown(ImGuiKey_ModShift);
         for (int f_key = 0; f_key < 4; ++f_key) {
             if (ImGui::IsKeyPressed((enum ImGuiKey)(ImGuiKey_F5 + f_key))) {
