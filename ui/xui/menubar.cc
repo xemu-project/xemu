@@ -192,6 +192,16 @@ void ShowMainMenu()
                 nv2a_set_surface_scale_factor(rendering_scale + 1);
             }
 
+            int anisotropic_filter_level = nv2a_get_anisotropic_filter_level();
+            if (ImGui::Combo("Anisotropic Filtering Level", &anisotropic_filter_level,
+                             "Disabled\0"
+                             "2x\0"
+                             "4x\0"
+                             "8x\0"
+                             "16x\0")) {
+                nv2a_set_anisotropic_filter_level(anisotropic_filter_level);
+            }
+
             ImGui::Combo("Display Mode", &g_config.display.ui.fit,
                          "Center\0Scale\0Stretch\0");
             ImGui::SameLine();
