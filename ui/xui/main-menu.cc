@@ -172,14 +172,14 @@ void MainMenuInputView::Draw()
         driver = DRIVER_DUKE_DISPLAY_NAME;
     else if (strcmp(driver, DRIVER_S) == 0)
         driver = DRIVER_S_DISPLAY_NAME;
-    
+
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("###InputDrivers", driver,
                           ImGuiComboFlags_NoArrowButton)) {
         const char *available_drivers[] = { DRIVER_DUKE, DRIVER_S };
-        const char *driver_display_names[] = { 
-            DRIVER_DUKE_DISPLAY_NAME, 
-            DRIVER_S_DISPLAY_NAME 
+        const char *driver_display_names[] = {
+            DRIVER_DUKE_DISPLAY_NAME,
+            DRIVER_S_DISPLAY_NAME
             };
         bool is_selected = false;
         int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);
@@ -513,8 +513,19 @@ void MainMenuDisplayView::Draw()
                      "8x\0"
                      "9x\0"
                      "10x\0",
-                     "Increase surface scaling factor for higher quality")) {
+                     "Increase surface scaling factor for higher overall quality")) {
         nv2a_set_surface_scale_factor(rendering_scale+1);
+    }
+
+    int anisotropic_filter_level = nv2a_get_anisotropic_filter_level();
+    if (ChevronCombo("Anisotropic filtering level", &anisotropic_filter_level,
+                     "Disabled\0"
+                     "2x\0"
+                     "4x\0"
+                     "8x\0"
+                     "16x\0",
+                     "Increase anisotropic filtering level for sharper textures at oblique angles")) {
+        nv2a_set_anisotropic_filter_level(anisotropic_filter_level);
     }
 
     SectionTitle("Window");
