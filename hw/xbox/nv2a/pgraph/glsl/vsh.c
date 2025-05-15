@@ -81,6 +81,10 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
         "    t = clamp(t, uintBitsToFloat(0xDF800000), uintBitsToFloat(0x9F800000));\n"
         "  }\n"
         "  return t;\n"
+        "}\n"
+        "\n"
+        "vec4 NaNToOne(vec4 src) {\n"
+        "  return mix(src, vec4(1.0), isnan(src));\n"
         "}\n");
 
     pgraph_get_glsl_vtx_header(header, state->vulkan, state->smooth_shading,
@@ -128,6 +132,7 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
             }
         }
     }
+
     mstring_append(header, "\n");
 
     MString *body = mstring_from_str("void main() {\n");
@@ -232,17 +237,17 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
             break;
         }
 
-        mstring_append(body, "  oFog.xyzw = vec4(fogFactor);\n");
+        mstring_append(body, "  oFog = NaNToOne(vec4(fogFactor));\n");
     } else {
         /* FIXME: Is the fog still calculated / passed somehow?!
          */
-        mstring_append(body, "  oFog.xyzw = vec4(1.0);\n");
+        mstring_append(body, "  oFog = vec4(1.0);\n");
     }
 
     /* Set outputs */
     mstring_append(body, "\n"
-                   "  vtxD0 = clamp(oD0, 0.0, 1.0);\n"
-                   "  vtxB0 = clamp(oB0, 0.0, 1.0);\n"
+                   "  vtxD0 = clamp(NaNToOne(oD0), 0.0, 1.0);\n"
+                   "  vtxB0 = clamp(NaNToOne(oB0), 0.0, 1.0);\n"
                    "  vtxFog = oFog.x;\n"
                    "  vtxT0 = oT0;\n"
                    "  vtxT1 = oT1;\n"
@@ -253,8 +258,8 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
 
     if (state->specular_enable) {
         mstring_append(body,
-                       "  vtxD1 = clamp(oD1, 0.0, 1.0);\n"
-                       "  vtxB1 = clamp(oB1, 0.0, 1.0);\n"
+                       "  vtxD1 = clamp(NaNToOne(oD1), 0.0, 1.0);\n"
+                       "  vtxB1 = clamp(NaNToOne(oB1), 0.0, 1.0);\n"
         );
 
         if (state->ignore_specular_alpha) {
