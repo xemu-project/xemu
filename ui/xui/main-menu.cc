@@ -66,6 +66,30 @@ void MainMenuGeneralView::Draw()
     Toggle("Cache shaders to disk", &g_config.perf.cache_shaders,
            "Reduce stutter in games by caching previously generated shaders");
 
+    SectionTitle("Tweaks");
+    Toggle("Emulated CPU clock override", &g_config.perf.override_clockspeed,
+           "Override default CPU clock speed (can break games)");
+
+    char cpu_clock_buf[32];
+    snprintf(cpu_clock_buf, sizeof(cpu_clock_buf), "Clock speed: %d%% (%.2f MHz)", (int)(g_config.perf.cpu_clockspeed_scale * 100), (733333333 * g_config.perf.cpu_clockspeed_scale) / 1000000);
+    Slider("Virtual CPU clock", &g_config.perf.cpu_clockspeed_scale, cpu_clock_buf, 0.25f, 4.f, 0.01f);
+
+    if (fabs(g_config.perf.cpu_clockspeed_scale - 1.f) <= 0.0099f) {
+        g_config.perf.cpu_clockspeed_scale = 1;
+    }
+
+    Toggle("Display rate override", &g_config.perf.override_display_rate,
+        "Override default presentation frame rate (can break games)");
+
+    char display_rate_buf[35];
+    snprintf(display_rate_buf, sizeof(display_rate_buf), "Display rate: %d%% (%d / %d FPS)", (int)(g_config.perf.display_rate_scale * 100), (int)(30 * g_config.perf.display_rate_scale), (int)(60 * g_config.perf.display_rate_scale));
+    // Set slider increment so that 60 FPS games can be adjusted at a per-FPS level in terms of precision
+    Slider("Display rate", &g_config.perf.display_rate_scale, display_rate_buf, 0.3333333f, 4.f, 0.0166667f);
+
+    if (fabs(g_config.perf.display_rate_scale - 1.f) <= 0.0099f) {
+        g_config.perf.display_rate_scale = 1;
+    }
+
     SectionTitle("Miscellaneous");
     Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
            "Skip the full Xbox boot animation sequence");
@@ -172,14 +196,14 @@ void MainMenuInputView::Draw()
         driver = DRIVER_DUKE_DISPLAY_NAME;
     else if (strcmp(driver, DRIVER_S) == 0)
         driver = DRIVER_S_DISPLAY_NAME;
-    
+
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("###InputDrivers", driver,
                           ImGuiComboFlags_NoArrowButton)) {
         const char *available_drivers[] = { DRIVER_DUKE, DRIVER_S };
-        const char *driver_display_names[] = { 
-            DRIVER_DUKE_DISPLAY_NAME, 
-            DRIVER_S_DISPLAY_NAME 
+        const char *driver_display_names[] = {
+            DRIVER_DUKE_DISPLAY_NAME,
+            DRIVER_S_DISPLAY_NAME
             };
         bool is_selected = false;
         int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);

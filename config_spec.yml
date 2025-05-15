@@ -265,3 +265,15 @@ perf:
   cache_shaders:
     type: bool
     default: true
+  override_clockspeed:
+    type: bool
+    default: false
+  cpu_clockspeed_scale:
+    type: number
+    default: 1
+  override_display_rate:
+    type: bool
+    default: false
+  display_rate_scale:
+    type: number
+    default: 1
