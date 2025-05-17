@@ -791,8 +791,8 @@ static void create_pipeline(PGRAPHState *pg)
     VkPipelineRasterizationProvokingVertexStateCreateInfoEXT provoking_state;
 
     if (r->provoking_vertex_extension_enabled) {
-        // TODO: remove use of provoking vertex extension since we just want
-        // the default last vertex convention always.
+        // Use last provoking vertex convention to match geometry shader
+        // assumption, because Vulkan default is first vertex convention.
         VkProvokingVertexModeEXT provoking_mode =
             VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT;
 
