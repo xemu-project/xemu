@@ -471,6 +471,9 @@
 #       define NV_PGRAPH_CONTROL_2_STENCIL_OP_V_INCR                7
 #       define NV_PGRAPH_CONTROL_2_STENCIL_OP_V_DECR                8
 #define NV_PGRAPH_CONTROL_3                              0x00001958
+#   define NV_PGRAPH_CONTROL_3_PROVOKING_VERTEX                 (1 << 0)
+#       define NV_PGRAPH_CONTROL_3_PROVOKING_VERTEX_LAST            0
+#       define NV_PGRAPH_CONTROL_3_PROVOKING_VERTEX_FIRST           1
 #   define NV_PGRAPH_CONTROL_3_SHADEMODE                        (1 << 7)
 #       define NV_PGRAPH_CONTROL_3_SHADEMODE_FLAT                   0
 #       define NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH                 1
@@ -1062,6 +1065,9 @@
 #       define NV097_SET_TEXGEN_VIEW_MODEL_INFINITE_VIEWER        1
 #   define NV097_SET_FOG_PLANE                                0x000009D0
 #   define NV097_SET_SPECULAR_PARAMS                          0x000009E0
+#   define NV097_SET_PROVOKING_VERTEX                         0x000009FC
+#       define NV097_SET_PROVOKING_VERTEX_LAST                    0
+#       define NV097_SET_PROVOKING_VERTEX_FIRST                   1
 #   define NV097_SET_SCENE_AMBIENT_COLOR                      0x00000A10
 #   define NV097_SET_VIEWPORT_OFFSET                          0x00000A20
 #   define NV097_SET_POINT_PARAMS                             0x00000A30
