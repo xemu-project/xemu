@@ -358,7 +358,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
             mstring_append_fmt(body,
                 "    float pf;\n"
-                "    if (nDotVP == 0.0) {\n"
+                "    if (nDotVP == 0.0 || nDotHV == 0.0) {\n"
                 "      pf = 0.0;\n"
                 "    } else {\n"
                 "      pf = pow(nDotHV, specularPower);\n"
