@@ -1,0 +1,14 @@
+[company]
+name = "Acme Corp"
+products = [
+    { name = "Apple", price = 1.2, inventory = 100, suppliers = [
+        "Midwest Orchard",
+        "Tasty Apples Inc."
+        ]},
+    { name = "TNT", price = 1000, inventory = 1000, international_shipping = false, category = "explosive"}
+    ]
+
+[company.headquarters]
+state = "Arizona"
+city = "Phoenix"
+

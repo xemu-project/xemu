@@ -1,0 +1,10 @@
+/build*
+/bin/*
+bazel-bin
+bazel-genfiles
+bazel-out
+bazel-spirv-reflect
+bazel-SPIRV-Reflect
+bazel-testlogs
+/.vs
+/.vscode
