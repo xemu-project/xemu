@@ -839,8 +839,4 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
          */
         "  oPos.xyz *= oPos.w;\n"
     );
-
-    if (!vulkan) {
-        mstring_append(body, "  oPos.y = -oPos.y;\n");
-    }
 }

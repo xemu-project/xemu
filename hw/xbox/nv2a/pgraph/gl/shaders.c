@@ -924,12 +924,8 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         pgraph_apply_scaling_factor(pg, &x_min, &y_min);
         pgraph_apply_scaling_factor(pg, &x_max, &y_max);
 
-        /* Translate for the GL viewport origin */
-        int y_min_xlat = MAX((int)max_gl_height - (int)y_max, 0);
-        int y_max_xlat = MIN((int)max_gl_height - (int)y_min, max_gl_height);
-
         glUniform4i(r->shader_binding->clip_region_loc[i],
-                    x_min, y_min_xlat, x_max, y_max_xlat);
+                    x_min, y_min, x_max, y_max);
     }
 
     for (i = 0; i < 8; ++i) {

@@ -68,7 +68,7 @@ void pgraph_gl_init_display(NV2AState *d)
         "{\n"
         "    vec2 texCoord = gl_FragCoord.xy/display_size;\n"
         "    float rel = display_size.y/textureSize(tex, 0).y/line_offset;\n"
-        "    texCoord.y = 1 + rel*(texCoord.y - 1);"
+        "    texCoord.y = rel*(1.0f - texCoord.y);"
         "    out_Color.rgba = texture(tex, texCoord);\n"
         "    if (pvideo_enable) {\n"
         "        vec2 screenCoord = gl_FragCoord.xy - 0.5;\n"
