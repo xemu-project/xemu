@@ -686,7 +686,7 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
 
 void xemu_input_update_rumble(ControllerState *state)
 {
-    if (!state->gp.rumble_enabled) {
+    if (!state->gp.rumble_enabled || !g_config.input.allow_vibration) {
         return;
     }
 

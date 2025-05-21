@@ -283,8 +283,6 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     binding->fog_param_loc =
         uniform_index(&binding->vertex->uniforms, "fogParam");
 
-    binding->inv_viewport_loc =
-        uniform_index(&binding->vertex->uniforms, "invViewport");
     binding->ltctxa_loc = uniform_index(&binding->vertex->uniforms, "ltctxa");
     binding->ltctxb_loc = uniform_index(&binding->vertex->uniforms, "ltctxb");
     binding->ltc1_loc = uniform_index(&binding->vertex->uniforms, "ltc1");
@@ -308,11 +306,17 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     binding->clip_region_loc =
         uniform_index(&binding->fragment->uniforms, "clipRegion");
 
+    binding->point_params_loc =
+        uniform_index(&binding->vertex->uniforms, "pointParams");
+
     binding->material_alpha_loc =
         uniform_index(&binding->vertex->uniforms, "material_alpha");
 
     binding->uniform_attrs_loc =
         uniform_index(&binding->vertex->uniforms, "inlineValue");
+
+    binding->specular_power_loc =
+        uniform_index(&binding->vertex->uniforms, "specularPower");
 }
 
 static void shader_cache_entry_init(Lru *lru, LruNode *node, void *state)
@@ -607,25 +611,9 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
             }
         }
 
-        /* estimate the viewport by assuming it matches the surface ... */
-        unsigned int aa_width = 1, aa_height = 1;
-        pgraph_apply_anti_aliasing_factor(pg, &aa_width, &aa_height);
-
-        float m11 = 0.5 * (pg->surface_binding_dim.width / aa_width);
-        float m22 = -0.5 * (pg->surface_binding_dim.height / aa_height);
-        float m33 = zmax;
-        float m41 = *(float *)&pg->vsh_constants[NV_IGRAPH_XF_XFCTX_VPOFF][0];
-        float m42 = *(float *)&pg->vsh_constants[NV_IGRAPH_XF_XFCTX_VPOFF][1];
-
-        float invViewport[16] = {
-            1.0 / m11, 0,  0, 0,         0, 1.0 / m22,        0,
-            0,         0,  0, 1.0 / m33, 0, -1.0 + m41 / m11, 1.0 + m42 / m22,
-            0,         1.0
-        };
-
-        if (binding->inv_viewport_loc != -1) {
-            uniformMatrix4fv(&binding->vertex->uniforms,
-                                    binding->inv_viewport_loc, &invViewport[0]);
+        if (binding->specular_power_loc != -1) {
+            uniform1f(&binding->vertex->uniforms, binding->specular_power_loc,
+                      pg->specular_power);
         }
     }
 
@@ -711,6 +699,11 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
     }
     uniform1iv(&binding->fragment->uniforms, binding->clip_region_loc,
                      8 * 4, (void *)clip_regions);
+
+    if (binding->point_params_loc != -1) {
+        uniform1iv(&binding->vertex->uniforms, binding->point_params_loc,
+                   ARRAY_SIZE(pg->point_params), (void *)pg->point_params);
+    }
 
     if (binding->material_alpha_loc != -1) {
         uniform1f(&binding->vertex->uniforms, binding->material_alpha_loc,

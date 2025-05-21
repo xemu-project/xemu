@@ -111,7 +111,6 @@ typedef struct ShaderBinding {
     GLint vsh_constant_loc[NV2A_VERTEXSHADER_CONSTANTS];
     uint32_t vsh_constants[NV2A_VERTEXSHADER_CONSTANTS][4];
 
-    GLint inv_viewport_loc;
     GLint ltctxa_loc[NV2A_LTCTXA_COUNT];
     GLint ltctxb_loc[NV2A_LTCTXB_COUNT];
     GLint ltc1_loc[NV2A_LTC1_COUNT];
@@ -122,9 +121,11 @@ typedef struct ShaderBinding {
     GLint light_infinite_direction_loc[NV2A_MAX_LIGHTS];
     GLint light_local_position_loc[NV2A_MAX_LIGHTS];
     GLint light_local_attenuation_loc[NV2A_MAX_LIGHTS];
+    int specular_power_loc;
 
     GLint clip_region_loc[8];
 
+    GLint point_params_loc[8];
     GLint material_alpha_loc;
 } ShaderBinding;
 
