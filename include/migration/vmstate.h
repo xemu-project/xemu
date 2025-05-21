@@ -1085,6 +1085,9 @@ extern const VMStateInfo vmstate_info_qlist;
 #define VMSTATE_UINT32_SUB_ARRAY(_f, _s, _start, _num)                \
     VMSTATE_SUB_ARRAY(_f, _s, _start, _num, 0, vmstate_info_uint32, uint32_t)
 
+#define VMSTATE_UINT32_SUB_ARRAY_V(_f, _s, _start, _num, _v)          \
+    VMSTATE_SUB_ARRAY(_f, _s, _start, _num, _v, vmstate_info_uint32, uint32_t)
+
 #define VMSTATE_UINT32_2DARRAY(_f, _s, _n1, _n2)                      \
     VMSTATE_UINT32_2DARRAY_V(_f, _s, _n1, _n2, 0)
 
