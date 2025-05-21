@@ -17,7 +17,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "../nv2a_int.h"
+#include "hw/xbox/nv2a/nv2a_int.h"
 
 NV2AStats g_nv2a_stats;
 

@@ -137,11 +137,7 @@ static void init_render_to_texture(PGRAPHState *pg)
         "layout(location = 0) out vec4 out_Color;\n"
         "void main()\n"
         "{\n"
-        "    vec2 texCoord;\n"
-        "    texCoord.x = gl_FragCoord.x;\n"
-        "    texCoord.y = (surface_size.y - gl_FragCoord.y)\n"
-        "                 + (textureSize(tex,0).y - surface_size.y);\n"
-        "    texCoord /= textureSize(tex,0).xy;\n"
+        "    vec2 texCoord = gl_FragCoord.xy / textureSize(tex, 0).xy;\n"
         "    out_Color.rgba = texture(tex, texCoord);\n"
         "}\n";
 
@@ -298,7 +294,7 @@ static void render_surface_to_texture_slow(NV2AState *d,
     size_t bufsize = width * height * surface->fmt.bytes_per_pixel;
 
     uint8_t *buf = g_malloc(bufsize);
-    surface_download_to_buffer(d, surface, false, true, false, buf);
+    surface_download_to_buffer(d, surface, false, false, false, buf);
 
     width = texture_shape->width;
     height = texture_shape->height;
@@ -738,7 +734,7 @@ static void surface_download(NV2AState *d, SurfaceBinding *surface, bool force)
 
     nv2a_profile_inc_counter(NV2A_PROF_SURF_DOWNLOAD);
 
-    surface_download_to_buffer(d, surface, true, true, true,
+    surface_download_to_buffer(d, surface, true, false, true,
                                d->vram_ptr + surface->vram_addr);
 
     memory_region_set_client_dirty(d->vram, surface->vram_addr,
@@ -875,20 +871,26 @@ void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                        surface->fmt.bytes_per_pixel);
     }
 
-    /* FIXME: Replace this flip/scaling */
+    /* FIXME: Replace this scaling */
 
     // This is VRAM so we can't do this inplace!
-    uint8_t *flipped_buf = (uint8_t *)g_malloc(
-        surface->height * surface->width * surface->fmt.bytes_per_pixel);
-    unsigned int irow;
-    for (irow = 0; irow < surface->height; irow++) {
-        memcpy(&flipped_buf[surface->width * (surface->height - irow - 1)
-                                 * surface->fmt.bytes_per_pixel],
-               &buf[surface->pitch * irow],
-               surface->width * surface->fmt.bytes_per_pixel);
+    uint8_t *optimal_buf = buf;
+    unsigned int optimal_pitch = surface->width * surface->fmt.bytes_per_pixel;
+
+    if (surface->pitch != optimal_pitch) {
+        optimal_buf = (uint8_t *)g_malloc(surface->height * optimal_pitch);
+
+        uint8_t *src = buf;
+        uint8_t *dst = optimal_buf;
+        unsigned int irow;
+        for (irow = 0; irow < surface->height; irow++) {
+            memcpy(dst, src, optimal_pitch);
+            src += surface->pitch;
+            dst += optimal_pitch;
+        }
     }
 
-    uint8_t *gl_read_buf = flipped_buf;
+    uint8_t *gl_read_buf = optimal_buf;
     unsigned int width = surface->width, height = surface->height;
 
     if (pg->surface_scale_factor > 1) {
@@ -896,7 +898,7 @@ void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         pg->scale_buf = (uint8_t *)g_realloc(
             pg->scale_buf, width * height * surface->fmt.bytes_per_pixel);
         gl_read_buf = pg->scale_buf;
-        uint8_t *out = gl_read_buf, *in = flipped_buf;
+        uint8_t *out = gl_read_buf, *in = optimal_buf;
         surface_copy_expand(out, in, surface->width, surface->height,
                             surface->fmt.bytes_per_pixel,
                             d->pgraph.surface_scale_factor);
@@ -915,7 +917,9 @@ void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                  height, 0, surface->fmt.gl_format, surface->fmt.gl_type,
                  gl_read_buf);
     glPixelStorei(GL_UNPACK_ALIGNMENT, prev_unpack_alignment);
-    g_free(flipped_buf);
+    if (optimal_buf != buf) {
+        g_free(optimal_buf);
+    }
     if (surface->swizzle) {
         g_free(buf);
     }
