@@ -92,7 +92,6 @@ void pgraph_gl_clear_surface(NV2AState *d, uint32_t parameter)
                  scissor_height = ymax - ymin + 1;
     pgraph_apply_anti_aliasing_factor(pg, &xmin, &ymin);
     pgraph_apply_anti_aliasing_factor(pg, &scissor_width, &scissor_height);
-    ymin = pg->surface_binding_dim.height - (ymin + scissor_height);
 
     NV2A_DPRINTF("Translated clear rect to %d,%d - %d,%d\n", xmin, ymin,
                  xmin + scissor_width - 1, ymin + scissor_height - 1);
@@ -204,9 +203,10 @@ void pgraph_gl_draw_begin(NV2AState *d)
     }
 
     /* Front-face select */
+    /* Winding is reverse here because clip-space y-coordinates are inverted */
     glFrontFace(pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER)
                     & NV_PGRAPH_SETUPRASTER_FRONTFACE
-                        ? GL_CCW : GL_CW);
+                        ? GL_CW : GL_CCW);
 
     /* Polygon offset */
     /* FIXME: GL implementation-specific, maybe do this in VS? */
@@ -340,7 +340,6 @@ void pgraph_gl_draw_begin(NV2AState *d)
 
     pgraph_apply_anti_aliasing_factor(pg, &xmin, &ymin);
     pgraph_apply_anti_aliasing_factor(pg, &scissor_width, &scissor_height);
-    ymin = pg->surface_binding_dim.height - (ymin + scissor_height);
     pgraph_apply_scaling_factor(pg, &xmin, &ymin);
     pgraph_apply_scaling_factor(pg, &scissor_width, &scissor_height);
 

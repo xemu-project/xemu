@@ -197,6 +197,11 @@ typedef struct PGRAPHState {
     float light_local_position[NV2A_MAX_LIGHTS][3];
     float light_local_attenuation[NV2A_MAX_LIGHTS][3];
 
+    float specular_params[6];
+    float specular_power;
+    float specular_params_back[6];
+    float specular_power_back;
+
     float point_params[8];
 
     VertexAttribute vertex_attributes[NV2A_VERTEXSHADER_ATTRIBUTES];
