@@ -489,6 +489,8 @@ void MainMenuInputView::Draw()
     SectionTitle("Options");
     Toggle("Auto-bind controllers", &g_config.input.auto_bind,
            "Bind newly connected controllers to any open port");
+    Toggle("Controller vibration", &g_config.input.allow_vibration,
+           "Allows the controllers to vibrate");
     Toggle("Background controller input capture",
            &g_config.input.background_input_capture,
            "Capture even if window is unfocused (requires restart)");

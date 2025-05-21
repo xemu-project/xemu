@@ -1774,6 +1774,8 @@ if not get_option('coreaudio').auto() or (host_os == 'darwin' and have_system)
                          required: get_option('coreaudio'))
 endif
 
+epoxy = dependency('epoxy', required: true)
+
 opengl = not_found
 if not get_option('opengl').auto() or have_system or have_vhost_user_gpu
   # FIXME: Use meson's 'gl' dep
@@ -1787,8 +1789,7 @@ if not get_option('opengl').auto() or have_system or have_vhost_user_gpu
     error('Unknown GL platform')
   endif
 
-  opengl = declare_dependency(compile_args: config_host['EPOXY_CFLAGS'].split(),
-                              link_args: config_host['EPOXY_LIBS'].split() + opengl_libs)
+  opengl = declare_dependency(link_args: opengl_libs, dependencies: epoxy)
 endif
 
 gbm = not_found
@@ -3771,6 +3772,7 @@ if have_system
     'hw/remote',
     'hw/xbox/nv2a',
     'hw/xbox/mcpx',
+    'hw/xbox/mcpx/dsp',
     'hw/xbox',
   ]
 endif

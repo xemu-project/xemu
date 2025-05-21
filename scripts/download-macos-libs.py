@@ -149,7 +149,9 @@ class LibInstaller:
 						if pkg_name.startswith('openssl'): # FIXME
 							new_prefix = f'prefix={self._extract_path}/opt/local/libexec/openssl11\n'
 						lines[i] = new_prefix
-						break
+					elif l.strip().startswith('Requires.private:'):
+						if pkg_name.startswith('libepoxy'):
+							lines[i] = ''
 				with open(extracted_path, 'w') as f:
 					f.write(''.join(lines))
 
