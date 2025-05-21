@@ -318,7 +318,7 @@ static void handle_keydown(SDL_Event *ev)
 {
     int win;
     struct sdl2_console *scon = get_scon_from_window(ev->key.windowID);
-    if (scon == NULL) return; 
+    if (scon == NULL) return;
     int gui_key_modifier_pressed = get_mod_state();
     int gui_keysym = 0;
 
@@ -1079,10 +1079,14 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     qemu_mutex_unlock_main_loop();
 
     /*
-     * Throttle to make sure swaps happen at 60Hz
+     * Throttle to make sure swaps happen at 60 Hz (divided by the display rate scale if overridden)
      */
     static int64_t last_update = 0;
-    int64_t deadline = last_update + 16666666;
+    float display_rate_scale = 1.0f;
+    if (g_config.perf.override_display_rate) {
+        display_rate_scale /= g_config.perf.display_rate_scale;
+    }
+    int64_t deadline = last_update + 16666666 * display_rate_scale;
 
 #ifdef DEBUG_XEMU_C
     int64_t sleep_acc = 0;
