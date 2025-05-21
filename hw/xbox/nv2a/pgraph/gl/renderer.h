@@ -111,7 +111,6 @@ typedef struct ShaderBinding {
     GLint vsh_constant_loc[NV2A_VERTEXSHADER_CONSTANTS];
     uint32_t vsh_constants[NV2A_VERTEXSHADER_CONSTANTS][4];
 
-    GLint inv_viewport_loc;
     GLint ltctxa_loc[NV2A_LTCTXA_COUNT];
     GLint ltctxb_loc[NV2A_LTCTXB_COUNT];
     GLint ltc1_loc[NV2A_LTC1_COUNT];

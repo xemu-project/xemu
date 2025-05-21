@@ -106,6 +106,9 @@ input:
   auto_bind:
     type: bool
     default: true
+  allow_vibration:
+    type: bool
+    default: true
   background_input_capture: bool
   keyboard_controller_scancode_map:
     # Scancode reference : https://github.com/libsdl-org/SDL/blob/main/include/SDL_scancode.h
