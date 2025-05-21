@@ -115,8 +115,6 @@ GLSL_DEFINE(sceneAmbientColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_FR_AMB) ".xyz")
 GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz")
 "\n"
 );
-    mstring_append_fmt(uniforms,
-"%smat4 invViewport;\n", u);
 
     /* Skinning */
     unsigned int count;
@@ -360,7 +358,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
             mstring_append_fmt(body,
                 "    float pf;\n"
-                "    if (nDotVP == 0.0) {\n"
+                "    if (nDotVP == 0.0 || nDotHV == 0.0) {\n"
                 "      pf = 0.0;\n"
                 "    } else {\n"
                 "      pf = pow(nDotHV, specularPower);\n"
@@ -471,14 +469,15 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     }
 
     mstring_append(body,
-    "   oPos = tPosition * compositeMat;\n"
-    "   oPos.w = clampAwayZeroInf(oPos.w);\n"
-    "   oPos = invViewport * oPos;\n"
+    "  oPos = tPosition * compositeMat;\n"
+    "  oPos.z = oPos.z / clipRange.y;\n"
+    "  oPos.w = clampAwayZeroInf(oPos.w);\n"
+    "  oPos.xy /= oPos.w;\n"
+    "  oPos.xy += c[" stringify(NV_IGRAPH_XF_XFCTX_VPOFF) "].xy;\n"
+    "  oPos.xy = roundScreenCoords(oPos.xy);\n"
+    "  oPos.xy = (2.0f * oPos.xy - surfaceSize) / surfaceSize;\n"
+    "  oPos.xy *= oPos.w;\n"
     );
-
-    if (state->vulkan) {
-        mstring_append(body, "   oPos.y *= -1;\n");
-    }
 
     /* FIXME: Testing */
     if (state->point_params_enable) {

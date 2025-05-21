@@ -639,7 +639,7 @@ static const char* vsh_header =
     // Unfortunately mix() falls victim to the same handling of exceptional
     // (inf/NaN) handling as a multiply, so per-component comparisons are used
     // to guarantee HW behavior (anything * 0 must == 0).
-    "  vec4 zero_components = sign(src0) * sign(src1);\n"
+    "  vec4 zero_components = sign(NaNToOne(src0)) * sign(NaNToOne(src1));\n"
     "  vec4 ret = src0 * src1;\n"
     "  if (zero_components.x == 0.0) { ret.x = 0.0; }\n"
     "  if (zero_components.y == 0.0) { ret.y = 0.0; }\n"
@@ -821,22 +821,12 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
     assert(has_final);
 
     mstring_append(body,
-        /* the shaders leave the result in screen space, while
-         * opengl expects it in clip space.
-         * TODO: the pixel-center co-ordinate differences should handled
+        /* The shaders leave the result in screen space, while OpenGL expects it
+         * in clip space.
          */
-        "  oPos.x = 2.0 * (oPos.x - surfaceSize.x * 0.5) / surfaceSize.x;\n"
-        );
+        "  oPos.xy = roundScreenCoords(oPos.xy);\n"
+        "  oPos.xy = (2.0f * oPos.xy - surfaceSize) / surfaceSize;\n"
 
-    if (vulkan) {
-        mstring_append(body,
-                       "  oPos.y = 2.0 * oPos.y / surfaceSize.y - 1.0;\n");
-    } else {
-        mstring_append(body, "  oPos.y = -2.0 * (oPos.y - surfaceSize.y * 0.5) "
-                             "/ surfaceSize.y;\n");
-    }
-
-    mstring_append(body,
         "  oPos.z = oPos.z / clipRange.y;\n"
         "  oPos.w = clampAwayZeroInf(oPos.w);\n"
 
