@@ -2902,9 +2902,19 @@ void qemu_init(int argc, char **argv)
         "none",
     }[g_config.sys.avpack];
 
+    // Allow overriding the skip startup animation setting from command line
+    bool short_animation = g_config.general.skip_boot_anim;
+    for (int i = 1; i < argc; i++) {
+        if (argv[i] && strcmp(argv[i], "-short-animation") == 0) {
+            argv[i] = NULL;
+            short_animation = true;
+            break;
+        }
+    }
+
     fake_argv[fake_argc++] = g_strdup_printf("xbox%s%s%s,avpack=%s",
         (bootrom_arg != NULL) ? bootrom_arg : "",
-        g_config.general.skip_boot_anim ? ",short-animation=on" : "",
+        short_animation ? ",short-animation=on" : "",
         ",kernel-irqchip=off",
         avpack_str
         );
