@@ -2905,7 +2905,7 @@ void qemu_init(int argc, char **argv)
     // Allow overriding the skip startup animation setting from command line
     bool short_animation = g_config.general.skip_boot_anim;
     for (int i = 1; i < argc; i++) {
-        if (argv[i] && strcmp(argv[i], "-short-animation") == 0) {
+        if (argv[i] && strcmp(argv[i], "-skip_boot_anim") == 0) {
             argv[i] = NULL;
             short_animation = true;
             break;
