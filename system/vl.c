@@ -2912,12 +2912,10 @@ void qemu_init(int argc, char **argv)
         }
     }
 
-    fake_argv[fake_argc++] = g_strdup_printf("xbox%s%s%s,avpack=%s",
-        (bootrom_arg != NULL) ? bootrom_arg : "",
-        short_animation ? ",short-animation=on" : "",
-        ",kernel-irqchip=off",
-        avpack_str
-        );
+    fake_argv[fake_argc++] = g_strdup_printf(
+        "xbox%s%s%s,avpack=%s", (bootrom_arg != NULL) ? bootrom_arg : "",
+        short_animation ? ",short-animation=on" : "", ",kernel-irqchip=off",
+        avpack_str);
 
     if (bootrom_arg != NULL) {
         g_free(bootrom_arg);
