@@ -25,6 +25,7 @@
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "debug.h"
 #include "renderer.h"
+#include <stdint.h>
 
 static void surface_download(NV2AState *d, SurfaceBinding *surface, bool force);
 static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
@@ -276,11 +277,16 @@ static void render_surface_to_texture_slow(NV2AState *d,
                                            SurfaceBinding *surface,
                                            TextureBinding *texture,
                                            TextureShape *texture_shape,
-                                           int texture_unit)
+                                           int texture_unit,
+                                           uint32_t filter)
 {
     PGRAPHState *pg = &d->pgraph;
 
-    const ColorFormatInfo *f = &kelvin_color_format_gl_map[texture_shape->color_format];
+    ColorFormatInfo f = kelvin_color_format_gl_map[texture_shape->color_format];
+    uint32_t mask = kelvin_signed_format_mask_gl_map[texture_shape->color_format];
+    if (mask && (filter & mask) == mask)
+        f = kelvin_signed_color_format_gl_map[texture_shape->color_format];
+
     assert(texture_shape->color_format < ARRAY_SIZE(kelvin_color_format_gl_map));
     nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX_FALLBACK);
 
@@ -300,8 +306,8 @@ static void render_surface_to_texture_slow(NV2AState *d,
     height = texture_shape->height;
     pgraph_apply_scaling_factor(pg, &width, &height);
 
-    glTexImage2D(texture->gl_target, 0, f->gl_internal_format, width, height, 0,
-                 f->gl_format, f->gl_type, buf);
+    glTexImage2D(texture->gl_target, 0, f.gl_internal_format, width, height, 0,
+                 f.gl_format, f.gl_type, buf);
     g_free(buf);
     glBindTexture(texture->gl_target, texture->gl_texture);
 }
@@ -313,20 +319,23 @@ static void render_surface_to_texture_slow(NV2AState *d,
 void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface,
                                       TextureBinding *texture,
                                       TextureShape *texture_shape,
-                                      int texture_unit)
+                                      int texture_unit,
+                                      uint32_t filter)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    const ColorFormatInfo *f =
-        &kelvin_color_format_gl_map[texture_shape->color_format];
+    ColorFormatInfo f = kelvin_color_format_gl_map[texture_shape->color_format];
+    uint32_t mask = kelvin_signed_format_mask_gl_map[texture_shape->color_format];
+    if (mask && (filter & mask) == mask)
+        f = kelvin_signed_color_format_gl_map[texture_shape->color_format];
     assert(texture_shape->color_format < ARRAY_SIZE(kelvin_color_format_gl_map));
 
     nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
 
     if (!surface_to_texture_can_fastpath(surface, texture_shape)) {
         render_surface_to_texture_slow(d, surface, texture,
-                                              texture_shape, texture_unit);
+                                              texture_shape, texture_unit, filter);
         return;
     }
 
@@ -338,8 +347,8 @@ void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface,
     glTexParameteri(texture->gl_target, GL_TEXTURE_BASE_LEVEL, 0);
     glTexParameteri(texture->gl_target, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(texture->gl_target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexImage2D(texture->gl_target, 0, f->gl_internal_format, width, height, 0,
-                 f->gl_format, f->gl_type, NULL);
+    glTexImage2D(texture->gl_target, 0, f.gl_internal_format, width, height, 0,
+                 f.gl_format, f.gl_type, NULL);
     glBindTexture(texture->gl_target, 0);
     render_surface_to(d, surface, texture_unit, texture->gl_target,
                              texture->gl_texture, width, height);
