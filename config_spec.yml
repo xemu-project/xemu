@@ -215,6 +215,9 @@ display:
 
 audio:
   use_dsp: bool
+  hrtf:
+    type: bool
+    default: true
   volume_limit:
     type: number
     default: 1
