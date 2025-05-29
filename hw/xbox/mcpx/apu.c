@@ -45,6 +45,7 @@
 #include "adpcm.h"
 #include "svf.h"
 #include "fpconv.h"
+#include "hrtf.h"
 
 #define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
 
@@ -85,6 +86,7 @@ typedef struct MCPXAPUVoiceFilter {
     float resample_buf[NUM_SAMPLES_PER_FRAME * 2];
     SRC_STATE *resampler;
     sv_filter svf[2];
+    HrtfFilter hrtf;
 } MCPXAPUVoiceFilter;
 
 typedef struct MCPXAPUState {
@@ -123,6 +125,15 @@ typedef struct MCPXAPUState {
         float sample_buf[NUM_SAMPLES_PER_FRAME][2];
         uint64_t voice_locked[4];
         QemuSpin voice_spinlocks[MCPX_HW_MAX_VOICES];
+
+        struct {
+            int current_entry;
+            // FIXME: Stored in RAM
+            struct {
+                float hrir[2][HRTF_NUM_TAPS];
+                float itd;
+            } entries[HRTF_ENTRY_COUNT];
+        } hrtf;
     } vp;
 
     /* Global Processor */
@@ -496,6 +507,13 @@ static bool is_voice_locked(MCPXAPUState *d, uint16_t v)
     return (qatomic_read(&d->vp.voice_locked[v / 64]) & mask) != 0;
 }
 
+static void set_hrir_coeff_tar(MCPXAPUState *d, int channel, int coeff_idx,
+                               int8_t value)
+{
+    int entry = d->vp.hrtf.current_entry;
+    d->vp.hrtf.entries[entry].hrir[channel][coeff_idx] = int8_to_float(value);
+}
+
 static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
 {
     unsigned int slot;
@@ -648,6 +666,11 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
                        NV_PAVS_VOICE_PAR_STATE, NV_PAVS_VOICE_PAR_STATE_PAUSED,
                        (argument & NV1BA0_PIO_VOICE_PAUSE_ACTION) != 0);
         break;
+    case NV1BA0_PIO_SET_CURRENT_HRTF_ENTRY: {
+        int handle = GET_MASK(argument, NV1BA0_PIO_SET_CURRENT_HRTF_ENTRY_HANDLE);
+        d->vp.hrtf.current_entry = handle;
+        break;
+    }
     case NV1BA0_PIO_SET_CURRENT_VOICE:
         d->regs[NV_PAPU_FECV] = argument;
         break;
@@ -679,6 +702,23 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_CFG_MISC,
                        0xFFFFFFFF, argument);
         break;
+    case NV1BA0_PIO_SET_VOICE_TAR_HRTF: {
+        int handle = GET_MASK(argument, NV1BA0_PIO_SET_VOICE_TAR_HRTF_HANDLE);
+        int current_voice = d->regs[NV_PAPU_FECV];
+        voice_set_mask(d, current_voice, NV_PAVS_VOICE_CFG_HRTF_TARGET,
+                       NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE, handle);
+        if (current_voice < MCPX_HW_MAX_3D_VOICES &&
+            handle != HRTF_NULL_HANDLE) {
+            // FIXME: Xbox software seems to reliably set voice HRTF handles
+            // after updating filter parameters, however it may be possible to
+            // update parameter targets for an active voice.
+            assert(handle < HRTF_ENTRY_COUNT);
+            hrtf_filter_set_target_params(&d->vp.filters[current_voice].hrtf,
+                                          d->vp.hrtf.entries[handle].hrir,
+                                          d->vp.hrtf.entries[handle].itd);
+        }
+        break;
+    }
     case NV1BA0_PIO_SET_VOICE_TAR_VOLA:
         voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_VOLA,
                        0xFFFFFFFF, argument);
@@ -724,6 +764,31 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_PAR_NEXT,
                        NV_PAVS_VOICE_PAR_NEXT_EBO, argument);
         break;
+    case NV1BA0_PIO_SET_HRIR ... NV1BA0_PIO_SET_HRIR_X - 1: {
+        assert(d->vp.hrtf.current_entry < HRTF_ENTRY_COUNT);
+        slot = (method - NV1BA0_PIO_SET_HRIR) / 4;
+        int8_t left0 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_LEFT0);
+        int8_t right0 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_RIGHT0);
+        int8_t left1 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_LEFT1);
+        int8_t right1 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_RIGHT1);
+        int coeff_idx = slot * 2;
+        set_hrir_coeff_tar(d, 0, coeff_idx, left0);
+        set_hrir_coeff_tar(d, 1, coeff_idx, right0);
+        coeff_idx += 1;
+        set_hrir_coeff_tar(d, 0, coeff_idx, left1);
+        set_hrir_coeff_tar(d, 1, coeff_idx, right1);
+        break;
+    }
+    case NV1BA0_PIO_SET_HRIR_X: {
+        assert(d->vp.hrtf.current_entry < HRTF_ENTRY_COUNT);
+        int8_t left30 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_X_LEFT30);
+        int8_t right30 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_X_RIGHT30);
+        int16_t itd = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_X_ITD);
+        set_hrir_coeff_tar(d, 0, 30, left30);
+        set_hrir_coeff_tar(d, 1, 30, right30);
+        d->vp.hrtf.entries[d->vp.hrtf.current_entry].itd = s6p9_to_float(itd);
+        break;
+    }
     case NV1BA0_PIO_SET_CURRENT_INBUF_SGE:
         d->inbuf_sge_handle = argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_HANDLE;
         break;
@@ -893,6 +958,7 @@ static void vp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     case NV1BA0_PIO_VOICE_RELEASE:
     case NV1BA0_PIO_VOICE_OFF:
     case NV1BA0_PIO_VOICE_PAUSE:
+    case NV1BA0_PIO_SET_CURRENT_HRTF_ENTRY:
     case NV1BA0_PIO_SET_CURRENT_VOICE:
     case NV1BA0_PIO_SET_VOICE_CFG_VBIN:
     case NV1BA0_PIO_SET_VOICE_CFG_FMT:
@@ -901,6 +967,7 @@ static void vp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     case NV1BA0_PIO_SET_VOICE_CFG_ENV1:
     case NV1BA0_PIO_SET_VOICE_CFG_ENVF:
     case NV1BA0_PIO_SET_VOICE_CFG_MISC:
+    case NV1BA0_PIO_SET_VOICE_TAR_HRTF:
     case NV1BA0_PIO_SET_VOICE_TAR_VOLA:
     case NV1BA0_PIO_SET_VOICE_TAR_VOLB:
     case NV1BA0_PIO_SET_VOICE_TAR_VOLC:
@@ -912,6 +979,8 @@ static void vp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     case NV1BA0_PIO_SET_VOICE_CFG_BUF_LBO:
     case NV1BA0_PIO_SET_VOICE_BUF_CBO:
     case NV1BA0_PIO_SET_VOICE_CFG_BUF_EBO:
+    case NV1BA0_PIO_SET_HRIR ... NV1BA0_PIO_SET_HRIR_X - 1:
+    case NV1BA0_PIO_SET_HRIR_X:
     case NV1BA0_PIO_SET_CURRENT_INBUF_SGE:
     case NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET:
     CASE_4(NV1BA0_PIO_SET_OUTBUF_BA, 8): // 8 byte pitch, 4 entries
@@ -1873,6 +1942,15 @@ static void voice_process(MCPXAPUState *d,
         }
     }
 
+    if (v < MCPX_HW_MAX_3D_VOICES && g_config.audio.hrtf) {
+        uint16_t hrtf_handle =
+            voice_get_mask(d, v, NV_PAVS_VOICE_CFG_HRTF_TARGET,
+                           NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE);
+        if (hrtf_handle != HRTF_NULL_HANDLE) {
+            hrtf_filter_process(&d->vp.filters[v].hrtf, samples, samples);
+        }
+    }
+
     // FIXME: ParaEQ
 
     for (int b = 0; b < 8; b++) {
@@ -1880,8 +1958,7 @@ static void voice_process(MCPXAPUState *d,
         float hr;
         if ((v < MCPX_HW_MAX_3D_VOICES) && (b < 4)) {
             // FIXME: Not sure if submix/voice headroom factor in for HRTF
-            // Note: Attenuate extra 6dB to simulate HRTF
-            hr = 1 << (d->vp.hrtf_headroom + 1);
+            hr = 1 << d->vp.hrtf_headroom;
         } else {
             hr = 1 << d->vp.submix_headroom[bin[b]];
         }
@@ -2483,6 +2560,9 @@ static void mcpx_apu_reset(MCPXAPUState *d)
     memset(d->vp.hrtf_submix, 0, sizeof(d->vp.hrtf_submix));
     memset(d->vp.submix_headroom, 0, sizeof(d->vp.submix_headroom));
     memset(d->vp.voice_locked, 0, sizeof(d->vp.voice_locked));
+    for (int v = 0; v < ARRAY_SIZE(d->vp.filters); v++) {
+        hrtf_filter_init(&d->vp.filters[v].hrtf);
+    }
 
     // FIXME: Reset DSP state
     memset(d->gp.dsp->core.pram_opcache, 0,
