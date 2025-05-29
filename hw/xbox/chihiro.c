@@ -83,97 +83,6 @@ typedef struct ChihiroMachineClass {
     /*< public >*/
 } ChihiroMachineClass;
 
-
-
-#define SEGA_CHIP_REVISION                  0xF0
-#   define SEGA_CHIP_REVISION_CHIP_ID            0xFF00
-#       define SEGA_CHIP_REVISION_FPGA_CHIP_ID      0x0000
-#       define SEGA_CHIP_REVISION_ASIC_CHIP_ID      0x0100
-#   define SEGA_CHIP_REVISION_REVISION_ID_MASK   0x00FF
-#define SEGA_DIMM_SIZE                      0xF4
-#   define SEGA_DIMM_SIZE_128M                  0
-#   define SEGA_DIMM_SIZE_256M                  1
-#   define SEGA_DIMM_SIZE_512M                  2
-#   define SEGA_DIMM_SIZE_1024M                 3
-
-//#define DEBUG_CHIHIRO
-
-typedef struct ChihiroLPCState {
-    ISADevice dev;
-    MemoryRegion ioport;
-} ChihiroLPCState;
-
-#define CHIHIRO_LPC_DEVICE(obj) \
-    OBJECT_CHECK(ChihiroLPCState, (obj), "chihiro-lpc")
-
-
-static uint64_t chhiro_lpc_io_read(void *opaque, hwaddr addr,
-                                   unsigned size)
-{
-    uint64_t r = 0;
-    switch (addr) {
-    case SEGA_CHIP_REVISION:
-        r = SEGA_CHIP_REVISION_ASIC_CHIP_ID;
-        break;
-    case SEGA_DIMM_SIZE:
-        r = SEGA_DIMM_SIZE_128M;
-        break;
-    }
-#ifdef DEBUG_CHIHIRO
-    printf("chihiro lpc read [0x%llx] -> 0x%llx\n", addr, r);
-#endif
-    return r;
-}
-
-static void chhiro_lpc_io_write(void *opaque, hwaddr addr, uint64_t val,
-                                unsigned size)
-{
-#ifdef DEBUG_CHIHIRO
-    printf("chihiro lpc write [0x%llx] = 0x%llx\n", addr, val);
-#endif
-}
-
-static const MemoryRegionOps chihiro_lpc_io_ops = {
-    .read = chhiro_lpc_io_read,
-    .write = chhiro_lpc_io_write,
-    .impl = {
-        .min_access_size = 2,
-        .max_access_size = 2,
-    },
-};
-
-static void chihiro_lpc_realize(DeviceState *dev, Error **errp)
-{
-    ChihiroLPCState *s = CHIHIRO_LPC_DEVICE(dev);
-    ISADevice *isa = ISA_DEVICE(dev);
-
-    memory_region_init_io(&s->ioport, OBJECT(dev), &chihiro_lpc_io_ops, s,
-                          "chihiro-lpc-io", 0x100);
-    isa_register_ioport(isa, &s->ioport, 0x4000);
-}
-
-static void chihiro_lpc_class_initfn(ObjectClass *klass, void *data)
-{
-    DeviceClass *dc = DEVICE_CLASS(klass);
-    dc->realize = chihiro_lpc_realize;
-    dc->desc = "Chihiro LPC";
-}
-
-static const TypeInfo chihiro_lpc_info = {
-    .name          = "chihiro-lpc",
-    .parent        = TYPE_ISA_DEVICE,
-    .instance_size = sizeof(ChihiroLPCState),
-    .class_init    = chihiro_lpc_class_initfn,
-};
-
-static void chihiro_register_types(void)
-{
-    type_register_static(&chihiro_lpc_info);
-}
-
-type_init(chihiro_register_types)
-
-
 /* The chihiro baseboard communicates with the xbox by acting as an IDE
  * device. The device maps the boot rom from the mediaboard, a communication
  * area for interfacing with the network board, and the ram on the baseboard.
@@ -285,7 +194,7 @@ static void chihiro_init(MachineState *machine)
 
     ISABus *isa_bus;
     xbox_init_common(machine, NULL, &isa_bus);
-    isa_create_simple(isa_bus, "chihiro-lpc");
+    isa_create_simple(isa_bus, "lpcsega");
 }
 
 static void chihiro_machine_options(MachineClass *m)
