@@ -279,6 +279,8 @@ SurfaceBinding *pgraph_gl_surface_get(NV2AState *d, hwaddr addr);
 SurfaceBinding *pgraph_gl_surface_get_within(NV2AState *d, hwaddr addr);
 void pgraph_gl_surface_invalidate(NV2AState *d, SurfaceBinding *e);
 void pgraph_gl_unbind_surface(NV2AState *d, bool color);
+void pgraph_gl_download_surfaces_in_range_if_dirty(NV2AState *d, hwaddr start,
+                                                   hwaddr size);
 void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface, bool force);
 void pgraph_gl_shader_cache_to_disk(ShaderBinding *snode);
 bool pgraph_gl_shader_load_from_memory(ShaderBinding *snode);
