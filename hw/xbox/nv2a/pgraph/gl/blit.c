@@ -53,7 +53,7 @@ static void perform_blit(int operation, uint8_t *source, uint8_t *dest,
         }
     } else {
         fprintf(stderr, "Unknown blit operation: 0x%x\n", operation);
-        assert(false && "Unknown blit operation");
+        assert(!"Unknown blit operation");
     }
 }
 
@@ -115,15 +115,13 @@ void pgraph_gl_image_blit(NV2AState *d)
     dest += context_surfaces->dest_offset;
     hwaddr dest_addr = dest - d->vram_ptr;
 
-    SurfaceBinding *surf_src = pgraph_gl_surface_get(d, source_addr);
-    if (surf_src) {
-        pgraph_gl_surface_download_if_dirty(d, surf_src);
-    }
-
     hwaddr source_offset = image_blit->in_y * context_surfaces->source_pitch +
                            image_blit->in_x * bytes_per_pixel;
+    source_addr += source_offset;
+
     hwaddr dest_offset = image_blit->out_y * context_surfaces->dest_pitch +
                          image_blit->out_x * bytes_per_pixel;
+    dest_addr += dest_offset;
 
     size_t max_row_pixels =
         MIN(context_surfaces->source_pitch, context_surfaces->dest_pitch) /
@@ -150,20 +148,12 @@ void pgraph_gl_image_blit(NV2AState *d)
         leftover_bytes = clipped_dest_size - consumed_bytes;
     }
 
-    SurfaceBinding *surf_dest = pgraph_gl_surface_get(d, dest_addr);
-    if (surf_dest) {
-        if (adjusted_height < surf_dest->height ||
-            row_pixels < surf_dest->width) {
-            pgraph_gl_surface_download_if_dirty(d, surf_dest);
-        } else {
-            // The blit will completely replace the surface so any pending
-            // download should be discarded.
-            surf_dest->download_pending = false;
-            surf_dest->draw_dirty = false;
-        }
-        surf_dest->upload_pending = true;
-        pg->draw_time++;
-    }
+    hwaddr source_size = adjusted_height * context_surfaces->source_pitch +
+                         image_blit->width * bytes_per_pixel;
+    pgraph_gl_download_surfaces_in_range_if_dirty(pg, source_addr, source_size);
+
+    // TODO: just clear dirty_draw flag on surfaces that are fully overlapped.
+    pgraph_gl_download_surfaces_in_range_if_dirty(pg, dest_addr, clipped_dest_size);
 
     NV2A_DPRINTF("  blit 0x%tx -> 0x%tx (Size: %llu, Clipped Height: %zu)\n",
                  source_addr, dest_addr, dest_size, adjusted_height);
@@ -215,9 +205,12 @@ void pgraph_gl_image_blit(NV2AState *d)
         }
     }
 
-    dest_addr += dest_offset;
     memory_region_set_client_dirty(d->vram, dest_addr, clipped_dest_size,
                                    DIRTY_MEMORY_VGA);
     memory_region_set_client_dirty(d->vram, dest_addr, clipped_dest_size,
                                    DIRTY_MEMORY_NV2A_TEX);
+
+    if (pgraph_gl_mark_surfaces_in_range_for_upload(d, dest_addr, dest_size)) {
+        ++pg->draw_time;
+    }
 }
