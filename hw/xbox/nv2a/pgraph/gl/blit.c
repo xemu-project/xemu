@@ -109,6 +109,10 @@ void pgraph_gl_image_blit(NV2AState *d)
     uint8_t *source_row = source + source_offset;
     uint8_t *dest_row = dest + dest_offset;
 
+    // TODO: clear dirty_draw flag on surfaces without download if they are fully overlapped.
+    hwaddr write_end = dest_addr + dest_offset + image_blit->height * context_surfaces->dest_pitch - 1;
+    pgraph_gl_download_surfaces_in_range_if_dirty(d, dest_addr + dest_offset, write_end);
+
     if (image_blit->operation == NV09F_SET_OPERATION_SRCCOPY) {
         // NV2A_GL_DPRINTF(false, "NV09F_SET_OPERATION_SRCCOPY");
         for (unsigned int y = 0; y < image_blit->height; y++) {
