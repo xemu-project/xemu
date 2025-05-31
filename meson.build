@@ -1,6 +1,6 @@
 project('qemu', ['c', 'cpp'], meson_version: '>=1.5.0',
         default_options: ['warning_level=1', 'c_std=gnu11', 'cpp_std=c++17', 'b_colorout=auto',
-                          'b_staticpic=false', 'stdsplit=false', 'optimization=2', 'b_pie=true'],
+                          'b_staticpic=false', 'stdsplit=false', 'optimization=3', 'b_pie=true'],
         version: files('QEMU_VERSION'))
 
 add_test_setup('quick', exclude_suites: ['slow', 'thorough'], is_default: true)
