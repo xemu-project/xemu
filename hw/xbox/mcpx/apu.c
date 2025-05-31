@@ -1795,7 +1795,7 @@ static void voice_process(MCPXAPUState *d,
     bin[7] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
                             NV_PAVS_VOICE_CFG_FMT_V7BIN);
 
-    if (v < 64) {
+    if (v < MCPX_HW_MAX_3D_VOICES) {
         bin[0] = d->vp.hrtf_submix[0];
         bin[1] = d->vp.hrtf_submix[1];
         bin[2] = d->vp.hrtf_submix[2];
@@ -1846,7 +1846,7 @@ static void voice_process(MCPXAPUState *d,
 
     // FIXME: Move to function
     bool lpf = false;
-    if (v < 64) {
+    if (v < MCPX_HW_MAX_3D_VOICES) {
         /* 1:DLS2+I3DL2 2:ParaEQ+I3DL2 3:I3DL2 */
         lpf = (fmode == 1);
     } else {
@@ -1878,7 +1878,7 @@ static void voice_process(MCPXAPUState *d,
     for (int b = 0; b < 8; b++) {
         float g = ea_value;
         float hr;
-        if ((v < 64) && (b < 4)) {
+        if ((v < MCPX_HW_MAX_3D_VOICES) && (b < 4)) {
             // FIXME: Not sure if submix/voice headroom factor in for HRTF
             // Note: Attenuate extra 6dB to simulate HRTF
             hr = 1 << (d->vp.hrtf_headroom + 1);
