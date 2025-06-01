@@ -1,7 +1,7 @@
 /*
  * Helper FP conversions
  *
- * Copyright (c) 2020-2021 Matt Borgerson
+ * Copyright (c) 2020-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -21,6 +21,13 @@
 #ifndef FLOATCONV_H
 #define FLOATCONV_H
 
+#include <stdint.h>
+
+static float int8_to_float(int8_t x)
+{
+    return x / 128.0f;
+}
+
 static float uint8_to_float(uint8_t value)
 {
     return ((int)value - 0x80) / (1.0 * 0x80);
@@ -29,6 +36,11 @@ static float uint8_to_float(uint8_t value)
 static float int16_to_float(int16_t value)
 {
     return value / (1.0 * 0x8000);
+}
+
+static float s6p9_to_float(int16_t value)
+{
+    return value / 512.0f;
 }
 
 static float int32_to_float(int32_t value)

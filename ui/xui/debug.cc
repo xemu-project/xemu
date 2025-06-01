@@ -228,6 +228,8 @@ void DebugApuWindow::Draw()
         mcpx_apu_debug_set_ep_realtime_enabled(ep_realtime);
     }
 
+    ImGui::Checkbox("HRTF Filtering\n", &g_config.audio.hrtf);
+
     ImGui::Columns(1);
     ImGui::End();
 }
