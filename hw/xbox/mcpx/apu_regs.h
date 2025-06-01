@@ -355,6 +355,9 @@ enum MCPX_HW_NOTIFIER {
 #define HRTF_NULL_HANDLE 0xFFFF
 #define HRTF_ENTRY_COUNT 128
 
+#define MULTIPASS_BIN      31
+#define MULTIPASS_BIN_MASK (1 << MULTIPASS_BIN)
+
 // clang-format on
 
 #endif
