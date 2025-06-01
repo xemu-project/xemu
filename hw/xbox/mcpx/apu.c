@@ -29,6 +29,7 @@
 #include "cpu.h"
 #include "migration/vmstate.h"
 #include "qemu/main-loop.h"
+#include "qemu/thread.h"
 #include "sysemu/runstate.h"
 #include "audio/audio.h"
 #include "qemu/fifo8.h"
@@ -74,6 +75,8 @@
 #define MCPX_APU_DEVICE(obj) \
     OBJECT_CHECK(MCPXAPUState, (obj), "mcpx-apu")
 
+#define NUM_VOICE_WORKERS 16
+
 typedef struct MCPXAPUVPSSLData {
     uint32_t base[MCPX_HW_SSLS_PER_VOICE];
     uint8_t count[MCPX_HW_SSLS_PER_VOICE];
@@ -88,6 +91,31 @@ typedef struct MCPXAPUVoiceFilter {
     sv_filter svf[2];
     HrtfFilter hrtf;
 } MCPXAPUVoiceFilter;
+
+typedef struct VoiceWorkItem {
+    int voice;
+    int list;
+} VoiceWorkItem;
+
+typedef struct VoiceWorker {
+    QemuThread thread;
+    float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
+    float sample_buf[NUM_SAMPLES_PER_FRAME][2];
+    VoiceWorkItem queue[MCPX_HW_MAX_VOICES];
+    int queue_len;
+} VoiceWorker;
+
+typedef struct VoiceWorkDispatch {
+    QemuMutex lock;
+    VoiceWorker workers[NUM_VOICE_WORKERS];
+    bool workers_should_exit;
+    QemuCond work_pending;
+    uint64_t workers_pending;
+    QemuCond work_finished;
+    float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
+    VoiceWorkItem queue[MCPX_HW_MAX_VOICES];
+    int queue_len;
+} VoiceWorkDispatch;
 
 typedef struct MCPXAPUState {
     /*< private >*/
@@ -112,6 +140,7 @@ typedef struct MCPXAPUState {
     /* Voice Processor */
     struct {
         MemoryRegion mmio;
+        VoiceWorkDispatch voice_work_dispatch;
         MCPXAPUVoiceFilter filters[MCPX_HW_MAX_VOICES];
         QemuSpin out_buf_lock;
         Fifo8 out_buf;
@@ -237,6 +266,7 @@ static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
 static void voice_reset_filters(MCPXAPUState *d, uint16_t v);
 static void voice_process(MCPXAPUState *d,
                           float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
+                          float sample_buf[NUM_SAMPLES_PER_FRAME][2],
                           uint16_t v, int voice_list);
 static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                              int num_samples_requested);
@@ -1773,8 +1803,283 @@ static void get_multipass_samples(MCPXAPUState *d,
     dump_multipass_unused_debug_info(d, v);
 }
 
+static void get_voice_bin_src_dst(MCPXAPUState *d, int v,
+                                  uint32_t *src, uint32_t *dst, uint32_t *clr)
+{
+    uint32_t src_v = 0;
+    uint32_t dst_v = 0;
+    uint32_t clr_v = 0;
+
+    bool multipass = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                    NV_PAVS_VOICE_CFG_FMT_MULTIPASS);
+    if (multipass) {
+        int mp_bin = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                    NV_PAVS_VOICE_CFG_FMT_MULTIPASS_BIN);
+        bool clear_mix = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                        NV_PAVS_VOICE_CFG_FMT_CLEAR_MIX);
+        src_v |= (1 << mp_bin);
+        if (clear_mix) {
+            clr_v |= (1 << mp_bin);
+        }
+    }
+
+    int bin[8];
+    if (v < MCPX_HW_MAX_3D_VOICES) {
+        bin[0] = d->vp.hrtf_submix[0];
+        bin[1] = d->vp.hrtf_submix[1];
+        bin[2] = d->vp.hrtf_submix[2];
+        bin[3] = d->vp.hrtf_submix[3];
+    } else {
+        bin[0] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                                NV_PAVS_VOICE_CFG_VBIN_V0BIN);
+        bin[1] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                                NV_PAVS_VOICE_CFG_VBIN_V1BIN);
+        bin[2] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                                NV_PAVS_VOICE_CFG_VBIN_V2BIN);
+        bin[3] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                                NV_PAVS_VOICE_CFG_VBIN_V3BIN);
+    }
+    bin[4] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                            NV_PAVS_VOICE_CFG_VBIN_V4BIN);
+    bin[5] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                            NV_PAVS_VOICE_CFG_VBIN_V5BIN);
+    bin[6] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                            NV_PAVS_VOICE_CFG_FMT_V6BIN);
+    bin[7] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                            NV_PAVS_VOICE_CFG_FMT_V7BIN);
+
+    for (int i = 0; i < 8; i++) {
+        dst_v |= 1 << bin[i];
+    }
+
+    if (src) {
+        *src = src_v;
+    }
+    if (dst) {
+        *dst = dst_v;
+    }
+    if (clr) {
+        *clr = clr_v;
+    }
+}
+
+static void *voice_worker_thread(void *arg)
+{
+    MCPXAPUState *d = arg;
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    rcu_register_thread();
+    qemu_mutex_lock(&vwd->lock);
+
+    int worker_id = ctz64(vwd->workers_pending);
+    VoiceWorker *self = &d->vp.voice_work_dispatch.workers[worker_id];
+    self->queue_len = 0;
+
+    do {
+        int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+        g_dbg.vp.workers[worker_id].num_voices = self->queue_len;
+
+        if (self->queue_len) {
+            qemu_mutex_unlock(&vwd->lock);
+
+            // Process queued voices
+            memset(self->mixbins, 0, sizeof(self->mixbins));
+            if (d->mon == MCPX_APU_DEBUG_MON_VP) {
+                memset(self->sample_buf, 0, sizeof(self->sample_buf));
+            }
+            for (int i = 0; i < self->queue_len; i++) {
+                voice_process(d, self->mixbins, self->sample_buf,
+                              self->queue[i].voice, self->queue[i].list);
+            }
+
+            qemu_mutex_lock(&vwd->lock);
+
+            // Add voice contributions
+            for (int b = 0; b < NUM_MIXBINS; b++) {
+                for (int s = 0; s < NUM_SAMPLES_PER_FRAME; s++) {
+                    vwd->mixbins[b][s] += self->mixbins[b][s];
+                }
+            }
+            if (d->mon == MCPX_APU_DEBUG_MON_VP) {
+                for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                    d->vp.sample_buf[i][0] += self->sample_buf[i][0];
+                    d->vp.sample_buf[i][1] += self->sample_buf[i][1];
+                }
+            }
+
+            self->queue_len = 0;
+        }
+
+        vwd->workers_pending &= ~(1 << worker_id);
+        if (!vwd->workers_pending) {
+            qemu_cond_signal(&vwd->work_finished);
+        }
+
+        int64_t end_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+        g_dbg.vp.workers[worker_id].time_us = end_time - start_time;
+
+        qemu_cond_wait(&vwd->work_pending, &vwd->lock);
+    } while (!vwd->workers_should_exit);
+
+    rcu_unregister_thread();
+    return NULL;
+}
+
+static void voice_work_acquire_voice_lock_for_processing(MCPXAPUState *d, int v)
+{
+    qemu_spin_lock(&d->vp.voice_spinlocks[v]);
+    while (is_voice_locked(d, v)) {
+        /* Stall until voice is available */
+        qemu_spin_unlock(&d->vp.voice_spinlocks[v]);
+        qemu_cond_wait(&d->cond, &d->lock);
+        qemu_spin_lock(&d->vp.voice_spinlocks[v]);
+    }
+}
+
+static void voice_work_enqueue(MCPXAPUState *d, int v, int list)
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    assert(vwd->queue_len < ARRAY_SIZE(vwd->queue));
+    vwd->queue[vwd->queue_len++] = (VoiceWorkItem){
+        .voice = v,
+        .list = list,
+    };
+
+    voice_work_acquire_voice_lock_for_processing(d, v);
+}
+
+static void voice_work_release_voice_locks(MCPXAPUState *d)
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    for (int i = 0; i < vwd->queue_len; i++) {
+        qemu_spin_unlock(&d->vp.voice_spinlocks[vwd->queue[i].voice]);
+    }
+}
+
+static void voice_work_schedule(MCPXAPUState *d)
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+    int next_worker_to_schedule = 0;
+    bool group = false;
+    uint32_t dirty = 0;
+
+    for (int i = 0; i < vwd->queue_len; i++) {
+        uint32_t src, dst, clr;
+        get_voice_bin_src_dst(d, vwd->queue[i].voice, &src, &dst, &clr);
+
+        // TODO: To simplify submix scheduling, we make a few assumptions based
+        // on Xbox software observations. However, the configurability of
+        // multipass sources suggests the hardware may not be so strict. We'll
+        // defer making this more robust for now.
+        //
+        // We currently assume that:
+        //
+        // - MP bin is constant
+        assert(!src || (src == MULTIPASS_BIN_MASK));
+        //
+        // - MP voice always clears MP bin
+        assert(!src || (clr == MULTIPASS_BIN_MASK));
+        //
+        // - MP source voices are ordered consecutively in voice lists
+        assert(src || (dst & MULTIPASS_BIN_MASK) ||
+               !(dirty & MULTIPASS_BIN_MASK));
+
+        if ((dst & MULTIPASS_BIN_MASK) & ~dirty) {
+            group = true;
+        }
+
+        // Assign voice to worker
+        VoiceWorker *worker = &vwd->workers[next_worker_to_schedule];
+        worker->queue[worker->queue_len++] = vwd->queue[i];
+        vwd->workers_pending |= 1 << next_worker_to_schedule;
+
+        dirty = (dirty & ~clr) | dst;
+        if (clr & MULTIPASS_BIN_MASK) {
+            group = false;
+        }
+
+        if (!group) {
+            next_worker_to_schedule =
+                (next_worker_to_schedule + 1) % NUM_VOICE_WORKERS;
+        }
+    }
+}
+
+static void
+voice_work_dispatch(MCPXAPUState *d,
+                    float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+
+    qemu_mutex_lock(&vwd->lock);
+
+    if (vwd->queue_len) {
+        memset(vwd->mixbins, 0, sizeof(vwd->mixbins));
+
+        // Signal workers and wait for completion
+        voice_work_schedule(d);
+        qemu_cond_broadcast(&vwd->work_pending);
+        qemu_cond_wait(&vwd->work_finished, &vwd->lock);
+        assert(!vwd->workers_pending);
+        voice_work_release_voice_locks(d);
+        vwd->queue_len = 0;
+
+        // Add voice contributions
+        for (int b = 0; b < NUM_MIXBINS; b++) {
+            for (int s = 0; s < NUM_SAMPLES_PER_FRAME; s++) {
+                mixbins[b][s] += vwd->mixbins[b][s];
+            }
+        }
+    }
+
+    int64_t end_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+    g_dbg.vp.total_worker_time_us = end_time - start_time;
+
+    qemu_mutex_unlock(&vwd->lock);
+}
+
+static void voice_work_init(MCPXAPUState *d)
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    vwd->workers_should_exit = false;
+    vwd->workers_pending = 0;
+    vwd->queue_len = 0;
+
+    qemu_mutex_init(&vwd->lock);
+    qemu_mutex_lock(&vwd->lock);
+    qemu_cond_init(&vwd->work_pending);
+    qemu_cond_init(&vwd->work_finished);
+    for (int i = 0; i < NUM_VOICE_WORKERS; i++) {
+        vwd->workers_pending |= 1 << i;
+        qemu_thread_create(&vwd->workers[i].thread, "mcpx.voice_worker",
+                           voice_worker_thread, d, QEMU_THREAD_JOINABLE);
+    }
+    qemu_cond_wait(&vwd->work_finished, &vwd->lock);
+    assert(!vwd->workers_pending);
+    qemu_mutex_unlock(&vwd->lock);
+}
+
+static void voice_work_finalize(MCPXAPUState *d)
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    qemu_mutex_lock(&vwd->lock);
+    vwd->workers_should_exit = true;
+    qemu_cond_broadcast(&vwd->work_pending);
+    qemu_mutex_unlock(&vwd->lock);
+    for (int i = 0; i < NUM_VOICE_WORKERS; i++) {
+        qemu_thread_join(&vwd->workers[i].thread);
+    }
+}
+
 static void voice_process(MCPXAPUState *d,
                           float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
+                          float sample_buf[NUM_SAMPLES_PER_FRAME][2],
                           uint16_t v, int voice_list)
 {
     assert(v < MCPX_HW_MAX_VOICES);
@@ -2003,8 +2308,8 @@ static void voice_process(MCPXAPUState *d,
         }
         g *= ea_value;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-            d->vp.sample_buf[i][0] += g*samples[i][0];
-            d->vp.sample_buf[i][1] += g*samples[i][1];
+            sample_buf[i][0] += g*samples[i][0];
+            sample_buf[i][1] += g*samples[i][1];
         }
     }
 }
@@ -2361,19 +2666,12 @@ static void se_frame(MCPXAPUState *d)
                                 NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE)) {
                 fe_method(d, SE2FE_IDLE_VOICE, v);
             } else {
-                qemu_spin_lock(&d->vp.voice_spinlocks[v]);
-                while (is_voice_locked(d, v)) {
-                    /* Stall until voice is available */
-                    qemu_spin_unlock(&d->vp.voice_spinlocks[v]);
-                    qemu_cond_wait(&d->cond, &d->lock);
-                    qemu_spin_lock(&d->vp.voice_spinlocks[v]);
-                }
-                voice_process(d, mixbins, v, list);
-                qemu_spin_unlock(&d->vp.voice_spinlocks[v]);
+                voice_work_enqueue(d, v, list);
             }
             d->regs[current] = d->regs[next];
         }
     }
+    voice_work_dispatch(d, mixbins);
 
     if (d->mon == MCPX_APU_DEBUG_MON_VP) {
         /* Mix all voices together to hear any audible voice */
@@ -2547,6 +2845,7 @@ static void mcpx_apu_exitfn(PCIDevice *dev)
     d->exiting = true;
     qemu_cond_broadcast(&d->cond);
     qemu_thread_join(&d->apu_thread);
+    voice_work_finalize(d);
 }
 
 static void mcpx_apu_reset(MCPXAPUState *d)
@@ -2884,6 +3183,7 @@ void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
      */
     mcpx_apu_update_dsp_preference(d);
 
+    voice_work_init(d);
     qemu_thread_create(&d->apu_thread, "mcpx.apu_thread", mcpx_apu_frame_thread,
                        d, QEMU_THREAD_JOINABLE);
 }
