@@ -209,6 +209,10 @@ static void update_shader_constant_locations(ShaderBinding *binding)
         snprintf(tmp, sizeof(tmp), "colorKey[%d]", i);
         binding->color_key_loc[i] =
             glGetUniformLocation(binding->gl_program, tmp);
+
+        snprintf(tmp, sizeof(tmp), "colorKeyIgnoreAlpha[%d]", i);
+        binding->color_key_ignore_alpha_loc[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
     }
 }
 
@@ -703,6 +707,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
                                     bool binding_changed)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
+    ShaderState *state = &binding->state;
     int i, j;
 
     /* update combiner constants */
@@ -732,10 +737,14 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         glUniform1i(binding->alpha_ref_loc, alpha_ref);
     }
 
-    for (int i = 0; i < 4; ++i) {
+    for (i = 0; i < 4; ++i) {
         if (binding->color_key_loc[i] != -1) {
             glUniform1ui(binding->color_key_loc[i],
                          pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR0 + i * 4));
+        }
+        if (binding->color_key_ignore_alpha_loc[i] != -1) {
+            glUniform1i(binding->color_key_ignore_alpha_loc[i],
+                        state->psh.colorkey_ignore_alpha[i]);
         }
     }
 
@@ -807,7 +816,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         assert(0);
     }
 
-    if (binding->state.fixed_function) {
+    if (state->fixed_function) {
         /* update lighting constants */
         struct {
             uint32_t* v;
