@@ -133,6 +133,7 @@ static void update_shader_constant_locations(ShaderBinding *binding)
         }
     }
     binding->alpha_ref_loc = glGetUniformLocation(binding->gl_program, "alphaRef");
+
     for (int i = 1; i < NV2A_MAX_TEXTURES; i++) {
         snprintf(tmp, sizeof(tmp), "bumpMat%d", i);
         binding->bump_mat_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
@@ -202,6 +203,12 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     } else {
         binding->material_alpha_loc = -1;
         binding->specular_power_loc = -1;
+    }
+
+    for (int i = 0; i < 4; ++i) {
+        snprintf(tmp, sizeof(tmp), "colorKey[%d]", i);
+        binding->color_key_loc[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
     }
 }
 
@@ -725,6 +732,12 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         glUniform1i(binding->alpha_ref_loc, alpha_ref);
     }
 
+    for (int i = 0; i < 4; ++i) {
+        if (binding->color_key_loc[i] != -1) {
+            glUniform1ui(binding->color_key_loc[i],
+                         pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR0 + i * 4));
+        }
+    }
 
     /* For each texture stage */
     for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
@@ -960,40 +973,41 @@ static bool test_shaders_dirty(PGRAPHState *pg)
     #define CF_x__update(type, src, name, x) \
         for (int i = 0; i < x; i++) { CNAME(name)[i] = src[i]; }
 
-    #define DIRTY_REGS \
-        CR_1(NV_PGRAPH_COMBINECTL) \
-        CR_1(NV_PGRAPH_SHADERCTL) \
-        CR_1(NV_PGRAPH_SHADOWCTL) \
-        CR_1(NV_PGRAPH_COMBINESPECFOG0) \
-        CR_1(NV_PGRAPH_COMBINESPECFOG1) \
-        CR_1(NV_PGRAPH_CONTROL_0) \
-        CR_1(NV_PGRAPH_CONTROL_3) \
-        CR_1(NV_PGRAPH_CSV0_C) \
-        CR_1(NV_PGRAPH_CSV0_D) \
-        CR_1(NV_PGRAPH_CSV1_A) \
-        CR_1(NV_PGRAPH_CSV1_B) \
-        CR_1(NV_PGRAPH_SETUPRASTER) \
-        CR_1(NV_PGRAPH_SHADERPROG) \
-        CR_1(NV_PGRAPH_ZCOMPRESSOCCLUDE) \
-        CR_8(NV_PGRAPH_COMBINECOLORI0) \
-        CR_8(NV_PGRAPH_COMBINECOLORO0) \
-        CR_8(NV_PGRAPH_COMBINEALPHAI0) \
-        CR_8(NV_PGRAPH_COMBINEALPHAO0) \
-        CR_8(NV_PGRAPH_COMBINEFACTOR0) \
-        CR_8(NV_PGRAPH_COMBINEFACTOR1) \
-        CR_1(NV_PGRAPH_SHADERCLIPMODE) \
-        CR_4(NV_PGRAPH_TEXCTL0_0) \
-        CR_4(NV_PGRAPH_TEXFMT0) \
-        CR_4(NV_PGRAPH_TEXFILTER0) \
-        CR_8(NV_PGRAPH_WINDOWCLIPX0) \
-        CR_8(NV_PGRAPH_WINDOWCLIPY0) \
-        CF(pg->primitive_mode, primitive_mode) \
-        CF(pg->surface_scale_factor, surface_scale_factor) \
-        CF(pg->compressed_attrs, compressed_attrs) \
-        CFA(pg->texture_matrix_enable, texture_matrix_enable)
+#define DIRTY_REGS                                        \
+    CR_1(NV_PGRAPH_COMBINECTL)                            \
+    CR_1(NV_PGRAPH_SHADERCTL)                             \
+    CR_1(NV_PGRAPH_SHADOWCTL)                             \
+    CR_1(NV_PGRAPH_COMBINESPECFOG0)                       \
+    CR_1(NV_PGRAPH_COMBINESPECFOG1)                       \
+    CR_1(NV_PGRAPH_CONTROL_0)                             \
+    CR_1(NV_PGRAPH_CONTROL_3)                             \
+    CR_1(NV_PGRAPH_CSV0_C)                                \
+    CR_1(NV_PGRAPH_CSV0_D)                                \
+    CR_1(NV_PGRAPH_CSV1_A)                                \
+    CR_1(NV_PGRAPH_CSV1_B)                                \
+    CR_1(NV_PGRAPH_SETUPRASTER)                           \
+    CR_1(NV_PGRAPH_SHADERPROG)                            \
+    CR_1(NV_PGRAPH_ZCOMPRESSOCCLUDE)                      \
+    CR_8(NV_PGRAPH_COMBINECOLORI0)                        \
+    CR_8(NV_PGRAPH_COMBINECOLORO0)                        \
+    CR_8(NV_PGRAPH_COMBINEALPHAI0)                        \
+    CR_8(NV_PGRAPH_COMBINEALPHAO0)                        \
+    CR_8(NV_PGRAPH_COMBINEFACTOR0)                        \
+    CR_8(NV_PGRAPH_COMBINEFACTOR1)                        \
+    CR_1(NV_PGRAPH_SHADERCLIPMODE)                        \
+    CR_4(NV_PGRAPH_TEXCTL0_0)                             \
+    CR_4(NV_PGRAPH_TEXFMT0)                               \
+    CR_4(NV_PGRAPH_TEXFILTER0)                            \
+    CR_8(NV_PGRAPH_WINDOWCLIPX0)                          \
+    CR_8(NV_PGRAPH_WINDOWCLIPY0)                          \
+    CF(pg->primitive_mode, primitive_mode)                \
+    CF(pg->surface_scale_factor, surface_scale_factor)    \
+    CF(pg->compressed_attrs, compressed_attrs)            \
+    CFA(pg->texture_matrix_enable, texture_matrix_enable) \
+    CR_4(NV_PGRAPH_COLORKEYCOLOR0)
 
-    #define CR_x(reg, x) CR_x__define(reg, x)
-    #define CF_x(type, src, name, x) CF_x__define(type, src, name, x)
+#define CR_x(reg, x) CR_x__define(reg, x)
+#define CF_x(type, src, name, x) CF_x__define(type, src, name, x)
     DIRTY_REGS
     #undef CR_x
     #undef CF_x

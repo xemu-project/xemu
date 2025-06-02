@@ -219,6 +219,7 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
         }
 
         state.psh.alphakill[i] = ctl_0 & NV_PGRAPH_TEXCTL0_0_ALPHAKILLEN;
+        state.psh.colorkeymode[i] = ctl_0 & NV_PGRAPH_TEXCTL0_0_COLORKEYMODE;
 
         uint32_t tex_fmt = pgraph_reg_r(pg, NV_PGRAPH_TEXFMT0 + i * 4);
         state.psh.dim_tex[i] = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_DIMENSIONALITY);

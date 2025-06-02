@@ -312,6 +312,9 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     binding->material_alpha_loc =
         uniform_index(&binding->vertex->uniforms, "material_alpha");
 
+    binding->color_key_loc =
+        uniform_index(&binding->fragment->uniforms, "colorKey");
+
     binding->uniform_attrs_loc =
         uniform_index(&binding->vertex->uniforms, "inlineValue");
 
@@ -490,7 +493,16 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         uniform1i(&binding->fragment->uniforms, binding->alpha_ref_loc,
                          alpha_ref);
     }
-
+    if (binding->color_key_loc != -1) {
+        uint32_t color_key_colors[4] = {
+            pg->regs_[NV_PGRAPH_COLORKEYCOLOR0],
+            pg->regs_[NV_PGRAPH_COLORKEYCOLOR1],
+            pg->regs_[NV_PGRAPH_COLORKEYCOLOR2],
+            pg->regs_[NV_PGRAPH_COLORKEYCOLOR3],
+        };
+        uniform1uiv(&binding->fragment->uniforms, binding->color_key_loc, 4,
+                    color_key_colors);
+    }
 
     /* For each texture stage */
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {

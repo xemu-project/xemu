@@ -409,6 +409,10 @@
 #       define NV_PGRAPH_CLEARRECTY_YMIN                          0x00000FFF
 #       define NV_PGRAPH_CLEARRECTY_YMAX                          0x0FFF0000
 #define NV_PGRAPH_COLORCLEARVALUE                        0x0000186C
+#define NV_PGRAPH_COLORKEYCOLOR0                         0x00001870
+#define NV_PGRAPH_COLORKEYCOLOR1                         0x00001874
+#define NV_PGRAPH_COLORKEYCOLOR2                         0x00001878
+#define NV_PGRAPH_COLORKEYCOLOR3                         0x0000187C
 #define NV_PGRAPH_COMBINEFACTOR0                         0x00001880
 #define NV_PGRAPH_COMBINEFACTOR1                         0x000018A0
 #define NV_PGRAPH_COMBINEALPHAI0                         0x000018C0
@@ -533,6 +537,7 @@
 #define NV_PGRAPH_TEXADDRESS2                            0x000019C4
 #define NV_PGRAPH_TEXADDRESS3                            0x000019C8
 #define NV_PGRAPH_TEXCTL0_0                              0x000019CC
+#   define NV_PGRAPH_TEXCTL0_0_COLORKEYMODE                     0x03
 #   define NV_PGRAPH_TEXCTL0_0_ALPHAKILLEN                      (1 << 2)
 #   define NV_PGRAPH_TEXCTL0_0_MAX_LOD_CLAMP                    0x0003FFC0
 #   define NV_PGRAPH_TEXCTL0_0_MIN_LOD_CLAMP                    0x3FFC0000
@@ -1065,6 +1070,7 @@
 #   define NV097_SET_COMBINER_FACTOR1                         0x00000A80
 #   define NV097_SET_COMBINER_ALPHA_OCW                       0x00000AA0
 #   define NV097_SET_COMBINER_COLOR_ICW                       0x00000AC0
+#   define NV097_SET_COLOR_KEY_COLOR                          0x00000AE0
 #   define NV097_SET_VIEWPORT_SCALE                           0x00000AF0
 #   define NV097_SET_TRANSFORM_PROGRAM                        0x00000B00
 #   define NV097_SET_TRANSFORM_CONSTANT                       0x00000B80
