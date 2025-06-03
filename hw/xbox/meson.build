@@ -5,6 +5,7 @@ specific_ss.add(files(
 	# 'chihiro.c',
 	'eeprom_generation.c',
 	'lpc47m157.c',
+	'lpcsega.c',
 	'nvnet.c',
 	'smbus_adm1032.c',
 	'smbus_cx25871.c',
