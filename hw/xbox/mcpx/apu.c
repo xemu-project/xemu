@@ -110,9 +110,9 @@ static void se_frame(MCPXAPUState *d)
     g_dbg.gp_realtime = d->gp.realtime;
     g_dbg.ep_realtime = d->ep.realtime;
 
-    qemu_spin_lock(&d->vp.out_buf_lock);
-    int num_bytes_free = fifo8_num_free(&d->vp.out_buf);
-    qemu_spin_unlock(&d->vp.out_buf_lock);
+    qemu_spin_lock(&d->monitor.fifo_lock);
+    int num_bytes_free = fifo8_num_free(&d->monitor.fifo);
+    qemu_spin_unlock(&d->monitor.fifo_lock);
 
     /* A rudimentary calculation to determine approximately how taxed the APU
      * thread is, by measuring how much time we spend waiting for FIFO to drain
@@ -120,7 +120,7 @@ static void se_frame(MCPXAPUState *d)
      * =1: thread is not sleeping and likely falling behind realtime
      * <1: thread is able to complete work on time
      */
-    if (num_bytes_free < sizeof(d->apu_fifo_output)) {
+    if (num_bytes_free < sizeof(d->monitor.frame_buf)) {
         int64_t sleep_start = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
         qemu_cond_wait(&d->cond, &d->lock);
         int64_t sleep_end = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
@@ -157,18 +157,18 @@ static void se_frame(MCPXAPUState *d)
         if (0 <= g_config.audio.volume_limit && g_config.audio.volume_limit < 1) {
             float f = pow(g_config.audio.volume_limit, M_E);
             for (int i = 0; i < 256; i++) {
-                d->apu_fifo_output[i][0] *= f;
-                d->apu_fifo_output[i][1] *= f;
+                d->monitor.frame_buf[i][0] *= f;
+                d->monitor.frame_buf[i][1] *= f;
             }
         }
 
-        qemu_spin_lock(&d->vp.out_buf_lock);
-        num_bytes_free = fifo8_num_free(&d->vp.out_buf);
-        assert(num_bytes_free >= sizeof(d->apu_fifo_output));
-        fifo8_push_all(&d->vp.out_buf, (uint8_t *)d->apu_fifo_output,
-                       sizeof(d->apu_fifo_output));
-        qemu_spin_unlock(&d->vp.out_buf_lock);
-        memset(d->apu_fifo_output, 0, sizeof(d->apu_fifo_output));
+        qemu_spin_lock(&d->monitor.fifo_lock);
+        num_bytes_free = fifo8_num_free(&d->monitor.fifo);
+        assert(num_bytes_free >= sizeof(d->monitor.frame_buf));
+        fifo8_push_all(&d->monitor.fifo, (uint8_t *)d->monitor.frame_buf,
+                       sizeof(d->monitor.frame_buf));
+        qemu_spin_unlock(&d->monitor.fifo_lock);
+        memset(d->monitor.frame_buf, 0, sizeof(d->monitor.frame_buf));
     }
 
     d->ep_frame_div++;
@@ -189,7 +189,7 @@ static void sleep_ns(int64_t ns)
 #endif
 }
 
-static void mcpx_vp_out_cb(void *opaque, uint8_t *stream, int free_b)
+static void monitor_sink_cb(void *opaque, uint8_t *stream, int free_b)
 {
     MCPXAPUState *s = MCPX_APU_DEVICE(opaque);
 
@@ -200,9 +200,9 @@ static void mcpx_vp_out_cb(void *opaque, uint8_t *stream, int free_b)
 
     int avail = 0;
     while (avail < free_b) {
-        qemu_spin_lock(&s->vp.out_buf_lock);
-        avail = fifo8_num_used(&s->vp.out_buf);
-        qemu_spin_unlock(&s->vp.out_buf_lock);
+        qemu_spin_lock(&s->monitor.fifo_lock);
+        avail = fifo8_num_used(&s->monitor.fifo);
+        qemu_spin_unlock(&s->monitor.fifo_lock);
         if (avail < free_b) {
             sleep_ns(1000000);
             qemu_cond_broadcast(&s->cond);
@@ -212,15 +212,44 @@ static void mcpx_vp_out_cb(void *opaque, uint8_t *stream, int free_b)
     int to_copy = MIN(free_b, avail);
     while (to_copy > 0) {
         uint32_t chunk_len = 0;
-        qemu_spin_lock(&s->vp.out_buf_lock);
-        chunk_len = fifo8_pop_buf(&s->vp.out_buf, stream, to_copy);
+        qemu_spin_lock(&s->monitor.fifo_lock);
+        chunk_len = fifo8_pop_buf(&s->monitor.fifo, stream, to_copy);
         assert(chunk_len <= to_copy);
-        qemu_spin_unlock(&s->vp.out_buf_lock);
+        qemu_spin_unlock(&s->monitor.fifo_lock);
         stream += chunk_len;
         to_copy -= chunk_len;
     }
 
     qemu_cond_broadcast(&s->cond);
+}
+
+static void monitor_init(MCPXAPUState *d)
+{
+    qemu_spin_init(&d->monitor.fifo_lock);
+    fifo8_create(&d->monitor.fifo, 3 * (256 * 2 * 2));
+
+    struct SDL_AudioSpec sdl_audio_spec = {
+        .freq = 48000,
+        .format = AUDIO_S16LSB,
+        .channels = 2,
+        .samples = 512,
+        .callback = monitor_sink_cb,
+        .userdata = d,
+    };
+
+    if (SDL_Init(SDL_INIT_AUDIO) < 0)  {
+        fprintf(stderr, "Failed to initialize SDL audio subsystem: %s\n", SDL_GetError());
+        exit(1);
+    }
+
+    SDL_AudioDeviceID sdl_audio_dev;
+    sdl_audio_dev = SDL_OpenAudioDevice(NULL, 0, &sdl_audio_spec, NULL, 0);
+    if (sdl_audio_dev == 0) {
+        fprintf(stderr, "SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
+        assert(!"SDL_OpenAudioDevice failed");
+        exit(1);
+    }
+    SDL_PauseAudioDevice(sdl_audio_dev, 0);
 }
 
 static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
@@ -519,32 +548,6 @@ void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
     d->set_irq = false;
     d->exiting = false;
 
-    struct SDL_AudioSpec sdl_audio_spec = {
-        .freq = 48000,
-        .format = AUDIO_S16LSB,
-        .channels = 2,
-        .samples = 512,
-        .callback = mcpx_vp_out_cb,
-        .userdata = d,
-    };
-
-    if (SDL_Init(SDL_INIT_AUDIO) < 0)  {
-        fprintf(stderr, "Failed to initialize SDL audio subsystem: %s\n", SDL_GetError());
-        exit(1);
-    }
-
-    SDL_AudioDeviceID sdl_audio_dev;
-    sdl_audio_dev = SDL_OpenAudioDevice(NULL, 0, &sdl_audio_spec, NULL, 0);
-    if (sdl_audio_dev == 0) {
-        fprintf(stderr, "SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
-        assert(!"SDL_OpenAudioDevice failed");
-        exit(1);
-    }
-    SDL_PauseAudioDevice(sdl_audio_dev, 0);
-
-    qemu_spin_init(&d->vp.out_buf_lock);
-    fifo8_create(&d->vp.out_buf, 3 * (256 * 2 * 2));
-
     qemu_mutex_init(&d->lock);
     qemu_cond_init(&d->cond);
     qemu_add_vm_change_state_handler(mcpx_apu_vm_state_change, d);
@@ -552,4 +555,6 @@ void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
     mcpx_apu_vp_init(d);
     qemu_thread_create(&d->apu_thread, "mcpx.apu_thread", mcpx_apu_frame_thread,
                        d, QEMU_THREAD_JOINABLE);
+
+    monitor_init(d);
 }

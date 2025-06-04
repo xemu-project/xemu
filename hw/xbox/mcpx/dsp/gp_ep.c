@@ -32,11 +32,11 @@ void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
     }
 
     if (g_config.audio.use_dsp) {
-        d->mon = MCPX_APU_DEBUG_MON_GP_OR_EP;
+        d->monitor.point = MCPX_APU_DEBUG_MON_GP_OR_EP;
         d->gp.realtime = true;
         d->ep.realtime = true;
     } else {
-        d->mon = MCPX_APU_DEBUG_MON_VP;
+        d->monitor.point = MCPX_APU_DEBUG_MON_VP;
         d->gp.realtime = false;
         d->ep.realtime = false;
     }
@@ -180,12 +180,12 @@ static void gp_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
 
 static bool ep_sink_samples(MCPXAPUState *d, uint8_t *ptr, size_t len)
 {
-    if (d->mon == MCPX_APU_DEBUG_MON_AC97) {
+    if (d->monitor.point == MCPX_APU_DEBUG_MON_AC97) {
         return false;
-    } else if ((d->mon == MCPX_APU_DEBUG_MON_EP) ||
-        (d->mon == MCPX_APU_DEBUG_MON_GP_OR_EP)) {
-        assert(len == sizeof(d->apu_fifo_output));
-        memcpy(d->apu_fifo_output, ptr, len);
+    } else if ((d->monitor.point == MCPX_APU_DEBUG_MON_EP) ||
+        (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP)) {
+        assert(len == sizeof(d->monitor.frame_buf));
+        memcpy(d->monitor.frame_buf, ptr, len);
     }
 
     return true;
@@ -461,15 +461,15 @@ void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_
         } while (!d->gp.dsp->core.is_idle && d->gp.realtime);
         g_dbg.gp.cycles = d->gp.dsp->core.cycle_count;
 
-        if ((d->mon == MCPX_APU_DEBUG_MON_GP) ||
-            (d->mon == MCPX_APU_DEBUG_MON_GP_OR_EP && !ep_enabled)) {
+        if ((d->monitor.point == MCPX_APU_DEBUG_MON_GP) ||
+            (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP && !ep_enabled)) {
             int off = (d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
                 uint32_t l = dsp_read_memory(d->gp.dsp, 'X', 0x1400 + i);
-                d->apu_fifo_output[off + i][0] = l >> 8;
+                d->monitor.frame_buf[off + i][0] = l >> 8;
                 uint32_t r =
                     dsp_read_memory(d->gp.dsp, 'X', 0x1400 + 1 * 0x20 + i);
-                d->apu_fifo_output[off + i][1] = r >> 8;
+                d->monitor.frame_buf[off + i][1] = r >> 8;
             }
         }
     }

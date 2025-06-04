@@ -93,12 +93,17 @@ typedef struct MCPXAPUState {
 
     uint32_t regs[0x20000];
 
-    int mon;
     int ep_frame_div;
     int sleep_acc;
     int frame_count;
     int64_t frame_count_time;
-    int16_t apu_fifo_output[256][2]; // 1 EP frame (0x400 bytes), 8 buffered
+
+    struct {
+        McpxApuDebugMonitorPoint point;
+        int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes), 8 buffered
+        QemuSpin fifo_lock;
+        Fifo8 fifo;
+    } monitor;
 } MCPXAPUState;
 
 extern MCPXAPUState *g_state; // Used via debug handlers
