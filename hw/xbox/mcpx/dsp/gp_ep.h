@@ -18,18 +18,18 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef HW_XBOX_MCPX_APU_DSP_H
-#define HW_XBOX_MCPX_APU_DSP_H
+#ifndef HW_XBOX_MCPX_APU_GP_EP_H
+#define HW_XBOX_MCPX_APU_GP_EP_H
 
 #include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "hw/xbox/mcpx/apu_regs.h"
 
-#include "dsp/dsp.h"
-#include "dsp/dsp_dma.h"
-#include "dsp/dsp_cpu.h"
-#include "dsp/dsp_state.h"
+#include "dsp.h"
+#include "dsp_dma.h"
+#include "dsp_cpu.h"
+#include "dsp_state.h"
 
 typedef struct MCPXAPUState MCPXAPUState;
 

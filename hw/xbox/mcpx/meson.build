@@ -1,13 +1,12 @@
-subdir('dsp')
 
 mcpx_ss = ss.source_set()
-mcpx_ss.add(sdl, dsp, files(
+mcpx_ss.add(sdl, files(
 	'apu.c',
 	'aci.c',
 	'debug.c',
-	'dsp.c',
 	))
 
 subdir('vp')
+subdir('dsp')
 
 specific_ss.add_all(mcpx_ss)

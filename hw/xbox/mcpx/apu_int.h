@@ -42,7 +42,7 @@
 #include "apu_debug.h"
 #include "fpconv.h"
 #include "vp/vp.h"
-#include "dsp.h"
+#include "dsp/gp_ep.h"
 
 #define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
 
