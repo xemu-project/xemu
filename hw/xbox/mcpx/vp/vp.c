@@ -19,7 +19,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "apu_int.h"
+#include "hw/xbox/mcpx/apu_int.h"
 #include "adpcm.h"
 
 static const struct {

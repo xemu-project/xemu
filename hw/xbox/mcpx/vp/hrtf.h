@@ -24,7 +24,7 @@
 #include <stddef.h>
 #include <math.h>
 
-#include "apu_regs.h"
+#include "hw/xbox/mcpx/apu_regs.h"
 
 #define HRTF_SAMPLES_PER_FRAME  NUM_SAMPLES_PER_FRAME
 #define HRTF_NUM_TAPS           31

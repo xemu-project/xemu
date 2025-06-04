@@ -21,12 +21,13 @@
 #ifndef HW_XBOX_MCPX_VP_H
 #define HW_XBOX_MCPX_VP_H
 
+#include <samplerate.h>
+
 #include "qemu/osdep.h"
+#include "qemu/thread.h"
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
-#include "qemu/thread.h"
-#include "apu_regs.h"
-#include <samplerate.h>
+#include "hw/xbox/mcpx/apu_regs.h"
 #include "svf.h"
 #include "hrtf.h"
 
