@@ -102,9 +102,6 @@ typedef struct MCPXAPUState {
 
     uint32_t regs[0x20000];
 
-    uint32_t inbuf_sge_handle; //FIXME: Where is this stored?
-    uint32_t outbuf_sge_handle; //FIXME: Where is this stored?
-
     int mon;
     int ep_frame_div;
     int sleep_acc;

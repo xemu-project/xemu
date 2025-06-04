@@ -434,18 +434,18 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         break;
     }
     case NV1BA0_PIO_SET_CURRENT_INBUF_SGE:
-        d->inbuf_sge_handle = argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_HANDLE;
+        d->vp.inbuf_sge_handle = argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_HANDLE;
         break;
     case NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET: {
         // FIXME: Is there an upper limit for the SGE table size?
         // FIXME: NV_PAPU_VPSGEADDR is probably bad, as outbuf SGE use the same
         // handle range (or that is also wrong)
         hwaddr sge_address =
-            d->regs[NV_PAPU_VPSGEADDR] + d->inbuf_sge_handle * 8;
+            d->regs[NV_PAPU_VPSGEADDR] + d->vp.inbuf_sge_handle * 8;
         stl_le_phys(&address_space_memory, sge_address,
                     argument &
                         NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET_PARAMETER);
-        DPRINTF("Wrote inbuf SGE[0x%X] = 0x%08X\n", d->inbuf_sge_handle,
+        DPRINTF("Wrote inbuf SGE[0x%X] = 0x%08X\n", d->vp.inbuf_sge_handle,
                 argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET_PARAMETER);
         break;
     }
@@ -466,7 +466,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         //assert(false); //FIXME: Enable assert! no idea what this reg does
         break;
     case NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE:
-        d->outbuf_sge_handle =
+        d->vp.outbuf_sge_handle =
             argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_HANDLE;
         break;
     case NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET: {
@@ -477,11 +477,11 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         // NV_PAPU_GPFADDR   GP outbufs
         // But how does it know which outbuf is being written?!
         hwaddr sge_address =
-            d->regs[NV_PAPU_VPSGEADDR] + d->outbuf_sge_handle * 8;
+            d->regs[NV_PAPU_VPSGEADDR] + d->vp.outbuf_sge_handle * 8;
         stl_le_phys(&address_space_memory, sge_address,
                     argument &
                         NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET_PARAMETER);
-        DPRINTF("Wrote outbuf SGE[0x%X] = 0x%08X\n", d->outbuf_sge_handle,
+        DPRINTF("Wrote outbuf SGE[0x%X] = 0x%08X\n", d->vp.outbuf_sge_handle,
                 argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET_PARAMETER);
         break;
     }
