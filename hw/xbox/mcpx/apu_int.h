@@ -95,32 +95,7 @@ typedef struct MCPXAPUState {
     } se;
 
     /* Voice Processor */
-    struct {
-        MemoryRegion mmio;
-        VoiceWorkDispatch voice_work_dispatch;
-        MCPXAPUVoiceFilter filters[MCPX_HW_MAX_VOICES];
-        QemuSpin out_buf_lock;
-        Fifo8 out_buf;
-
-        // FIXME: Where are these stored?
-        int ssl_base_page;
-        MCPXAPUVPSSLData ssl[MCPX_HW_MAX_VOICES];
-        uint8_t hrtf_headroom;
-        uint8_t hrtf_submix[4];
-        uint8_t submix_headroom[NUM_MIXBINS];
-        float sample_buf[NUM_SAMPLES_PER_FRAME][2];
-        uint64_t voice_locked[4];
-        QemuSpin voice_spinlocks[MCPX_HW_MAX_VOICES];
-
-        struct {
-            int current_entry;
-            // FIXME: Stored in RAM
-            struct {
-                float hrir[2][HRTF_NUM_TAPS];
-                float itd;
-            } entries[HRTF_ENTRY_COUNT];
-        } hrtf;
-    } vp;
+    MCPXAPUVPState vp;
 
     /* Global Processor */
     struct {
