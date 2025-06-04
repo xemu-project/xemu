@@ -21,17 +21,12 @@
 
 #include "apu_int.h"
 
-static MCPXAPUState *g_state; // Used via debug handlers
-static struct McpxApuDebug g_dbg, g_dbg_cache;
-static int g_dbg_voice_monitor = -1;
-static uint64_t g_dbg_muted_voices[4];
+MCPXAPUState *g_state; // Used via debug handlers
 static const int16_t ep_silence[256][2] = { 0 };
 
 static float clampf(float v, float min, float max);
 static float attenuate(uint16_t vol);
 
-static void mcpx_debug_begin_frame(void);
-static void mcpx_debug_end_frame(void);
 static bool voice_should_mute(uint16_t v);
 static uint32_t voice_get_mask(MCPXAPUState *d, uint16_t voice_handle,
                                hwaddr offset, uint32_t mask);
@@ -104,53 +99,7 @@ static void mcpx_apu_register(void);
 static void *mcpx_apu_frame_thread(void *arg);
 
 
-const struct McpxApuDebug *mcpx_apu_get_debug_info(void)
-{
-    return &g_dbg_cache;
-}
 
-static void mcpx_debug_begin_frame(void)
-{
-    for (int i = 0; i < MCPX_HW_MAX_VOICES; i++) {
-        g_dbg.vp.v[i].active = false;
-        g_dbg.vp.v[i].multipass_dst_voice = 0xFFFF;
-    }
-}
-
-static void mcpx_debug_end_frame(void)
-{
-    g_dbg_cache = g_dbg;
-}
-
-void mcpx_apu_debug_set_gp_realtime_enabled(bool run)
-{
-    g_state->gp.realtime = run;
-}
-
-void mcpx_apu_debug_set_ep_realtime_enabled(bool run)
-{
-    g_state->ep.realtime = run;
-}
-
-int mcpx_apu_debug_get_monitor(void)
-{
-    return g_state->mon;
-}
-
-void mcpx_apu_debug_set_monitor(int new_mon)
-{
-    g_state->mon = new_mon;
-}
-
-void mcpx_apu_debug_isolate_voice(uint16_t v)
-{
-    g_dbg_voice_monitor = v;
-}
-
-void mcpx_apu_debug_clear_isolations(void)
-{
-    g_dbg_voice_monitor = -1;
-}
 
 static bool voice_should_mute(uint16_t v)
 {
@@ -171,17 +120,7 @@ static bool voice_should_mute(uint16_t v)
     return m || mcpx_apu_debug_is_muted(v);
 }
 
-bool mcpx_apu_debug_is_muted(uint16_t v)
-{
-    assert(v < MCPX_HW_MAX_VOICES);
-    return g_dbg_muted_voices[v / 64] & (1LL << (v % 64));
-}
 
-void mcpx_apu_debug_toggle_mute(uint16_t v)
-{
-    assert(v < MCPX_HW_MAX_VOICES);
-    g_dbg_muted_voices[v / 64] ^= (1LL << (v % 64));
-}
 
 static void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
 {
