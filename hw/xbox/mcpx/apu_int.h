@@ -87,17 +87,8 @@ typedef struct MCPXAPUState {
     uint8_t *ram_ptr;
     MemoryRegion mmio;
 
-    /* Setup Engine */
-    struct {
-    } se;
-
-    /* Voice Processor */
     MCPXAPUVPState vp;
-
-    /* Global Processor */
     MCPXAPUGPState gp;
-
-    /* Encode Processor */
     MCPXAPUEPState ep;
 
     uint32_t regs[0x20000];
