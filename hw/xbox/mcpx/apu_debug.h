@@ -55,6 +55,11 @@ struct McpxApuDebugVoice
 struct McpxApuDebugVp
 {
     struct McpxApuDebugVoice v[256];
+    struct {
+        int num_voices;
+        int time_us;
+    } workers[16];
+    int total_worker_time_us;
 };
 
 struct McpxApuDebugDsp

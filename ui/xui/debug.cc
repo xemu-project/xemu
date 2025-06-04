@@ -200,16 +200,6 @@ void DebugApuWindow::Draw()
 
     ImGui::NextColumn();
 
-    ImGui::PushFont(g_font_mgr.m_fixed_width_font);
-    ImGui::Text("Frames:      %04d", dbg->frames_processed);
-    ImGui::Text("GP Cycles:   %04d", dbg->gp.cycles);
-    ImGui::Text("EP Cycles:   %04d", dbg->ep.cycles);
-    bool color = (dbg->utilization > 0.9);
-    if (color) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1,0,0,1));
-    ImGui::Text("Utilization: %.2f%%", (dbg->utilization*100));
-    if (color) ImGui::PopStyleColor();
-    ImGui::PopFont();
-
     static int mon = 0;
     mon = mcpx_apu_debug_get_monitor();
     if (ImGui::Combo("Monitor", &mon, "AC97\0VP Only\0GP Only\0EP Only\0GP/EP if enabled\0")) {
@@ -230,6 +220,30 @@ void DebugApuWindow::Draw()
 
     ImGui::Checkbox("HRTF Filtering\n", &g_config.audio.hrtf);
 
+    ImGui::PushFont(g_font_mgr.m_fixed_width_font);
+
+    bool color = (dbg->utilization > 0.9);
+    if (color) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1,0,0,1));
+    ImGui::Text("Utilization: %.2f%%", (dbg->utilization*100));
+    if (color) ImGui::PopStyleColor();
+
+    ImGui::Text("Frames:      %04d", dbg->frames_processed);
+    ImGui::Text("VP:          %4d us", dbg->vp.total_worker_time_us);
+    if (ImGui::TreeNode("VP Workers")) {
+        ImGui::Text(" W: #  us");
+        ImGui::SameLine();
+        ImGui::Text(" W: #  us");
+        for (int i = 0; i < 16; i++) {
+            if (i % 2) ImGui::SameLine();
+            ImGui::Text("%2d:%2d %3d", i, dbg->vp.workers[i].num_voices,
+                        dbg->vp.workers[i].time_us);
+        }
+        ImGui::TreePop();
+    }
+    ImGui::Text("GP Cycles:   %04d", dbg->gp.cycles);
+    ImGui::Text("EP Cycles:   %04d", dbg->ep.cycles);
+
+    ImGui::PopFont();
     ImGui::Columns(1);
     ImGui::End();
 }
