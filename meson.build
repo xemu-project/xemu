@@ -3771,8 +3771,8 @@ if have_system
     'ui',
     'hw/remote',
     'hw/xbox/nv2a',
-    'hw/xbox/mcpx',
-    'hw/xbox/mcpx/dsp',
+    'hw/xbox/mcpx/apu',
+    'hw/xbox/mcpx/apu/dsp',
     'hw/xbox',
   ]
 endif
