@@ -1,12 +1,7 @@
 
 mcpx_ss = ss.source_set()
-mcpx_ss.add(sdl, files(
-	'apu.c',
-	'aci.c',
-	'debug.c',
-	))
+mcpx_ss.add(files('aci.c'))
 
-subdir('vp')
-subdir('dsp')
+subdir('apu')
 
 specific_ss.add_all(mcpx_ss)

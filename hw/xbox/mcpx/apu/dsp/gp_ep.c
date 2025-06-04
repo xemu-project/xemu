@@ -19,7 +19,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "hw/xbox/mcpx/apu_int.h"
+#include "hw/xbox/mcpx/apu/apu_int.h"
 
 static const int16_t ep_silence[256][2] = { 0 };
 

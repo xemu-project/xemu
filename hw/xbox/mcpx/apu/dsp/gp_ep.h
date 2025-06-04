@@ -24,7 +24,7 @@
 #include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
-#include "hw/xbox/mcpx/apu_regs.h"
+#include "hw/xbox/mcpx/apu/apu_regs.h"
 
 #include "dsp.h"
 #include "dsp_dma.h"
