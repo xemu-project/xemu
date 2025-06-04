@@ -37,15 +37,12 @@
 #include "ui/xemu-settings.h"
 
 #include "trace.h"
-#include "dsp/dsp.h"
-#include "dsp/dsp_dma.h"
-#include "dsp/dsp_cpu.h"
-#include "dsp/dsp_state.h"
 #include "apu.h"
 #include "apu_regs.h"
 #include "apu_debug.h"
 #include "fpconv.h"
 #include "vp/vp.h"
+#include "dsp.h"
 
 #define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
 
@@ -98,20 +95,10 @@ typedef struct MCPXAPUState {
     MCPXAPUVPState vp;
 
     /* Global Processor */
-    struct {
-        bool realtime;
-        MemoryRegion mmio;
-        DSPState *dsp;
-        uint32_t regs[0x10000];
-    } gp;
+    MCPXAPUGPState gp;
 
     /* Encode Processor */
-    struct {
-        bool realtime;
-        MemoryRegion mmio;
-        DSPState *dsp;
-        uint32_t regs[0x10000];
-    } ep;
+    MCPXAPUEPState ep;
 
     uint32_t regs[0x20000];
 
@@ -133,12 +120,5 @@ extern uint64_t g_dbg_muted_voices[4];
 
 void mcpx_debug_begin_frame(void);
 void mcpx_debug_end_frame(void);
-
-extern const MemoryRegionOps gp_ops;
-extern const MemoryRegionOps ep_ops;
-
-void mcpx_apu_dsp_init(MCPXAPUState *d);
-void mcpx_apu_update_dsp_preference(MCPXAPUState *d);
-void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
 
 #endif
