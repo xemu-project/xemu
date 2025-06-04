@@ -23,37 +23,37 @@
 
 #include <stdint.h>
 
-static float int8_to_float(int8_t x)
+static inline float int8_to_float(int8_t x)
 {
     return x / 128.0f;
 }
 
-static float uint8_to_float(uint8_t value)
+static inline float uint8_to_float(uint8_t value)
 {
     return ((int)value - 0x80) / (1.0 * 0x80);
 }
 
-static float int16_to_float(int16_t value)
+static inline float int16_to_float(int16_t value)
 {
     return value / (1.0 * 0x8000);
 }
 
-static float s6p9_to_float(int16_t value)
+static inline float s6p9_to_float(int16_t value)
 {
     return value / 512.0f;
 }
 
-static float int32_to_float(int32_t value)
+static inline float int32_to_float(int32_t value)
 {
     return value / (1.0 * 0x80000000);
 }
 
-static float int24_to_float(int32_t value)
+static inline float int24_to_float(int32_t value)
 {
     return int32_to_float((uint32_t)value << 8);
 }
 
-static uint32_t float_to_24b(float value)
+static inline uint32_t float_to_24b(float value)
 {
     double scaled_value = value * (8.0 * 0x100000);
     int int24;
