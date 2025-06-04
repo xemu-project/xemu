@@ -23,23 +23,6 @@
 
 MCPXAPUState *g_state; // Used via debug handlers
 
-static uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size);
-static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
-                           unsigned int size);
-static void se_frame(MCPXAPUState *d);
-static void update_irq(MCPXAPUState *d);
-static void sleep_ns(int64_t ns);
-static void mcpx_vp_out_cb(void *opaque, uint8_t *stream, int free_b);
-static void mcpx_apu_realize(PCIDevice *dev, Error **errp);
-static void mcpx_apu_exitfn(PCIDevice *dev);
-static void mcpx_apu_reset(MCPXAPUState *d);
-static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state);
-static int mcpx_apu_post_save(void *opaque);
-static int mcpx_apu_pre_load(void *opaque);
-static int mcpx_apu_post_load(void *opaque, int version_id);
-static void mcpx_apu_register(void);
-static void *mcpx_apu_frame_thread(void *arg);
-
 static void update_irq(MCPXAPUState *d)
 {
     if (d->regs[NV_PAPU_FECTL] & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) {

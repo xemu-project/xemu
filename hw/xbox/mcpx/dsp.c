@@ -23,30 +23,6 @@
 
 static const int16_t ep_silence[256][2] = { 0 };
 
-static void scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
-                              unsigned int max_sge, uint8_t *ptr, uint32_t addr,
-                              size_t len, bool dir);
-static void gp_scratch_rw(void *opaque, uint8_t *ptr, uint32_t addr, size_t len,
-                          bool dir);
-static void ep_scratch_rw(void *opaque, uint8_t *ptr, uint32_t addr, size_t len,
-                          bool dir);
-static uint32_t circular_scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
-                                           unsigned int max_sge, uint8_t *ptr,
-                                           uint32_t base, uint32_t end,
-                                           uint32_t cur, size_t len, bool dir);
-static void gp_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
-                       size_t len, bool dir);
-static bool ep_sink_samples(MCPXAPUState *d, uint8_t *ptr, size_t len);
-static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
-                       size_t len, bool dir);
-static void proc_rst_write(DSPState *dsp, uint32_t oldval, uint32_t val);
-static uint64_t gp_read(void *opaque, hwaddr addr, unsigned int size);
-static void gp_write(void *opaque, hwaddr addr, uint64_t val,
-                     unsigned int size);
-static uint64_t ep_read(void *opaque, hwaddr addr, unsigned int size);
-static void ep_write(void *opaque, hwaddr addr, uint64_t val,
-                     unsigned int size);
-
 void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
 {
     static int last_known_preference = -1;

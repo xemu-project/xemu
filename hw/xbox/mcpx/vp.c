@@ -30,33 +30,8 @@ static const struct {
     { NV_PAPU_TVLMP, NV_PAPU_CVLMP, NV_PAPU_NVLMP }, // MP
 };
 
-static float clampf(float v, float min, float max);
-static float attenuate(uint16_t vol);
-
-static bool voice_should_mute(uint16_t v);
-static uint32_t voice_get_mask(MCPXAPUState *d, uint16_t voice_handle,
-                               hwaddr offset, uint32_t mask);
-static void voice_set_mask(MCPXAPUState *d, uint16_t voice_handle,
-                           hwaddr offset, uint32_t mask, uint32_t val);
-static void voice_off(MCPXAPUState *d, uint16_t v);
-static void voice_lock(MCPXAPUState *d, uint16_t v, bool lock);
-static bool is_voice_locked(MCPXAPUState *d, uint16_t v);
-static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument);
-static uint64_t vp_read(void *opaque, hwaddr addr, unsigned int size);
-static void vp_write(void *opaque, hwaddr addr, uint64_t val,
-                     unsigned int size);
-static float voice_step_envelope(MCPXAPUState *d, uint16_t v,
-                                 uint32_t reg_0, uint32_t reg_a,
-                                 uint32_t rr_reg, uint32_t rr_mask,
-                                 uint32_t lvl_reg, uint32_t lvl_mask,
-                                 uint32_t count_mask, uint32_t cur_mask);
-static hwaddr get_data_ptr(hwaddr sge_base, unsigned int max_sge,
-                           uint32_t addr);
 static void set_notify_status(MCPXAPUState *d, uint32_t v, int notifier,
                               int status);
-static long voice_resample_callback(void *cb_data, float **data);
-static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
-                          int requested_num, float rate);
 static void voice_reset_filters(MCPXAPUState *d, uint16_t v);
 static void voice_process(MCPXAPUState *d,
                           float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
