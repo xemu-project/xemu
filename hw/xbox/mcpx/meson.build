@@ -1,9 +1,8 @@
-subdir('dsp')
 
 mcpx_ss = ss.source_set()
-mcpx_ss.add(sdl, libsamplerate, dsp, files(
-	'apu.c',
-	'aci.c',
-	))
+mcpx_ss.add(files('aci.c'))
+
+subdir('apu')
+subdir('nvnet')
 
 specific_ss.add_all(mcpx_ss)

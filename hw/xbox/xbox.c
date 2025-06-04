@@ -53,7 +53,7 @@
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/smbus_eeprom.h"
 #include "hw/xbox/nv2a/nv2a.h"
-#include "hw/xbox/mcpx/apu.h"
+#include "hw/xbox/mcpx/apu/apu.h"
 
 #include "hw/xbox/xbox.h"
 #include "smbus.h"
@@ -347,28 +347,6 @@ void xbox_init_common(MachineState *machine,
     }
 }
 
-static void xbox_machine_options(MachineClass *m)
-{
-    PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
-    m->desc              = "Microsoft Xbox";
-    m->max_cpus          = 1;
-    m->option_rom_has_mr = true;
-    m->rom_file_has_mr   = false;
-    m->no_floppy         = 1,
-    m->no_cdrom          = 1,
-    m->no_sdcard         = 1,
-    m->default_cpu_type  = X86_CPU_TYPE_NAME("pentium3");
-    m->is_default        = true;
-    m->default_nic       = "nvnet";
-
-    pcmc->pci_enabled         = true;
-    pcmc->has_acpi_build      = false;
-    pcmc->smbios_defaults     = false;
-    pcmc->gigabyte_align      = false;
-    pcmc->smbios_legacy_mode  = true;
-    pcmc->has_reserved_memory = false;
-}
-
 static char *machine_get_bootrom(Object *obj, Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
@@ -376,8 +354,7 @@ static char *machine_get_bootrom(Object *obj, Error **errp)
     return g_strdup(ms->bootrom);
 }
 
-static void machine_set_bootrom(Object *obj, const char *value,
-                                        Error **errp)
+static void machine_set_bootrom(Object *obj, const char *value, Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
 
@@ -392,8 +369,7 @@ static char *machine_get_avpack(Object *obj, Error **errp)
     return g_strdup(ms->avpack);
 }
 
-static void machine_set_avpack(Object *obj, const char *value,
-                               Error **errp)
+static void machine_set_avpack(Object *obj, const char *value, Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
 
@@ -407,8 +383,7 @@ static void machine_set_avpack(Object *obj, const char *value,
     ms->avpack = g_strdup(value);
 }
 
-static void machine_set_short_animation(Object *obj, bool value,
-                                        Error **errp)
+static void machine_set_short_animation(Object *obj, bool value, Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
 
@@ -429,7 +404,7 @@ static char *machine_get_smc_version(Object *obj, Error **errp)
 }
 
 static void machine_set_smc_version(Object *obj, const char *value,
-                               Error **errp)
+                                    Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
 
@@ -451,55 +426,83 @@ static char *machine_get_video_encoder(Object *obj, Error **errp)
 }
 
 static void machine_set_video_encoder(Object *obj, const char *value,
-                               Error **errp)
+                                      Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
 
-    if (strcmp(value, "conexant") != 0 &&
-            strcmp(value, "focus") != 0 &&
-            strcmp(value, "xcalibur") != 0
-    ) {
-        error_setg(errp, "-machine video_encoder=%s: unsupported option", value);
-        error_append_hint(errp, "Valid options are: conexant (default), focus, xcalibur\n");
-        return; 
+    if (strcmp(value, "conexant") != 0 && strcmp(value, "focus") != 0 &&
+        strcmp(value, "xcalibur") != 0) {
+        error_setg(errp, "-machine video_encoder=%s: unsupported option",
+                   value);
+        error_append_hint(
+            errp, "Valid options are: conexant (default), focus, xcalibur\n");
+        return;
     }
 
     g_free(ms->video_encoder);
     ms->video_encoder = g_strdup(value);
 }
 
+static void xbox_machine_options(MachineClass *m)
+{
+    ObjectClass *oc = OBJECT_CLASS(m);
+
+    PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
+    m->desc              = "Microsoft Xbox";
+    m->max_cpus          = 1;
+    m->option_rom_has_mr = true;
+    m->rom_file_has_mr   = false;
+    m->no_floppy         = 1,
+    m->no_cdrom          = 1,
+    m->no_sdcard         = 1,
+    m->default_cpu_type  = X86_CPU_TYPE_NAME("pentium3");
+    m->is_default        = true;
+    m->default_nic       = "nvnet";
+
+    pcmc->pci_enabled         = true;
+    pcmc->has_acpi_build      = false;
+    pcmc->smbios_defaults     = false;
+    pcmc->gigabyte_align      = false;
+    pcmc->smbios_legacy_mode  = true;
+    pcmc->has_reserved_memory = false;
+
+    object_class_property_add_str(oc, "bootrom", machine_get_bootrom,
+                                  machine_set_bootrom);
+    object_class_property_set_description(oc, "bootrom", "Xbox bootrom file");
+
+    object_class_property_add_str(oc, "avpack", machine_get_avpack,
+                                  machine_set_avpack);
+    object_class_property_set_description(
+        oc, "avpack",
+        "Xbox video connector: composite, scart, svideo, vga, rfu, hdtv "
+        "(default), none");
+
+    object_class_property_add_bool(oc, "short-animation",
+                                   machine_get_short_animation,
+                                   machine_set_short_animation);
+    object_class_property_set_description(oc, "short-animation",
+                                          "Skip Xbox boot animation");
+
+    object_class_property_add_str(oc, "smc-version", machine_get_smc_version,
+                                  machine_set_smc_version);
+    object_class_property_set_description(
+        oc, "smc-version", "Set the SMC version number, default is P01");
+
+    object_class_property_add_str(oc, "video-encoder",
+                                  machine_get_video_encoder,
+                                  machine_set_video_encoder);
+    object_class_property_set_description(
+        oc, "video-encoder",
+        "Set the encoder presented to the OS: conexant (default), focus, "
+        "xcalibur");
+}
+
 static inline void xbox_machine_initfn(Object *obj)
 {
-    object_property_add_str(obj, "bootrom", machine_get_bootrom,
-                            machine_set_bootrom);
-    object_property_set_description(obj, "bootrom",
-                                    "Xbox bootrom file");
-
-    object_property_add_str(obj, "avpack", machine_get_avpack,
-                            machine_set_avpack);
-    object_property_set_description(obj, "avpack",
-                                    "Xbox video connector: composite, scart, svideo, vga, rfu, hdtv (default), none");
     object_property_set_str(obj, "avpack", "hdtv", &error_fatal);
-
-    object_property_add_bool(obj, "short-animation",
-                             machine_get_short_animation,
-                             machine_set_short_animation);
-    object_property_set_description(obj, "short-animation",
-                                    "Skip Xbox boot animation");
     object_property_set_bool(obj, "short-animation", false, &error_fatal);
-
-    object_property_add_str(obj, "smc-version", machine_get_smc_version,
-                            machine_set_smc_version);
-    object_property_set_description(obj, "smc-version",
-                                    "Set the SMC version number, default is P01");
     object_property_set_str(obj, "smc-version", "P01", &error_fatal);
-
-    object_property_add_str(obj, "video-encoder", machine_get_video_encoder,
-                            machine_set_video_encoder);
-    object_property_set_description(obj, "video-encoder",
-                                    "Set the encoder presented to the OS: conexant (default), focus, xcalibur");
     object_property_set_str(obj, "video-encoder", "conexant", &error_fatal);
-
 }
 
 static void xbox_machine_class_init(ObjectClass *oc, void *data)

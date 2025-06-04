@@ -1411,8 +1411,10 @@ DEF_METHOD(NV097, SET_BLEND_EQUATION)
 
 DEF_METHOD(NV097, SET_DEPTH_FUNC)
 {
-    PG_SET_MASK(NV_PGRAPH_CONTROL_0, NV_PGRAPH_CONTROL_0_ZFUNC,
-             parameter & 0xF);
+    if (parameter >= 0x200 && parameter <= 0x207) {
+        PG_SET_MASK(NV_PGRAPH_CONTROL_0, NV_PGRAPH_CONTROL_0_ZFUNC,
+                    parameter & 0xF);
+    }
 }
 
 DEF_METHOD(NV097, SET_COLOR_MASK)

@@ -145,6 +145,8 @@
 #define NV1BA0_PIO_VOICE_PAUSE                           0x00000140
 #   define NV1BA0_PIO_VOICE_PAUSE_HANDLE                    0x0000FFFF
 #   define NV1BA0_PIO_VOICE_PAUSE_ACTION                    (1 << 18)
+#define NV1BA0_PIO_SET_CURRENT_HRTF_ENTRY                0x00000160
+#   define NV1BA0_PIO_SET_CURRENT_HRTF_ENTRY_HANDLE         0x0000FFFF
 #define NV1BA0_PIO_SET_CONTEXT_DMA_NOTIFY                0x00000180
 #define NV1BA0_PIO_SET_CURRENT_SSL_CONTEXT_DMA           0x0000018C
 #define NV1BA0_PIO_SET_CURRENT_SSL                       0x00000190
@@ -153,7 +155,7 @@
 #define NV1BA0_PIO_SET_SSL_SEGMENT_LENGTH                0x00000604
 #define NV1BA0_PIO_SET_SUBMIX_HEADROOM                   0x00000200
 #   define NV1BA0_PIO_SET_SUBMIX_HEADROOM_AMOUNT            0x7
-#define NV1BA0_PIO_SET_HRTF_HEADROOM                       0x00000280
+#define NV1BA0_PIO_SET_HRTF_HEADROOM                     0x00000280
 #   define NV1BA0_PIO_SET_HRTF_HEADROOM_AMOUNT              0x7
 #define NV1BA0_PIO_SET_HRTF_SUBMIXES                     0x000002C0
 #define NV1BA0_PIO_SET_CURRENT_VOICE                     0x000002F8
@@ -165,6 +167,8 @@
 #define NV1BA0_PIO_SET_VOICE_CFG_ENV1                    0x00000310
 #define NV1BA0_PIO_SET_VOICE_CFG_ENVF                    0x00000314
 #define NV1BA0_PIO_SET_VOICE_CFG_MISC                    0x00000318
+#define NV1BA0_PIO_SET_VOICE_TAR_HRTF                    0x0000031C
+#   define NV1BA0_PIO_SET_VOICE_TAR_HRTF_HANDLE             0x0000FFFF
 #define NV1BA0_PIO_SET_VOICE_SSL_A                       0x00000320
 #   define NV1BA0_PIO_SET_VOICE_SSL_A_COUNT                 0x000000FF
 #   define NV1BA0_PIO_SET_VOICE_SSL_A_BASE                  0xFFFFFF00
@@ -185,6 +189,15 @@
 #   define NV1BA0_PIO_SET_VOICE_BUF_CBO_OFFSET              0x00FFFFFF
 #define NV1BA0_PIO_SET_VOICE_CFG_BUF_EBO                 0x000003DC
 #   define NV1BA0_PIO_SET_VOICE_CFG_BUF_EBO_OFFSET          0x00FFFFFF
+#define NV1BA0_PIO_SET_HRIR                              0x00000400
+#   define NV1BA0_PIO_SET_HRIR_LEFT0                        0x000000FF
+#   define NV1BA0_PIO_SET_HRIR_RIGHT0                       0x0000FF00
+#   define NV1BA0_PIO_SET_HRIR_LEFT1                        0x00FF0000
+#   define NV1BA0_PIO_SET_HRIR_RIGHT1                       0xFF000000
+#define NV1BA0_PIO_SET_HRIR_X                            0x0000043C
+#    define NV1BA0_PIO_SET_HRIR_X_LEFT30                     0x000000FF
+#    define NV1BA0_PIO_SET_HRIR_X_RIGHT30                    0x0000FF00
+#    define NV1BA0_PIO_SET_HRIR_X_ITD                        0xFFFF0000
 #define NV1BA0_PIO_SET_SSL_SEGMENT_OFFSET                0x00000600
 #define NV1BA0_PIO_SET_SSL_SEGMENT_LENGTH                0x00000604
 #define NV1BA0_PIO_SET_CURRENT_INBUF_SGE                 0x00000804
@@ -249,6 +262,8 @@
 #define NV_PAVS_VOICE_CFG_MISC                           0x00000018
 #   define NV_PAVS_VOICE_CFG_MISC_EF_RELEASERATE            (0xFFF << 0)
 #   define NV_PAVS_VOICE_CFG_MISC_FMODE                     (3 << 16)
+#define NV_PAVS_VOICE_CFG_HRTF_TARGET                    0x0000001C
+#   define NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE             0x0000FFFF
 #define NV_PAVS_VOICE_CUR_PSL_START                      0x00000020
 #   define NV_PAVS_VOICE_CUR_PSL_START_BA                   0x00FFFFFF
 #define NV_PAVS_VOICE_CUR_PSH_SAMPLE                     0x00000024
@@ -313,6 +328,7 @@
 #define EP_INPUT_FIFO_COUNT   2
 
 #define MCPX_HW_MAX_VOICES 256
+#define MCPX_HW_MAX_3D_VOICES 64
 
 #define NUM_SAMPLES_PER_FRAME 32
 #define NUM_MIXBINS 32
@@ -335,6 +351,12 @@ enum MCPX_HW_NOTIFIER {
 };
 #define NV1BA0_NOTIFICATION_STATUS_DONE_SUCCESS       0x01
 #define NV1BA0_NOTIFICATION_STATUS_IN_PROGRESS        0x80
+
+#define HRTF_NULL_HANDLE 0xFFFF
+#define HRTF_ENTRY_COUNT 128
+
+#define MULTIPASS_BIN      31
+#define MULTIPASS_BIN_MASK (1 << MULTIPASS_BIN)
 
 // clang-format on
 

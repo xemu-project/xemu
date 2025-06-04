@@ -23,13 +23,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-enum McpxApuDebugMon {
+typedef enum McpxApuDebugMonitorPoint {
     MCPX_APU_DEBUG_MON_AC97,
     MCPX_APU_DEBUG_MON_VP,
     MCPX_APU_DEBUG_MON_GP,
     MCPX_APU_DEBUG_MON_EP,
     MCPX_APU_DEBUG_MON_GP_OR_EP
-};
+} McpxApuDebugMonitorPoint;
 
 struct McpxApuDebugVoice
 {
@@ -55,6 +55,11 @@ struct McpxApuDebugVoice
 struct McpxApuDebugVp
 {
     struct McpxApuDebugVoice v[256];
+    struct {
+        int num_voices;
+        int time_us;
+    } workers[16];
+    int total_worker_time_us;
 };
 
 struct McpxApuDebugDsp
@@ -76,8 +81,8 @@ extern "C" {
 #endif
 
 const struct McpxApuDebug *mcpx_apu_get_debug_info(void);
-int mcpx_apu_debug_get_monitor(void);
-void mcpx_apu_debug_set_monitor(int mon);
+McpxApuDebugMonitorPoint mcpx_apu_debug_get_monitor(void);
+void mcpx_apu_debug_set_monitor(McpxApuDebugMonitorPoint monitor);
 void mcpx_apu_debug_isolate_voice(uint16_t v);
 void mcpx_apu_debug_clear_isolations(void);
 void mcpx_apu_debug_toggle_mute(uint16_t v);

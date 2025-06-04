@@ -18,7 +18,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/xbox/mcpx/dsp/dsp.h"
+#include "hw/xbox/mcpx/apu/dsp/dsp.h"
 
 static void scratch_rw(void *opaque, uint8_t *ptr, uint32_t addr, size_t len, bool dir)
 {
