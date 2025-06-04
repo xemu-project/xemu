@@ -3771,9 +3771,9 @@ if have_system
     'ui',
     'hw/remote',
     'hw/xbox/nv2a',
-    'hw/xbox/mcpx',
-    'hw/xbox/mcpx/dsp',
-    'hw/xbox',
+    'hw/xbox/mcpx/apu',
+    'hw/xbox/mcpx/apu/dsp',
+    'hw/xbox/mcpx/nvnet',
   ]
 endif
 if have_system or have_user

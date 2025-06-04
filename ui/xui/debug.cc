@@ -201,9 +201,9 @@ void DebugApuWindow::Draw()
     ImGui::NextColumn();
 
     static int mon = 0;
-    mon = mcpx_apu_debug_get_monitor();
+    mon = (int)mcpx_apu_debug_get_monitor();
     if (ImGui::Combo("Monitor", &mon, "AC97\0VP Only\0GP Only\0EP Only\0GP/EP if enabled\0")) {
-        mcpx_apu_debug_set_monitor(mon);
+        mcpx_apu_debug_set_monitor((McpxApuDebugMonitorPoint)mon);
     }
 
     static bool gp_realtime;

@@ -53,7 +53,7 @@
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/smbus_eeprom.h"
 #include "hw/xbox/nv2a/nv2a.h"
-#include "hw/xbox/mcpx/apu.h"
+#include "hw/xbox/mcpx/apu/apu.h"
 
 #include "hw/xbox/xbox.h"
 #include "smbus.h"
