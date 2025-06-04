@@ -3773,7 +3773,7 @@ if have_system
     'hw/xbox/nv2a',
     'hw/xbox/mcpx/apu',
     'hw/xbox/mcpx/apu/dsp',
-    'hw/xbox',
+    'hw/xbox/mcpx/nvnet',
   ]
 endif
 if have_system or have_user
