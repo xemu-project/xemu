@@ -31,15 +31,34 @@ static const struct {
 };
 
 static void set_notify_status(MCPXAPUState *d, uint32_t v, int notifier,
-                              int status);
-static void voice_reset_filters(MCPXAPUState *d, uint16_t v);
-static void voice_process(MCPXAPUState *d,
-                          float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
-                          float sample_buf[NUM_SAMPLES_PER_FRAME][2],
-                          uint16_t v, int voice_list);
-static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
-                             int num_samples_requested);
+                              int status)
+{
+    hwaddr notify_offset = d->regs[NV_PAPU_FENADDR];
+    notify_offset += 16 * (MCPX_HW_NOTIFIER_BASE_OFFSET +
+                           v * MCPX_HW_NOTIFIER_COUNT + notifier);
+    notify_offset += 15; // Final byte is status, same for all notifiers
 
+    // FIXME: Check notify enable
+    // FIXME: Set NV1BA0_NOTIFICATION_STATUS_IN_PROGRESS when appropriate
+    stb_phys(&address_space_memory, notify_offset, status);
+
+    // FIXME: Refactor this out of here
+    // FIXME: Actually provied current envelope state
+    stb_phys(&address_space_memory, notify_offset - 1, 1);
+
+    qatomic_or(&d->regs[NV_PAPU_ISTS],
+              NV_PAPU_ISTS_FEVINTSTS | NV_PAPU_ISTS_FENINTSTS);
+    d->set_irq = true;
+}
+
+static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
+{
+    assert(v < MCPX_HW_MAX_VOICES);
+    memset(&d->vp.filters[v].svf, 0, sizeof(d->vp.filters[v].svf));
+    if (d->vp.filters[v].resampler) {
+        src_reset(d->vp.filters[v].resampler);
+    }
+}
 
 static bool voice_should_mute(uint16_t v)
 {
@@ -811,712 +830,6 @@ static float voice_step_envelope(MCPXAPUState *d, uint16_t v, uint32_t reg_0,
     }
 }
 
-static void set_notify_status(MCPXAPUState *d, uint32_t v, int notifier,
-                              int status)
-{
-    hwaddr notify_offset = d->regs[NV_PAPU_FENADDR];
-    notify_offset += 16 * (MCPX_HW_NOTIFIER_BASE_OFFSET +
-                           v * MCPX_HW_NOTIFIER_COUNT + notifier);
-    notify_offset += 15; // Final byte is status, same for all notifiers
-
-    // FIXME: Check notify enable
-    // FIXME: Set NV1BA0_NOTIFICATION_STATUS_IN_PROGRESS when appropriate
-    stb_phys(&address_space_memory, notify_offset, status);
-
-    // FIXME: Refactor this out of here
-    // FIXME: Actually provied current envelope state
-    stb_phys(&address_space_memory, notify_offset - 1, 1);
-
-    qatomic_or(&d->regs[NV_PAPU_ISTS],
-              NV_PAPU_ISTS_FEVINTSTS | NV_PAPU_ISTS_FENINTSTS);
-    d->set_irq = true;
-}
-
-static long voice_resample_callback(void *cb_data, float **data)
-{
-    MCPXAPUVoiceFilter *filter = cb_data;
-    uint16_t v = filter->voice;
-    assert(v < MCPX_HW_MAX_VOICES);
-    MCPXAPUState *d = container_of(filter, MCPXAPUState, vp.filters[v]);
-
-    int sample_count = 0;
-    while (sample_count < NUM_SAMPLES_PER_FRAME) {
-        int active = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
-                                    NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE);
-        if (!active) {
-            break;
-        }
-        int count = voice_get_samples(
-            d, v, (float(*)[2]) & filter->resample_buf[2 * sample_count],
-            NUM_SAMPLES_PER_FRAME - sample_count);
-        if (count < 0) {
-            break;
-        }
-        sample_count += count;
-    }
-
-    if (sample_count < NUM_SAMPLES_PER_FRAME) {
-        /* Starvation causes SRC hang on repeated calls. Provide silence. */
-        memset(&filter->resample_buf[2*sample_count], 0,
-            2*(NUM_SAMPLES_PER_FRAME-sample_count)*sizeof(float));
-        sample_count = NUM_SAMPLES_PER_FRAME;
-    }
-
-    *data = filter->resample_buf;
-    return sample_count;
-}
-
-static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
-                          int requested_num, float rate)
-{
-    assert(v < MCPX_HW_MAX_VOICES);
-    MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
-
-    if (filter->resampler == NULL) {
-        filter->voice = v;
-        int err;
-
-        /* Note: Using a sinc based resampler for quality. Unsure about
-         * hardware's actual interpolation method; it could just be linear, in
-         * which case using this resampler is overkill, but quality is good
-         * so use it for now.
-         */
-        // FIXME: Don't do 2ch resampling if this is a mono voice
-        filter->resampler = src_callback_new(&voice_resample_callback,
-                                           SRC_SINC_FASTEST, 2, &err, filter);
-        if (filter->resampler == NULL) {
-            fprintf(stderr, "src error: %s\n", src_strerror(err));
-            assert(0);
-        }
-    }
-
-    int count = src_callback_read(filter->resampler, rate, requested_num,
-                                  (float *)samples);
-    if (count == -1) {
-        DPRINTF("resample error\n");
-    }
-    if (count != requested_num) {
-        DPRINTF("resample returned fewer than expected: %d\n", count);
-
-        if (count == 0)
-            return -1;
-    }
-
-    return count;
-}
-
-static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
-{
-    assert(v < MCPX_HW_MAX_VOICES);
-    memset(&d->vp.filters[v].svf, 0, sizeof(d->vp.filters[v].svf));
-    if (d->vp.filters[v].resampler) {
-        src_reset(d->vp.filters[v].resampler);
-    }
-}
-
-static int peek_ahead_multipass_bin(MCPXAPUState *d, uint16_t v,
-                                    uint16_t *dst_voice)
-{
-    bool first = true;
-
-    while (v != 0xFFFF) {
-        bool multipass = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                        NV_PAVS_VOICE_CFG_FMT_MULTIPASS);
-        if (multipass) {
-            if (first) {
-                break;
-            }
-
-            *dst_voice = v;
-            int mp_bin = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                        NV_PAVS_VOICE_CFG_FMT_MULTIPASS_BIN);
-            return mp_bin;
-        }
-
-        v = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
-                           NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE);
-        first = false;
-    }
-
-    *dst_voice = 0xFFFF;
-    return -1;
-}
-
-static void dump_multipass_unused_debug_info(MCPXAPUState *d, uint16_t v)
-{
-    unsigned int sample_size = voice_get_mask(
-        d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE);
-    unsigned int container_size_index = voice_get_mask(
-        d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE);
-    bool stream = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                 NV_PAVS_VOICE_CFG_FMT_DATA_TYPE);
-    bool loop =
-        voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_LOOP);
-    uint32_t ebo = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_NEXT,
-                                  NV_PAVS_VOICE_PAR_NEXT_EBO);
-    uint32_t cbo = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_OFFSET,
-                                  NV_PAVS_VOICE_PAR_OFFSET_CBO);
-    uint32_t lbo = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_PSH_SAMPLE,
-                                  NV_PAVS_VOICE_CUR_PSH_SAMPLE_LBO);
-    uint32_t ba = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_PSL_START,
-                                 NV_PAVS_VOICE_CUR_PSL_START_BA);
-    bool persist = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                  NV_PAVS_VOICE_CFG_FMT_PERSIST);
-    bool linked = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                 NV_PAVS_VOICE_CFG_FMT_LINKED);
-
-    struct McpxApuDebugVoice *dbg = &g_dbg.vp.v[v];
-    dbg->container_size = container_size_index;
-    dbg->sample_size = sample_size;
-    dbg->stream = stream;
-    dbg->loop = loop;
-    dbg->ebo = ebo;
-    dbg->cbo = cbo;
-    dbg->lbo = lbo;
-    dbg->ba = ba;
-    dbg->samples_per_block = 0; // Value overloaded with multipass bin
-    dbg->persist = persist;
-    dbg->linked = linked;
-}
-
-static void get_multipass_samples(MCPXAPUState *d,
-                                  float mixbins[][NUM_SAMPLES_PER_FRAME],
-                                  uint16_t v, float samples[][2])
-{
-    struct McpxApuDebugVoice *dbg = &g_dbg.vp.v[v];
-
-    // DirectSound sets bin to 31, but hardware would allow other bins
-    int mp_bin = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                NV_PAVS_VOICE_CFG_FMT_MULTIPASS_BIN);
-    dbg->multipass_bin = mp_bin;
-
-    for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-        samples[i][0] = mixbins[mp_bin][i];
-        samples[i][1] = mixbins[mp_bin][i];
-    }
-
-    // DirectSound sets clear mix to true
-    bool clear_mix = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                    NV_PAVS_VOICE_CFG_FMT_CLEAR_MIX);
-    if (clear_mix) {
-        memset(&mixbins[mp_bin][0], 0, sizeof(mixbins[0]));
-    }
-
-    // Dump irrelevant data for audio debug UI to avoid showing stale info
-    dump_multipass_unused_debug_info(d, v);
-}
-
-static void get_voice_bin_src_dst(MCPXAPUState *d, int v,
-                                  uint32_t *src, uint32_t *dst, uint32_t *clr)
-{
-    uint32_t src_v = 0;
-    uint32_t dst_v = 0;
-    uint32_t clr_v = 0;
-
-    bool multipass = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                    NV_PAVS_VOICE_CFG_FMT_MULTIPASS);
-    if (multipass) {
-        int mp_bin = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                    NV_PAVS_VOICE_CFG_FMT_MULTIPASS_BIN);
-        bool clear_mix = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                        NV_PAVS_VOICE_CFG_FMT_CLEAR_MIX);
-        src_v |= (1 << mp_bin);
-        if (clear_mix) {
-            clr_v |= (1 << mp_bin);
-        }
-    }
-
-    int bin[8];
-    if (v < MCPX_HW_MAX_3D_VOICES) {
-        bin[0] = d->vp.hrtf_submix[0];
-        bin[1] = d->vp.hrtf_submix[1];
-        bin[2] = d->vp.hrtf_submix[2];
-        bin[3] = d->vp.hrtf_submix[3];
-    } else {
-        bin[0] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                                NV_PAVS_VOICE_CFG_VBIN_V0BIN);
-        bin[1] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                                NV_PAVS_VOICE_CFG_VBIN_V1BIN);
-        bin[2] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                                NV_PAVS_VOICE_CFG_VBIN_V2BIN);
-        bin[3] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                                NV_PAVS_VOICE_CFG_VBIN_V3BIN);
-    }
-    bin[4] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V4BIN);
-    bin[5] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V5BIN);
-    bin[6] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                            NV_PAVS_VOICE_CFG_FMT_V6BIN);
-    bin[7] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                            NV_PAVS_VOICE_CFG_FMT_V7BIN);
-
-    for (int i = 0; i < 8; i++) {
-        dst_v |= 1 << bin[i];
-    }
-
-    if (src) {
-        *src = src_v;
-    }
-    if (dst) {
-        *dst = dst_v;
-    }
-    if (clr) {
-        *clr = clr_v;
-    }
-}
-
-static void *voice_worker_thread(void *arg)
-{
-    MCPXAPUState *d = arg;
-    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
-
-    rcu_register_thread();
-    qemu_mutex_lock(&vwd->lock);
-
-    int worker_id = ctz64(vwd->workers_pending);
-    VoiceWorker *self = &d->vp.voice_work_dispatch.workers[worker_id];
-    self->queue_len = 0;
-
-    do {
-        int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-        g_dbg.vp.workers[worker_id].num_voices = self->queue_len;
-
-        if (self->queue_len) {
-            qemu_mutex_unlock(&vwd->lock);
-
-            // Process queued voices
-            memset(self->mixbins, 0, sizeof(self->mixbins));
-            if (d->mon == MCPX_APU_DEBUG_MON_VP) {
-                memset(self->sample_buf, 0, sizeof(self->sample_buf));
-            }
-            for (int i = 0; i < self->queue_len; i++) {
-                voice_process(d, self->mixbins, self->sample_buf,
-                              self->queue[i].voice, self->queue[i].list);
-            }
-
-            qemu_mutex_lock(&vwd->lock);
-
-            // Add voice contributions
-            for (int b = 0; b < NUM_MIXBINS; b++) {
-                for (int s = 0; s < NUM_SAMPLES_PER_FRAME; s++) {
-                    vwd->mixbins[b][s] += self->mixbins[b][s];
-                }
-            }
-            if (d->mon == MCPX_APU_DEBUG_MON_VP) {
-                for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-                    d->vp.sample_buf[i][0] += self->sample_buf[i][0];
-                    d->vp.sample_buf[i][1] += self->sample_buf[i][1];
-                }
-            }
-
-            self->queue_len = 0;
-        }
-
-        vwd->workers_pending &= ~(1 << worker_id);
-        if (!vwd->workers_pending) {
-            qemu_cond_signal(&vwd->work_finished);
-        }
-
-        int64_t end_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-        g_dbg.vp.workers[worker_id].time_us = end_time - start_time;
-
-        qemu_cond_wait(&vwd->work_pending, &vwd->lock);
-    } while (!vwd->workers_should_exit);
-
-    rcu_unregister_thread();
-    return NULL;
-}
-
-static void voice_work_acquire_voice_lock_for_processing(MCPXAPUState *d, int v)
-{
-    qemu_spin_lock(&d->vp.voice_spinlocks[v]);
-    while (is_voice_locked(d, v)) {
-        /* Stall until voice is available */
-        qemu_spin_unlock(&d->vp.voice_spinlocks[v]);
-        qemu_cond_wait(&d->cond, &d->lock);
-        qemu_spin_lock(&d->vp.voice_spinlocks[v]);
-    }
-}
-
-static void voice_work_enqueue(MCPXAPUState *d, int v, int list)
-{
-    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
-
-    assert(vwd->queue_len < ARRAY_SIZE(vwd->queue));
-    vwd->queue[vwd->queue_len++] = (VoiceWorkItem){
-        .voice = v,
-        .list = list,
-    };
-
-    voice_work_acquire_voice_lock_for_processing(d, v);
-}
-
-static void voice_work_release_voice_locks(MCPXAPUState *d)
-{
-    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
-
-    for (int i = 0; i < vwd->queue_len; i++) {
-        qemu_spin_unlock(&d->vp.voice_spinlocks[vwd->queue[i].voice]);
-    }
-}
-
-static void voice_work_schedule(MCPXAPUState *d)
-{
-    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
-    int next_worker_to_schedule = 0;
-    bool group = false;
-    uint32_t dirty = 0;
-
-    for (int i = 0; i < vwd->queue_len; i++) {
-        uint32_t src, dst, clr;
-        get_voice_bin_src_dst(d, vwd->queue[i].voice, &src, &dst, &clr);
-
-        // TODO: To simplify submix scheduling, we make a few assumptions based
-        // on Xbox software observations. However, the configurability of
-        // multipass sources suggests the hardware may not be so strict. We'll
-        // defer making this more robust for now.
-        //
-        // We currently assume that:
-        //
-        // - MP bin is constant
-        assert(!src || (src == MULTIPASS_BIN_MASK));
-        //
-        // - MP voice always clears MP bin
-        assert(!src || (clr == MULTIPASS_BIN_MASK));
-        //
-        // - MP source voices are ordered consecutively in voice lists
-        assert(src || (dst & MULTIPASS_BIN_MASK) ||
-               !(dirty & MULTIPASS_BIN_MASK));
-
-        if ((dst & MULTIPASS_BIN_MASK) & ~dirty) {
-            group = true;
-        }
-
-        // Assign voice to worker
-        VoiceWorker *worker = &vwd->workers[next_worker_to_schedule];
-        worker->queue[worker->queue_len++] = vwd->queue[i];
-        vwd->workers_pending |= 1 << next_worker_to_schedule;
-
-        dirty = (dirty & ~clr) | dst;
-        if (clr & MULTIPASS_BIN_MASK) {
-            group = false;
-        }
-
-        if (!group) {
-            next_worker_to_schedule =
-                (next_worker_to_schedule + 1) % NUM_VOICE_WORKERS;
-        }
-    }
-}
-
-static void
-voice_work_dispatch(MCPXAPUState *d,
-                    float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
-{
-    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
-
-    int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-
-    qemu_mutex_lock(&vwd->lock);
-
-    if (vwd->queue_len) {
-        memset(vwd->mixbins, 0, sizeof(vwd->mixbins));
-
-        // Signal workers and wait for completion
-        voice_work_schedule(d);
-        qemu_cond_broadcast(&vwd->work_pending);
-        qemu_cond_wait(&vwd->work_finished, &vwd->lock);
-        assert(!vwd->workers_pending);
-        voice_work_release_voice_locks(d);
-        vwd->queue_len = 0;
-
-        // Add voice contributions
-        for (int b = 0; b < NUM_MIXBINS; b++) {
-            for (int s = 0; s < NUM_SAMPLES_PER_FRAME; s++) {
-                mixbins[b][s] += vwd->mixbins[b][s];
-            }
-        }
-    }
-
-    int64_t end_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-    g_dbg.vp.total_worker_time_us = end_time - start_time;
-
-    qemu_mutex_unlock(&vwd->lock);
-}
-
-static void voice_work_init(MCPXAPUState *d)
-{
-    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
-
-    vwd->workers_should_exit = false;
-    vwd->workers_pending = 0;
-    vwd->queue_len = 0;
-
-    qemu_mutex_init(&vwd->lock);
-    qemu_mutex_lock(&vwd->lock);
-    qemu_cond_init(&vwd->work_pending);
-    qemu_cond_init(&vwd->work_finished);
-    for (int i = 0; i < NUM_VOICE_WORKERS; i++) {
-        vwd->workers_pending |= 1 << i;
-        qemu_thread_create(&vwd->workers[i].thread, "mcpx.voice_worker",
-                           voice_worker_thread, d, QEMU_THREAD_JOINABLE);
-    }
-    qemu_cond_wait(&vwd->work_finished, &vwd->lock);
-    assert(!vwd->workers_pending);
-    qemu_mutex_unlock(&vwd->lock);
-}
-
-static void voice_work_finalize(MCPXAPUState *d)
-{
-    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
-
-    qemu_mutex_lock(&vwd->lock);
-    vwd->workers_should_exit = true;
-    qemu_cond_broadcast(&vwd->work_pending);
-    qemu_mutex_unlock(&vwd->lock);
-    for (int i = 0; i < NUM_VOICE_WORKERS; i++) {
-        qemu_thread_join(&vwd->workers[i].thread);
-    }
-}
-
-static void voice_process(MCPXAPUState *d,
-                          float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
-                          float sample_buf[NUM_SAMPLES_PER_FRAME][2],
-                          uint16_t v, int voice_list)
-{
-    assert(v < MCPX_HW_MAX_VOICES);
-    bool stereo = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                 NV_PAVS_VOICE_CFG_FMT_STEREO);
-    unsigned int channels = stereo ? 2 : 1;
-    bool paused = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
-                                 NV_PAVS_VOICE_PAR_STATE_PAUSED);
-
-    struct McpxApuDebugVoice *dbg = &g_dbg.vp.v[v];
-    dbg->active = true;
-    dbg->stereo = stereo;
-    dbg->paused = paused;
-
-    if (paused) {
-        return;
-    }
-
-    float ef_value = voice_step_envelope(
-        d, v, NV_PAVS_VOICE_CFG_ENV1, NV_PAVS_VOICE_CFG_ENVF,
-        NV_PAVS_VOICE_CFG_MISC, NV_PAVS_VOICE_CFG_MISC_EF_RELEASERATE,
-        NV_PAVS_VOICE_PAR_NEXT, NV_PAVS_VOICE_PAR_NEXT_EFLVL,
-        NV_PAVS_VOICE_CUR_ECNT_EFCOUNT, NV_PAVS_VOICE_PAR_STATE_EFCUR);
-    assert(ef_value >= 0.0f);
-    assert(ef_value <= 1.0f);
-    int16_t p = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
-                               NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH);
-    int8_t ps = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_ENV0,
-                               NV_PAVS_VOICE_CFG_ENV0_EF_PITCHSCALE);
-    float rate = 1.0 / powf(2.0f, (p + ps * 32 * ef_value) / 4096.0f);
-    dbg->rate = rate;
-
-    float ea_value = voice_step_envelope(
-        d, v, NV_PAVS_VOICE_CFG_ENV0, NV_PAVS_VOICE_CFG_ENVA,
-        NV_PAVS_VOICE_TAR_LFO_ENV, NV_PAVS_VOICE_TAR_LFO_ENV_EA_RELEASERATE,
-        NV_PAVS_VOICE_PAR_OFFSET, NV_PAVS_VOICE_PAR_OFFSET_EALVL,
-        NV_PAVS_VOICE_CUR_ECNT_EACOUNT, NV_PAVS_VOICE_PAR_STATE_EACUR);
-    assert(ea_value >= 0.0f);
-    assert(ea_value <= 1.0f);
-
-    float samples[NUM_SAMPLES_PER_FRAME][2] = { 0 };
-
-    bool multipass = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                    NV_PAVS_VOICE_CFG_FMT_MULTIPASS);
-    dbg->multipass = multipass;
-
-    if (multipass) {
-        get_multipass_samples(d, mixbins, v, samples);
-    } else {
-        for (int sample_count = 0; sample_count < NUM_SAMPLES_PER_FRAME;) {
-            int active = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
-                                        NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE);
-            if (!active) {
-                return;
-            }
-            int count =
-                voice_resample(d, v, &samples[sample_count],
-                               NUM_SAMPLES_PER_FRAME - sample_count, rate);
-            if (count < 0) {
-                break;
-            }
-            sample_count += count;
-        }
-    }
-
-    int active = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
-                                NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE);
-    if (!active) {
-        return;
-    }
-
-    int bin[8];
-    bin[0] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V0BIN);
-    bin[1] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V1BIN);
-    bin[2] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V2BIN);
-    bin[3] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V3BIN);
-    bin[4] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V4BIN);
-    bin[5] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V5BIN);
-    bin[6] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                            NV_PAVS_VOICE_CFG_FMT_V6BIN);
-    bin[7] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                            NV_PAVS_VOICE_CFG_FMT_V7BIN);
-
-    if (v < MCPX_HW_MAX_3D_VOICES) {
-        bin[0] = d->vp.hrtf_submix[0];
-        bin[1] = d->vp.hrtf_submix[1];
-        bin[2] = d->vp.hrtf_submix[2];
-        bin[3] = d->vp.hrtf_submix[3];
-    }
-
-    uint16_t vol[8];
-    vol[0] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA,
-                            NV_PAVS_VOICE_TAR_VOLA_VOLUME0);
-    vol[1] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA,
-                            NV_PAVS_VOICE_TAR_VOLA_VOLUME1);
-    vol[2] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB,
-                            NV_PAVS_VOICE_TAR_VOLB_VOLUME2);
-    vol[3] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB,
-                            NV_PAVS_VOICE_TAR_VOLB_VOLUME3);
-    vol[4] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC,
-                            NV_PAVS_VOICE_TAR_VOLC_VOLUME4);
-    vol[5] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC,
-                            NV_PAVS_VOICE_TAR_VOLC_VOLUME5);
-
-    vol[6] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC,
-                            NV_PAVS_VOICE_TAR_VOLC_VOLUME6_B11_8) << 8;
-    vol[6] |= voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB,
-                             NV_PAVS_VOICE_TAR_VOLB_VOLUME6_B7_4) << 4;
-    vol[6] |= voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA,
-                             NV_PAVS_VOICE_TAR_VOLA_VOLUME6_B3_0);
-    vol[7] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC,
-                            NV_PAVS_VOICE_TAR_VOLC_VOLUME7_B11_8) << 8;
-    vol[7] |= voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB,
-                             NV_PAVS_VOICE_TAR_VOLB_VOLUME7_B7_4) << 4;
-    vol[7] |= voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA,
-                             NV_PAVS_VOICE_TAR_VOLA_VOLUME7_B3_0);
-
-    // FIXME: If phase negations means to flip the signal upside down
-    //        we should modify volume of bin6 and bin7 here.
-
-    for (int i = 0; i < 8; i++) {
-        dbg->bin[i] = bin[i];
-        dbg->vol[i] = vol[i];
-    }
-
-    if (voice_should_mute(v)) {
-        return;
-    }
-
-    int fmode = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_MISC,
-                               NV_PAVS_VOICE_CFG_MISC_FMODE);
-
-    // FIXME: Move to function
-    bool lpf = false;
-    if (v < MCPX_HW_MAX_3D_VOICES) {
-        /* 1:DLS2+I3DL2 2:ParaEQ+I3DL2 3:I3DL2 */
-        lpf = (fmode == 1);
-    } else {
-        /* 0:Bypass 1:DLS2 2:ParaEQ 3(Mono):DLS2+ParaEQ 3(Stereo):Bypass */
-        lpf = stereo ? (fmode == 1) : (fmode & 1);
-    }
-    if (lpf) {
-        for (int ch = 0; ch < 2; ch++) {
-            // FIXME: Cutoff modulation via NV_PAVS_VOICE_CFG_ENV1_EF_FCSCALE
-            int16_t fc = voice_get_mask(
-                d, v, NV_PAVS_VOICE_TAR_FCA + (ch % channels) * 4,
-                NV_PAVS_VOICE_TAR_FCA_FC0);
-            float fc_f = clampf(pow(2, fc / 4096.0), 0.003906f, 1.0f);
-            uint16_t q = voice_get_mask(
-                d, v, NV_PAVS_VOICE_TAR_FCA + (ch % channels) * 4,
-                NV_PAVS_VOICE_TAR_FCA_FC1);
-            float q_f = clampf(q / (1.0 * 0x8000), 0.079407f, 1.0f);
-            sv_filter *filter = &d->vp.filters[v].svf[ch];
-            setup_svf(filter, fc_f, q_f, F_LP);
-            for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-                samples[i][ch] = run_svf(filter, samples[i][ch]);
-                samples[i][ch] = fmin(fmax(samples[i][ch], -1.0), 1.0);
-            }
-        }
-    }
-
-    if (v < MCPX_HW_MAX_3D_VOICES && g_config.audio.hrtf) {
-        uint16_t hrtf_handle =
-            voice_get_mask(d, v, NV_PAVS_VOICE_CFG_HRTF_TARGET,
-                           NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE);
-        if (hrtf_handle != HRTF_NULL_HANDLE) {
-            hrtf_filter_process(&d->vp.filters[v].hrtf, samples, samples);
-        }
-    }
-
-    // FIXME: ParaEQ
-
-    for (int b = 0; b < 8; b++) {
-        float g = ea_value;
-        float hr;
-        if ((v < MCPX_HW_MAX_3D_VOICES) && (b < 4)) {
-            // FIXME: Not sure if submix/voice headroom factor in for HRTF
-            hr = 1 << d->vp.hrtf_headroom;
-        } else {
-            hr = 1 << d->vp.submix_headroom[bin[b]];
-        }
-        g *= attenuate(vol[b])/hr;
-        for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-            mixbins[bin[b]][i] += g*samples[i][b % channels];
-        }
-    }
-
-    if (d->mon == MCPX_APU_DEBUG_MON_VP) {
-        /* For VP mon, simply mix all voices together here, selecting the
-         * maximal volume used for any given mixbin as the overall volume for
-         * this voice.
-         *
-         * If the current voice belongs to a multipass sub-voice group we must
-         * skip it here to avoid mixing it in twice because the sub-voices are
-         * mixed into the multipass bin and that sub-mix will be mixed in here
-         * later when the destination (i.e. second pass) voice is processed.
-         * TODO: Are the 2D, 3D and MP voice lists merely a DirectSound
-         *       convention? Perhaps hardware doesn't care if e.g. a multipass
-         *       voice is in the 2D or 3D list. On the other hand, MON_VP is
-         *       not how the hardware works anyway so not much point worrying
-         *       about precise emulation here. DirectSound compatibility is
-         *       enough.
-         */
-        int mp_bin = -1;
-        uint16_t mp_dst_voice = 0xFFFF;
-        if (voice_list == NV1BA0_PIO_SET_ANTECEDENT_VOICE_LIST_MP_TOP - 1) {
-            mp_bin = peek_ahead_multipass_bin(d, v, &mp_dst_voice);
-        }
-        dbg->multipass_dst_voice = mp_dst_voice;
-
-        bool debug_isolation =
-            g_dbg_voice_monitor >= 0 && g_dbg_voice_monitor == v;
-        float g = 0.0f;
-        for (int b = 0; b < 8; b++) {
-            if (bin[b] == mp_bin && !debug_isolation) {
-                continue;
-            }
-            float hr = 1 << d->vp.submix_headroom[bin[b]];
-            g = fmax(g, attenuate(vol[b]) / hr);
-        }
-        g *= ea_value;
-        for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-            sample_buf[i][0] += g*samples[i][0];
-            sample_buf[i][1] += g*samples[i][1];
-        }
-    }
-}
-
 static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                        int num_samples_requested)
 {
@@ -1801,6 +1114,682 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
     voice_set_mask(d, v, NV_PAVS_VOICE_PAR_OFFSET,
                    NV_PAVS_VOICE_PAR_OFFSET_CBO, cbo);
     return sample_count;
+}
+
+static long voice_resample_callback(void *cb_data, float **data)
+{
+    MCPXAPUVoiceFilter *filter = cb_data;
+    uint16_t v = filter->voice;
+    assert(v < MCPX_HW_MAX_VOICES);
+    MCPXAPUState *d = container_of(filter, MCPXAPUState, vp.filters[v]);
+
+    int sample_count = 0;
+    while (sample_count < NUM_SAMPLES_PER_FRAME) {
+        int active = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
+                                    NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE);
+        if (!active) {
+            break;
+        }
+        int count = voice_get_samples(
+            d, v, (float(*)[2]) & filter->resample_buf[2 * sample_count],
+            NUM_SAMPLES_PER_FRAME - sample_count);
+        if (count < 0) {
+            break;
+        }
+        sample_count += count;
+    }
+
+    if (sample_count < NUM_SAMPLES_PER_FRAME) {
+        /* Starvation causes SRC hang on repeated calls. Provide silence. */
+        memset(&filter->resample_buf[2*sample_count], 0,
+            2*(NUM_SAMPLES_PER_FRAME-sample_count)*sizeof(float));
+        sample_count = NUM_SAMPLES_PER_FRAME;
+    }
+
+    *data = filter->resample_buf;
+    return sample_count;
+}
+
+static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
+                          int requested_num, float rate)
+{
+    assert(v < MCPX_HW_MAX_VOICES);
+    MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
+
+    if (filter->resampler == NULL) {
+        filter->voice = v;
+        int err;
+
+        /* Note: Using a sinc based resampler for quality. Unsure about
+         * hardware's actual interpolation method; it could just be linear, in
+         * which case using this resampler is overkill, but quality is good
+         * so use it for now.
+         */
+        // FIXME: Don't do 2ch resampling if this is a mono voice
+        filter->resampler = src_callback_new(&voice_resample_callback,
+                                           SRC_SINC_FASTEST, 2, &err, filter);
+        if (filter->resampler == NULL) {
+            fprintf(stderr, "src error: %s\n", src_strerror(err));
+            assert(0);
+        }
+    }
+
+    int count = src_callback_read(filter->resampler, rate, requested_num,
+                                  (float *)samples);
+    if (count == -1) {
+        DPRINTF("resample error\n");
+    }
+    if (count != requested_num) {
+        DPRINTF("resample returned fewer than expected: %d\n", count);
+
+        if (count == 0)
+            return -1;
+    }
+
+    return count;
+}
+
+static int peek_ahead_multipass_bin(MCPXAPUState *d, uint16_t v,
+                                    uint16_t *dst_voice)
+{
+    bool first = true;
+
+    while (v != 0xFFFF) {
+        bool multipass = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                        NV_PAVS_VOICE_CFG_FMT_MULTIPASS);
+        if (multipass) {
+            if (first) {
+                break;
+            }
+
+            *dst_voice = v;
+            int mp_bin = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                        NV_PAVS_VOICE_CFG_FMT_MULTIPASS_BIN);
+            return mp_bin;
+        }
+
+        v = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
+                           NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE);
+        first = false;
+    }
+
+    *dst_voice = 0xFFFF;
+    return -1;
+}
+
+static void dump_multipass_unused_debug_info(MCPXAPUState *d, uint16_t v)
+{
+    unsigned int sample_size = voice_get_mask(
+        d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE);
+    unsigned int container_size_index = voice_get_mask(
+        d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE);
+    bool stream = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                 NV_PAVS_VOICE_CFG_FMT_DATA_TYPE);
+    bool loop =
+        voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_LOOP);
+    uint32_t ebo = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_NEXT,
+                                  NV_PAVS_VOICE_PAR_NEXT_EBO);
+    uint32_t cbo = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_OFFSET,
+                                  NV_PAVS_VOICE_PAR_OFFSET_CBO);
+    uint32_t lbo = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_PSH_SAMPLE,
+                                  NV_PAVS_VOICE_CUR_PSH_SAMPLE_LBO);
+    uint32_t ba = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_PSL_START,
+                                 NV_PAVS_VOICE_CUR_PSL_START_BA);
+    bool persist = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                  NV_PAVS_VOICE_CFG_FMT_PERSIST);
+    bool linked = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                 NV_PAVS_VOICE_CFG_FMT_LINKED);
+
+    struct McpxApuDebugVoice *dbg = &g_dbg.vp.v[v];
+    dbg->container_size = container_size_index;
+    dbg->sample_size = sample_size;
+    dbg->stream = stream;
+    dbg->loop = loop;
+    dbg->ebo = ebo;
+    dbg->cbo = cbo;
+    dbg->lbo = lbo;
+    dbg->ba = ba;
+    dbg->samples_per_block = 0; // Value overloaded with multipass bin
+    dbg->persist = persist;
+    dbg->linked = linked;
+}
+
+static void get_multipass_samples(MCPXAPUState *d,
+                                  float mixbins[][NUM_SAMPLES_PER_FRAME],
+                                  uint16_t v, float samples[][2])
+{
+    struct McpxApuDebugVoice *dbg = &g_dbg.vp.v[v];
+
+    // DirectSound sets bin to 31, but hardware would allow other bins
+    int mp_bin = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                NV_PAVS_VOICE_CFG_FMT_MULTIPASS_BIN);
+    dbg->multipass_bin = mp_bin;
+
+    for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+        samples[i][0] = mixbins[mp_bin][i];
+        samples[i][1] = mixbins[mp_bin][i];
+    }
+
+    // DirectSound sets clear mix to true
+    bool clear_mix = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                    NV_PAVS_VOICE_CFG_FMT_CLEAR_MIX);
+    if (clear_mix) {
+        memset(&mixbins[mp_bin][0], 0, sizeof(mixbins[0]));
+    }
+
+    // Dump irrelevant data for audio debug UI to avoid showing stale info
+    dump_multipass_unused_debug_info(d, v);
+}
+
+static void voice_process(MCPXAPUState *d,
+                          float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
+                          float sample_buf[NUM_SAMPLES_PER_FRAME][2],
+                          uint16_t v, int voice_list)
+{
+    assert(v < MCPX_HW_MAX_VOICES);
+    bool stereo = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                 NV_PAVS_VOICE_CFG_FMT_STEREO);
+    unsigned int channels = stereo ? 2 : 1;
+    bool paused = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
+                                 NV_PAVS_VOICE_PAR_STATE_PAUSED);
+
+    struct McpxApuDebugVoice *dbg = &g_dbg.vp.v[v];
+    dbg->active = true;
+    dbg->stereo = stereo;
+    dbg->paused = paused;
+
+    if (paused) {
+        return;
+    }
+
+    float ef_value = voice_step_envelope(
+        d, v, NV_PAVS_VOICE_CFG_ENV1, NV_PAVS_VOICE_CFG_ENVF,
+        NV_PAVS_VOICE_CFG_MISC, NV_PAVS_VOICE_CFG_MISC_EF_RELEASERATE,
+        NV_PAVS_VOICE_PAR_NEXT, NV_PAVS_VOICE_PAR_NEXT_EFLVL,
+        NV_PAVS_VOICE_CUR_ECNT_EFCOUNT, NV_PAVS_VOICE_PAR_STATE_EFCUR);
+    assert(ef_value >= 0.0f);
+    assert(ef_value <= 1.0f);
+    int16_t p = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
+                               NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH);
+    int8_t ps = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_ENV0,
+                               NV_PAVS_VOICE_CFG_ENV0_EF_PITCHSCALE);
+    float rate = 1.0 / powf(2.0f, (p + ps * 32 * ef_value) / 4096.0f);
+    dbg->rate = rate;
+
+    float ea_value = voice_step_envelope(
+        d, v, NV_PAVS_VOICE_CFG_ENV0, NV_PAVS_VOICE_CFG_ENVA,
+        NV_PAVS_VOICE_TAR_LFO_ENV, NV_PAVS_VOICE_TAR_LFO_ENV_EA_RELEASERATE,
+        NV_PAVS_VOICE_PAR_OFFSET, NV_PAVS_VOICE_PAR_OFFSET_EALVL,
+        NV_PAVS_VOICE_CUR_ECNT_EACOUNT, NV_PAVS_VOICE_PAR_STATE_EACUR);
+    assert(ea_value >= 0.0f);
+    assert(ea_value <= 1.0f);
+
+    float samples[NUM_SAMPLES_PER_FRAME][2] = { 0 };
+
+    bool multipass = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                    NV_PAVS_VOICE_CFG_FMT_MULTIPASS);
+    dbg->multipass = multipass;
+
+    if (multipass) {
+        get_multipass_samples(d, mixbins, v, samples);
+    } else {
+        for (int sample_count = 0; sample_count < NUM_SAMPLES_PER_FRAME;) {
+            int active = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
+                                        NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE);
+            if (!active) {
+                return;
+            }
+            int count =
+                voice_resample(d, v, &samples[sample_count],
+                               NUM_SAMPLES_PER_FRAME - sample_count, rate);
+            if (count < 0) {
+                break;
+            }
+            sample_count += count;
+        }
+    }
+
+    int active = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
+                                NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE);
+    if (!active) {
+        return;
+    }
+
+    int bin[8];
+    bin[0] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                            NV_PAVS_VOICE_CFG_VBIN_V0BIN);
+    bin[1] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                            NV_PAVS_VOICE_CFG_VBIN_V1BIN);
+    bin[2] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                            NV_PAVS_VOICE_CFG_VBIN_V2BIN);
+    bin[3] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                            NV_PAVS_VOICE_CFG_VBIN_V3BIN);
+    bin[4] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                            NV_PAVS_VOICE_CFG_VBIN_V4BIN);
+    bin[5] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                            NV_PAVS_VOICE_CFG_VBIN_V5BIN);
+    bin[6] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                            NV_PAVS_VOICE_CFG_FMT_V6BIN);
+    bin[7] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                            NV_PAVS_VOICE_CFG_FMT_V7BIN);
+
+    if (v < MCPX_HW_MAX_3D_VOICES) {
+        bin[0] = d->vp.hrtf_submix[0];
+        bin[1] = d->vp.hrtf_submix[1];
+        bin[2] = d->vp.hrtf_submix[2];
+        bin[3] = d->vp.hrtf_submix[3];
+    }
+
+    uint16_t vol[8];
+    vol[0] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA,
+                            NV_PAVS_VOICE_TAR_VOLA_VOLUME0);
+    vol[1] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA,
+                            NV_PAVS_VOICE_TAR_VOLA_VOLUME1);
+    vol[2] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB,
+                            NV_PAVS_VOICE_TAR_VOLB_VOLUME2);
+    vol[3] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB,
+                            NV_PAVS_VOICE_TAR_VOLB_VOLUME3);
+    vol[4] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC,
+                            NV_PAVS_VOICE_TAR_VOLC_VOLUME4);
+    vol[5] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC,
+                            NV_PAVS_VOICE_TAR_VOLC_VOLUME5);
+
+    vol[6] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC,
+                            NV_PAVS_VOICE_TAR_VOLC_VOLUME6_B11_8) << 8;
+    vol[6] |= voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB,
+                             NV_PAVS_VOICE_TAR_VOLB_VOLUME6_B7_4) << 4;
+    vol[6] |= voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA,
+                             NV_PAVS_VOICE_TAR_VOLA_VOLUME6_B3_0);
+    vol[7] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC,
+                            NV_PAVS_VOICE_TAR_VOLC_VOLUME7_B11_8) << 8;
+    vol[7] |= voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB,
+                             NV_PAVS_VOICE_TAR_VOLB_VOLUME7_B7_4) << 4;
+    vol[7] |= voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA,
+                             NV_PAVS_VOICE_TAR_VOLA_VOLUME7_B3_0);
+
+    // FIXME: If phase negations means to flip the signal upside down
+    //        we should modify volume of bin6 and bin7 here.
+
+    for (int i = 0; i < 8; i++) {
+        dbg->bin[i] = bin[i];
+        dbg->vol[i] = vol[i];
+    }
+
+    if (voice_should_mute(v)) {
+        return;
+    }
+
+    int fmode = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_MISC,
+                               NV_PAVS_VOICE_CFG_MISC_FMODE);
+
+    // FIXME: Move to function
+    bool lpf = false;
+    if (v < MCPX_HW_MAX_3D_VOICES) {
+        /* 1:DLS2+I3DL2 2:ParaEQ+I3DL2 3:I3DL2 */
+        lpf = (fmode == 1);
+    } else {
+        /* 0:Bypass 1:DLS2 2:ParaEQ 3(Mono):DLS2+ParaEQ 3(Stereo):Bypass */
+        lpf = stereo ? (fmode == 1) : (fmode & 1);
+    }
+    if (lpf) {
+        for (int ch = 0; ch < 2; ch++) {
+            // FIXME: Cutoff modulation via NV_PAVS_VOICE_CFG_ENV1_EF_FCSCALE
+            int16_t fc = voice_get_mask(
+                d, v, NV_PAVS_VOICE_TAR_FCA + (ch % channels) * 4,
+                NV_PAVS_VOICE_TAR_FCA_FC0);
+            float fc_f = clampf(pow(2, fc / 4096.0), 0.003906f, 1.0f);
+            uint16_t q = voice_get_mask(
+                d, v, NV_PAVS_VOICE_TAR_FCA + (ch % channels) * 4,
+                NV_PAVS_VOICE_TAR_FCA_FC1);
+            float q_f = clampf(q / (1.0 * 0x8000), 0.079407f, 1.0f);
+            sv_filter *filter = &d->vp.filters[v].svf[ch];
+            setup_svf(filter, fc_f, q_f, F_LP);
+            for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                samples[i][ch] = run_svf(filter, samples[i][ch]);
+                samples[i][ch] = fmin(fmax(samples[i][ch], -1.0), 1.0);
+            }
+        }
+    }
+
+    if (v < MCPX_HW_MAX_3D_VOICES && g_config.audio.hrtf) {
+        uint16_t hrtf_handle =
+            voice_get_mask(d, v, NV_PAVS_VOICE_CFG_HRTF_TARGET,
+                           NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE);
+        if (hrtf_handle != HRTF_NULL_HANDLE) {
+            hrtf_filter_process(&d->vp.filters[v].hrtf, samples, samples);
+        }
+    }
+
+    // FIXME: ParaEQ
+
+    for (int b = 0; b < 8; b++) {
+        float g = ea_value;
+        float hr;
+        if ((v < MCPX_HW_MAX_3D_VOICES) && (b < 4)) {
+            // FIXME: Not sure if submix/voice headroom factor in for HRTF
+            hr = 1 << d->vp.hrtf_headroom;
+        } else {
+            hr = 1 << d->vp.submix_headroom[bin[b]];
+        }
+        g *= attenuate(vol[b])/hr;
+        for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+            mixbins[bin[b]][i] += g*samples[i][b % channels];
+        }
+    }
+
+    if (d->mon == MCPX_APU_DEBUG_MON_VP) {
+        /* For VP mon, simply mix all voices together here, selecting the
+         * maximal volume used for any given mixbin as the overall volume for
+         * this voice.
+         *
+         * If the current voice belongs to a multipass sub-voice group we must
+         * skip it here to avoid mixing it in twice because the sub-voices are
+         * mixed into the multipass bin and that sub-mix will be mixed in here
+         * later when the destination (i.e. second pass) voice is processed.
+         * TODO: Are the 2D, 3D and MP voice lists merely a DirectSound
+         *       convention? Perhaps hardware doesn't care if e.g. a multipass
+         *       voice is in the 2D or 3D list. On the other hand, MON_VP is
+         *       not how the hardware works anyway so not much point worrying
+         *       about precise emulation here. DirectSound compatibility is
+         *       enough.
+         */
+        int mp_bin = -1;
+        uint16_t mp_dst_voice = 0xFFFF;
+        if (voice_list == NV1BA0_PIO_SET_ANTECEDENT_VOICE_LIST_MP_TOP - 1) {
+            mp_bin = peek_ahead_multipass_bin(d, v, &mp_dst_voice);
+        }
+        dbg->multipass_dst_voice = mp_dst_voice;
+
+        bool debug_isolation =
+            g_dbg_voice_monitor >= 0 && g_dbg_voice_monitor == v;
+        float g = 0.0f;
+        for (int b = 0; b < 8; b++) {
+            if (bin[b] == mp_bin && !debug_isolation) {
+                continue;
+            }
+            float hr = 1 << d->vp.submix_headroom[bin[b]];
+            g = fmax(g, attenuate(vol[b]) / hr);
+        }
+        g *= ea_value;
+        for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+            sample_buf[i][0] += g*samples[i][0];
+            sample_buf[i][1] += g*samples[i][1];
+        }
+    }
+}
+
+static void get_voice_bin_src_dst(MCPXAPUState *d, int v,
+                                  uint32_t *src, uint32_t *dst, uint32_t *clr)
+{
+    uint32_t src_v = 0;
+    uint32_t dst_v = 0;
+    uint32_t clr_v = 0;
+
+    bool multipass = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                    NV_PAVS_VOICE_CFG_FMT_MULTIPASS);
+    if (multipass) {
+        int mp_bin = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                    NV_PAVS_VOICE_CFG_FMT_MULTIPASS_BIN);
+        bool clear_mix = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                        NV_PAVS_VOICE_CFG_FMT_CLEAR_MIX);
+        src_v |= (1 << mp_bin);
+        if (clear_mix) {
+            clr_v |= (1 << mp_bin);
+        }
+    }
+
+    int bin[8];
+    if (v < MCPX_HW_MAX_3D_VOICES) {
+        bin[0] = d->vp.hrtf_submix[0];
+        bin[1] = d->vp.hrtf_submix[1];
+        bin[2] = d->vp.hrtf_submix[2];
+        bin[3] = d->vp.hrtf_submix[3];
+    } else {
+        bin[0] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                                NV_PAVS_VOICE_CFG_VBIN_V0BIN);
+        bin[1] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                                NV_PAVS_VOICE_CFG_VBIN_V1BIN);
+        bin[2] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                                NV_PAVS_VOICE_CFG_VBIN_V2BIN);
+        bin[3] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                                NV_PAVS_VOICE_CFG_VBIN_V3BIN);
+    }
+    bin[4] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                            NV_PAVS_VOICE_CFG_VBIN_V4BIN);
+    bin[5] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
+                            NV_PAVS_VOICE_CFG_VBIN_V5BIN);
+    bin[6] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                            NV_PAVS_VOICE_CFG_FMT_V6BIN);
+    bin[7] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                            NV_PAVS_VOICE_CFG_FMT_V7BIN);
+
+    for (int i = 0; i < 8; i++) {
+        dst_v |= 1 << bin[i];
+    }
+
+    if (src) {
+        *src = src_v;
+    }
+    if (dst) {
+        *dst = dst_v;
+    }
+    if (clr) {
+        *clr = clr_v;
+    }
+}
+
+static void *voice_worker_thread(void *arg)
+{
+    MCPXAPUState *d = arg;
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    rcu_register_thread();
+    qemu_mutex_lock(&vwd->lock);
+
+    int worker_id = ctz64(vwd->workers_pending);
+    VoiceWorker *self = &d->vp.voice_work_dispatch.workers[worker_id];
+    self->queue_len = 0;
+
+    do {
+        int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+        g_dbg.vp.workers[worker_id].num_voices = self->queue_len;
+
+        if (self->queue_len) {
+            qemu_mutex_unlock(&vwd->lock);
+
+            // Process queued voices
+            memset(self->mixbins, 0, sizeof(self->mixbins));
+            if (d->mon == MCPX_APU_DEBUG_MON_VP) {
+                memset(self->sample_buf, 0, sizeof(self->sample_buf));
+            }
+            for (int i = 0; i < self->queue_len; i++) {
+                voice_process(d, self->mixbins, self->sample_buf,
+                              self->queue[i].voice, self->queue[i].list);
+            }
+
+            qemu_mutex_lock(&vwd->lock);
+
+            // Add voice contributions
+            for (int b = 0; b < NUM_MIXBINS; b++) {
+                for (int s = 0; s < NUM_SAMPLES_PER_FRAME; s++) {
+                    vwd->mixbins[b][s] += self->mixbins[b][s];
+                }
+            }
+            if (d->mon == MCPX_APU_DEBUG_MON_VP) {
+                for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                    d->vp.sample_buf[i][0] += self->sample_buf[i][0];
+                    d->vp.sample_buf[i][1] += self->sample_buf[i][1];
+                }
+            }
+
+            self->queue_len = 0;
+        }
+
+        vwd->workers_pending &= ~(1 << worker_id);
+        if (!vwd->workers_pending) {
+            qemu_cond_signal(&vwd->work_finished);
+        }
+
+        int64_t end_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+        g_dbg.vp.workers[worker_id].time_us = end_time - start_time;
+
+        qemu_cond_wait(&vwd->work_pending, &vwd->lock);
+    } while (!vwd->workers_should_exit);
+
+    rcu_unregister_thread();
+    return NULL;
+}
+
+static void voice_work_acquire_voice_lock_for_processing(MCPXAPUState *d, int v)
+{
+    qemu_spin_lock(&d->vp.voice_spinlocks[v]);
+    while (is_voice_locked(d, v)) {
+        /* Stall until voice is available */
+        qemu_spin_unlock(&d->vp.voice_spinlocks[v]);
+        qemu_cond_wait(&d->cond, &d->lock);
+        qemu_spin_lock(&d->vp.voice_spinlocks[v]);
+    }
+}
+
+static void voice_work_enqueue(MCPXAPUState *d, int v, int list)
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    assert(vwd->queue_len < ARRAY_SIZE(vwd->queue));
+    vwd->queue[vwd->queue_len++] = (VoiceWorkItem){
+        .voice = v,
+        .list = list,
+    };
+
+    voice_work_acquire_voice_lock_for_processing(d, v);
+}
+
+static void voice_work_release_voice_locks(MCPXAPUState *d)
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    for (int i = 0; i < vwd->queue_len; i++) {
+        qemu_spin_unlock(&d->vp.voice_spinlocks[vwd->queue[i].voice]);
+    }
+}
+
+static void voice_work_schedule(MCPXAPUState *d)
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+    int next_worker_to_schedule = 0;
+    bool group = false;
+    uint32_t dirty = 0;
+
+    for (int i = 0; i < vwd->queue_len; i++) {
+        uint32_t src, dst, clr;
+        get_voice_bin_src_dst(d, vwd->queue[i].voice, &src, &dst, &clr);
+
+        // TODO: To simplify submix scheduling, we make a few assumptions based
+        // on Xbox software observations. However, the configurability of
+        // multipass sources suggests the hardware may not be so strict. We'll
+        // defer making this more robust for now.
+        //
+        // We currently assume that:
+        //
+        // - MP bin is constant
+        assert(!src || (src == MULTIPASS_BIN_MASK));
+        //
+        // - MP voice always clears MP bin
+        assert(!src || (clr == MULTIPASS_BIN_MASK));
+        //
+        // - MP source voices are ordered consecutively in voice lists
+        assert(src || (dst & MULTIPASS_BIN_MASK) ||
+               !(dirty & MULTIPASS_BIN_MASK));
+
+        if ((dst & MULTIPASS_BIN_MASK) & ~dirty) {
+            group = true;
+        }
+
+        // Assign voice to worker
+        VoiceWorker *worker = &vwd->workers[next_worker_to_schedule];
+        worker->queue[worker->queue_len++] = vwd->queue[i];
+        vwd->workers_pending |= 1 << next_worker_to_schedule;
+
+        dirty = (dirty & ~clr) | dst;
+        if (clr & MULTIPASS_BIN_MASK) {
+            group = false;
+        }
+
+        if (!group) {
+            next_worker_to_schedule =
+                (next_worker_to_schedule + 1) % NUM_VOICE_WORKERS;
+        }
+    }
+}
+
+static void
+voice_work_dispatch(MCPXAPUState *d,
+                    float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+
+    qemu_mutex_lock(&vwd->lock);
+
+    if (vwd->queue_len) {
+        memset(vwd->mixbins, 0, sizeof(vwd->mixbins));
+
+        // Signal workers and wait for completion
+        voice_work_schedule(d);
+        qemu_cond_broadcast(&vwd->work_pending);
+        qemu_cond_wait(&vwd->work_finished, &vwd->lock);
+        assert(!vwd->workers_pending);
+        voice_work_release_voice_locks(d);
+        vwd->queue_len = 0;
+
+        // Add voice contributions
+        for (int b = 0; b < NUM_MIXBINS; b++) {
+            for (int s = 0; s < NUM_SAMPLES_PER_FRAME; s++) {
+                mixbins[b][s] += vwd->mixbins[b][s];
+            }
+        }
+    }
+
+    int64_t end_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+    g_dbg.vp.total_worker_time_us = end_time - start_time;
+
+    qemu_mutex_unlock(&vwd->lock);
+}
+
+static void voice_work_init(MCPXAPUState *d)
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    vwd->workers_should_exit = false;
+    vwd->workers_pending = 0;
+    vwd->queue_len = 0;
+
+    qemu_mutex_init(&vwd->lock);
+    qemu_mutex_lock(&vwd->lock);
+    qemu_cond_init(&vwd->work_pending);
+    qemu_cond_init(&vwd->work_finished);
+    for (int i = 0; i < NUM_VOICE_WORKERS; i++) {
+        vwd->workers_pending |= 1 << i;
+        qemu_thread_create(&vwd->workers[i].thread, "mcpx.voice_worker",
+                           voice_worker_thread, d, QEMU_THREAD_JOINABLE);
+    }
+    qemu_cond_wait(&vwd->work_finished, &vwd->lock);
+    assert(!vwd->workers_pending);
+    qemu_mutex_unlock(&vwd->lock);
+}
+
+static void voice_work_finalize(MCPXAPUState *d)
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    qemu_mutex_lock(&vwd->lock);
+    vwd->workers_should_exit = true;
+    qemu_cond_broadcast(&vwd->work_pending);
+    qemu_mutex_unlock(&vwd->lock);
+    for (int i = 0; i < NUM_VOICE_WORKERS; i++) {
+        qemu_thread_join(&vwd->workers[i].thread);
+    }
 }
 
 void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
