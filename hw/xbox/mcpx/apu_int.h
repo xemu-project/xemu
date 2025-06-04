@@ -23,7 +23,6 @@
 
 #include "qemu/osdep.h"
 #include <math.h>
-#include <samplerate.h>
 #include <SDL.h>
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
@@ -45,9 +44,8 @@
 #include "apu.h"
 #include "apu_regs.h"
 #include "apu_debug.h"
-#include "svf.h"
 #include "fpconv.h"
-#include "hrtf.h"
+#include "vp.h"
 
 #define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
 
@@ -75,48 +73,6 @@
 
 #define MCPX_APU_DEVICE(obj) \
     OBJECT_CHECK(MCPXAPUState, (obj), "mcpx-apu")
-
-#define NUM_VOICE_WORKERS 16
-
-typedef struct MCPXAPUVPSSLData {
-    uint32_t base[MCPX_HW_SSLS_PER_VOICE];
-    uint8_t count[MCPX_HW_SSLS_PER_VOICE];
-    int ssl_index;
-    int ssl_seg;
-} MCPXAPUVPSSLData;
-
-typedef struct MCPXAPUVoiceFilter {
-    uint16_t voice;
-    float resample_buf[NUM_SAMPLES_PER_FRAME * 2];
-    SRC_STATE *resampler;
-    sv_filter svf[2];
-    HrtfFilter hrtf;
-} MCPXAPUVoiceFilter;
-
-typedef struct VoiceWorkItem {
-    int voice;
-    int list;
-} VoiceWorkItem;
-
-typedef struct VoiceWorker {
-    QemuThread thread;
-    float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
-    float sample_buf[NUM_SAMPLES_PER_FRAME][2];
-    VoiceWorkItem queue[MCPX_HW_MAX_VOICES];
-    int queue_len;
-} VoiceWorker;
-
-typedef struct VoiceWorkDispatch {
-    QemuMutex lock;
-    VoiceWorker workers[NUM_VOICE_WORKERS];
-    bool workers_should_exit;
-    QemuCond work_pending;
-    uint64_t workers_pending;
-    QemuCond work_finished;
-    float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
-    VoiceWorkItem queue[MCPX_HW_MAX_VOICES];
-    int queue_len;
-} VoiceWorkDispatch;
 
 typedef struct MCPXAPUState {
     /*< private >*/
@@ -202,13 +158,6 @@ extern uint64_t g_dbg_muted_voices[4];
 
 void mcpx_debug_begin_frame(void);
 void mcpx_debug_end_frame(void);
-
-extern const MemoryRegionOps vp_ops;
-
-void mcpx_apu_vp_init(MCPXAPUState *d);
-void mcpx_apu_vp_finalize(MCPXAPUState *d);
-void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
-void mcpx_apu_vp_reset(MCPXAPUState *d);
 
 extern const MemoryRegionOps gp_ops;
 extern const MemoryRegionOps ep_ops;
