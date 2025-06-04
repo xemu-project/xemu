@@ -1477,7 +1477,7 @@ static void voice_process(MCPXAPUState *d,
         }
     }
 
-    if (d->mon == MCPX_APU_DEBUG_MON_VP) {
+    if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
         /* For VP mon, simply mix all voices together here, selecting the
          * maximal volume used for any given mixbin as the overall volume for
          * this voice.
@@ -1599,7 +1599,7 @@ static void *voice_worker_thread(void *arg)
 
             // Process queued voices
             memset(self->mixbins, 0, sizeof(self->mixbins));
-            if (d->mon == MCPX_APU_DEBUG_MON_VP) {
+            if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
                 memset(self->sample_buf, 0, sizeof(self->sample_buf));
             }
             for (int i = 0; i < self->queue_len; i++) {
@@ -1615,7 +1615,7 @@ static void *voice_worker_thread(void *arg)
                     vwd->mixbins[b][s] += self->mixbins[b][s];
                 }
             }
-            if (d->mon == MCPX_APU_DEBUG_MON_VP) {
+            if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
                 for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
                     d->vp.sample_buf[i][0] += self->sample_buf[i][0];
                     d->vp.sample_buf[i][1] += self->sample_buf[i][1];
@@ -1827,15 +1827,15 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
     }
     voice_work_dispatch(d, mixbins);
 
-    if (d->mon == MCPX_APU_DEBUG_MON_VP) {
+    if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
         /* Mix all voices together to hear any audible voice */
         int16_t isamp[NUM_SAMPLES_PER_FRAME * 2];
         src_float_to_short_array((float *)d->vp.sample_buf, isamp,
                                  NUM_SAMPLES_PER_FRAME * 2);
         int off = (d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-            d->apu_fifo_output[off + i][0] += isamp[2*i];
-            d->apu_fifo_output[off + i][1] += isamp[2*i+1];
+            d->monitor.frame_buf[off + i][0] += isamp[2*i];
+            d->monitor.frame_buf[off + i][1] += isamp[2*i+1];
         }
 
         memset(d->vp.sample_buf, 0, sizeof(d->vp.sample_buf));

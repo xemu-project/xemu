@@ -79,8 +79,6 @@ typedef struct {
     MemoryRegion mmio;
     VoiceWorkDispatch voice_work_dispatch;
     MCPXAPUVoiceFilter filters[MCPX_HW_MAX_VOICES];
-    QemuSpin out_buf_lock;
-    Fifo8 out_buf;
 
     // FIXME: Where are these stored?
     int ssl_base_page;

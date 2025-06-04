@@ -53,14 +53,14 @@ void mcpx_apu_debug_set_ep_realtime_enabled(bool run)
     g_state->ep.realtime = run;
 }
 
-int mcpx_apu_debug_get_monitor(void)
+McpxApuDebugMonitorPoint mcpx_apu_debug_get_monitor(void)
 {
-    return g_state->mon;
+    return g_state->monitor.point;
 }
 
-void mcpx_apu_debug_set_monitor(int new_mon)
+void mcpx_apu_debug_set_monitor(McpxApuDebugMonitorPoint monitor)
 {
-    g_state->mon = new_mon;
+    g_state->monitor.point = monitor;
 }
 
 void mcpx_apu_debug_isolate_voice(uint16_t v)
