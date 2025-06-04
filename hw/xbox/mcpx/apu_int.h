@@ -45,7 +45,6 @@
 #include "apu.h"
 #include "apu_regs.h"
 #include "apu_debug.h"
-#include "adpcm.h"
 #include "svf.h"
 #include "fpconv.h"
 #include "hrtf.h"
@@ -196,14 +195,6 @@ typedef struct MCPXAPUState {
     int16_t apu_fifo_output[256][2]; // 1 EP frame (0x400 bytes), 8 buffered
 } MCPXAPUState;
 
-static const struct {
-    hwaddr top, current, next;
-} voice_list_regs[] = {
-    { NV_PAPU_TVL2D, NV_PAPU_CVL2D, NV_PAPU_NVL2D }, // 2D
-    { NV_PAPU_TVL3D, NV_PAPU_CVL3D, NV_PAPU_NVL3D }, // 3D
-    { NV_PAPU_TVLMP, NV_PAPU_CVLMP, NV_PAPU_NVLMP }, // MP
-};
-
 extern MCPXAPUState *g_state; // Used via debug handlers
 extern struct McpxApuDebug g_dbg, g_dbg_cache;
 extern int g_dbg_voice_monitor;
@@ -211,5 +202,12 @@ extern uint64_t g_dbg_muted_voices[4];
 
 void mcpx_debug_begin_frame(void);
 void mcpx_debug_end_frame(void);
+
+extern const MemoryRegionOps vp_ops;
+
+void mcpx_apu_vp_init(MCPXAPUState *d);
+void mcpx_apu_vp_finalize(MCPXAPUState *d);
+void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
+void mcpx_apu_vp_reset(MCPXAPUState *d);
 
 #endif

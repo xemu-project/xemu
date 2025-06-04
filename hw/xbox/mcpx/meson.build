@@ -5,6 +5,7 @@ mcpx_ss.add(sdl, libsamplerate, dsp, files(
 	'apu.c',
 	'aci.c',
 	'debug.c',
+	'vp.c'
 	))
 
 specific_ss.add_all(mcpx_ss)
