@@ -1966,6 +1966,12 @@ DEF_METHOD_INC(NV097, SET_COMBINER_COLOR_ICW)
     pgraph_reg_w(pg, NV_PGRAPH_COMBINECOLORI0 + slot*4, parameter);
 }
 
+DEF_METHOD_INC(NV097, SET_COLOR_KEY_COLOR)
+{
+    int slot = (method - NV097_SET_COLOR_KEY_COLOR) / 4;
+    pgraph_reg_w(pg, NV_PGRAPH_COLORKEYCOLOR0 + slot * 4, parameter);
+}
+
 DEF_METHOD_INC(NV097, SET_VIEWPORT_SCALE)
 {
     int slot = (method - NV097_SET_VIEWPORT_SCALE) / 4;

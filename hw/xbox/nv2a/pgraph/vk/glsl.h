@@ -202,4 +202,10 @@ void uniform4i(ShaderUniformLayout *layout, int idx, int v0, int v1, int v2, int
 	uniform1iv(layout, idx, 4, values);
 }
 
+static inline void uniform1uiv(ShaderUniformLayout *layout, int idx,
+                               size_t count, uint32_t *values)
+{
+    uniform_copy(layout, idx, values, sizeof(uint32_t), count);
+}
+
 #endif
