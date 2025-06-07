@@ -74,17 +74,19 @@ void xdvd_get_decrypted_responses(const uint8_t *xdvd_challenge_table_encrypted,
 uint32_t xdvd_get_challenge_response(const uint8_t *xdvd_challenge_table_decrypted,
                             uint8_t challenge_id)
 {
-    int challengeEntryCount =
+    int challenge_entry_count =
         xdvd_challenge_table_decrypted[CR_TABLE_NUM_ENTRIES];
     PXBOX_DVD_CHALLENGE challenges =
         (PXBOX_DVD_CHALLENGE)(&xdvd_challenge_table_decrypted[CR_ENTRIES_OFFSET]);
 
-    for (int i = 0; i < challengeEntryCount; i++) {
-        if (challenges[i].type != 1)
+    for (int i = 0; i < challenge_entry_count; i++) {
+        if (challenges[i].type != XDVD_CHALLENGE_VALID) {
             continue;
+        }
 
-        if (challenges[i].id == challenge_id)
+        if (challenges[i].id == challenge_id) {
             return challenges[i].response;
+        }
     }
 
     return 0;
@@ -96,11 +98,11 @@ uint32_t xdvd_get_challenge_response(const uint8_t *xdvd_challenge_table_decrypt
 uint64_t xdvd_get_sector_cnt(XBOX_DVD_SECURITY *xdvd_security,
                              uint64_t total_sectors)
 {
-    if (xdvd_is_redump(total_sectors) == false) {
+    if (xdvd_has_video_partition(total_sectors) == false) {
         return total_sectors;
     }
 
-    // A 'redump' style iso returns XDVD_VIDEO_PARTITION_SECTOR_CNT initially
+    // If the iso contains the video partition it initially returns XDVD_VIDEO_PARTITION_SECTOR_CNT
     // before it is authenticated otherwise it returns the full sector count of
     // the game data.
     if (xdvd_security->page.Authenticated == 0 ||
@@ -118,7 +120,7 @@ uint64_t xdvd_get_sector_cnt(XBOX_DVD_SECURITY *xdvd_security,
 uint32_t xdvd_get_lba_offset(XBOX_DVD_SECURITY *xdvd_security,
                              uint64_t total_sectors, unsigned int lba)
 {
-    if (xdvd_is_redump(total_sectors)) {
+    if (xdvd_has_video_partition(total_sectors)) {
         if (xdvd_security->page.Authenticated == 1 &&
             xdvd_security->page.Partition == 1) {
             lba += XGD1_LSEEK_OFFSET / ATAPI_SECTOR_SIZE;
@@ -129,7 +131,7 @@ uint32_t xdvd_get_lba_offset(XBOX_DVD_SECURITY *xdvd_security,
 
 bool xdvd_get_encrypted_challenge_table(uint8_t *xdvd_challenge_table_encrypted)
 {
-    bool status = true;
+    bool status;
 
     const char *dvd_security_path = g_config.sys.files.dvd_security_path;
     memset(xdvd_challenge_table_encrypted, 0, XDVD_STRUCTURE_LEN);
@@ -139,17 +141,17 @@ bool xdvd_get_encrypted_challenge_table(uint8_t *xdvd_challenge_table_encrypted)
         return false;
     }
 
-    int file_size;
     fseek(f, 0, SEEK_END);
-    file_size = ftell(f);
+    int file_size = ftell(f);
     fseek(f, 0, SEEK_SET);
 
     // If the security structure is read from the DVD drive it will be 1636 bytes long
     // If it is read from the DVD disk (via Kreon etc) it will be 2048 bytes long
     if (file_size == XDVD_STRUCTURE_LEN) {
         fread(xdvd_challenge_table_encrypted, 1, file_size, f);
+        status = true;
     } else if (file_size == XDVD_SECURITY_SECTOR_LEN) {
-        // We have a redump style security sector. This is in a different layout to the expected
+        // We have a physical disk style security sector. This is in a different layout to the expected
         // challenge response but we can built it up from the data we have.
 
         // First two bytes are length of structure
@@ -163,6 +165,7 @@ bool xdvd_get_encrypted_challenge_table(uint8_t *xdvd_challenge_table_encrypted)
         fseek(f, CR_ENTRIES_OFFSET - 6, SEEK_SET);
         fread(&xdvd_challenge_table_encrypted[CR_ENTRIES_OFFSET - 2], 1,
               XDVD_STRUCTURE_LEN - (CR_ENTRIES_OFFSET - 2), f);
+        status = true;
     } else {
         status = false;
     }
@@ -189,7 +192,7 @@ void xdvd_get_default_security_page(XBOX_DVD_SECURITY *xdvd_security)
     memcpy(xdvd_security, &s, sizeof(s));
 };
 
-bool xdvd_is_redump(uint64_t total_sectors)
+bool xdvd_has_video_partition(uint64_t total_sectors)
 {
-    return total_sectors == XDVD_REDUMP_SECTOR_CNT;
+    return total_sectors == XDVD_SECTOR_CNT;
 }

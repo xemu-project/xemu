@@ -31,11 +31,12 @@
 // This is the start of the Xbox game data
 #define XGD1_LSEEK_OFFSET 0x18300000UL
 
-// The sector count of the video parition of a Xbox DVD
+// The sector count of the video partition of a Xbox DVD
 #define XDVD_VIDEO_PARTITION_SECTOR_CNT 6992
 
-// The sector count of 'redump' iso files
-#define XDVD_REDUMP_SECTOR_CNT 3820880
+// The sector count of full Xbox iso files. This includes the video partition and corresponds to 
+// equal to 7,825,162,240 bytes.
+#define XDVD_SECTOR_CNT 3820880
 
 // Page Code for Xbox Security Challenges (over SCSI)
 #define MODE_PAGE_XBOX_SECURITY 0x3E
@@ -46,6 +47,8 @@
 
 #define XDVD_STRUCTURE_LAYER 0xFE
 #define XDVD_STRUCTURE_BLOCK_NUMBER 0xFF02FDFF
+
+#define XDVD_CHALLENGE_VALID 0x01
 
 // Standard SCSI Mode Sense/Select header
 typedef struct _MODE_PARAMETER_HEADER10 {
@@ -112,6 +115,6 @@ bool xdvd_get_encrypted_challenge_table(
 void xdvd_get_decrypted_responses(const uint8_t *xdvd_challenge_table_encrypted,
                                   uint8_t *xdvd_challenge_table_decrypted);
 
-bool xdvd_is_redump(uint64_t total_sectors);
+bool xdvd_has_video_partition(uint64_t total_sectors);
 
 #endif // HW_XDVD_H
