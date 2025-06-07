@@ -19,3 +19,4 @@ specific_ss.add(files(
 	))
 subdir('nv2a')
 subdir('mcpx')
+subdir('xdvd')
