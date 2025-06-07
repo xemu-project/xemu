@@ -37,13 +37,13 @@
 #ifdef XBOX
 #include "ui/xemu-settings.h"
 #include "hw/xbox/xdvd/xdvd.h"
-#endif
 
-// #define DEBUG
+#define DEBUG
 #ifdef DEBUG
 # define XBOX_DPRINTF(format, ...)     printf(format, ## __VA_ARGS__)
 #else
 # define XBOX_DPRINTF(format, ...)     do { } while (0)
+#endif
 #endif
 
 static void ide_atapi_cmd_read_dma_cb(void *opaque, int ret);
@@ -925,6 +925,9 @@ static void cmd_mode_select_cb(void *opaque, int ret)
     ide_set_inactive(s, false);
 
     int max_len = lduw_be_p(buf) + 2;
+    // FIXME: It is understood that a original xbox drive requires a full unlock challenge-response sequence before authenticating the disk,
+    // however for simplicity we authenticate after the first challenge-response. This code still correctly answers all responses sent by the xbox.
+    // Testing shows that this appears to be sufficient.
     if (max_len == XDVD_SECURITY_PAGE_LEN && buf[8] == MODE_PAGE_XBOX_SECURITY)
     {
         memcpy(&s->xdvd_security, buf, XDVD_SECURITY_PAGE_LEN);
@@ -1063,8 +1066,8 @@ static void cmd_mode_sense(IDEState *s, uint8_t *buf)
             memcpy(buf, &s->xdvd_security, sizeof(s->xdvd_security));
 
             ide_atapi_cmd_reply(s, sizeof(XBOX_DVD_SECURITY), max_len);
+            break;
 #endif
-        break;
         default:
             goto error_cmd;
         }
@@ -1340,9 +1343,10 @@ static void cmd_read_dvd_structure(IDEState *s, uint8_t* buf)
         }
     }
 
+#ifdef XBOX
      // Still some important info we don't want to lose so we disable clearing
      // on Xbox for now
-#ifndef XBOX
+#else
     memset(buf, 0, max_len > IDE_DMA_BUF_SECTORS * BDRV_SECTOR_SIZE + 4 ?
            IDE_DMA_BUF_SECTORS * BDRV_SECTOR_SIZE + 4 : max_len);
 #endif
