@@ -1717,7 +1717,7 @@ static void voice_work_schedule(MCPXAPUState *d)
 
         if (!group) {
             next_worker_to_schedule =
-                (next_worker_to_schedule + 1) % NUM_VOICE_WORKERS;
+                (next_worker_to_schedule + 1) % vwd->num_workers;
         }
     }
 }
@@ -1761,15 +1761,20 @@ static void voice_work_init(MCPXAPUState *d)
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
 
+    int num_workers = g_config.audio.vp.num_workers ?: SDL_GetCPUCount();
+    vwd->num_workers = MAX(1, MIN(num_workers, MAX_VOICE_WORKERS));
+    vwd->workers = g_malloc0_n(vwd->num_workers, sizeof(VoiceWorker));
     vwd->workers_should_exit = false;
     vwd->workers_pending = 0;
     vwd->queue_len = 0;
+
+    g_dbg.vp.num_workers = vwd->num_workers;
 
     qemu_mutex_init(&vwd->lock);
     qemu_mutex_lock(&vwd->lock);
     qemu_cond_init(&vwd->work_pending);
     qemu_cond_init(&vwd->work_finished);
-    for (int i = 0; i < NUM_VOICE_WORKERS; i++) {
+    for (int i = 0; i < vwd->num_workers; i++) {
         vwd->workers_pending |= 1 << i;
         qemu_thread_create(&vwd->workers[i].thread, "mcpx.voice_worker",
                            voice_worker_thread, d, QEMU_THREAD_JOINABLE);
@@ -1787,9 +1792,11 @@ static void voice_work_finalize(MCPXAPUState *d)
     vwd->workers_should_exit = true;
     qemu_cond_broadcast(&vwd->work_pending);
     qemu_mutex_unlock(&vwd->lock);
-    for (int i = 0; i < NUM_VOICE_WORKERS; i++) {
+    for (int i = 0; i < vwd->num_workers; i++) {
         qemu_thread_join(&vwd->workers[i].thread);
     }
+    g_free(vwd->workers);
+    vwd->workers = NULL;
 }
 
 void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
