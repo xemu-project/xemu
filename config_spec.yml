@@ -214,6 +214,10 @@ display:
         default: false
 
 audio:
+  vp:
+    num_workers:
+      type: integer
+      default: 0  # 0 = auto
   use_dsp: bool
   hrtf:
     type: bool
