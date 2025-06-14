@@ -130,6 +130,11 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
                            NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
     state.psh.smooth_shading = state.smooth_shading;
 
+    state.first_vertex_is_provoking =
+        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
+                 NV_PGRAPH_CONTROL_3_PROVOKING_VERTEX) ==
+        NV_PGRAPH_CONTROL_3_PROVOKING_VERTEX_FIRST;
+
     state.psh.depth_clipping = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_ZCOMPRESSOCCLUDE),
                                         NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
                                NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CULL;
@@ -306,6 +311,26 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
         }
 
         state.psh.conv_tex[i] = kernel;
+    }
+
+    state.surface_zeta_format = pg->surface_shape.zeta_format;
+    unsigned int z_format = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER),
+                                     NV_PGRAPH_SETUPRASTER_Z_FORMAT);
+
+    switch (pg->surface_shape.zeta_format) {
+    case NV097_SET_SURFACE_FORMAT_ZETA_Z16:
+        state.psh.depth_format =
+            z_format ? DEPTH_FORMAT_F16 : DEPTH_FORMAT_D16;
+        break;
+    case NV097_SET_SURFACE_FORMAT_ZETA_Z24S8:
+        state.psh.depth_format =
+            z_format ? DEPTH_FORMAT_F24 : DEPTH_FORMAT_D24;
+        break;
+    default:
+        fprintf(stderr, "Unknown zeta surface format: 0x%x\n",
+                pg->surface_shape.zeta_format);
+        assert(false);
+        break;
     }
 
     return state;

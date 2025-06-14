@@ -41,6 +41,10 @@ MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bo
         { smooth_s,    vec4_s,  "vtxT1"  },
         { smooth_s,    vec4_s,  "vtxT2"  },
         { smooth_s,    vec4_s,  "vtxT3"  },
+        { flat_s,      vec4_s,  "vtxPos0" },
+        { flat_s,      vec4_s,  "vtxPos1" },
+        { flat_s,      vec4_s,  "vtxPos2" },
+        { flat_s,      float_s, "triMZ"  },
     };
 
     for (int i = 0; i < ARRAY_SIZE(attr); i++) {
