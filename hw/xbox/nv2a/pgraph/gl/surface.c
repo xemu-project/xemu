@@ -578,7 +578,8 @@ static bool check_surface_compatibility(SurfaceBinding *s1, SurfaceBinding *s2,
         (s1->color == s2->color) &&
         (s1->fmt.gl_attachment == s2->fmt.gl_attachment) &&
         (s1->fmt.gl_internal_format == s2->fmt.gl_internal_format) &&
-        (s1->pitch == s2->pitch);
+        (s1->pitch == s2->pitch) && (s1->shape.clip_x <= s2->shape.clip_x) &&
+        (s1->shape.clip_y <= s2->shape.clip_y);
     if (!format_compatible) {
         return false;
     }
@@ -827,8 +828,80 @@ static void surface_copy_expand(uint8_t *out, uint8_t *in, unsigned int width,
     }
 }
 
+// Uploads the pixel data at the given VRAM address into the currently bound
+// texture.
+void pgraph_gl_upload_vram_to_bound_texture(NV2AState *d, hwaddr vram_addr,
+                                            bool swizzle,
+                                            unsigned int surface_width,
+                                            unsigned int surface_height,
+                                            unsigned int pitch, size_t size,
+                                            const SurfaceFormatInfo *fmt)
+{
+    PGRAPHState *pg = &d->pgraph;
+    uint8_t *data = d->vram_ptr;
+    uint8_t *buf = data + vram_addr;
+
+    if (swizzle) {
+        buf = (uint8_t *)g_malloc(size);
+        unswizzle_rect(data + vram_addr, surface_width, surface_height, buf,
+                       pitch, fmt->bytes_per_pixel);
+    }
+
+    /* FIXME: Replace this scaling */
+
+    // This is VRAM so we can't do this inplace!
+    uint8_t *optimal_buf = buf;
+    unsigned int optimal_pitch = surface_width * fmt->bytes_per_pixel;
+
+    if (pitch != optimal_pitch) {
+        optimal_buf = (uint8_t *)g_malloc(surface_height * optimal_pitch);
+
+        uint8_t *src = buf;
+        uint8_t *dst = optimal_buf;
+        unsigned int irow;
+        for (irow = 0; irow < surface_height; irow++) {
+            memcpy(dst, src, optimal_pitch);
+            src += pitch;
+            dst += optimal_pitch;
+        }
+    }
+
+    uint8_t *gl_read_buf = optimal_buf;
+    unsigned int width = surface_width;
+    unsigned int height = surface_height;
+
+    if (pg->surface_scale_factor > 1) {
+        pgraph_apply_scaling_factor(pg, &width, &height);
+        pg->scale_buf = (uint8_t *)g_realloc(
+            pg->scale_buf, width * height * fmt->bytes_per_pixel);
+        gl_read_buf = pg->scale_buf;
+        uint8_t *out = gl_read_buf, *in = optimal_buf;
+        surface_copy_expand(out, in, surface_width, surface_height,
+                            fmt->bytes_per_pixel,
+                            d->pgraph.surface_scale_factor);
+    }
+
+    int prev_unpack_alignment;
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &prev_unpack_alignment);
+    if (unlikely((width * fmt->bytes_per_pixel) % 4 != 0)) {
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    } else {
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    }
+
+    glTexImage2D(GL_TEXTURE_2D, 0, fmt->gl_internal_format, width, height, 0,
+                 fmt->gl_format, fmt->gl_type, gl_read_buf);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, prev_unpack_alignment);
+    if (optimal_buf != buf) {
+        g_free(optimal_buf);
+    }
+    if (swizzle) {
+        g_free(buf);
+    }
+}
+
 void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
-                                bool force)
+                                   bool force)
 {
     if (!(surface->upload_pending || force)) {
         return;
@@ -837,10 +910,9 @@ void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     nv2a_profile_inc_counter(NV2A_PROF_SURF_UPLOAD);
 
     trace_nv2a_pgraph_surface_upload(
-                 surface->color ? "COLOR" : "ZETA",
-                 surface->swizzle ? "sz" : "lin", surface->vram_addr,
-                 surface->width, surface->height, surface->pitch,
-                 surface->fmt.bytes_per_pixel);
+        surface->color ? "COLOR" : "ZETA", surface->swizzle ? "sz" : "lin",
+        surface->vram_addr, surface->width, surface->height, surface->pitch,
+        surface->fmt.bytes_per_pixel);
 
     PGRAPHState *pg = &d->pgraph;
 
@@ -859,70 +931,15 @@ void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
                            GL_TEXTURE_2D, 0, 0);
 
-    uint8_t *data = d->vram_ptr;
-    uint8_t *buf = data + surface->vram_addr;
-
-    if (surface->swizzle) {
-        buf = (uint8_t*)g_malloc(surface->size);
-        unswizzle_rect(data + surface->vram_addr,
-                       surface->width, surface->height,
-                       buf,
-                       surface->pitch,
-                       surface->fmt.bytes_per_pixel);
-    }
-
-    /* FIXME: Replace this scaling */
-
-    // This is VRAM so we can't do this inplace!
-    uint8_t *optimal_buf = buf;
-    unsigned int optimal_pitch = surface->width * surface->fmt.bytes_per_pixel;
-
-    if (surface->pitch != optimal_pitch) {
-        optimal_buf = (uint8_t *)g_malloc(surface->height * optimal_pitch);
-
-        uint8_t *src = buf;
-        uint8_t *dst = optimal_buf;
-        unsigned int irow;
-        for (irow = 0; irow < surface->height; irow++) {
-            memcpy(dst, src, optimal_pitch);
-            src += surface->pitch;
-            dst += optimal_pitch;
-        }
-    }
-
-    uint8_t *gl_read_buf = optimal_buf;
-    unsigned int width = surface->width, height = surface->height;
-
-    if (pg->surface_scale_factor > 1) {
-        pgraph_apply_scaling_factor(pg, &width, &height);
-        pg->scale_buf = (uint8_t *)g_realloc(
-            pg->scale_buf, width * height * surface->fmt.bytes_per_pixel);
-        gl_read_buf = pg->scale_buf;
-        uint8_t *out = gl_read_buf, *in = optimal_buf;
-        surface_copy_expand(out, in, surface->width, surface->height,
-                            surface->fmt.bytes_per_pixel,
-                            d->pgraph.surface_scale_factor);
-    }
-
     int prev_unpack_alignment;
     glGetIntegerv(GL_UNPACK_ALIGNMENT, &prev_unpack_alignment);
-    if (unlikely((width * surface->fmt.bytes_per_pixel) % 4 != 0)) {
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    } else {
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    }
 
     glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
-    glTexImage2D(GL_TEXTURE_2D, 0, surface->fmt.gl_internal_format, width,
-                 height, 0, surface->fmt.gl_format, surface->fmt.gl_type,
-                 gl_read_buf);
+    pgraph_gl_upload_vram_to_bound_texture(
+        d, surface->vram_addr, surface->swizzle, surface->width,
+        surface->height, surface->pitch, surface->size, &surface->fmt);
+
     glPixelStorei(GL_UNPACK_ALIGNMENT, prev_unpack_alignment);
-    if (optimal_buf != buf) {
-        g_free(optimal_buf);
-    }
-    if (surface->swizzle) {
-        g_free(buf);
-    }
 
     // Rebind previous framebuffer binding
     glBindTexture(GL_TEXTURE_2D, last_texture_binding);
