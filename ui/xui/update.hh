@@ -18,18 +18,15 @@
 //
 #pragma once
 
-// Platform detection - support Windows, Linux, and macOS
 #if defined(_WIN32) || defined(__linux__) || defined(__APPLE__)
 
 #include <string>
 #include <stdint.h>
 #include <functional>
 
-extern "C" {
 #include "qemu/osdep.h"
 #include "qemu/thread.h"
 #include "qemu/http.h"
-}
 
 typedef enum {
     UPDATE_AVAILABILITY_UNKNOWN,
@@ -45,13 +42,6 @@ typedef enum {
     UPDATER_UPDATE_SUCCESSFUL
 } UpdateStatus;
 
-// Update format types for different platforms
-typedef enum {
-    UPDATE_FORMAT_ZIP,
-    UPDATE_FORMAT_TAR_GZ,
-    UPDATE_FORMAT_APPIMAGE
-} UpdateFormat;
-
 using UpdaterCallback = std::function<void(void)>;
 
 class Updater {
@@ -64,42 +54,35 @@ private:
     bool                m_should_cancel;
     UpdaterCallback     m_on_complete;
 
-protected:
     int progress_cb(http_progress_cb_info *progress_info);
+    void update_internal();
+    void check_for_update_internal();
+
+    static void *update_thread_worker_func(void *updater);
+    static void *checker_thread_worker_func(void *updater);
 
 public:
     Updater();
     
-    // Status getters
-    UpdateStatus get_status() { return m_status; }
-    UpdateAvailability get_update_availability() { return m_update_availability; }
-    std::string get_update_version() { return m_latest_version; }
-    int get_update_progress_percentage() { return m_update_percentage; }
+    UpdateStatus get_status() const { return m_status; }
+    UpdateAvailability get_update_availability() const { return m_update_availability; }
+    const std::string& get_update_version() const { return m_latest_version; }
+    int get_update_progress_percentage() const { return m_update_percentage; }
     
-    // State checkers
-    bool is_errored() { return m_status == UPDATER_ERROR; }
-    bool is_pending_restart() { return m_status == UPDATER_UPDATE_SUCCESSFUL; }
-    bool is_update_available() { return m_update_availability == UPDATE_AVAILABLE; }
-    bool is_checking_for_update() { return m_status == UPDATER_CHECKING_FOR_UPDATE; }
-    bool is_updating() { return m_status == UPDATER_UPDATING; }
+    bool is_errored() const { return m_status == UPDATER_ERROR; }
+    bool is_pending_restart() const { return m_status == UPDATER_UPDATE_SUCCESSFUL; }
+    bool is_update_available() const { return m_update_availability == UPDATE_AVAILABLE; }
+    bool is_checking_for_update() const { return m_status == UPDATER_CHECKING_FOR_UPDATE; }
+    bool is_updating() const { return m_status == UPDATER_UPDATING; }
     
-    // Actions
     void cancel() { m_should_cancel = true; }
     void update();
     void check_for_update(UpdaterCallback on_complete = nullptr);
-    void restart_to_updated(void);
-    
-    // Internal methods (public for thread access)
-    void update_internal();
-    void check_for_update_internal();
-    
-    // Static thread workers
-    static void *update_thread_worker_func(void *updater);
-    static void *checker_thread_worker_func(void *updater);
+    void restart_to_updated();
 };
 
 class AutoUpdateWindow {
-protected:
+private:
     Updater updater;
 
 public:
@@ -112,4 +95,4 @@ public:
 
 extern AutoUpdateWindow update_window;
 
-#endif // Platform detection
+#endif
