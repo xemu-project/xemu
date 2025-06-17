@@ -20,17 +20,14 @@
 #include "update.hh"
 #include "viewport-manager.hh"
 
-extern "C" {
 #include "qemu/osdep.h"
 #include "qemu/http.h"
 #include "xemu-version.h"
 #include <SDL_filesystem.h>
-}
 
 #include <stdio.h>
 #include <stdlib.h>
 
-// Cross-platform includes
 #if defined(_WIN32)
 #include <windows.h>
 #include <process.h>
@@ -44,88 +41,74 @@ extern "C" {
 #if defined(__linux__) && defined(HAVE_LIBARCHIVE)
 #include <archive.h>
 #include <archive_entry.h>
-#else // macOS or Linux without libarchive
+#else
 #include "util/miniz/miniz.h"
 #endif
 #endif
 
 #define DPRINTF(fmt, ...) fprintf(stderr, "[AUTO-UPDATE] " fmt, ##__VA_ARGS__);
 
-// Forward declarations
-static bool extract_zip(const unsigned char *data, size_t data_len, const char *base_path);
-#if defined(__linux__) && defined(HAVE_LIBARCHIVE)
-static bool extract_tar_gz(const unsigned char *data, size_t data_len, const char *base_path);
-#endif
-#if defined(__linux__)
-static bool extract_appimage(const unsigned char *data, size_t data_len, const char *base_path);
-#endif
-
-// Platform-specific configuration
-const char *version_url = "https://raw.githubusercontent.com/xemu-project/xemu/ppa-snapshot/XEMU_VERSION";
-
-// Update format detection
 typedef enum {
     UPDATE_FORMAT_ZIP,
     UPDATE_FORMAT_TAR_GZ,
     UPDATE_FORMAT_APPIMAGE
 } UpdateFormat;
 
+// Platform-specific configuration - all static since only used in this file
+static const char *version_url = "https://raw.githubusercontent.com/xemu-project/xemu/ppa-snapshot/XEMU_VERSION";
+
 #if defined(_WIN32)
+    static const char *executable_name = "xemu.exe";
+    static const char *backup_name = "xemu-previous.exe";
+    static const UpdateFormat update_format = UPDATE_FORMAT_ZIP;
     #if defined(__x86_64__)
-        const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-win-x86_64-release.zip";
-        const char *executable_name = "xemu.exe";
-        const char *backup_name = "xemu-previous.exe";
-        const UpdateFormat update_format = UPDATE_FORMAT_ZIP;
+        static const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-win-x86_64-release.zip";
     #elif defined(__aarch64__)
-        const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-win-aarch64-release.zip";
-        const char *executable_name = "xemu.exe";
-        const char *backup_name = "xemu-previous.exe";
-        const UpdateFormat update_format = UPDATE_FORMAT_ZIP;
+        static const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-win-aarch64-release.zip";
     #else
-        #error Unknown Windows architecture
+        #warning "Unknown Windows architecture - auto-updater disabled"
+        static const char *download_url = nullptr;
     #endif
 #elif defined(__linux__)
-    // Check if running as AppImage
+    static const char *executable_name = "xemu";
+    static const char *backup_name = "xemu-previous";
     #if defined(__x86_64__)
-        const char *tar_download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-linux-x86_64-release.tar.gz";
-        const char *appimage_download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-x86_64.AppImage";
-        const char *executable_name = "xemu";
-        const char *backup_name = "xemu-previous";
+        static const char *tar_download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-linux-x86_64-release.tar.gz";
+        static const char *appimage_download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-x86_64.AppImage";
     #elif defined(__aarch64__)
-        const char *tar_download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-linux-aarch64-release.tar.gz";
-        const char *appimage_download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-aarch64.AppImage";
-        const char *executable_name = "xemu";
-        const char *backup_name = "xemu-previous";
+        static const char *tar_download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-linux-aarch64-release.tar.gz";
+        static const char *appimage_download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-aarch64.AppImage";
     #else
-        #error Unknown Linux architecture
+        #warning "Unknown Linux architecture - auto-updater disabled"
+        static const char *tar_download_url = nullptr;
+        static const char *appimage_download_url = nullptr;
     #endif
-    // Will be set dynamically based on current execution context
     static const char *download_url = nullptr;
-    static UpdateFormat update_format = UPDATE_FORMAT_ZIP; // Default fallback
+    static UpdateFormat update_format = UPDATE_FORMAT_ZIP;
 #elif defined(__APPLE__)
+    static const char *executable_name = "xemu";
+    static const char *backup_name = "xemu-previous";
+    static const UpdateFormat update_format = UPDATE_FORMAT_ZIP;
     #if defined(__x86_64__)
-        const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-macos-x86_64-release.zip";
-        const char *executable_name = "xemu";
-        const char *backup_name = "xemu-previous";
-        const UpdateFormat update_format = UPDATE_FORMAT_ZIP;
+        static const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-macos-x86_64-release.zip";
     #elif defined(__aarch64__) || defined(__arm64__)
-        const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-macos-aarch64-release.zip";
-        const char *executable_name = "xemu";
-        const char *backup_name = "xemu-previous";
-        const UpdateFormat update_format = UPDATE_FORMAT_ZIP;
+        static const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-macos-aarch64-release.zip";
     #else
-        #error Unknown macOS architecture
+        #warning "Unknown macOS architecture - auto-updater disabled"
+        static const char *download_url = nullptr;
     #endif
 #else
-    #error Unsupported platform for auto-update
+    #warning "Unsupported platform - auto-updater disabled"
+    static const char *download_url = nullptr;
+    static const char *executable_name = nullptr;
+    static const char *backup_name = nullptr;
+    static const UpdateFormat update_format = UPDATE_FORMAT_ZIP;
 #endif
 
 AutoUpdateWindow update_window;
 
-// AppImage detection and configuration
 #if defined(__linux__)
 static bool is_running_as_appimage() {
-    // Check if APPIMAGE environment variable is set
     const char *appimage_path = getenv("APPIMAGE");
     return appimage_path != nullptr && strlen(appimage_path) > 0;
 }
@@ -141,7 +124,6 @@ static void configure_linux_update_urls() {
         update_format = UPDATE_FORMAT_TAR_GZ;
         DPRINTF("Detected regular installation, using tar.gz updates\n");
 #else
-        // Fallback to ZIP format if libarchive not available
         DPRINTF("libarchive not available, auto-updater disabled for regular installation\n");
         download_url = nullptr;
         update_format = UPDATE_FORMAT_ZIP;
@@ -150,7 +132,6 @@ static void configure_linux_update_urls() {
 }
 #endif
 
-// Cross-platform utility functions
 static bool create_directories(const char *path) {
     if (!path || strlen(path) == 0) {
         return false;
@@ -200,13 +181,55 @@ static bool move_file(const char *src, const char *dst) {
 #endif
 }
 
+static bool remove_directory_recursive(const char *path) {
+    if (!path) {
+        return false;
+    }
+    
+#if defined(_WIN32)
+    char search_path[MAX_PATH];
+    snprintf(search_path, sizeof(search_path), "%s\\*", path);
+    
+    WIN32_FIND_DATAA find_data;
+    HANDLE find_handle = FindFirstFileA(search_path, &find_data);
+    
+    if (find_handle == INVALID_HANDLE_VALUE) {
+        return RemoveDirectoryA(path) != 0;
+    }
+    
+    bool success = true;
+    do {
+        if (strcmp(find_data.cFileName, ".") == 0 || strcmp(find_data.cFileName, "..") == 0) {
+            continue;
+        }
+        
+        char full_path[MAX_PATH];
+        snprintf(full_path, sizeof(full_path), "%s\\%s", path, find_data.cFileName);
+        
+        if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            success = remove_directory_recursive(full_path) && success;
+        } else {
+            success = (DeleteFileA(full_path) != 0) && success;
+        }
+    } while (FindNextFileA(find_handle, &find_data));
+    
+    FindClose(find_handle);
+    return RemoveDirectoryA(path) != 0 && success;
+#else
+    // Simple implementation - in production might want to use nftw() or similar
+    char command[4096];
+    snprintf(command, sizeof(command), "rm -rf \"%s\"", path);
+    return system(command) == 0;
+#endif
+}
+
 static bool set_executable_permission(const char *path) {
     if (!path) {
         return false;
     }
     
 #if defined(_WIN32)
-    return true; // Windows doesn't use Unix permissions
+    return true;
 #else
     int result = chmod(path, 0755);
     if (result != 0) {
@@ -216,9 +239,34 @@ static bool set_executable_permission(const char *path) {
 #endif
 }
 
-// Cross-platform archive extraction
+static bool copy_directory_recursive(const char *src, const char *dst) {
+    if (!src || !dst) {
+        return false;
+    }
+    
+#if defined(_WIN32)
+    char command[4096];
+    snprintf(command, sizeof(command), "xcopy \"%s\" \"%s\" /E /I /H /Y", src, dst);
+    return system(command) == 0;
+#else
+    char command[4096];
+    snprintf(command, sizeof(command), "cp -r \"%s\" \"%s\"", src, dst);
+    return system(command) == 0;
+#endif
+}
+
+// Forward declarations for extraction functions
+static bool extract_to_temp_dir(const unsigned char *data, size_t data_len, const char *temp_dir, UpdateFormat format);
+static bool extract_zip_to_dir(const unsigned char *data, size_t data_len, const char *base_path);
 #if defined(__linux__) && defined(HAVE_LIBARCHIVE)
-static bool extract_tar_gz(const unsigned char *data, size_t data_len, const char *base_path) {
+static bool extract_tar_gz_to_dir(const unsigned char *data, size_t data_len, const char *base_path);
+#endif
+#if defined(__linux__)
+static bool extract_appimage_to_file(const unsigned char *data, size_t data_len, const char *target_path);
+#endif
+
+#if defined(__linux__) && defined(HAVE_LIBARCHIVE)
+static bool extract_tar_gz_to_dir(const unsigned char *data, size_t data_len, const char *base_path) {
     struct archive *a = archive_read_new();
     struct archive *ext = archive_write_disk_new();
     struct archive_entry *entry;
@@ -251,18 +299,9 @@ static bool extract_tar_gz(const unsigned char *data, size_t data_len, const cha
             continue;
         }
         
-        char *dst_path = g_strdup_printf("%s%s", base_path, filename);
+        char *dst_path = g_strdup_printf("%s/%s", base_path, filename);
         
         DPRINTF("extracting %s to %s\n", filename, dst_path);
-        
-        // Handle executable backup
-        if (!strcmp(filename, executable_name)) {
-            char *backup_path = g_strdup_printf("%s%s", base_path, backup_name);
-            if (!move_file(dst_path, backup_path)) {
-                DPRINTF("Warning: Failed to backup current executable\n");
-            }
-            g_free(backup_path);
-        }
         
         if (!create_directories(dst_path)) {
             DPRINTF("Failed to create directories for %s\n", dst_path);
@@ -297,8 +336,7 @@ static bool extract_tar_gz(const unsigned char *data, size_t data_len, const cha
         
         archive_write_finish_entry(ext);
         
-        // Set executable permission if needed
-        if (!strcmp(filename, executable_name)) {
+        if (strcmp(filename, executable_name) == 0) {
             if (!set_executable_permission(dst_path)) {
                 DPRINTF("Warning: Failed to set executable permission\n");
             }
@@ -314,27 +352,10 @@ static bool extract_tar_gz(const unsigned char *data, size_t data_len, const cha
 #endif
 
 #if defined(__linux__)
-static bool extract_appimage(const unsigned char *data, size_t data_len, const char *base_path) {
-    // For AppImage, we just need to save the file and set permissions
-    const char *appimage_path = getenv("APPIMAGE");
-    if (!appimage_path) {
-        DPRINTF("APPIMAGE environment variable not set\n");
-        return false;
-    }
-
-    // Create backup of current AppImage
-    char *backup_path = g_strdup_printf("%s.previous", appimage_path);
-    if (!move_file(appimage_path, backup_path)) {
-        DPRINTF("Failed to backup current AppImage\n");
-        g_free(backup_path);
-        return false;
-    }
-    g_free(backup_path);
-
-    // Write new AppImage
-    FILE *f = fopen(appimage_path, "wb");
+static bool extract_appimage_to_file(const unsigned char *data, size_t data_len, const char *target_path) {
+    FILE *f = fopen(target_path, "wb");
     if (!f) {
-        DPRINTF("Failed to open %s for writing: %s\n", appimage_path, strerror(errno));
+        DPRINTF("Failed to open %s for writing: %s\n", target_path, strerror(errno));
         return false;
     }
 
@@ -346,18 +367,17 @@ static bool extract_appimage(const unsigned char *data, size_t data_len, const c
         return false;
     }
 
-    // Set executable permission
-    if (!set_executable_permission(appimage_path)) {
+    if (!set_executable_permission(target_path)) {
         DPRINTF("Failed to set executable permission on AppImage\n");
         return false;
     }
 
-    DPRINTF("Successfully updated AppImage: %s\n", appimage_path);
+    DPRINTF("Successfully extracted AppImage: %s\n", target_path);
     return true;
 }
 #endif
 
-static bool extract_zip(const unsigned char *data, size_t data_len, const char *base_path) {
+static bool extract_zip_to_dir(const unsigned char *data, size_t data_len, const char *base_path) {
     mz_zip_archive zip;
     mz_zip_zero_struct(&zip);
     bool success = true;
@@ -379,8 +399,7 @@ static bool extract_zip(const unsigned char *data, size_t data_len, const char *
         }
 
         if (fstat.m_filename[strlen(fstat.m_filename)-1] == '/') {
-            // Create directory
-            char *dir_path = g_strdup_printf("%s%s", base_path, fstat.m_filename);
+            char *dir_path = g_strdup_printf("%s/%s", base_path, fstat.m_filename);
             if (!create_directories(dir_path)) {
                 DPRINTF("Failed to create directory %s\n", dir_path);
                 success = false;
@@ -389,17 +408,8 @@ static bool extract_zip(const unsigned char *data, size_t data_len, const char *
             continue;
         }
 
-        char *dst_path = g_strdup_printf("%s%s", base_path, fstat.m_filename);
+        char *dst_path = g_strdup_printf("%s/%s", base_path, fstat.m_filename);
         DPRINTF("extracting %s to %s\n", fstat.m_filename, dst_path);
-
-        // Handle executable backup
-        if (!strcmp(fstat.m_filename, executable_name)) {
-            char *backup_path = g_strdup_printf("%s%s", base_path, backup_name);
-            if (!move_file(dst_path, backup_path)) {
-                DPRINTF("Warning: Failed to backup current executable\n");
-            }
-            g_free(backup_path);
-        }
 
         if (!create_directories(dst_path)) {
             DPRINTF("Failed to create directories for %s\n", dst_path);
@@ -415,8 +425,7 @@ static bool extract_zip(const unsigned char *data, size_t data_len, const char *
             continue;
         }
 
-        // Set executable permission if needed
-        if (!strcmp(fstat.m_filename, executable_name)) {
+        if (strcmp(fstat.m_filename, executable_name) == 0) {
             if (!set_executable_permission(dst_path)) {
                 DPRINTF("Warning: Failed to set executable permission\n");
             }
@@ -429,11 +438,55 @@ static bool extract_zip(const unsigned char *data, size_t data_len, const char *
     return success;
 }
 
+static bool extract_to_temp_dir(const unsigned char *data, size_t data_len, const char *temp_dir, UpdateFormat format) {
+    switch (format) {
+#if defined(__linux__) && defined(HAVE_LIBARCHIVE)
+        case UPDATE_FORMAT_TAR_GZ:
+            return extract_tar_gz_to_dir(data, data_len, temp_dir);
+#endif
+#if defined(__linux__)
+        case UPDATE_FORMAT_APPIMAGE: {
+            char *appimage_path = g_strdup_printf("%s/%s", temp_dir, executable_name);
+            bool result = extract_appimage_to_file(data, data_len, appimage_path);
+            g_free(appimage_path);
+            return result;
+        }
+#endif
+        case UPDATE_FORMAT_ZIP:
+            return extract_zip_to_dir(data, data_len, temp_dir);
+        default:
+            DPRINTF("Unknown or unsupported update format: %d\n", format);
+            return false;
+    }
+}
+
+static bool perform_atomic_update(const char *temp_dir, const char *install_dir, const char *backup_dir) {
+    DPRINTF("Performing atomic update: temp=%s, install=%s, backup=%s\n", temp_dir, install_dir, backup_dir);
+    
+    // Step 1: Move current installation to backup
+    if (!move_file(install_dir, backup_dir)) {
+        DPRINTF("Failed to backup current installation\n");
+        return false;
+    }
+    
+    // Step 2: Move temp directory to installation location
+    if (!move_file(temp_dir, install_dir)) {
+        DPRINTF("Failed to move new installation into place, attempting rollback\n");
+        // Rollback: restore from backup
+        if (!move_file(backup_dir, install_dir)) {
+            DPRINTF("CRITICAL: Failed to rollback after update failure!\n");
+        }
+        return false;
+    }
+    
+    DPRINTF("Atomic update completed successfully\n");
+    return true;
+}
+
 AutoUpdateWindow::AutoUpdateWindow()
 {
     is_open = false;
 #if defined(__linux__)
-    // Configure Linux update URLs based on execution context
     configure_linux_update_urls();
 #endif
 }
@@ -525,6 +578,7 @@ Updater::Updater()
 void Updater::check_for_update(UpdaterCallback on_complete)
 {
     if (m_status == UPDATER_IDLE || m_status == UPDATER_ERROR) {
+        m_status = UPDATER_CHECKING_FOR_UPDATE;
         m_on_complete = on_complete;
         qemu_thread_create(&m_thread, "update_worker",
                            &Updater::checker_thread_worker_func,
@@ -534,16 +588,14 @@ void Updater::check_for_update(UpdaterCallback on_complete)
 
 void *Updater::checker_thread_worker_func(void *updater)
 {
-    ((Updater *)updater)->check_for_update_internal();
-    return NULL;
+    static_cast<Updater *>(updater)->check_for_update_internal();
+    return nullptr;
 }
 
 void Updater::check_for_update_internal()
 {
-    m_status = UPDATER_CHECKING_FOR_UPDATE;
-    
     g_autoptr(GByteArray) data = g_byte_array_new();
-    int res = http_get(version_url, data, NULL, NULL);
+    int res = http_get(version_url, data, nullptr, nullptr);
 
     if (m_should_cancel) {
         m_should_cancel = false;
@@ -555,15 +607,15 @@ void Updater::check_for_update_internal()
         goto finished;
     }
 
-    // Ensure null-termination for version string
-    g_byte_array_append(data, (const guint8*)"\0", 1);
-    m_latest_version = std::string((const char *)data->data);
+    g_byte_array_append(data, static_cast<const guint8*>(static_cast<const void*>("\0")), 1);
+    m_latest_version = std::string(reinterpret_cast<const char *>(data->data), data->len - 1);
     
-    // Trim whitespace from version string
     size_t start = m_latest_version.find_first_not_of(" \t\r\n");
-    size_t end = m_latest_version.find_last_not_of(" \t\r\n");
-    if (start != std::string::npos && end != std::string::npos) {
+    if (start != std::string::npos) {
+        size_t end = m_latest_version.find_last_not_of(" \t\r\n");
         m_latest_version = m_latest_version.substr(start, end - start + 1);
+    } else {
+        m_latest_version.clear();
     }
 
     DPRINTF("Current version: %s, Latest version: %s\n", xemu_version, m_latest_version.c_str());
@@ -591,6 +643,18 @@ void Updater::update()
     }
 #endif
 
+#if !defined(_WIN32) && !defined(__linux__) && !defined(__APPLE__)
+    DPRINTF("Auto-updater not available for this platform\n");
+    m_status = UPDATER_ERROR;
+    return;
+#endif
+
+    if (!download_url) {
+        DPRINTF("Auto-updater not available for this architecture\n");
+        m_status = UPDATER_ERROR;
+        return;
+    }
+
     if (m_status == UPDATER_IDLE || m_status == UPDATER_ERROR) {
         m_status = UPDATER_UPDATING;
         m_update_percentage = 0;
@@ -602,8 +666,8 @@ void Updater::update()
 
 void *Updater::update_thread_worker_func(void *updater)
 {
-    ((Updater *)updater)->update_internal();
-    return NULL;
+    static_cast<Updater *>(updater)->update_internal();
+    return nullptr;
 }
 
 int Updater::progress_cb(http_progress_cb_info *info)
@@ -611,7 +675,7 @@ int Updater::progress_cb(http_progress_cb_info *info)
     if (info->dltotal == 0) {
         m_update_percentage = 0;
     } else {
-        m_update_percentage = (int)((info->dlnow * 100) / info->dltotal);
+        m_update_percentage = static_cast<int>((info->dlnow * 100) / info->dltotal);
     }
 
     return m_should_cancel ? 1 : 0;
@@ -628,7 +692,7 @@ void Updater::update_internal()
     };
 
     DPRINTF("Downloading update from: %s\n", download_url);
-    int res = http_get(download_url, data, &progress_info, NULL);
+    int res = http_get(download_url, data, &progress_info, nullptr);
 
     if (m_should_cancel) {
         m_should_cancel = false;
@@ -648,36 +712,83 @@ void Updater::update_internal()
         return;
     }
 
+    // Create temporary directory for extraction
+    char *temp_dir = g_strdup_printf("%s/xemu-update-temp", base_path);
+    char *backup_dir = g_strdup_printf("%s/xemu-backup", base_path);
+    
+    // Clean up any existing temp/backup directories
+    remove_directory_recursive(temp_dir);
+    remove_directory_recursive(backup_dir);
+    
+    // Create temp directory
+    if (!create_directories(temp_dir)) {
+        DPRINTF("Failed to create temporary directory: %s\n", temp_dir);
+        m_status = UPDATER_ERROR;
+        g_free(temp_dir);
+        g_free(backup_dir);
+        return;
+    }
+
     bool extract_success = false;
 
-    // Choose extraction method based on update format
-    switch (update_format) {
-#if defined(__linux__) && defined(HAVE_LIBARCHIVE)
-        case UPDATE_FORMAT_TAR_GZ:
-            extract_success = extract_tar_gz(data->data, data->len, base_path);
-            break;
-#endif
 #if defined(__linux__)
-        case UPDATE_FORMAT_APPIMAGE:
-            extract_success = extract_appimage(data->data, data->len, base_path);
-            break;
-#endif
-        case UPDATE_FORMAT_ZIP:
-            extract_success = extract_zip(data->data, data->len, base_path);
-            break;
-        default:
-            DPRINTF("Unknown or unsupported update format: %d\n", update_format);
-            extract_success = false;
-            break;
-    }
+    if (update_format == UPDATE_FORMAT_APPIMAGE) {
+        // Special handling for AppImage updates
+        const char *appimage_path = getenv("APPIMAGE");
+        if (!appimage_path) {
+            DPRINTF("APPIMAGE environment variable not set\n");
+            m_status = UPDATER_ERROR;
+            g_free(temp_dir);
+            g_free(backup_dir);
+            return;
+        }
 
+        char *new_appimage_path = g_strdup_printf("%s.new", appimage_path);
+        extract_success = extract_appimage_to_file(data->data, data->len, new_appimage_path);
+        
+        if (extract_success) {
+            // Create backup of current AppImage
+            char *backup_appimage_path = g_strdup_printf("%s.previous", appimage_path);
+            if (!move_file(appimage_path, backup_appimage_path)) {
+                DPRINTF("Failed to backup current AppImage\n");
+                extract_success = false;
+            } else {
+                // Move new AppImage into place
+                if (!move_file(new_appimage_path, appimage_path)) {
+                    DPRINTF("Failed to move new AppImage into place, attempting rollback\n");
+                    move_file(backup_appimage_path, appimage_path);
+                    extract_success = false;
+                }
+            }
+            g_free(backup_appimage_path);
+        }
+        g_free(new_appimage_path);
+    } else {
+#endif
+        // Regular extraction to temp directory
+        extract_success = extract_to_temp_dir(data->data, data->len, temp_dir, update_format);
+        
+        if (extract_success) {
+            // Perform atomic update for regular installations
+            extract_success = perform_atomic_update(temp_dir, base_path, backup_dir);
+        }
+#if defined(__linux__)
+    }
+#endif
+
+    // Clean up temporary directory
+    remove_directory_recursive(temp_dir);
+    
     if (extract_success) {
-        DPRINTF("Update extraction successful\n");
+        DPRINTF("Update completed successfully\n");
         m_status = UPDATER_UPDATE_SUCCESSFUL;
     } else {
-        DPRINTF("Update extraction failed\n");
+        DPRINTF("Update failed\n");
         m_status = UPDATER_ERROR;
     }
+    
+    g_free(temp_dir);
+    g_free(backup_dir);
 }
 
 extern "C" {
@@ -688,24 +799,21 @@ void Updater::restart_to_updated()
 {
 #if defined(__linux__)
     if (update_format == UPDATE_FORMAT_APPIMAGE) {
-        // For AppImage, restart using the APPIMAGE environment variable path
         const char *appimage_path = getenv("APPIMAGE");
         if (appimage_path) {
             DPRINTF("Restarting AppImage: %s\n", appimage_path);
             execv(appimage_path, gArgv);
-            DPRINTF("AppImage restart failed: %s\n", strerror(errno));
-            exit(1);
+            DPRINTF("AppImage restart failed: %s. Please restart xemu manually.\n", strerror(errno));
         } else {
-            DPRINTF("APPIMAGE environment variable not found\n");
-            exit(1);
+            DPRINTF("APPIMAGE environment variable not found. Please restart xemu manually.\n");
         }
+        exit(1);
     }
 #endif
     
-    // Regular restart for non-AppImage cases
     const char *base_path = SDL_GetBasePath();
     if (!base_path) {
-        DPRINTF("Failed to get base path for restart\n");
+        DPRINTF("Failed to get base path for restart. Please restart xemu manually.\n");
         exit(1);
     }
     
@@ -719,7 +827,7 @@ void Updater::restart_to_updated()
     execv(target_exec, gArgv);
 #endif
 
-    DPRINTF("Launching updated executable failed: %s\n", strerror(errno));
+    DPRINTF("Launching updated executable failed: %s. Please restart xemu manually.\n", strerror(errno));
     g_free(target_exec);
     exit(1);
 }
