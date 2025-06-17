@@ -196,7 +196,7 @@ typedef struct ShaderBinding {
     int material_alpha_loc;
 
     int color_key_loc;
-    int color_key_ignore_alpha_loc;
+    int color_key_mask_loc;
 
     int uniform_attrs_loc;
 } ShaderBinding;

@@ -315,8 +315,8 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     binding->color_key_loc =
         uniform_index(&binding->fragment->uniforms, "colorKey");
 
-    binding->color_key_ignore_alpha_loc =
-        uniform_index(&binding->fragment->uniforms, "colorKeyIgnoreAlpha");
+    binding->color_key_mask_loc =
+        uniform_index(&binding->fragment->uniforms, "colorKeyMask");
 
     binding->uniform_attrs_loc =
         uniform_index(&binding->vertex->uniforms, "inlineValue");
@@ -506,10 +506,9 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         uniform1uiv(&binding->fragment->uniforms, binding->color_key_loc, 4,
                     color_key_colors);
     }
-    if (binding->color_key_ignore_alpha_loc != -1) {
-        uniform1iv(&binding->fragment->uniforms,
-                   binding->color_key_ignore_alpha_loc, 4,
-                   (int32_t *)&state->psh.colorkey_ignore_alpha);
+    if (binding->color_key_mask_loc != -1) {
+        uniform1uiv(&binding->fragment->uniforms, binding->color_key_mask_loc,
+                    4, state->psh.colorkey_mask);
     }
 
     /* For each texture stage */

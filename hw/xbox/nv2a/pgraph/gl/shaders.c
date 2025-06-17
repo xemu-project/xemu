@@ -210,8 +210,8 @@ static void update_shader_constant_locations(ShaderBinding *binding)
         binding->color_key_loc[i] =
             glGetUniformLocation(binding->gl_program, tmp);
 
-        snprintf(tmp, sizeof(tmp), "colorKeyIgnoreAlpha[%d]", i);
-        binding->color_key_ignore_alpha_loc[i] =
+        snprintf(tmp, sizeof(tmp), "colorKeyMask[%d]", i);
+        binding->color_key_mask_loc[i] =
             glGetUniformLocation(binding->gl_program, tmp);
     }
 }
@@ -781,9 +781,9 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
             glUniform1ui(binding->color_key_loc[i],
                          pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR0 + i * 4));
         }
-        if (binding->color_key_ignore_alpha_loc[i] != -1) {
-            glUniform1i(binding->color_key_ignore_alpha_loc[i],
-                        state->psh.colorkey_ignore_alpha[i]);
+        if (binding->color_key_mask_loc[i] != -1) {
+            glUniform1ui(binding->color_key_mask_loc[i],
+                         state->psh.colorkey_mask[i]);
         }
     }
 

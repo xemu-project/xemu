@@ -129,7 +129,7 @@ typedef struct ShaderBinding {
     GLint material_alpha_loc;
 
     GLint color_key_loc[4];
-    GLint color_key_ignore_alpha_loc[4];
+    GLint color_key_mask_loc[4];
 } ShaderBinding;
 
 typedef struct VertexKey {

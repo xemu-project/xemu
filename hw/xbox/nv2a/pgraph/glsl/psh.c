@@ -176,9 +176,9 @@ enum PS_DOTMAPPING
 
 enum PS_COLORKEYMODE {
     COLOR_KEY_NONE = 0,
-    COLOR_KEY_KILL_ALPHA = 0x01,
-    COLOR_KEY_KILL_COLOR_AND_ALPHA = 0x02,
-    COLOR_KEY_DISCARD = 0x03,
+    COLOR_KEY_KILL_ALPHA = 1,
+    COLOR_KEY_KILL_COLOR_AND_ALPHA = 2,
+    COLOR_KEY_DISCARD = 3,
 };
 
 
@@ -743,12 +743,10 @@ static void define_colorkey_comparator(MString *preflight)
     // clang-format off
     mstring_append(
         preflight,
-        "bool check_color_key(vec4 texel, uint color_key, bool ignore_alpha) {\n"
-        "    uvec4 components = uvec4(round(texel * 255.0));\n"
-        "    if (ignore_alpha) {\n"
-        "      return uint((components.r << 16) + (components.g << 8) + components.b) == (color_key & 0x00FFFFFFu);\n"
-        "    }\n"
-        "    return uint((components.a << 24) + (components.r << 16) + (components.g << 8) + components.b) == color_key;\n"
+        "bool check_color_key(vec4 texel, uint color_key, uint color_key_mask) {\n"
+        "    uvec4 c = uvec4(texel * 255.0 + 0.5);\n"
+        "    uint color = (c.a << 24) | (c.r << 16) | (c.g << 8) | c.b;\n"
+        "    return (color & color_key_mask) == (color_key & color_key_mask);\n"
         "}\n");
     // clang-format on
 }
@@ -777,7 +775,7 @@ static MString* psh_convert(struct PixelShader *ps)
                        "%svec4  clipRange;\n"
                        "%sfloat depthOffset;\n"
                        "%suint colorKey[4];\n"
-                       "%sint colorKeyIgnoreAlpha[4];\n",
+                       "%suint colorKeyMask[4];\n",
                        u, u, u, u, u, u, u);
     for (int i = 0; i < 4; i++) {
         mstring_append_fmt(preflight, "%smat2  bumpMat%d;\n"
@@ -1211,7 +1209,7 @@ static MString* psh_convert(struct PixelShader *ps)
                                    i);
             }
 
-            enum PS_COLORKEYMODE color_key_mode = ps->state.colorkeymode[i];
+            enum PS_COLORKEYMODE color_key_mode = ps->state.colorkey_mode[i];
             if (color_key_mode != COLOR_KEY_NONE) {
                 if (!color_key_comparator_defined) {
                     define_colorkey_comparator(preflight);
@@ -1221,7 +1219,7 @@ static MString* psh_convert(struct PixelShader *ps)
                 // clang-format off
                 mstring_append_fmt(
                     vars,
-                    "if (check_color_key(t%d, colorKey[%d], colorKeyIgnoreAlpha[%d] != 0)) {\n",
+                    "if (check_color_key(t%d, colorKey[%d], colorKeyMask[%d])) {\n",
                     i, i, i);
                 // clang-format on
 
