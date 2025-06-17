@@ -1470,6 +1470,8 @@ static void begin_draw(PGRAPHState *pg)
         };
         vkCmdSetViewport(r->command_buffer, 0, 1, &viewport);
 
+        vkCmdSetLineWidth(r->command_buffer, (float)pg->surface_scale_factor);
+
         /* Surface clip */
         /* FIXME: Consider moving to PSH w/ window clip */
         unsigned int xmin = pg->surface_shape.clip_x,
