@@ -59,10 +59,12 @@ typedef struct NvNetState {
 
     NICState *nic;
     NICConf conf;
+
     MemoryRegion mmio, io;
 
     uint8_t regs[MMIO_SIZE];
     uint32_t phy_regs[6];
+
     uint8_t tx_ring_index;
     uint8_t tx_ring_size;
     uint8_t rx_ring_index;
