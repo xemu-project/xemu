@@ -22,8 +22,8 @@
  * Most definitions are based on forcedeth.c, taken from cromwell project.
  * Original forcedeth.c license follows:
  *
- * -- 
- *    forcedeth.c -- Etherboot device driver for the NVIDIA nForce 
+ * --
+ *    forcedeth.c -- Etherboot device driver for the NVIDIA nForce
  *           media access controllers.
  *
  * Note: This driver is based on the Linux driver that was based on
@@ -53,160 +53,141 @@
  *
  *   (C) 2003 Manfred Spraul
  *       See Linux Driver for full information
- *   
+ *
  *   Linux Driver Version 0.22, 19 Jan 2004
- * 
- * 
+ *
+ *
  *    REVISION HISTORY:
  *    ================
  *    v1.0   01-31-2004  timlegge    Initial port of Linux driver
- *    v1.1   02-03-2004  timlegge    Large Clean up, first release 
- *    
+ *    v1.1   02-03-2004  timlegge    Large Clean up, first release
+ *
  *    Indent Options: indent -kr -i8
  ***************************************************************************/
 
 #ifndef HW_NVNET_REGS_H
 #define HW_NVNET_REGS_H
 
-// clang-format on
+// clang-format off
 
-#define DEV_NEED_LASTPACKET1 0x0001
-#define DEV_IRQMASK_1        0x0002
-#define DEV_IRQMASK_2        0x0004
-#define DEV_NEED_TIMERIRQ    0x0008
-
-enum {
-    NvRegIrqStatus = 0x000,
-#       define NVREG_IRQSTAT_BIT1     0x002
-#       define NVREG_IRQSTAT_BIT4     0x010
-#       define NVREG_IRQSTAT_MIIEVENT 0x040
-#       define NVREG_IRQSTAT_MASK     0x1ff
-    NvRegIrqMask = 0x004,
-#       define NVREG_IRQ_RX           0x0002
-#       define NVREG_IRQ_RX_NOBUF     0x0004
-#       define NVREG_IRQ_TX_ERR       0x0008
-#       define NVREG_IRQ_TX2          0x0010
-#       define NVREG_IRQ_TIMER        0x0020
-#       define NVREG_IRQ_LINK         0x0040
-#       define NVREG_IRQ_TX1          0x0100
-#       define NVREG_IRQMASK_WANTED_1 0x005f
-#       define NVREG_IRQMASK_WANTED_2 0x0147
-#       define NVREG_IRQ_UNKNOWN      (~(NVREG_IRQ_RX | NVREG_IRQ_RX_NOBUF | \
-    NVREG_IRQ_TX_ERR | NVREG_IRQ_TX2 | NVREG_IRQ_TIMER | NVREG_IRQ_LINK | \
-    NVREG_IRQ_TX1))
-    NvRegUnknownSetupReg6 = 0x008,
-#       define NVREG_UNKSETUP6_VAL 3
+#define NVNET_IRQ_STATUS                         0x000
+#  define NVNET_IRQ_STATUS_RX                      0x00000002
+#  define NVNET_IRQ_STATUS_RX_NOBUF                0x00000004
+#  define NVNET_IRQ_STATUS_TX_ERR                  0x00000008
+#  define NVNET_IRQ_STATUS_TX                      0x00000010
+#  define NVNET_IRQ_STATUS_TIMER                   0x00000020
+#  define NVNET_IRQ_STATUS_MIIEVENT                0x00000040
+#define NVNET_IRQ_MASK                           0x004
+#define NVNET_UNKNOWN_SETUP_REG6                 0x008
+#  define NVNET_UNKNOWN_SETUP_REG6_VAL             3
 /*
- * NVREG_POLL_DEFAULT is the interval length of the timer source on the nic
- * NVREG_POLL_DEFAULT=97 would result in an interval length of 1 ms
+ * NVNET_POLLING_INTERVAL_DEFAULT is the interval length of the timer source on the nic
+ * NVNET_POLLING_INTERVAL_DEFAULT=97 would result in an interval length of 1 ms
  */
-    NvRegPollingInterval = 0x00c,
-#       define NVREG_POLL_DEFAULT 970
-    NvRegMisc1 = 0x080,
-#       define NVREG_MISC1_HD    0x02
-#       define NVREG_MISC1_FORCE 0x3b0f3c
-    NvRegTransmitterControl = 0x084,
-#       define NVREG_XMITCTL_START 0x01
-    NvRegTransmitterStatus = 0x088,
-#       define NVREG_XMITSTAT_BUSY 0x01
-    NvRegPacketFilterFlags = 0x8c,
-#       define NVREG_PFF_ALWAYS  0x7F0008
-#       define NVREG_PFF_PROMISC 0x80
-#       define NVREG_PFF_MYADDR  0x20
-    NvRegOffloadConfig = 0x90,
-#       define NVREG_OFFLOAD_HOMEPHY 0x601
-#       define NVREG_OFFLOAD_NORMAL  0x5ee
-    NvRegReceiverControl = 0x094,
-#       define NVREG_RCVCTL_START 0x01
-    NvRegReceiverStatus = 0x98,
-#       define NVREG_RCVSTAT_BUSY  0x01
-    NvRegRandomSeed = 0x9c,
-#       define NVREG_RNDSEED_MASK  0x00ff
-#       define NVREG_RNDSEED_FORCE 0x7f00
-    NvRegUnknownSetupReg1 = 0xA0,
-#       define NVREG_UNKSETUP1_VAL 0x16070f
-    NvRegUnknownSetupReg2 = 0xA4,
-#       define NVREG_UNKSETUP2_VAL 0x16
-    NvRegMacAddrA = 0xA8,
-    NvRegMacAddrB = 0xAC,
-    NvRegMulticastAddrA = 0xB0,
-#       define NVREG_MCASTADDRA_FORCE  0x01
-    NvRegMulticastAddrB = 0xB4,
-    NvRegMulticastMaskA = 0xB8,
-    NvRegMulticastMaskB = 0xBC,
-    NvRegTxRingPhysAddr = 0x100,
-    NvRegRxRingPhysAddr = 0x104,
-    NvRegRingSizes = 0x108,
-#       define NVREG_RINGSZ_TXSHIFT 0
-#       define NVREG_RINGSZ_RXSHIFT 16
-    NvRegUnknownTransmitterReg = 0x10c,
-    NvRegLinkSpeed = 0x110,
-#       define NVREG_LINKSPEED_FORCE 0x10000
-#       define NVREG_LINKSPEED_10    10
-#       define NVREG_LINKSPEED_100   100
-#       define NVREG_LINKSPEED_1000  1000
-    NvRegUnknownSetupReg5 = 0x130,
-#       define NVREG_UNKSETUP5_BIT31 (1 << 31)
-    NvRegUnknownSetupReg3 = 0x134,
-#       define NVREG_UNKSETUP3_VAL1 0x200010
-    NvRegUnknownSetupReg8 = 0x13C,
-#       define NVREG_UNKSETUP8_VAL1 0x300010
-    NvRegUnknownSetupReg7 = 0x140,
-#       define NVREG_UNKSETUP7_VAL 0x300010
-    NvRegTxRxControl = 0x144,
-#       define NVREG_TXRXCTL_KICK  0x0001
-#       define NVREG_TXRXCTL_BIT1  0x0002
-#       define NVREG_TXRXCTL_BIT2  0x0004
-#       define NVREG_TXRXCTL_IDLE  0x0008
-#       define NVREG_TXRXCTL_RESET 0x0010
-    NvRegMIIStatus = 0x180,
-#       define NVREG_MIISTAT_ERROR      0x0001
-#       define NVREG_MIISTAT_LINKCHANGE 0x0008
-#       define NVREG_MIISTAT_MASK       0x000f
-#       define NVREG_MIISTAT_MASK2      0x000f
-    NvRegUnknownSetupReg4 = 0x184,
-#       define NVREG_UNKSETUP4_VAL 8
-    NvRegAdapterControl = 0x188,
-#       define NVREG_ADAPTCTL_START    0x02
-#       define NVREG_ADAPTCTL_LINKUP   0x04
-#       define NVREG_ADAPTCTL_PHYVALID 0x4000
-#       define NVREG_ADAPTCTL_RUNNING  0x100000
-#       define NVREG_ADAPTCTL_PHYSHIFT 24
-    NvRegMIISpeed = 0x18c,
-#       define NVREG_MIISPEED_BIT8 (1 << 8)
-#       define NVREG_MIIDELAY  5
-    NvRegMIIControl = 0x190,
-#       define NVREG_MIICTL_INUSE   0x8000
-#       define NVREG_MIICTL_WRITE   0x0400
-#       define NVREG_MIICTL_PHYADDR 0x03e0
-#       define NVREG_MIICTL_PHYREG  0x001f
-    NvRegMIIData = 0x194,
-    NvRegWakeUpFlags = 0x200,
-#       define NVREG_WAKEUPFLAGS_VAL               0x7770
-#       define NVREG_WAKEUPFLAGS_BUSYSHIFT         24
-#       define NVREG_WAKEUPFLAGS_ENABLESHIFT       16
-#       define NVREG_WAKEUPFLAGS_D3SHIFT           12
-#       define NVREG_WAKEUPFLAGS_D2SHIFT           8
-#       define NVREG_WAKEUPFLAGS_D1SHIFT           4
-#       define NVREG_WAKEUPFLAGS_D0SHIFT           0
-#       define NVREG_WAKEUPFLAGS_ACCEPT_MAGPAT     0x01
-#       define NVREG_WAKEUPFLAGS_ACCEPT_WAKEUPPAT  0x02
-#       define NVREG_WAKEUPFLAGS_ACCEPT_LINKCHANGE 0x04
-    NvRegPatternCRC = 0x204,
-    NvRegPatternMask = 0x208,
-    NvRegPowerCap = 0x268,
-#       define NVREG_POWERCAP_D3SUPP (1 << 30)
-#       define NVREG_POWERCAP_D2SUPP (1 << 26)
-#       define NVREG_POWERCAP_D1SUPP (1 << 25)
-    NvRegPowerState = 0x26c,
-#       define NVREG_POWERSTATE_POWEREDUP 0x8000
-#       define NVREG_POWERSTATE_VALID     0x0100
-#       define NVREG_POWERSTATE_MASK      0x0003
-#       define NVREG_POWERSTATE_D0        0x0000
-#       define NVREG_POWERSTATE_D1        0x0001
-#       define NVREG_POWERSTATE_D2        0x0002
-#       define NVREG_POWERSTATE_D3        0x0003
-};
+#define NVNET_POLLING_INTERVAL                   0x00C
+#  define NVNET_POLLING_INTERVAL_DEFAULT           970
+#define NVNET_MISC1                              0x080
+#  define NVNET_MISC1_HD                           0x00000002
+#  define NVNET_MISC1_FORCE                        0x003B0F3C
+#define NVNET_TRANSMITTER_CONTROL                0x084
+#  define NVNET_TRANSMITTER_CONTROL_START          0x00000001
+#define NVNET_TRANSMITTER_STATUS                 0x088
+#  define NVNET_TRANSMITTER_STATUS_BUSY            0x00000001
+#define NVNET_PACKET_FILTER                      0x08C
+#  define NVNET_PACKET_FILTER_ALWAYS               0x007F0008
+#  define NVNET_PACKET_FILTER_PROMISC              0x00000080
+#  define NVNET_PACKET_FILTER_MYADDR               0x00000020
+#define NVNET_OFFLOAD                            0x090
+#  define NVNET_OFFLOAD_HOMEPHY                    0x00000601
+#  define NVNET_OFFLOAD_NORMAL                     0x000005EE
+#define NVNET_RECEIVER_CONTROL                   0x094
+#  define NVNET_RECEIVER_CONTROL_START             0x00000001
+#define NVNET_RECEIVER_STATUS                    0x098
+#  define NVNET_RECEIVER_STATUS_BUSY               0x00000001
+#define NVNET_RANDOM_SEED                        0x09C
+#  define NVNET_RANDOM_SEED_MASK                   0x000000FF
+#  define NVNET_RANDOM_SEED_FORCE                  0x00007F00
+#define NVNET_UNKNOWN_SETUP_REG1                 0x0A0
+#  define NVNET_UNKNOWN_SETUP_REG1_VAL             0x0016070F
+#define NVNET_UNKNOWN_SETUP_REG2                 0x0A4
+#  define NVNET_UNKNOWN_SETUP_REG2_VAL             0x00000016
+#define NVNET_MAC_ADDR_A                         0x0A8
+#define NVNET_MAC_ADDR_B                         0x0AC
+#define NVNET_MULTICAST_ADDR_A                   0x0B0
+#  define NVNET_MULTICAST_ADDR_A_FORCE             0x00000001
+#define NVNET_MULTICAST_ADDR_B                   0x0B4
+#define NVNET_MULTICAST_MASK_A                   0x0B8
+#define NVNET_MULTICAST_MASK_B                   0x0BC
+#define NVNET_TX_RING_PHYS_ADDR                  0x100
+#define NVNET_RX_RING_PHYS_ADDR                  0x104
+#define NVNET_RING_SIZE                          0x108
+#  define NVNET_RING_SIZE_TXSHIFT                  0
+#  define NVNET_RING_SIZE_RXSHIFT                  16
+#define NVNET_UNKNOWN_TRANSMITTER_REG            0x10C
+#define NVNET_LINKSPEED                          0x110
+#  define NVNET_LINKSPEED_FORCE                    0x00010000
+#  define NVNET_LINKSPEED_10                       10
+#  define NVNET_LINKSPEED_100                      100
+#  define NVNET_LINKSPEED_1000                     1000
+#define NVNET_UNKNOWN_SETUP_REG5                 0x130
+#  define NVNET_UNKNOWN_SETUP_REG5_BIT31           (1 << 31)
+#define NVNET_UNKNOWN_SETUP_REG3                 0x134
+#  define NVNET_UNKNOWN_SETUP_REG3_VAL1            0x00200010
+#define NVNET_UNKNOWN_SETUP_REG8                 0x13C
+#  define NVNET_UNKNOWN_SETUP_REG8_VAL1            0x00300010
+#define NVNET_UNKNOWN_SETUP_REG7                 0x140
+#  define NVNET_UNKNOWN_SETUP_REG7_VAL             0x00300010
+#define NVNET_TX_RX_CONTROL                      0x144
+#  define NVNET_TX_RX_CONTROL_KICK                 0x00000001
+#  define NVNET_TX_RX_CONTROL_BIT1                 0x00000002
+#  define NVNET_TX_RX_CONTROL_BIT2                 0x00000004
+#  define NVNET_TX_RX_CONTROL_IDLE                 0x00000008
+#  define NVNET_TX_RX_CONTROL_RESET                0x00000010
+#define NVNET_MII_STATUS                         0x180
+#  define NVNET_MII_STATUS_ERROR                   0x00000001
+#  define NVNET_MII_STATUS_LINKCHANGE              0x00000008
+#define NVNET_UNKNOWN_SETUP_REG4                 0x184
+#  define NVNET_UNKNOWN_SETUP_REG4_VAL             8
+#define NVNET_ADAPTER_CONTROL                    0x188
+#  define NVNET_ADAPTER_CONTROL_START              0x00000002
+#  define NVNET_ADAPTER_CONTROL_LINKUP             0x00000004
+#  define NVNET_ADAPTER_CONTROL_PHYVALID           0x00004000
+#  define NVNET_ADAPTER_CONTROL_RUNNING            0x00100000
+#  define NVNET_ADAPTER_CONTROL_PHYSHIFT           24
+#define NVNET_MII_SPEED                          0x18C
+#  define NVNET_MII_SPEED_BIT8                     (1 << 8)
+#  define NVNET_MII_SPEED_DELAY                    5
+#define NVNET_MII_CONTROL                        0x190
+#  define NVNET_MII_CONTROL_INUSE                  0x00008000
+#  define NVNET_MII_CONTROL_WRITE                  0x00000400
+#  define NVNET_MII_CONTROL_PHYADDR                0x000003E0
+#  define NVNET_MII_CONTROL_PHYREG                 0x0000001F
+#define NVNET_MII_DATA                           0x194
+#define NVNET_WAKEUPFLAGS                        0x200
+#  define NVNET_WAKEUPFLAGS_VAL                    0x00007770
+#  define NVNET_WAKEUPFLAGS_BUSYSHIFT              24
+#  define NVNET_WAKEUPFLAGS_ENABLESHIFT            16
+#  define NVNET_WAKEUPFLAGS_D3SHIFT                12
+#  define NVNET_WAKEUPFLAGS_D2SHIFT                8
+#  define NVNET_WAKEUPFLAGS_D1SHIFT                4
+#  define NVNET_WAKEUPFLAGS_D0SHIFT                0
+#  define NVNET_WAKEUPFLAGS_ACCEPT_MAGPAT          0x00000001
+#  define NVNET_WAKEUPFLAGS_ACCEPT_WAKEUPPAT       0x00000002
+#  define NVNET_WAKEUPFLAGS_ACCEPT_LINKCHANGE      0x00000004
+#define NVNET_PATTERN_CRC                        0x204
+#define NVNET_PATTERN_MASK                       0x208
+#define NVNET_POWERCAP                           0x268
+#  define NVNET_POWERCAP_D3SUPP                    (1 << 30)
+#  define NVNET_POWERCAP_D2SUPP                    (1 << 26)
+#  define NVNET_POWERCAP_D1SUPP                    (1 << 25)
+#define NVNET_POWERSTATE                         0x26C
+#  define NVNET_POWERSTATE_POWEREDUP               0x00008000
+#  define NVNET_POWERSTATE_VALID                   0x00000100
+#  define NVNET_POWERSTATE_MASK                    0x00000003
+#  define NVNET_POWERSTATE_D0                      0x00000000
+#  define NVNET_POWERSTATE_D1                      0x00000001
+#  define NVNET_POWERSTATE_D2                      0x00000002
+#  define NVNET_POWERSTATE_D3                      0x00000003
 
 #define NV_TX_LASTPACKET      (1 << 0)
 #define NV_TX_RETRYERROR      (1 << 3)
@@ -272,11 +253,11 @@ enum {
 #define POLL_WAIT             (1 + HZ / 100)
 
 /* Link partner ability register. */
-#define LPA_SLCT     0x001f  /* Same as advertise selector  */
-#define LPA_RESV     0x1c00  /* Unused...                   */
+#define LPA_SLCT     0x001F  /* Same as advertise selector  */
+#define LPA_RESV     0x1C00  /* Unused...                   */
 #define LPA_RFAULT   0x2000  /* Link partner faulted        */
 #define LPA_NPAGE    0x8000  /* Next page bit               */
 
-// clang-format off
+// clang-format on
 
 #endif /* HW_NVNET_REGS_H */
