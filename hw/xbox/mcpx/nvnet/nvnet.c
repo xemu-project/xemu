@@ -76,6 +76,9 @@ typedef struct NvNetState {
     char         *packet_dump_path;
 } NvNetState;
 
+#define NVNET_DEVICE(obj) \
+    OBJECT_CHECK(NvNetState, (obj), "nvnet")
+
 #pragma pack(1)
 struct RingDesc {
     uint32_t packet_buffer;
@@ -83,13 +86,6 @@ struct RingDesc {
     uint16_t flags;
 };
 #pragma pack()
-
-/*******************************************************************************
- * Helper Macros
- ******************************************************************************/
-
-#define NVNET_DEVICE(obj) \
-    OBJECT_CHECK(NvNetState, (obj), "nvnet")
 
 /*******************************************************************************
  * Utility Functions
