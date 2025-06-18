@@ -38,7 +38,8 @@ void ActionLoadDisc(void)
 {
     Error *err = NULL;
 
-    const char *iso_file_filters = ".iso Files\0*.iso\0All Files\0*.*\0";
+    const char *iso_file_filters =
+        "Disc Image Files (*.iso, *.xiso)\0*.iso;*.xiso\0All Files\0*.*\0";
     const char *new_disc_path =
         PausedFileOpen(NOC_FILE_DIALOG_OPEN, iso_file_filters,
                        g_config.sys.files.dvd_path, NULL);
