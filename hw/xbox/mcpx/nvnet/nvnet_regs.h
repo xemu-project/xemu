@@ -176,8 +176,8 @@ enum {
 #       define NVREG_MIISPEED_BIT8 (1 << 8)
 #       define NVREG_MIIDELAY  5
     NvRegMIIControl = 0x190,
-#       define NVREG_MIICTL_INUSE 0x10000
-#       define NVREG_MIICTL_WRITE 0x08000
+#       define NVREG_MIICTL_INUSE 0x8000
+#       define NVREG_MIICTL_WRITE 0x0400
 #       define NVREG_MIICTL_ADDRSHIFT  5
     NvRegMIIData = 0x194,
     NvRegWakeUpFlags = 0x200,
