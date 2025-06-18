@@ -33,8 +33,8 @@
 #include "nvnet_regs.h"
 
 #define IOPORT_SIZE 0x8
-#define MMIO_SIZE   0x400
-#define PHY_ADDR    1
+#define MMIO_SIZE 0x400
+#define PHY_ADDR 1
 
 #define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
 
@@ -57,19 +57,19 @@ typedef struct NvNetState {
     PCIDevice parent_obj;
     /*< public >*/
 
-    NICState     *nic;
-    NICConf      conf;
+    NICState *nic;
+    NICConf conf;
     MemoryRegion mmio, io;
 
-    uint8_t      regs[MMIO_SIZE];
-    uint32_t     phy_regs[6];
-    uint8_t      tx_ring_index;
-    uint8_t      tx_ring_size;
-    uint8_t      rx_ring_index;
-    uint8_t      rx_ring_size;
-    uint8_t      tx_dma_buf[TX_ALLOC_BUFSIZE];
-    uint32_t     tx_dma_buf_offset;
-    uint8_t      rx_dma_buf[RX_ALLOC_BUFSIZE];
+    uint8_t regs[MMIO_SIZE];
+    uint32_t phy_regs[6];
+    uint8_t tx_ring_index;
+    uint8_t tx_ring_size;
+    uint8_t rx_ring_index;
+    uint8_t rx_ring_size;
+    uint8_t tx_dma_buf[TX_ALLOC_BUFSIZE];
+    uint32_t tx_dma_buf_offset;
+    uint8_t rx_dma_buf[RX_ALLOC_BUFSIZE];
 } NvNetState;
 
 struct RingDesc {
@@ -78,7 +78,9 @@ struct RingDesc {
     uint16_t flags;
 } QEMU_PACKED;
 
-#define R(r) case r: return #r;
+#define R(r) \
+    case r:  \
+        return stringify(r);
 
 static const char *nvnet_get_reg_name(hwaddr addr)
 {
@@ -156,8 +158,8 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
         dma_addr_t tx_ring_addr = nvnet_get_reg(s, NVNET_TX_RING_PHYS_ADDR, 4);
         tx_ring_addr += i * sizeof(desc);
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("TX: Dumping ring desc %d (%" HWADDR_PRIx "): ",
-                      i, tx_ring_addr);
+        NVNET_DPRINTF("TX: Dumping ring desc %d (%" HWADDR_PRIx "): ", i,
+                      tx_ring_addr);
         NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
         NVNET_DPRINTF("Length: 0x%x, ", desc.length);
         NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
@@ -168,8 +170,8 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
         dma_addr_t rx_ring_addr = nvnet_get_reg(s, NVNET_RX_RING_PHYS_ADDR, 4);
         rx_ring_addr += i * sizeof(desc);
         pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("RX: Dumping ring desc %d (%" HWADDR_PRIx "): ",
-                      i, rx_ring_addr);
+        NVNET_DPRINTF("RX: Dumping ring desc %d (%" HWADDR_PRIx "): ", i,
+                      rx_ring_addr);
         NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
         NVNET_DPRINTF("Length: 0x%x, ", desc.length);
         NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
@@ -200,8 +202,8 @@ static uint32_t nvnet_get_reg(NvNetState *s, hwaddr addr, unsigned int size)
     }
 }
 
-static void nvnet_set_reg(NvNetState *s,
-                          hwaddr addr, uint32_t val, unsigned int size)
+static void nvnet_set_reg(NvNetState *s, hwaddr addr, uint32_t val,
+                          unsigned int size)
 {
     assert(addr < MMIO_SIZE);
 
@@ -248,15 +250,16 @@ static void nvnet_send_packet(NvNetState *s, const uint8_t *buf, int size)
     qemu_send_packet(nc, buf, size);
 }
 
-static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
-                                         const uint8_t *buf, size_t size)
+static ssize_t nvnet_dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
+                                         size_t size)
 {
     PCIDevice *d = PCI_DEVICE(s);
     bool did_receive = false;
 
     nvnet_set_reg(s, NVNET_TX_RX_CONTROL,
-        nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) & ~NVNET_TX_RX_CONTROL_IDLE,
-        4);
+                  nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) &
+                      ~NVNET_TX_RX_CONTROL_IDLE,
+                  4);
 
     for (int i = 0; i < s->rx_ring_size; i++) {
         struct RingDesc desc;
@@ -265,7 +268,8 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
         rx_ring_addr += s->rx_ring_index * sizeof(desc);
         pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
 
-        NVNET_DPRINTF("RX: Looking at ring descriptor %d (0x%" HWADDR_PRIx "): ",
+        NVNET_DPRINTF("RX: Looking at ring descriptor %d (0x%" HWADDR_PRIx
+                      "): ",
                       s->rx_ring_index, rx_ring_addr);
         NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
         NVNET_DPRINTF("Length: 0x%x, ", desc.length);
@@ -275,7 +279,7 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
             break;
         }
 
-        assert((desc.length+1) >= size); // FIXME
+        assert((desc.length + 1) >= size); // FIXME
 
         s->rx_ring_index += 1;
 
@@ -284,7 +288,7 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
         pci_dma_write(d, desc.packet_buffer, buf, size);
 
         desc.length = size;
-        desc.flags  = NV_RX_BIT4 | NV_RX_DESCRIPTORVALID;
+        desc.flags = NV_RX_BIT4 | NV_RX_DESCRIPTORVALID;
         pci_dma_write(d, rx_ring_addr, &desc, sizeof(desc));
 
         NVNET_DPRINTF("Updated ring descriptor: ");
@@ -300,9 +304,9 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
         break;
     }
 
-    nvnet_set_reg(s, NVNET_TX_RX_CONTROL,
-        nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) | NVNET_TX_RX_CONTROL_IDLE,
-        4);
+    nvnet_set_reg(
+        s, NVNET_TX_RX_CONTROL,
+        nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) | NVNET_TX_RX_CONTROL_IDLE, 4);
 
     if (did_receive) {
         return size;
@@ -318,8 +322,9 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
     bool packet_sent = false;
 
     nvnet_set_reg(s, NVNET_TX_RX_CONTROL,
-        nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) & ~NVNET_TX_RX_CONTROL_IDLE,
-        4);
+                  nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) &
+                      ~NVNET_TX_RX_CONTROL_IDLE,
+                  4);
 
     for (int i = 0; i < s->tx_ring_size; i++) {
         /* Read ring descriptor */
@@ -341,10 +346,10 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
 
         s->tx_ring_index += 1;
 
-        assert((s->tx_dma_buf_offset + desc.length + 1) <= sizeof(s->tx_dma_buf));
+        assert((s->tx_dma_buf_offset + desc.length + 1) <=
+               sizeof(s->tx_dma_buf));
         pci_dma_read(d, desc.packet_buffer,
-                     &s->tx_dma_buf[s->tx_dma_buf_offset],
-                     desc.length + 1);
+                     &s->tx_dma_buf[s->tx_dma_buf_offset], desc.length + 1);
         s->tx_dma_buf_offset += desc.length + 1;
 
         bool is_last_packet = desc.flags & NV_TX_LASTPACKET;
@@ -356,8 +361,8 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         }
 
         desc.flags &= ~(NV_TX_VALID | NV_TX_RETRYERROR | NV_TX_DEFERRED |
-            NV_TX_CARRIERLOST | NV_TX_LATECOLLISION | NV_TX_UNDERFLOW |
-            NV_TX_ERROR);
+                        NV_TX_CARRIERLOST | NV_TX_LATECOLLISION |
+                        NV_TX_UNDERFLOW | NV_TX_ERROR);
         desc.length = desc.length + 5;
         pci_dma_write(d, tx_ring_addr, &desc, sizeof(desc));
 
@@ -374,9 +379,9 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         nvnet_update_irq(s);
     }
 
-    nvnet_set_reg(s, NVNET_TX_RX_CONTROL,
-        nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) | NVNET_TX_RX_CONTROL_IDLE,
-        4);
+    nvnet_set_reg(
+        s, NVNET_TX_RX_CONTROL,
+        nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) | NVNET_TX_RX_CONTROL_IDLE, 4);
 
     return 0;
 }
@@ -419,8 +424,10 @@ static bool receive_filter(NvNetState *s, const uint8_t *buf, int size)
     if (!is_broadcast_ether_addr((uint8_t *)addr)) {
         uint32_t dest_addr[2];
         memcpy(dest_addr, buf, 6);
-        dest_addr[0] &= cpu_to_le32(nvnet_get_reg(s, NVNET_MULTICAST_MASK_A, 4));
-        dest_addr[1] &= cpu_to_le32(nvnet_get_reg(s, NVNET_MULTICAST_MASK_B, 4));
+        dest_addr[0] &=
+            cpu_to_le32(nvnet_get_reg(s, NVNET_MULTICAST_MASK_A, 4));
+        dest_addr[1] &=
+            cpu_to_le32(nvnet_get_reg(s, NVNET_MULTICAST_MASK_B, 4));
 
         if (!memcmp(dest_addr, addr, 6)) {
             trace_nvnet_rx_filter_mcast_match(MAC_ARG(dest_addr));
@@ -443,8 +450,8 @@ static bool receive_filter(NvNetState *s, const uint8_t *buf, int size)
     return false;
 }
 
-static ssize_t nvnet_receive_iov(NetClientState *nc,
-                                 const struct iovec *iov, int iovcnt)
+static ssize_t nvnet_receive_iov(NetClientState *nc, const struct iovec *iov,
+                                 int iovcnt)
 {
     NvNetState *s = qemu_get_nic_opaque(nc);
     size_t size = iov_size(iov, iovcnt);
@@ -467,13 +474,10 @@ static ssize_t nvnet_receive_iov(NetClientState *nc,
     return nvnet_dma_packet_to_guest(s, s->rx_dma_buf, size);
 }
 
-static ssize_t nvnet_receive(NetClientState *nc,
-                             const uint8_t *buf, size_t size)
+static ssize_t nvnet_receive(NetClientState *nc, const uint8_t *buf,
+                             size_t size)
 {
-    const struct iovec iov = {
-        .iov_base = (uint8_t *)buf,
-        .iov_len = size
-    };
+    const struct iovec iov = { .iov_base = (uint8_t *)buf, .iov_len = size };
 
     NVNET_DPRINTF("nvnet_receive called\n");
     return nvnet_receive_iov(nc, &iov, 1);
@@ -493,7 +497,7 @@ static uint16_t nvnet_phy_reg_read(NvNetState *s, uint8_t reg)
 
     case MII_ANLPAR:
         value = MII_ANLPAR_10 | MII_ANLPAR_10FD | MII_ANLPAR_TX |
-                   MII_ANLPAR_TXFD | MII_ANLPAR_T4;
+                MII_ANLPAR_TXFD | MII_ANLPAR_T4;
         break;
 
     default:
@@ -560,8 +564,8 @@ static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
     return retval;
 }
 
-static void nvnet_mmio_write(void *opaque, hwaddr addr,
-                             uint64_t val, unsigned int size)
+static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
+                             unsigned int size)
 {
     NvNetState *s = NVNET(opaque);
     uint32_t temp;
@@ -612,7 +616,7 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr,
             if (temp == NVNET_UNKNOWN_SETUP_REG3_VAL1) {
                 /* forcedeth waits for this bit to be set... */
                 nvnet_set_reg(s, NVNET_UNKNOWN_SETUP_REG5,
-                                 NVNET_UNKNOWN_SETUP_REG5_BIT31, 4);
+                              NVNET_UNKNOWN_SETUP_REG5_BIT31, 4);
                 break;
             }
         }
@@ -668,23 +672,23 @@ static uint64_t nvnet_io_read(void *opaque, hwaddr addr, unsigned int size)
     return r;
 }
 
-static void nvnet_io_write(void *opaque,
-                           hwaddr addr, uint64_t val, unsigned int size)
+static void nvnet_io_write(void *opaque, hwaddr addr, uint64_t val,
+                           unsigned int size)
 {
     trace_nvnet_io_write(addr, size, val);
 }
 
 static const MemoryRegionOps nvnet_io_ops = {
-    .read  = nvnet_io_read,
+    .read = nvnet_io_read,
     .write = nvnet_io_write,
 };
 
 static NetClientInfo net_nvnet_info = {
-    .type                = NET_CLIENT_DRIVER_NIC,
-    .size                = sizeof(NICState),
-    .can_receive         = nvnet_can_receive,
-    .receive             = nvnet_receive,
-    .receive_iov         = nvnet_receive_iov,
+    .type = NET_CLIENT_DRIVER_NIC,
+    .size = sizeof(NICState),
+    .can_receive = nvnet_can_receive,
+    .receive = nvnet_receive,
+    .receive_iov = nvnet_receive_iov,
     .link_status_changed = nvnet_set_link_status,
 };
 
@@ -699,21 +703,22 @@ static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
     memset(s->regs, 0, sizeof(s->regs));
 
     s->rx_ring_index = 0;
-    s->rx_ring_size  = 0;
+    s->rx_ring_size = 0;
     s->tx_ring_index = 0;
-    s->tx_ring_size  = 0;
+    s->tx_ring_size = 0;
 
     memory_region_init_io(&s->mmio, OBJECT(dev), &nvnet_mmio_ops, s,
-        "nvnet-mmio", MMIO_SIZE);
+                          "nvnet-mmio", MMIO_SIZE);
     pci_register_bar(d, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &s->mmio);
 
-    memory_region_init_io(&s->io, OBJECT(dev), &nvnet_io_ops, s,
-        "nvnet-io", IOPORT_SIZE);
+    memory_region_init_io(&s->io, OBJECT(dev), &nvnet_io_ops, s, "nvnet-io",
+                          IOPORT_SIZE);
     pci_register_bar(d, 1, PCI_BASE_ADDRESS_SPACE_IO, &s->io);
 
     qemu_macaddr_default_if_unset(&s->conf.macaddr);
-    s->nic = qemu_new_nic(&net_nvnet_info, &s->conf,
-        object_get_typename(OBJECT(s)), dev->id, &dev->mem_reentrancy_guard, s);
+    s->nic =
+        qemu_new_nic(&net_nvnet_info, &s->conf, object_get_typename(OBJECT(s)),
+                     dev->id, &dev->mem_reentrancy_guard, s);
     assert(s->nic);
 }
 
@@ -752,16 +757,15 @@ static const VMStateDescription vmstate_nvnet = {
     .name = "nvnet",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
-        VMSTATE_PCI_DEVICE(parent_obj, NvNetState),
-        VMSTATE_UINT8_ARRAY(regs, NvNetState, MMIO_SIZE),
-        VMSTATE_UINT32_ARRAY(phy_regs, NvNetState, 6),
-        VMSTATE_UINT8(tx_ring_index, NvNetState),
-        VMSTATE_UINT8(tx_ring_size, NvNetState),
-        VMSTATE_UINT8(rx_ring_index, NvNetState),
-        VMSTATE_UINT8(rx_ring_size, NvNetState),
-        VMSTATE_END_OF_LIST()
-    },
+    .fields =
+        (VMStateField[]){ VMSTATE_PCI_DEVICE(parent_obj, NvNetState),
+                          VMSTATE_UINT8_ARRAY(regs, NvNetState, MMIO_SIZE),
+                          VMSTATE_UINT32_ARRAY(phy_regs, NvNetState, 6),
+                          VMSTATE_UINT8(tx_ring_index, NvNetState),
+                          VMSTATE_UINT8(tx_ring_size, NvNetState),
+                          VMSTATE_UINT8(rx_ring_index, NvNetState),
+                          VMSTATE_UINT8(rx_ring_size, NvNetState),
+                          VMSTATE_END_OF_LIST() },
 };
 
 static Property nvnet_properties[] = {
@@ -791,14 +795,15 @@ static void nvnet_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo nvnet_info = {
-    .name                = "nvnet",
-    .parent              = TYPE_PCI_DEVICE,
-    .instance_size       = sizeof(NvNetState),
-    .class_init          = nvnet_class_init,
-    .interfaces          = (InterfaceInfo[]) {
-        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
-        { },
-    },
+    .name = "nvnet",
+    .parent = TYPE_PCI_DEVICE,
+    .instance_size = sizeof(NvNetState),
+    .class_init = nvnet_class_init,
+    .interfaces =
+        (InterfaceInfo[]){
+            { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+            {},
+        },
 };
 
 static void nvnet_register(void)
