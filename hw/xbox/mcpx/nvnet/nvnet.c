@@ -479,9 +479,9 @@ static ssize_t nvnet_receive(NetClientState *nc,
     return nvnet_receive_iov(nc, &iov, 1);
 }
 
-static uint32_t nvnet_phy_reg_read(NvNetState *s, uint8_t reg)
+static uint16_t nvnet_phy_reg_read(NvNetState *s, uint8_t reg)
 {
-    uint32_t value;
+    uint16_t value;
 
     switch (reg) {
     case MII_BMSR:
@@ -505,7 +505,7 @@ static uint32_t nvnet_phy_reg_read(NvNetState *s, uint8_t reg)
     return value;
 }
 
-static void nvnet_phy_reg_write(NvNetState *s, uint8_t reg, uint32_t value)
+static void nvnet_phy_reg_write(NvNetState *s, uint8_t reg, uint16_t value)
 {
     trace_nvnet_mii_write(PHY_ADDR, reg, nvnet_get_mii_reg_name(reg), value);
 }
