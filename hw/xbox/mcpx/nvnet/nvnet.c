@@ -77,66 +77,72 @@ struct RingDesc {
     uint16_t flags;
 } QEMU_PACKED;
 
+#define R(r) case r: return #r;
+
 static const char *nvnet_get_reg_name(hwaddr addr)
 {
     switch (addr) {
-    case NvRegIrqStatus:             return "NvRegIrqStatus";
-    case NvRegIrqMask:               return "NvRegIrqMask";
-    case NvRegUnknownSetupReg6:      return "NvRegUnknownSetupReg6";
-    case NvRegPollingInterval:       return "NvRegPollingInterval";
-    case NvRegMisc1:                 return "NvRegMisc1";
-    case NvRegTransmitterControl:    return "NvRegTransmitterControl";
-    case NvRegTransmitterStatus:     return "NvRegTransmitterStatus";
-    case NvRegPacketFilterFlags:     return "NvRegPacketFilterFlags";
-    case NvRegOffloadConfig:         return "NvRegOffloadConfig";
-    case NvRegReceiverControl:       return "NvRegReceiverControl";
-    case NvRegReceiverStatus:        return "NvRegReceiverStatus";
-    case NvRegRandomSeed:            return "NvRegRandomSeed";
-    case NvRegUnknownSetupReg1:      return "NvRegUnknownSetupReg1";
-    case NvRegUnknownSetupReg2:      return "NvRegUnknownSetupReg2";
-    case NvRegMacAddrA:              return "NvRegMacAddrA";
-    case NvRegMacAddrB:              return "NvRegMacAddrB";
-    case NvRegMulticastAddrA:        return "NvRegMulticastAddrA";
-    case NvRegMulticastAddrB:        return "NvRegMulticastAddrB";
-    case NvRegMulticastMaskA:        return "NvRegMulticastMaskA";
-    case NvRegMulticastMaskB:        return "NvRegMulticastMaskB";
-    case NvRegTxRingPhysAddr:        return "NvRegTxRingPhysAddr";
-    case NvRegRxRingPhysAddr:        return "NvRegRxRingPhysAddr";
-    case NvRegRingSizes:             return "NvRegRingSizes";
-    case NvRegUnknownTransmitterReg: return "NvRegUnknownTransmitterReg";
-    case NvRegLinkSpeed:             return "NvRegLinkSpeed";
-    case NvRegUnknownSetupReg5:      return "NvRegUnknownSetupReg5";
-    case NvRegUnknownSetupReg3:      return "NvRegUnknownSetupReg3";
-    case NvRegUnknownSetupReg8:      return "NvRegUnknownSetupReg8";
-    case NvRegUnknownSetupReg7:      return "NvRegUnknownSetupReg7";
-    case NvRegTxRxControl:           return "NvRegTxRxControl";
-    case NvRegMIIStatus:             return "NvRegMIIStatus";
-    case NvRegUnknownSetupReg4:      return "NvRegUnknownSetupReg4";
-    case NvRegAdapterControl:        return "NvRegAdapterControl";
-    case NvRegMIISpeed:              return "NvRegMIISpeed";
-    case NvRegMIIControl:            return "NvRegMIIControl";
-    case NvRegMIIData:               return "NvRegMIIData";
-    case NvRegWakeUpFlags:           return "NvRegWakeUpFlags";
-    case NvRegPatternCRC:            return "NvRegPatternCRC";
-    case NvRegPatternMask:           return "NvRegPatternMask";
-    case NvRegPowerCap:              return "NvRegPowerCap";
-    case NvRegPowerState:            return "NvRegPowerState";
-    default:                         return "Unknown";
+        R(NvRegIrqStatus)
+        R(NvRegIrqMask)
+        R(NvRegUnknownSetupReg6)
+        R(NvRegPollingInterval)
+        R(NvRegMisc1)
+        R(NvRegTransmitterControl)
+        R(NvRegTransmitterStatus)
+        R(NvRegPacketFilterFlags)
+        R(NvRegOffloadConfig)
+        R(NvRegReceiverControl)
+        R(NvRegReceiverStatus)
+        R(NvRegRandomSeed)
+        R(NvRegUnknownSetupReg1)
+        R(NvRegUnknownSetupReg2)
+        R(NvRegMacAddrA)
+        R(NvRegMacAddrB)
+        R(NvRegMulticastAddrA)
+        R(NvRegMulticastAddrB)
+        R(NvRegMulticastMaskA)
+        R(NvRegMulticastMaskB)
+        R(NvRegTxRingPhysAddr)
+        R(NvRegRxRingPhysAddr)
+        R(NvRegRingSizes)
+        R(NvRegUnknownTransmitterReg)
+        R(NvRegLinkSpeed)
+        R(NvRegUnknownSetupReg5)
+        R(NvRegUnknownSetupReg3)
+        R(NvRegUnknownSetupReg8)
+        R(NvRegUnknownSetupReg7)
+        R(NvRegTxRxControl)
+        R(NvRegMIIStatus)
+        R(NvRegUnknownSetupReg4)
+        R(NvRegAdapterControl)
+        R(NvRegMIISpeed)
+        R(NvRegMIIControl)
+        R(NvRegMIIData)
+        R(NvRegWakeUpFlags)
+        R(NvRegPatternCRC)
+        R(NvRegPatternMask)
+        R(NvRegPowerCap)
+        R(NvRegPowerState)
+    default:
+        return "Unknown";
     }
 }
 
 static const char *nvnet_get_mii_reg_name(uint8_t reg)
 {
     switch (reg) {
-    case MII_PHYID1:    return "MII_PHYID1";
-    case MII_PHYID2:    return "MII_PHYID2";
-    case MII_BMCR:      return "MII_BMCR";
-    case MII_BMSR:      return "MII_BMSR";
-    case MII_ANAR:      return "MII_ANAR";
-    case MII_ANLPAR:    return "MII_ANLPAR";
-    default:            return "Unknown";
+        R(MII_PHYID1)
+        R(MII_PHYID2)
+        R(MII_BMCR)
+        R(MII_BMSR)
+        R(MII_ANAR)
+        R(MII_ANLPAR)
+    default:
+        return "Unknown";
     }
 }
+
+#undef R
 
 static void nvnet_dump_ring_descriptors(NvNetState *s)
 {
