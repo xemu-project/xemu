@@ -82,47 +82,47 @@ struct RingDesc {
 static const char *nvnet_get_reg_name(hwaddr addr)
 {
     switch (addr) {
-        R(NvRegIrqStatus)
-        R(NvRegIrqMask)
-        R(NvRegUnknownSetupReg6)
-        R(NvRegPollingInterval)
-        R(NvRegMisc1)
-        R(NvRegTransmitterControl)
-        R(NvRegTransmitterStatus)
-        R(NvRegPacketFilterFlags)
-        R(NvRegOffloadConfig)
-        R(NvRegReceiverControl)
-        R(NvRegReceiverStatus)
-        R(NvRegRandomSeed)
-        R(NvRegUnknownSetupReg1)
-        R(NvRegUnknownSetupReg2)
-        R(NvRegMacAddrA)
-        R(NvRegMacAddrB)
-        R(NvRegMulticastAddrA)
-        R(NvRegMulticastAddrB)
-        R(NvRegMulticastMaskA)
-        R(NvRegMulticastMaskB)
-        R(NvRegTxRingPhysAddr)
-        R(NvRegRxRingPhysAddr)
-        R(NvRegRingSizes)
-        R(NvRegUnknownTransmitterReg)
-        R(NvRegLinkSpeed)
-        R(NvRegUnknownSetupReg5)
-        R(NvRegUnknownSetupReg3)
-        R(NvRegUnknownSetupReg8)
-        R(NvRegUnknownSetupReg7)
-        R(NvRegTxRxControl)
-        R(NvRegMIIStatus)
-        R(NvRegUnknownSetupReg4)
-        R(NvRegAdapterControl)
-        R(NvRegMIISpeed)
-        R(NvRegMIIControl)
-        R(NvRegMIIData)
-        R(NvRegWakeUpFlags)
-        R(NvRegPatternCRC)
-        R(NvRegPatternMask)
-        R(NvRegPowerCap)
-        R(NvRegPowerState)
+        R(NVNET_IRQ_STATUS)
+        R(NVNET_IRQ_MASK)
+        R(NVNET_UNKNOWN_SETUP_REG6)
+        R(NVNET_POLLING_INTERVAL)
+        R(NVNET_MISC1)
+        R(NVNET_TRANSMITTER_CONTROL)
+        R(NVNET_TRANSMITTER_STATUS)
+        R(NVNET_PACKET_FILTER)
+        R(NVNET_OFFLOAD)
+        R(NVNET_RECEIVER_CONTROL)
+        R(NVNET_RECEIVER_STATUS)
+        R(NVNET_RANDOM_SEED)
+        R(NVNET_UNKNOWN_SETUP_REG1)
+        R(NVNET_UNKNOWN_SETUP_REG2)
+        R(NVNET_MAC_ADDR_A)
+        R(NVNET_MAC_ADDR_B)
+        R(NVNET_MULTICAST_ADDR_A)
+        R(NVNET_MULTICAST_ADDR_B)
+        R(NVNET_MULTICAST_MASK_A)
+        R(NVNET_MULTICAST_MASK_B)
+        R(NVNET_TX_RING_PHYS_ADDR)
+        R(NVNET_RX_RING_PHYS_ADDR)
+        R(NVNET_RING_SIZE)
+        R(NVNET_UNKNOWN_TRANSMITTER_REG)
+        R(NVNET_LINKSPEED)
+        R(NVNET_UNKNOWN_SETUP_REG5)
+        R(NVNET_UNKNOWN_SETUP_REG3)
+        R(NVNET_UNKNOWN_SETUP_REG8)
+        R(NVNET_UNKNOWN_SETUP_REG7)
+        R(NVNET_TX_RX_CONTROL)
+        R(NVNET_MII_STATUS)
+        R(NVNET_UNKNOWN_SETUP_REG4)
+        R(NVNET_ADAPTER_CONTROL)
+        R(NVNET_MII_SPEED)
+        R(NVNET_MII_CONTROL)
+        R(NVNET_MII_DATA)
+        R(NVNET_WAKEUPFLAGS)
+        R(NVNET_PATTERN_CRC)
+        R(NVNET_PATTERN_MASK)
+        R(NVNET_POWERCAP)
+        R(NVNET_POWERSTATE)
     default:
         return "Unknown";
     }
@@ -152,7 +152,7 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
 
     NVNET_DPRINTF("------------------------------------------------\n");
     for (int i = 0; i < s->tx_ring_size; i++) {
-        dma_addr_t tx_ring_addr = nvnet_get_reg(s, NvRegTxRingPhysAddr, 4);
+        dma_addr_t tx_ring_addr = nvnet_get_reg(s, NVNET_TX_RING_PHYS_ADDR, 4);
         tx_ring_addr += i * sizeof(desc);
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
         NVNET_DPRINTF("TX: Dumping ring desc %d (%" HWADDR_PRIx "): ",
@@ -164,7 +164,7 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
     NVNET_DPRINTF("------------------------------------------------\n");
 
     for (int i = 0; i < s->rx_ring_size; i++) {
-        dma_addr_t rx_ring_addr = nvnet_get_reg(s, NvRegRxRingPhysAddr, 4);
+        dma_addr_t rx_ring_addr = nvnet_get_reg(s, NVNET_RX_RING_PHYS_ADDR, 4);
         rx_ring_addr += i * sizeof(desc);
         pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
         NVNET_DPRINTF("RX: Dumping ring desc %d (%" HWADDR_PRIx "): ",
@@ -228,8 +228,8 @@ static void nvnet_update_irq(NvNetState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
 
-    uint32_t irq_mask = nvnet_get_reg(s, NvRegIrqMask, 4);
-    uint32_t irq_status = nvnet_get_reg(s, NvRegIrqStatus, 4);
+    uint32_t irq_mask = nvnet_get_reg(s, NVNET_IRQ_MASK, 4);
+    uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
 
     if (irq_mask & irq_status) {
         NVNET_DPRINTF("Asserting IRQ\n");
@@ -253,14 +253,14 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
     PCIDevice *d = PCI_DEVICE(s);
     bool did_receive = false;
 
-    nvnet_set_reg(s, NvRegTxRxControl,
-        nvnet_get_reg(s, NvRegTxRxControl, 4) & ~NVREG_TXRXCTL_IDLE,
+    nvnet_set_reg(s, NVNET_TX_RX_CONTROL,
+        nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) & ~NVNET_TX_RX_CONTROL_IDLE,
         4);
 
     for (int i = 0; i < s->rx_ring_size; i++) {
         struct RingDesc desc;
         s->rx_ring_index %= s->rx_ring_size;
-        dma_addr_t rx_ring_addr = nvnet_get_reg(s, NvRegRxRingPhysAddr, 4);
+        dma_addr_t rx_ring_addr = nvnet_get_reg(s, NVNET_RX_RING_PHYS_ADDR, 4);
         rx_ring_addr += s->rx_ring_index * sizeof(desc);
         pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
 
@@ -292,15 +292,15 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
 
         /* Trigger interrupt */
         NVNET_DPRINTF("Triggering interrupt\n");
-        uint32_t irq_status = nvnet_get_reg(s, NvRegIrqStatus, 4);
-        nvnet_set_reg(s, NvRegIrqStatus, irq_status | NVREG_IRQSTAT_BIT1, 4);
+        uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
+        nvnet_set_reg(s, NVNET_IRQ_STATUS, irq_status | NVNET_IRQ_STATUS_RX, 4);
         nvnet_update_irq(s);
         did_receive = true;
         break;
     }
 
-    nvnet_set_reg(s, NvRegTxRxControl,
-        nvnet_get_reg(s, NvRegTxRxControl, 4) | NVREG_TXRXCTL_IDLE,
+    nvnet_set_reg(s, NVNET_TX_RX_CONTROL,
+        nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) | NVNET_TX_RX_CONTROL_IDLE,
         4);
 
     if (did_receive) {
@@ -316,15 +316,15 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
     PCIDevice *d = PCI_DEVICE(s);
     bool packet_sent = false;
 
-    nvnet_set_reg(s, NvRegTxRxControl,
-        nvnet_get_reg(s, NvRegTxRxControl, 4) & ~NVREG_TXRXCTL_IDLE,
+    nvnet_set_reg(s, NVNET_TX_RX_CONTROL,
+        nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) & ~NVNET_TX_RX_CONTROL_IDLE,
         4);
 
     for (int i = 0; i < s->tx_ring_size; i++) {
         /* Read ring descriptor */
         struct RingDesc desc;
         s->tx_ring_index %= s->tx_ring_size;
-        dma_addr_t tx_ring_addr = nvnet_get_reg(s, NvRegTxRingPhysAddr, 4);
+        dma_addr_t tx_ring_addr = nvnet_get_reg(s, NVNET_TX_RING_PHYS_ADDR, 4);
         tx_ring_addr += s->tx_ring_index * sizeof(desc);
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
 
@@ -368,13 +368,13 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
 
     if (packet_sent) {
         NVNET_DPRINTF("Triggering interrupt\n");
-        uint32_t irq_status = nvnet_get_reg(s, NvRegIrqStatus, 4);
-        nvnet_set_reg(s, NvRegIrqStatus, irq_status | NVREG_IRQSTAT_BIT4, 4);
+        uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
+        nvnet_set_reg(s, NVNET_IRQ_STATUS, irq_status | NVNET_IRQ_STATUS_TX, 4);
         nvnet_update_irq(s);
     }
 
-    nvnet_set_reg(s, NvRegTxRxControl,
-        nvnet_get_reg(s, NvRegTxRxControl, 4) | NVREG_TXRXCTL_IDLE,
+    nvnet_set_reg(s, NVNET_TX_RX_CONTROL,
+        nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) | NVNET_TX_RX_CONTROL_IDLE,
         4);
 
     return 0;
@@ -397,7 +397,7 @@ static bool receive_filter(NvNetState *s, const uint8_t *buf, int size)
         return false;
     }
 
-    uint32_t rctl = nvnet_get_reg(s, NvRegPacketFilterFlags, 4);
+    uint32_t rctl = nvnet_get_reg(s, NVNET_PACKET_FILTER, 4);
 
     /* Broadcast */
     if (is_broadcast_ether_addr(buf)) {
@@ -406,20 +406,20 @@ static bool receive_filter(NvNetState *s, const uint8_t *buf, int size)
         return true;
     }
 
-    if (!(rctl & NVREG_PFF_MYADDR)) {
+    if (!(rctl & NVNET_PACKET_FILTER_MYADDR)) {
         /* FIXME: Confirm PFF_MYADDR filters mcast */
         return true;
     }
 
     /* Multicast */
     uint32_t addr[2];
-    addr[0] = cpu_to_le32(nvnet_get_reg(s, NvRegMulticastAddrA, 4));
-    addr[1] = cpu_to_le32(nvnet_get_reg(s, NvRegMulticastAddrB, 4));
+    addr[0] = cpu_to_le32(nvnet_get_reg(s, NVNET_MULTICAST_ADDR_A, 4));
+    addr[1] = cpu_to_le32(nvnet_get_reg(s, NVNET_MULTICAST_ADDR_B, 4));
     if (!is_broadcast_ether_addr((uint8_t *)addr)) {
         uint32_t dest_addr[2];
         memcpy(dest_addr, buf, 6);
-        dest_addr[0] &= cpu_to_le32(nvnet_get_reg(s, NvRegMulticastMaskA, 4));
-        dest_addr[1] &= cpu_to_le32(nvnet_get_reg(s, NvRegMulticastMaskB, 4));
+        dest_addr[0] &= cpu_to_le32(nvnet_get_reg(s, NVNET_MULTICAST_MASK_A, 4));
+        dest_addr[1] &= cpu_to_le32(nvnet_get_reg(s, NVNET_MULTICAST_MASK_B, 4));
 
         if (!memcmp(dest_addr, addr, 6)) {
             trace_nvnet_rx_filter_mcast_match(MAC_ARG(dest_addr));
@@ -430,8 +430,8 @@ static bool receive_filter(NvNetState *s, const uint8_t *buf, int size)
     }
 
     /* Unicast */
-    addr[0] = cpu_to_le32(nvnet_get_reg(s, NvRegMacAddrA, 4));
-    addr[1] = cpu_to_le32(nvnet_get_reg(s, NvRegMacAddrB, 4));
+    addr[0] = cpu_to_le32(nvnet_get_reg(s, NVNET_MAC_ADDR_A, 4));
+    addr[1] = cpu_to_le32(nvnet_get_reg(s, NVNET_MAC_ADDR_B, 4));
     if (!memcmp(buf, addr, 6)) {
         trace_nvnet_rx_filter_ucast_match(MAC_ARG(buf));
         return true;
@@ -480,10 +480,10 @@ static ssize_t nvnet_receive(NetClientState *nc,
 
 static void nvnet_mii_read(NvNetState *s)
 {
-    uint32_t mii_ctl = nvnet_get_reg(s, NvRegMIIControl, 4);
+    uint32_t mii_ctl = nvnet_get_reg(s, NVNET_MII_CONTROL, 4);
     uint32_t mii_data = -1;
-    uint32_t phy_addr = GET_MASK(mii_ctl, NVREG_MIICTL_PHYADDR);
-    uint32_t phy_reg = GET_MASK(mii_ctl, NVREG_MIICTL_PHYREG);
+    uint32_t phy_addr = GET_MASK(mii_ctl, NVNET_MII_CONTROL_PHYADDR);
+    uint32_t phy_reg = GET_MASK(mii_ctl, NVNET_MII_CONTROL_PHYREG);
 
     if (phy_addr != 1) {
         goto out;
@@ -508,22 +508,22 @@ static void nvnet_mii_read(NvNetState *s)
     }
 
 out:
-    mii_ctl &= ~NVREG_MIICTL_INUSE;
-    nvnet_set_reg(s, NvRegMIIControl, mii_ctl, 4);
-    nvnet_set_reg(s, NvRegMIIData, mii_data, 4);
+    mii_ctl &= ~NVNET_MII_CONTROL_INUSE;
+    nvnet_set_reg(s, NVNET_MII_CONTROL, mii_ctl, 4);
+    nvnet_set_reg(s, NVNET_MII_DATA, mii_data, 4);
     trace_nvnet_mii_read(phy_addr, phy_reg, nvnet_get_mii_reg_name(phy_reg),
                          mii_data);
 }
 
 static void nvnet_mii_write(NvNetState *s)
 {
-    uint32_t mii_ctl = nvnet_get_reg(s, NvRegMIIControl, 4);
-    uint32_t mii_data = nvnet_get_reg(s, NvRegMIIData, 4);
-    uint32_t phy_addr = GET_MASK(mii_ctl, NVREG_MIICTL_PHYADDR);
-    uint32_t phy_reg = GET_MASK(mii_ctl, NVREG_MIICTL_PHYREG);
+    uint32_t mii_ctl = nvnet_get_reg(s, NVNET_MII_CONTROL, 4);
+    uint32_t mii_data = nvnet_get_reg(s, NVNET_MII_DATA, 4);
+    uint32_t phy_addr = GET_MASK(mii_ctl, NVNET_MII_CONTROL_PHYADDR);
+    uint32_t phy_reg = GET_MASK(mii_ctl, NVNET_MII_CONTROL_PHYREG);
 
-    mii_ctl &= ~NVREG_MIICTL_INUSE;
-    nvnet_set_reg(s, NvRegMIIControl, mii_ctl, 4);
+    mii_ctl &= ~NVNET_MII_CONTROL_INUSE;
+    nvnet_set_reg(s, NVNET_MII_CONTROL, mii_ctl, 4);
     trace_nvnet_mii_write(phy_addr, phy_reg, nvnet_get_mii_reg_name(phy_reg),
                           mii_data);
 }
@@ -534,7 +534,7 @@ static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
     uint64_t retval;
 
     switch (addr) {
-    case NvRegMIIStatus:
+    case NVNET_MII_STATUS:
         retval = 0;
         break;
 
@@ -556,63 +556,63 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr,
     trace_nvnet_reg_write(addr, nvnet_get_reg_name(addr & ~3), size, val);
 
     switch (addr) {
-    case NvRegRingSizes:
+    case NVNET_RING_SIZE:
         nvnet_set_reg(s, addr, val, size);
-        s->rx_ring_size = ((val >> NVREG_RINGSZ_RXSHIFT) & 0xffff) + 1;
-        s->tx_ring_size = ((val >> NVREG_RINGSZ_TXSHIFT) & 0xffff) + 1;
+        s->rx_ring_size = ((val >> NVNET_RING_SIZE_RXSHIFT) & 0xffff) + 1;
+        s->tx_ring_size = ((val >> NVNET_RING_SIZE_TXSHIFT) & 0xffff) + 1;
         break;
 
-    case NvRegMIIControl:
+    case NVNET_MII_CONTROL:
         assert(size == 4);
         nvnet_set_reg(s, addr, val, size);
-        if (val & NVREG_MIICTL_WRITE) {
+        if (val & NVNET_MII_CONTROL_WRITE) {
             nvnet_mii_write(s);
         } else {
             nvnet_mii_read(s);
         }
         break;
 
-    case NvRegTxRxControl:
-        if (val == NVREG_TXRXCTL_KICK) {
-            NVNET_DPRINTF("NvRegTxRxControl = NVREG_TXRXCTL_KICK!\n");
+    case NVNET_TX_RX_CONTROL:
+        if (val == NVNET_TX_RX_CONTROL_KICK) {
+            NVNET_DPRINTF("NVNET_TX_RX_CONTROL = NVNET_TX_RX_CONTROL_KICK!\n");
             nvnet_dump_ring_descriptors(s);
             nvnet_dma_packet_from_guest(s);
         }
 
-        if (val & NVREG_TXRXCTL_BIT2) {
-            nvnet_set_reg(s, NvRegTxRxControl, NVREG_TXRXCTL_IDLE, 4);
+        if (val & NVNET_TX_RX_CONTROL_BIT2) {
+            nvnet_set_reg(s, NVNET_TX_RX_CONTROL, NVNET_TX_RX_CONTROL_IDLE, 4);
             break;
         }
 
-        if (val & NVREG_TXRXCTL_RESET) {
+        if (val & NVNET_TX_RX_CONTROL_RESET) {
             s->tx_ring_index = 0;
             s->rx_ring_index = 0;
             s->tx_dma_buf_offset = 0;
         }
 
-        if (val & NVREG_TXRXCTL_BIT1) {
+        if (val & NVNET_TX_RX_CONTROL_BIT1) {
             // FIXME
-            nvnet_set_reg(s, NvRegIrqStatus, 0, 4);
+            nvnet_set_reg(s, NVNET_IRQ_STATUS, 0, 4);
             break;
         } else if (val == 0) {
-            temp = nvnet_get_reg(s, NvRegUnknownSetupReg3, 4);
-            if (temp == NVREG_UNKSETUP3_VAL1) {
+            temp = nvnet_get_reg(s, NVNET_UNKNOWN_SETUP_REG3, 4);
+            if (temp == NVNET_UNKNOWN_SETUP_REG3_VAL1) {
                 /* forcedeth waits for this bit to be set... */
-                nvnet_set_reg(s, NvRegUnknownSetupReg5,
-                                 NVREG_UNKSETUP5_BIT31, 4);
+                nvnet_set_reg(s, NVNET_UNKNOWN_SETUP_REG5,
+                                 NVNET_UNKNOWN_SETUP_REG5_BIT31, 4);
                 break;
             }
         }
 
-        nvnet_set_reg(s, NvRegTxRxControl, val, size);
+        nvnet_set_reg(s, NVNET_TX_RX_CONTROL, val, size);
         break;
 
-    case NvRegIrqMask:
+    case NVNET_IRQ_MASK:
         nvnet_set_reg(s, addr, val, size);
         nvnet_update_irq(s);
         break;
 
-    case NvRegIrqStatus:
+    case NVNET_IRQ_STATUS:
         nvnet_set_reg(s, addr, nvnet_get_reg(s, addr, size) & ~val, size);
         nvnet_update_irq(s);
         break;
