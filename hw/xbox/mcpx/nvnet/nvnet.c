@@ -44,9 +44,6 @@
 #   define NVNET_DPRINTF(format, ...) do { } while (0)
 #endif
 
-static NetClientInfo net_nvnet_info;
-static Property nvnet_properties[];
-
 #define TYPE_NVNET "nvnet"
 OBJECT_DECLARE_SIMPLE_TYPE(NvNetState, NVNET)
 
@@ -670,6 +667,15 @@ static const MemoryRegionOps nvnet_io_ops = {
     .write = nvnet_io_write,
 };
 
+static NetClientInfo net_nvnet_info = {
+    .type                = NET_CLIENT_DRIVER_NIC,
+    .size                = sizeof(NICState),
+    .can_receive         = nvnet_can_receive,
+    .receive             = nvnet_receive,
+    .receive_iov         = nvnet_receive_iov,
+    .link_status_changed = nvnet_set_link_status,
+};
+
 static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
 {
     DeviceState *dev = DEVICE(pci_dev);
@@ -706,10 +712,6 @@ static void nvnet_uninit(PCIDevice *dev)
     // memory_region_destroy(&s->mmio);
     // memory_region_destroy(&s->io);
     qemu_del_nic(s->nic);
-}
-
-static void nvnet_cleanup(NetClientState *nc)
-{
 }
 
 static void nvnet_reset(void *opaque)
@@ -753,6 +755,11 @@ static const VMStateDescription vmstate_nvnet = {
     },
 };
 
+static Property nvnet_properties[] = {
+    DEFINE_NIC_PROPERTIES(NvNetState, conf),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void nvnet_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -774,21 +781,6 @@ static void nvnet_class_init(ObjectClass *klass, void *data)
     device_class_set_props(dc, nvnet_properties);
 }
 
-static Property nvnet_properties[] = {
-    DEFINE_NIC_PROPERTIES(NvNetState, conf),
-    DEFINE_PROP_END_OF_LIST(),
-};
-
-static NetClientInfo net_nvnet_info = {
-    .type                = NET_CLIENT_DRIVER_NIC,
-    .size                = sizeof(NICState),
-    .can_receive         = nvnet_can_receive,
-    .receive             = nvnet_receive,
-    .receive_iov         = nvnet_receive_iov,
-    .cleanup             = nvnet_cleanup,
-    .link_status_changed = nvnet_set_link_status,
-};
-
 static const TypeInfo nvnet_info = {
     .name                = "nvnet",
     .parent              = TYPE_PCI_DEVICE,
@@ -804,4 +796,5 @@ static void nvnet_register(void)
 {
     type_register_static(&nvnet_info);
 }
-type_init(nvnet_register);
+
+type_init(nvnet_register)
