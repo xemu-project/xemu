@@ -558,8 +558,8 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr,
     switch (addr) {
     case NVNET_RING_SIZE:
         nvnet_set_reg(s, addr, val, size);
-        s->rx_ring_size = ((val >> NVNET_RING_SIZE_RXSHIFT) & 0xffff) + 1;
-        s->tx_ring_size = ((val >> NVNET_RING_SIZE_TXSHIFT) & 0xffff) + 1;
+        s->rx_ring_size = GET_MASK(val, NVNET_RING_SIZE_RX) + 1;
+        s->tx_ring_size = GET_MASK(val, NVNET_RING_SIZE_TX) + 1;
         break;
 
     case NVNET_MII_CONTROL:
