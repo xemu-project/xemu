@@ -121,8 +121,8 @@
 #define NVNET_TX_RING_PHYS_ADDR                  0x100
 #define NVNET_RX_RING_PHYS_ADDR                  0x104
 #define NVNET_RING_SIZE                          0x108
-#  define NVNET_RING_SIZE_TXSHIFT                  0
-#  define NVNET_RING_SIZE_RXSHIFT                  16
+#  define NVNET_RING_SIZE_TX                       0x0000FFFF
+#  define NVNET_RING_SIZE_RX                       0xFFFF0000
 #define NVNET_UNKNOWN_TRANSMITTER_REG            0x10C
 #define NVNET_LINKSPEED                          0x110
 #  define NVNET_LINKSPEED_FORCE                    0x00010000
