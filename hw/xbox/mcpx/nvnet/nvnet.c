@@ -47,6 +47,9 @@
 static NetClientInfo net_nvnet_info;
 static Property nvnet_properties[];
 
+#define TYPE_NVNET "nvnet"
+OBJECT_DECLARE_SIMPLE_TYPE(NvNetState, NVNET)
+
 typedef struct NvNetState {
     /*< private >*/
     PCIDevice parent_obj;
@@ -66,9 +69,6 @@ typedef struct NvNetState {
     uint32_t     tx_dma_buf_offset;
     uint8_t      rx_dma_buf[RX_ALLOC_BUFSIZE];
 } NvNetState;
-
-#define NVNET_DEVICE(obj) \
-    OBJECT_CHECK(NvNetState, (obj), "nvnet")
 
 #pragma pack(1)
 struct RingDesc {
@@ -532,7 +532,7 @@ static void nvnet_mii_write(NvNetState *s)
 
 static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
 {
-    NvNetState *s = NVNET_DEVICE(opaque);
+    NvNetState *s = NVNET(opaque);
     uint64_t retval;
 
     switch (addr) {
@@ -552,7 +552,7 @@ static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
 static void nvnet_mmio_write(void *opaque, hwaddr addr,
                              uint64_t val, unsigned int size)
 {
-    NvNetState *s = NVNET_DEVICE(opaque);
+    NvNetState *s = NVNET(opaque);
     uint32_t temp;
 
     trace_nvnet_reg_write(addr, nvnet_get_reg_name(addr & ~3), size, val);
@@ -673,7 +673,7 @@ static const MemoryRegionOps nvnet_io_ops = {
 static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
 {
     DeviceState *dev = DEVICE(pci_dev);
-    NvNetState *s = NVNET_DEVICE(pci_dev);
+    NvNetState *s = NVNET(pci_dev);
     PCIDevice *d = PCI_DEVICE(s);
 
     pci_dev->config[PCI_INTERRUPT_PIN] = 0x01;
@@ -701,7 +701,7 @@ static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
 
 static void nvnet_uninit(PCIDevice *dev)
 {
-    NvNetState *s = NVNET_DEVICE(dev);
+    NvNetState *s = NVNET(dev);
 
     // memory_region_destroy(&s->mmio);
     // memory_region_destroy(&s->io);
@@ -733,7 +733,7 @@ static void nvnet_reset(void *opaque)
 
 static void nvnet_reset_hold(Object *obj, ResetType type)
 {
-    NvNetState *s = NVNET_DEVICE(obj);
+    NvNetState *s = NVNET(obj);
     nvnet_reset(s);
 }
 
