@@ -49,10 +49,6 @@ static const uint8_t bcast[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static NetClientInfo net_nvnet_info;
 static Property nvnet_properties[];
 
-/*******************************************************************************
- * Primary State Structure
- ******************************************************************************/
-
 typedef struct NvNetState {
     /*< private >*/
     PCIDevice parent_obj;
@@ -86,10 +82,6 @@ struct RingDesc {
     uint16_t flags;
 };
 #pragma pack()
-
-/*******************************************************************************
- * Utility Functions
- ******************************************************************************/
 
 static void hex_dump(FILE *f, const uint8_t *buf, int size)
 {
@@ -130,9 +122,6 @@ static void nvnet_hex_dump(NvNetState *s, const uint8_t *buf, int size)
     }
 }
 
-/*
- * Return register name given the offset of the device register.
- */
 static const char *nvnet_get_reg_name(hwaddr addr)
 {
     switch (addr) {
@@ -181,9 +170,6 @@ static const char *nvnet_get_reg_name(hwaddr addr)
     }
 }
 
-/*
- * Get PHY register name.
- */
 static const char *nvnet_get_mii_reg_name(uint8_t reg)
 {
     switch (reg) {
@@ -232,13 +218,6 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
 }
 #endif
 
-/*******************************************************************************
- * Register Control
- ******************************************************************************/
-
-/*
- * Read backing store for a device register.
- */
 static uint32_t nvnet_get_reg(NvNetState *s, hwaddr addr, unsigned int size)
 {
     assert(addr < MMIO_SIZE);
@@ -261,9 +240,6 @@ static uint32_t nvnet_get_reg(NvNetState *s, hwaddr addr, unsigned int size)
     }
 }
 
-/*
- * Write backing store for a device register.
- */
 static void nvnet_set_reg(NvNetState *s,
                           hwaddr addr, uint32_t val, unsigned int size)
 {
@@ -289,13 +265,6 @@ static void nvnet_set_reg(NvNetState *s,
     }
 }
 
-/*******************************************************************************
- * IRQ
- ******************************************************************************/
-
-/*
- * Update IRQ status
- */
 static void nvnet_update_irq(NvNetState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
@@ -310,10 +279,6 @@ static void nvnet_update_irq(NvNetState *s)
         pci_irq_deassert(d);
     }
 }
-
-/*******************************************************************************
- * Packet TX / RX
- ******************************************************************************/
 
 static void nvnet_send_packet(NvNetState *s, const uint8_t *buf, int size)
 {
@@ -564,13 +529,6 @@ static ssize_t nvnet_receive(NetClientState *nc,
     return nvnet_receive_iov(nc, &iov, 1);
 }
 
-/*******************************************************************************
- * PHY Control
- ******************************************************************************/
-
-/*
- * Read from PHY.
- */
 static void nvnet_mii_read(NvNetState *s)
 {
     uint32_t mii_ctl = nvnet_get_reg(s, NvRegMIIControl, 4);
@@ -608,9 +566,6 @@ out:
                          mii_data);
 }
 
-/*
- * Write to PHY.
- */
 static void nvnet_mii_write(NvNetState *s)
 {
     uint32_t mii_ctl = nvnet_get_reg(s, NvRegMIIControl, 4);
@@ -624,13 +579,6 @@ static void nvnet_mii_write(NvNetState *s)
                           mii_data);
 }
 
-/*******************************************************************************
- * MMIO Read / Write
- ******************************************************************************/
-
-/*
- * Handler for guest reads from MMIO ranges owned by this device.
- */
 static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NvNetState *s = NVNET_DEVICE(opaque);
@@ -650,9 +598,6 @@ static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
     return retval;
 }
 
-/*
- * Handler for guest writes to MMIO ranges owned by this device.
- */
 static void nvnet_mmio_write(void *opaque, hwaddr addr,
                              uint64_t val, unsigned int size)
 {
@@ -736,10 +681,6 @@ static const MemoryRegionOps nvnet_mmio_ops = {
     .write = nvnet_mmio_write,
 };
 
-/*******************************************************************************
- * Link Status Control
- ******************************************************************************/
-
 static void nvnet_link_down(NvNetState *s)
 {
     NVNET_DPRINTF("nvnet_link_down called\n");
@@ -760,10 +701,6 @@ static void nvnet_set_link_status(NetClientState *nc)
     }
 }
 
-/*******************************************************************************
- * IO Read / Write
- ******************************************************************************/
-
 static uint64_t nvnet_io_read(void *opaque, hwaddr addr, unsigned int size)
 {
     uint64_t r = 0;
@@ -781,10 +718,6 @@ static const MemoryRegionOps nvnet_io_ops = {
     .read  = nvnet_io_read,
     .write = nvnet_io_write,
 };
-
-/*******************************************************************************
- * Init
- ******************************************************************************/
 
 static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
 {
@@ -866,10 +799,6 @@ static void nvnet_reset_hold(Object *obj, ResetType type)
     NvNetState *s = NVNET_DEVICE(obj);
     nvnet_reset(s);
 }
-
-/*******************************************************************************
- * Properties
- ******************************************************************************/
 
 static const VMStateDescription vmstate_nvnet = {
     .name = "nvnet",
