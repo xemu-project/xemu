@@ -21,6 +21,7 @@
 #include "qemu/osdep.h"
 #include "trace.h"
 #include "hw/hw.h"
+#include "hw/net/mii.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_device.h"
 #include "hw/qdev-properties.h"
@@ -254,17 +255,17 @@ static int nvnet_mii_rw(NvNetState *s, uint64_t val)
 
     switch (reg) {
     case MII_BMSR:
-        /* Phy initialization code waits for BIT2 to be set.. If not set,
-         * software may report controller as not running */
-        retval = BMSR_ANEGCOMPLETE | BMSR_BIT2;
+        /* Phy initialization code waits for MII_BMSR_LINK_ST to be set.. If not
+           set, software may report controller as not running */
+        retval = MII_BMSR_AN_COMP | MII_BMSR_LINK_ST;
         break;
 
-    case MII_ADVERTISE:
+    case MII_ANAR:
         /* Fall through... */
 
-    case MII_LPA:
-        retval = LPA_10HALF | LPA_10FULL;
-        retval |= LPA_100HALF | LPA_100FULL | LPA_100BASE4;
+    case MII_ANLPAR:
+        retval = MII_ANLPAR_10 | MII_ANLPAR_10FD | MII_ANLPAR_TX |
+                 MII_ANLPAR_TXFD | MII_ANLPAR_T4;
         break;
 
     default:
@@ -882,12 +883,12 @@ static const char *nvnet_get_reg_name(hwaddr addr)
 static const char *nvnet_get_mii_reg_name(uint8_t reg)
 {
     switch (reg) {
-    case MII_PHYSID1:   return "MII_PHYSID1";
-    case MII_PHYSID2:   return "MII_PHYSID2";
+    case MII_PHYID1:    return "MII_PHYID1";
+    case MII_PHYID2:    return "MII_PHYID2";
     case MII_BMCR:      return "MII_BMCR";
     case MII_BMSR:      return "MII_BMSR";
-    case MII_ADVERTISE: return "MII_ADVERTISE";
-    case MII_LPA:       return "MII_LPA";
+    case MII_ANAR:      return "MII_ANAR";
+    case MII_ANLPAR:    return "MII_ANLPAR";
     default:            return "Unknown";
     }
 }
