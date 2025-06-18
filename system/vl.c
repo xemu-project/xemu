@@ -651,8 +651,20 @@ static int cleanup_add_fd(void *opaque, QemuOpts *opts, Error **errp)
 static int drive_init_func(void *opaque, QemuOpts *opts, Error **errp)
 {
     BlockInterfaceType *block_default_type = opaque;
+    const char *file_path = qemu_opt_get(opts, "file");
+    bool is_cdrom_with_file = !strcmp(qemu_opt_get(opts, "media"), "cdrom") && strlen(file_path) > 0;
 
-    return drive_new(opts, *block_default_type, errp) == NULL;
+    bool failed = drive_new(opts, *block_default_type, is_cdrom_with_file ? &error_warn : errp) == NULL;
+
+    if (failed && is_cdrom_with_file) {
+        char *msg = g_strdup_printf("Failed to open DVD image file '%s'. Please check machine settings.", file_path);
+        xemu_queue_error_message(msg);
+        g_free(msg);
+        qemu_opt_set(opts, "file", "", errp);
+        failed = drive_new(opts, *block_default_type, errp) == NULL;
+    }
+
+    return failed;
 }
 
 static int drive_enable_snapshot(void *opaque, QemuOpts *opts, Error **errp)
@@ -2969,15 +2981,6 @@ void qemu_init(int argc, char **argv)
                 argv[i+1] = NULL;
             }
             break;
-        }
-    }
-
-    if (strlen(dvd_path) > 0) {
-        if (xemu_check_file(dvd_path) || strcmp(dvd_path, hdd_path) == 0) {
-            char *msg = g_strdup_printf("Failed to open DVD image file '%s'. Please check machine settings.", dvd_path);
-            xemu_queue_error_message(msg);
-            g_free(msg);
-            dvd_path = "";
         }
     }
 
