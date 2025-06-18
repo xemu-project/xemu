@@ -95,46 +95,14 @@ struct RingDesc {
  * Prototypes
  ******************************************************************************/
 
-/* Init */
-static void nvnet_realize(PCIDevice *dev, Error **errp);
-static void nvnet_uninit(PCIDevice *dev);
-static void nvnet_class_init(ObjectClass *klass, void *data);
-static void nvnet_cleanup(NetClientState *nc);
-static void nvnet_reset(void *opaque);
-static void nvnet_reset_hold(Object *obj, ResetType type);
-static void nvnet_register(void);
-
 /* MMIO / IO / Phy / Device Register Access */
-static uint64_t nvnet_mmio_read(void *opaque,
-    hwaddr addr, unsigned int size);
-static void nvnet_mmio_write(void *opaque,
-    hwaddr addr, uint64_t val, unsigned int size);
 static uint32_t nvnet_get_reg(NvNetState *s,
     hwaddr addr, unsigned int size);
-static void nvnet_set_reg(NvNetState *s,
-    hwaddr addr, uint32_t val, unsigned int size);
-static uint64_t nvnet_io_read(void *opaque,
-    hwaddr addr, unsigned int size);
-static void nvnet_io_write(void *opaque,
-    hwaddr addr, uint64_t val, unsigned int size);
-
-/* Link State */
-static void nvnet_link_down(NvNetState *s);
-static void nvnet_link_up(NvNetState *s);
-static void nvnet_set_link_status(NetClientState *nc);
-
-/* Interrupts */
-static void nvnet_update_irq(NvNetState *s);
 
 /* Packet Tx / Rx */
-static void nvnet_send_packet(NvNetState *s,
-    const uint8_t *buf, int size);
 static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
     const uint8_t *buf, size_t size);
 static ssize_t nvnet_dma_packet_from_guest(NvNetState *s);
-static bool nvnet_can_receive(NetClientState *nc);
-static ssize_t nvnet_receive(NetClientState *nc,
-    const uint8_t *buf, size_t size);
 static ssize_t nvnet_receive_iov(NetClientState *nc,
     const struct iovec *iov, int iovcnt);
 
