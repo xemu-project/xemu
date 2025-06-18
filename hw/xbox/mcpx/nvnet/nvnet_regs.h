@@ -176,9 +176,10 @@ enum {
 #       define NVREG_MIISPEED_BIT8 (1 << 8)
 #       define NVREG_MIIDELAY  5
     NvRegMIIControl = 0x190,
-#       define NVREG_MIICTL_INUSE 0x8000
-#       define NVREG_MIICTL_WRITE 0x0400
-#       define NVREG_MIICTL_ADDRSHIFT  5
+#       define NVREG_MIICTL_INUSE   0x8000
+#       define NVREG_MIICTL_WRITE   0x0400
+#       define NVREG_MIICTL_PHYADDR 0x03e0
+#       define NVREG_MIICTL_PHYREG  0x001f
     NvRegMIIData = 0x194,
     NvRegWakeUpFlags = 0x200,
 #       define NVREG_WAKEUPFLAGS_VAL               0x7770
@@ -269,8 +270,6 @@ enum {
 
 #define OOM_REFILL            (1 + HZ / 20)
 #define POLL_WAIT             (1 + HZ / 100)
-
-#define MII_READ      (-1)
 
 /* Link partner ability register. */
 #define LPA_SLCT     0x001f  /* Same as advertise selector  */
