@@ -71,13 +71,11 @@ typedef struct NvNetState {
     uint8_t      rx_dma_buf[RX_ALLOC_BUFSIZE];
 } NvNetState;
 
-#pragma pack(1)
 struct RingDesc {
     uint32_t packet_buffer;
     uint16_t length;
     uint16_t flags;
-};
-#pragma pack()
+} QEMU_PACKED;
 
 static const char *nvnet_get_reg_name(hwaddr addr)
 {
