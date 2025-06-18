@@ -26,6 +26,7 @@
 #include "hw/pci/pci_device.h"
 #include "hw/qdev-properties.h"
 #include "net/net.h"
+#include "net/eth.h"
 #include "qemu/bswap.h"
 #include "qemu/iov.h"
 #include "migration/vmstate.h"
@@ -35,8 +36,6 @@
 #define MMIO_SIZE   0x400
 
 #define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
-
-static const uint8_t bcast[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
 // #define DEBUG
 #ifdef DEBUG
@@ -444,10 +443,9 @@ static bool receive_filter(NvNetState *s, const uint8_t *buf, int size)
     }
 
     uint32_t rctl = nvnet_get_reg(s, NvRegPacketFilterFlags, 4);
-    int isbcast = !memcmp(buf, bcast, sizeof bcast);
 
     /* Broadcast */
-    if (isbcast) {
+    if (is_broadcast_ether_addr(buf)) {
         /* FIXME: bcast filtering */
         trace_nvnet_rx_filter_bcast_match();
         return true;
@@ -462,7 +460,7 @@ static bool receive_filter(NvNetState *s, const uint8_t *buf, int size)
     uint32_t addr[2];
     addr[0] = cpu_to_le32(nvnet_get_reg(s, NvRegMulticastAddrA, 4));
     addr[1] = cpu_to_le32(nvnet_get_reg(s, NvRegMulticastAddrB, 4));
-    if (memcmp(addr, bcast, sizeof bcast)) {
+    if (!is_broadcast_ether_addr((uint8_t *)addr)) {
         uint32_t dest_addr[2];
         memcpy(dest_addr, buf, 6);
         dest_addr[0] &= cpu_to_le32(nvnet_get_reg(s, NvRegMulticastMaskA, 4));
