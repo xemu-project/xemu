@@ -37,12 +37,16 @@
 
 #define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
 
-// #define DEBUG
-#ifdef DEBUG
-#   define NVNET_DPRINTF(format, ...) printf(format, ## __VA_ARGS__)
-#else
-#   define NVNET_DPRINTF(format, ...) do { } while (0)
+#ifndef DEBUG_NVNET
+#define DEBUG_NVNET 0
 #endif
+
+#define NVNET_DPRINTF(fmt, ...)                  \
+    do {                                         \
+        if (DEBUG_NVNET) {                       \
+            fprintf(stderr, fmt, ##__VA_ARGS__); \
+        }                                        \
+    } while (0);
 
 #define TYPE_NVNET "nvnet"
 OBJECT_DECLARE_SIMPLE_TYPE(NvNetState, NVNET)
@@ -136,9 +140,9 @@ static const char *nvnet_get_mii_reg_name(uint8_t reg)
     }
 }
 
-#ifdef DEBUG
 static void nvnet_dump_ring_descriptors(NvNetState *s)
 {
+#if NVNET_DEBUG
     struct RingDesc desc;
     PCIDevice *d = PCI_DEVICE(s);
 
@@ -168,8 +172,8 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
         NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
     }
     NVNET_DPRINTF("------------------------------------------------\n");
-}
 #endif
+}
 
 static uint32_t nvnet_get_reg(NvNetState *s, hwaddr addr, unsigned int size)
 {
@@ -574,9 +578,7 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr,
     case NvRegTxRxControl:
         if (val == NVREG_TXRXCTL_KICK) {
             NVNET_DPRINTF("NvRegTxRxControl = NVREG_TXRXCTL_KICK!\n");
-#ifdef DEBUG
             nvnet_dump_ring_descriptors(s);
-#endif
             nvnet_dma_packet_from_guest(s);
         }
 
