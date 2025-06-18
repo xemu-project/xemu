@@ -710,9 +710,6 @@ static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
 static void nvnet_uninit(PCIDevice *dev)
 {
     NvNetState *s = NVNET(dev);
-
-    // memory_region_destroy(&s->mmio);
-    // memory_region_destroy(&s->io);
     qemu_del_nic(s->nic);
 }
 
