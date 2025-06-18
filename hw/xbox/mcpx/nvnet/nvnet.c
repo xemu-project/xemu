@@ -152,7 +152,6 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
 
     NVNET_DPRINTF("------------------------------------------------\n");
     for (int i = 0; i < s->tx_ring_size; i++) {
-        /* Read ring descriptor */
         dma_addr_t tx_ring_addr = nvnet_get_reg(s, NvRegTxRingPhysAddr, 4);
         tx_ring_addr += i * sizeof(desc);
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
@@ -165,7 +164,6 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
     NVNET_DPRINTF("------------------------------------------------\n");
 
     for (int i = 0; i < s->rx_ring_size; i++) {
-        /* Read ring descriptor */
         dma_addr_t rx_ring_addr = nvnet_get_reg(s, NvRegRxRingPhysAddr, 4);
         rx_ring_addr += i * sizeof(desc);
         pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
@@ -185,18 +183,18 @@ static uint32_t nvnet_get_reg(NvNetState *s, hwaddr addr, unsigned int size)
 
     switch (size) {
     case 4:
-        assert((addr & 3) == 0); /* Unaligned register access. */
+        assert((addr & 3) == 0);
         return ((uint32_t *)s->regs)[addr >> 2];
 
     case 2:
-        assert((addr & 1) == 0); /* Unaligned register access. */
+        assert((addr & 1) == 0);
         return ((uint16_t *)s->regs)[addr >> 1];
 
     case 1:
         return s->regs[addr];
 
     default:
-        assert(0); /* Unsupported register access. */
+        assert(!"Unsupported register access");
         return 0;
     }
 }
@@ -208,12 +206,12 @@ static void nvnet_set_reg(NvNetState *s,
 
     switch (size) {
     case 4:
-        assert((addr & 3) == 0); /* Unaligned register access. */
+        assert((addr & 3) == 0);
         ((uint32_t *)s->regs)[addr >> 2] = val;
         break;
 
     case 2:
-        assert((addr & 1) == 0); /* Unaligned register access. */
+        assert((addr & 1) == 0);
         ((uint16_t *)s->regs)[addr >> 1] = (uint16_t)val;
         break;
 
@@ -222,7 +220,7 @@ static void nvnet_set_reg(NvNetState *s,
         break;
 
     default:
-        assert(0); /* Unsupported register access. */
+        assert(!"Unsupported register access");
     }
 }
 
@@ -260,12 +258,12 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
         4);
 
     for (int i = 0; i < s->rx_ring_size; i++) {
-        /* Read current ring descriptor */
         struct RingDesc desc;
         s->rx_ring_index %= s->rx_ring_size;
         dma_addr_t rx_ring_addr = nvnet_get_reg(s, NvRegRxRingPhysAddr, 4);
         rx_ring_addr += s->rx_ring_index * sizeof(desc);
         pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
+
         NVNET_DPRINTF("RX: Looking at ring descriptor %d (0x%" HWADDR_PRIx "): ",
                       s->rx_ring_index, rx_ring_addr);
         NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
@@ -280,15 +278,14 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
 
         s->rx_ring_index += 1;
 
-        /* Transfer packet from device to memory */
         NVNET_DPRINTF("Transferring packet, size 0x%zx, to memory at 0x%x\n",
                       size, desc.packet_buffer);
         pci_dma_write(d, desc.packet_buffer, buf, size);
 
-        /* Update descriptor indicating the packet is waiting */
         desc.length = size;
         desc.flags  = NV_RX_BIT4 | NV_RX_DESCRIPTORVALID;
         pci_dma_write(d, rx_ring_addr, &desc, sizeof(desc));
+
         NVNET_DPRINTF("Updated ring descriptor: ");
         NVNET_DPRINTF("Length: 0x%x, ", desc.length);
         NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
@@ -309,7 +306,6 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
     if (did_receive) {
         return size;
     } else {
-        /* Could not find free buffer, or packet too large. */
         NVNET_DPRINTF("Could not find free buffer!\n");
         return -1;
     }
@@ -331,6 +327,7 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         dma_addr_t tx_ring_addr = nvnet_get_reg(s, NvRegTxRingPhysAddr, 4);
         tx_ring_addr += s->tx_ring_index * sizeof(desc);
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
+
         NVNET_DPRINTF("TX: Looking at ring desc %d (%" HWADDR_PRIx "): ",
                       s->tx_ring_index, tx_ring_addr);
         NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
@@ -343,14 +340,12 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
 
         s->tx_ring_index += 1;
 
-        /* Transfer packet from guest memory */
         assert((s->tx_dma_buf_offset + desc.length + 1) <= sizeof(s->tx_dma_buf));
         pci_dma_read(d, desc.packet_buffer,
                      &s->tx_dma_buf[s->tx_dma_buf_offset],
                      desc.length + 1);
         s->tx_dma_buf_offset += desc.length + 1;
 
-        /* Update descriptor */
         bool is_last_packet = desc.flags & NV_TX_LASTPACKET;
         if (is_last_packet) {
             NVNET_DPRINTF("Sending packet...\n");
@@ -371,7 +366,6 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         }
     }
 
-    /* Trigger interrupt */
     if (packet_sent) {
         NVNET_DPRINTF("Triggering interrupt\n");
         uint32_t irq_status = nvnet_get_reg(s, NvRegIrqStatus, 4);
@@ -457,7 +451,6 @@ static ssize_t nvnet_receive_iov(NetClientState *nc,
     NVNET_DPRINTF("nvnet: Packet received!\n");
 
     if (nvnet_is_packet_oversized(size)) {
-        /* Drop */
         NVNET_DPRINTF("%s packet too large!\n", __func__);
         trace_nvnet_rx_oversized(size);
         return size;
