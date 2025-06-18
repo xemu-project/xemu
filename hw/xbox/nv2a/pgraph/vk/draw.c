@@ -954,7 +954,7 @@ static void create_pipeline(PGRAPHState *pg)
     };
 
     VkDynamicState dynamic_states[2] = { VK_DYNAMIC_STATE_VIEWPORT,
-                                        VK_DYNAMIC_STATE_SCISSOR };
+                                         VK_DYNAMIC_STATE_SCISSOR };
 
     VkPipelineDynamicStateCreateInfo dynamic_state = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
