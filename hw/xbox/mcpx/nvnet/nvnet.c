@@ -255,8 +255,6 @@ static int nvnet_mii_rw(NvNetState *s, uint64_t val)
 
     switch (reg) {
     case MII_BMSR:
-        /* Phy initialization code waits for MII_BMSR_LINK_ST to be set.. If not
-           set, software may report controller as not running */
         retval = MII_BMSR_AN_COMP | MII_BMSR_LINK_ST;
         break;
 
