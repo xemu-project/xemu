@@ -271,26 +271,11 @@ enum {
 #define POLL_WAIT             (1 + HZ / 100)
 
 #define MII_READ      (-1)
-#define MII_PHYSID1   0x02    /* PHYS ID 1                   */
-#define MII_PHYSID2   0x03    /* PHYS ID 2                   */
-#define MII_BMCR      0x00    /* Basic mode control register */
-#define MII_BMSR      0x01    /* Basic mode status register  */
-#define MII_ADVERTISE 0x04    /* Advertisement control reg   */
-#define MII_LPA       0x05    /* Link partner ability reg    */
-
-#define BMSR_ANEGCOMPLETE 0x0020 /* Auto-negotiation complete   */
-#define BMSR_BIT2         0x0004 /* Unknown... */
 
 /* Link partner ability register. */
 #define LPA_SLCT     0x001f  /* Same as advertise selector  */
-#define LPA_10HALF   0x0020  /* Can do 10mbps half-duplex   */
-#define LPA_10FULL   0x0040  /* Can do 10mbps full-duplex   */
-#define LPA_100HALF  0x0080  /* Can do 100mbps half-duplex  */
-#define LPA_100FULL  0x0100  /* Can do 100mbps full-duplex  */
-#define LPA_100BASE4 0x0200  /* Can do 100mbps 4k packets   */
 #define LPA_RESV     0x1c00  /* Unused...                   */
 #define LPA_RFAULT   0x2000  /* Link partner faulted        */
-#define LPA_LPACK    0x4000  /* Link partner acked us       */
 #define LPA_NPAGE    0x8000  /* Next page bit               */
 
 // clang-format off
