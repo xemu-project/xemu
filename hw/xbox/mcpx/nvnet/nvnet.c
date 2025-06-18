@@ -40,7 +40,6 @@
 // #define DEBUG
 #ifdef DEBUG
 #   define NVNET_DPRINTF(format, ...) printf(format, ## __VA_ARGS__)
-#   define NVNET_DUMP_PACKETS_TO_SCREEN
 #else
 #   define NVNET_DPRINTF(format, ...) do { } while (0)
 #endif
@@ -66,9 +65,6 @@ typedef struct NvNetState {
     uint8_t      tx_dma_buf[TX_ALLOC_BUFSIZE];
     uint32_t     tx_dma_buf_offset;
     uint8_t      rx_dma_buf[RX_ALLOC_BUFSIZE];
-
-    FILE         *packet_dump_file;
-    char         *packet_dump_path;
 } NvNetState;
 
 #define NVNET_DEVICE(obj) \
@@ -81,45 +77,6 @@ struct RingDesc {
     uint16_t flags;
 };
 #pragma pack()
-
-static void hex_dump(FILE *f, const uint8_t *buf, int size)
-{
-    int len, i, j, c;
-
-    for (i = 0; i < size; i += 16) {
-        len = size - i;
-        if (len > 16) {
-            len = 16;
-        }
-        fprintf(f, "%08x ", i);
-        for (j = 0; j < 16; j++) {
-            if (j < len) {
-                fprintf(f, " %02x", buf[i + j]);
-            } else {
-                fprintf(f, "   ");
-            }
-        }
-        fprintf(f, " ");
-        for (j = 0; j < len; j++) {
-            c = buf[i + j];
-            if (c < ' ' || c > '~') {
-                c = '.';
-            }
-            fprintf(f, "%c", c);
-        }
-        fprintf(f, "\n");
-    }
-}
-
-static void nvnet_hex_dump(NvNetState *s, const uint8_t *buf, int size)
-{
-#ifdef NVNET_DUMP_PACKETS_TO_SCREEN
-    hex_dump(stdout, buf, size);
-#endif
-    if (s->packet_dump_file) {
-        hex_dump(s->packet_dump_file, buf, size);
-    }
-}
 
 static const char *nvnet_get_reg_name(hwaddr addr)
 {
@@ -284,7 +241,6 @@ static void nvnet_send_packet(NvNetState *s, const uint8_t *buf, int size)
     NetClientState *nc = qemu_get_queue(s->nic);
 
     NVNET_DPRINTF("nvnet: Sending packet!\n");
-    nvnet_hex_dump(s, buf, size);
     qemu_send_packet(nc, buf, size);
 }
 
@@ -509,9 +465,6 @@ static ssize_t nvnet_receive_iov(NetClientState *nc,
         return size;
     }
 
-#ifdef DEBUG
-    nvnet_hex_dump(s, s->rx_dma_buf, size);
-#endif
     return nvnet_dma_packet_to_guest(s, s->rx_dma_buf, size);
 }
 
@@ -725,16 +678,6 @@ static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
 
     pci_dev->config[PCI_INTERRUPT_PIN] = 0x01;
 
-    s->packet_dump_file = NULL;
-    if (s->packet_dump_path && *s->packet_dump_path != '\x00') {
-        s->packet_dump_file = fopen(s->packet_dump_path, "wb");
-        if (!s->packet_dump_file) {
-            fprintf(stderr, "Failed to open %s for writing!\n",
-                            s->packet_dump_path);
-            exit(1);
-        }
-    }
-
     memset(s->regs, 0, sizeof(s->regs));
 
     s->rx_ring_index = 0;
@@ -759,10 +702,6 @@ static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
 static void nvnet_uninit(PCIDevice *dev)
 {
     NvNetState *s = NVNET_DEVICE(dev);
-
-    if (s->packet_dump_file) {
-        fclose(s->packet_dump_file);
-    }
 
     // memory_region_destroy(&s->mmio);
     // memory_region_destroy(&s->io);
@@ -837,7 +776,6 @@ static void nvnet_class_init(ObjectClass *klass, void *data)
 
 static Property nvnet_properties[] = {
     DEFINE_NIC_PROPERTIES(NvNetState, conf),
-    DEFINE_PROP_STRING("dump", NvNetState, packet_dump_path),
     DEFINE_PROP_END_OF_LIST(),
 };
 
