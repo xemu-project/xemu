@@ -485,6 +485,35 @@ static ssize_t nvnet_receive(NetClientState *nc, const uint8_t *buf,
     return nvnet_receive_iov(nc, &iov, 1);
 }
 
+static void nvnet_link_down(NvNetState *s)
+{
+    NVNET_DPRINTF("nvnet_link_down called\n");
+}
+
+static void nvnet_link_up(NvNetState *s)
+{
+    NVNET_DPRINTF("nvnet_link_up called\n");
+}
+
+static void nvnet_set_link_status(NetClientState *nc)
+{
+    NvNetState *s = qemu_get_nic_opaque(nc);
+    if (nc->link_down) {
+        nvnet_link_down(s);
+    } else {
+        nvnet_link_up(s);
+    }
+}
+
+static NetClientInfo net_nvnet_info = {
+    .type = NET_CLIENT_DRIVER_NIC,
+    .size = sizeof(NICState),
+    .can_receive = nvnet_can_receive,
+    .receive = nvnet_receive,
+    .receive_iov = nvnet_receive_iov,
+    .link_status_changed = nvnet_set_link_status,
+};
+
 static uint16_t nvnet_phy_reg_read(NvNetState *s, uint8_t reg)
 {
     uint16_t value;
@@ -647,26 +676,6 @@ static const MemoryRegionOps nvnet_mmio_ops = {
     .write = nvnet_mmio_write,
 };
 
-static void nvnet_link_down(NvNetState *s)
-{
-    NVNET_DPRINTF("nvnet_link_down called\n");
-}
-
-static void nvnet_link_up(NvNetState *s)
-{
-    NVNET_DPRINTF("nvnet_link_up called\n");
-}
-
-static void nvnet_set_link_status(NetClientState *nc)
-{
-    NvNetState *s = qemu_get_nic_opaque(nc);
-    if (nc->link_down) {
-        nvnet_link_down(s);
-    } else {
-        nvnet_link_up(s);
-    }
-}
-
 static uint64_t nvnet_io_read(void *opaque, hwaddr addr, unsigned int size)
 {
     uint64_t r = 0;
@@ -683,15 +692,6 @@ static void nvnet_io_write(void *opaque, hwaddr addr, uint64_t val,
 static const MemoryRegionOps nvnet_io_ops = {
     .read = nvnet_io_read,
     .write = nvnet_io_write,
-};
-
-static NetClientInfo net_nvnet_info = {
-    .type = NET_CLIENT_DRIVER_NIC,
-    .size = sizeof(NICState),
-    .can_receive = nvnet_can_receive,
-    .receive = nvnet_receive,
-    .receive_iov = nvnet_receive_iov,
-    .link_status_changed = nvnet_set_link_status,
 };
 
 static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
