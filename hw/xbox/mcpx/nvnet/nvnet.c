@@ -131,7 +131,7 @@ static const char *nvnet_get_reg_name(hwaddr addr)
     }
 }
 
-static const char *nvnet_get_mii_reg_name(uint8_t reg)
+static const char *nvnet_get_phy_reg_name(uint8_t reg)
 {
     switch (reg) {
         R(MII_PHYID1)
@@ -505,13 +505,13 @@ static uint16_t nvnet_phy_reg_read(NvNetState *s, uint8_t reg)
         break;
     }
 
-    trace_nvnet_mii_read(PHY_ADDR, reg, nvnet_get_mii_reg_name(reg), value);
+    trace_nvnet_phy_reg_read(PHY_ADDR, reg, nvnet_get_phy_reg_name(reg), value);
     return value;
 }
 
 static void nvnet_phy_reg_write(NvNetState *s, uint8_t reg, uint16_t value)
 {
-    trace_nvnet_mii_write(PHY_ADDR, reg, nvnet_get_mii_reg_name(reg), value);
+    trace_nvnet_phy_reg_write(PHY_ADDR, reg, nvnet_get_phy_reg_name(reg), value);
 }
 
 static void nvnet_mdio_read(NvNetState *s)
