@@ -157,12 +157,12 @@
 #define NVNET_MII_SPEED                          0x18C
 #  define NVNET_MII_SPEED_BIT8                     (1 << 8)
 #  define NVNET_MII_SPEED_DELAY                    5
-#define NVNET_MII_CONTROL                        0x190
-#  define NVNET_MII_CONTROL_INUSE                  0x00008000
-#  define NVNET_MII_CONTROL_WRITE                  0x00000400
-#  define NVNET_MII_CONTROL_PHYADDR                0x000003E0
-#  define NVNET_MII_CONTROL_PHYREG                 0x0000001F
-#define NVNET_MII_DATA                           0x194
+#define NVNET_MDIO_ADDR                          0x190
+#  define NVNET_MDIO_ADDR_INUSE                    0x00008000
+#  define NVNET_MDIO_ADDR_WRITE                    0x00000400
+#  define NVNET_MDIO_ADDR_PHYADDR                  0x000003E0
+#  define NVNET_MDIO_ADDR_PHYREG                   0x0000001F
+#define NVNET_MDIO_DATA                          0x194
 #define NVNET_WAKEUPFLAGS                        0x200
 #  define NVNET_WAKEUPFLAGS_VAL                    0x00007770
 #  define NVNET_WAKEUPFLAGS_BUSYSHIFT              24

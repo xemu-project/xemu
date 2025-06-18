@@ -116,8 +116,8 @@ static const char *nvnet_get_reg_name(hwaddr addr)
         R(NVNET_UNKNOWN_SETUP_REG4)
         R(NVNET_ADAPTER_CONTROL)
         R(NVNET_MII_SPEED)
-        R(NVNET_MII_CONTROL)
-        R(NVNET_MII_DATA)
+        R(NVNET_MDIO_ADDR)
+        R(NVNET_MDIO_DATA)
         R(NVNET_WAKEUPFLAGS)
         R(NVNET_PATTERN_CRC)
         R(NVNET_PATTERN_MASK)
@@ -478,12 +478,12 @@ static ssize_t nvnet_receive(NetClientState *nc,
     return nvnet_receive_iov(nc, &iov, 1);
 }
 
-static void nvnet_mii_read(NvNetState *s)
+static void nvnet_mdio_read(NvNetState *s)
 {
-    uint32_t mii_ctl = nvnet_get_reg(s, NVNET_MII_CONTROL, 4);
-    uint32_t mii_data = -1;
-    uint32_t phy_addr = GET_MASK(mii_ctl, NVNET_MII_CONTROL_PHYADDR);
-    uint32_t phy_reg = GET_MASK(mii_ctl, NVNET_MII_CONTROL_PHYREG);
+    uint32_t mdio_addr = nvnet_get_reg(s, NVNET_MDIO_ADDR, 4);
+    uint32_t mdio_data = -1;
+    uint32_t phy_addr = GET_MASK(mdio_addr, NVNET_MDIO_ADDR_PHYADDR);
+    uint32_t phy_reg = GET_MASK(mdio_addr, NVNET_MDIO_ADDR_PHYREG);
 
     if (phy_addr != 1) {
         goto out;
@@ -491,41 +491,41 @@ static void nvnet_mii_read(NvNetState *s)
 
     switch (phy_reg) {
     case MII_BMSR:
-        mii_data = MII_BMSR_AN_COMP | MII_BMSR_LINK_ST;
+        mdio_data = MII_BMSR_AN_COMP | MII_BMSR_LINK_ST;
         break;
 
     case MII_ANAR:
         /* Fall through... */
 
     case MII_ANLPAR:
-        mii_data = MII_ANLPAR_10 | MII_ANLPAR_10FD | MII_ANLPAR_TX |
+        mdio_data = MII_ANLPAR_10 | MII_ANLPAR_10FD | MII_ANLPAR_TX |
                    MII_ANLPAR_TXFD | MII_ANLPAR_T4;
         break;
 
     default:
-        mii_data = 0;
+        mdio_data = 0;
         break;
     }
 
 out:
-    mii_ctl &= ~NVNET_MII_CONTROL_INUSE;
-    nvnet_set_reg(s, NVNET_MII_CONTROL, mii_ctl, 4);
-    nvnet_set_reg(s, NVNET_MII_DATA, mii_data, 4);
+    mdio_addr &= ~NVNET_MDIO_ADDR_INUSE;
+    nvnet_set_reg(s, NVNET_MDIO_ADDR, mdio_addr, 4);
+    nvnet_set_reg(s, NVNET_MDIO_DATA, mdio_data, 4);
     trace_nvnet_mii_read(phy_addr, phy_reg, nvnet_get_mii_reg_name(phy_reg),
-                         mii_data);
+                         mdio_data);
 }
 
-static void nvnet_mii_write(NvNetState *s)
+static void nvnet_mdio_write(NvNetState *s)
 {
-    uint32_t mii_ctl = nvnet_get_reg(s, NVNET_MII_CONTROL, 4);
-    uint32_t mii_data = nvnet_get_reg(s, NVNET_MII_DATA, 4);
-    uint32_t phy_addr = GET_MASK(mii_ctl, NVNET_MII_CONTROL_PHYADDR);
-    uint32_t phy_reg = GET_MASK(mii_ctl, NVNET_MII_CONTROL_PHYREG);
+    uint32_t mdio_addr = nvnet_get_reg(s, NVNET_MDIO_ADDR, 4);
+    uint32_t mdio_data = nvnet_get_reg(s, NVNET_MDIO_DATA, 4);
+    uint32_t phy_addr = GET_MASK(mdio_addr, NVNET_MDIO_ADDR_PHYADDR);
+    uint32_t phy_reg = GET_MASK(mdio_addr, NVNET_MDIO_ADDR_PHYREG);
 
-    mii_ctl &= ~NVNET_MII_CONTROL_INUSE;
-    nvnet_set_reg(s, NVNET_MII_CONTROL, mii_ctl, 4);
+    mdio_addr &= ~NVNET_MDIO_ADDR_INUSE;
+    nvnet_set_reg(s, NVNET_MDIO_ADDR, mdio_addr, 4);
     trace_nvnet_mii_write(phy_addr, phy_reg, nvnet_get_mii_reg_name(phy_reg),
-                          mii_data);
+                          mdio_data);
 }
 
 static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
@@ -562,13 +562,13 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr,
         s->tx_ring_size = GET_MASK(val, NVNET_RING_SIZE_TX) + 1;
         break;
 
-    case NVNET_MII_CONTROL:
+    case NVNET_MDIO_ADDR:
         assert(size == 4);
         nvnet_set_reg(s, addr, val, size);
-        if (val & NVNET_MII_CONTROL_WRITE) {
-            nvnet_mii_write(s);
+        if (val & NVNET_MDIO_ADDR_WRITE) {
+            nvnet_mdio_write(s);
         } else {
-            nvnet_mii_read(s);
+            nvnet_mdio_read(s);
         }
         break;
 
