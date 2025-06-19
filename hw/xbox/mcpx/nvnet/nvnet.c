@@ -599,20 +599,18 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
                              unsigned int size)
 {
     NvNetState *s = NVNET(opaque);
-    uint32_t temp;
 
+    nvnet_set_reg(s, addr, val, size);
     trace_nvnet_reg_write(addr, nvnet_get_reg_name(addr & ~3), size, val);
 
     switch (addr) {
     case NVNET_RING_SIZE:
-        nvnet_set_reg(s, addr, val, size);
         s->rx_ring_size = GET_MASK(val, NVNET_RING_SIZE_RX) + 1;
         s->tx_ring_size = GET_MASK(val, NVNET_RING_SIZE_TX) + 1;
         break;
 
     case NVNET_MDIO_ADDR:
         assert(size == 4);
-        nvnet_set_reg(s, addr, val, size);
         if (val & NVNET_MDIO_ADDR_WRITE) {
             nvnet_mdio_write(s);
         } else {
@@ -643,7 +641,7 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
             nvnet_set_reg(s, NVNET_IRQ_STATUS, 0, 4);
             break;
         } else if (val == 0) {
-            temp = nvnet_get_reg(s, NVNET_UNKNOWN_SETUP_REG3, 4);
+            uint32_t temp = nvnet_get_reg(s, NVNET_UNKNOWN_SETUP_REG3, 4);
             if (temp == NVNET_UNKNOWN_SETUP_REG3_VAL1) {
                 /* forcedeth waits for this bit to be set... */
                 nvnet_set_reg(s, NVNET_UNKNOWN_SETUP_REG5,
@@ -651,12 +649,9 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
                 break;
             }
         }
-
-        nvnet_set_reg(s, NVNET_TX_RX_CONTROL, val, size);
         break;
 
     case NVNET_IRQ_MASK:
-        nvnet_set_reg(s, addr, val, size);
         nvnet_update_irq(s);
         break;
 
@@ -666,7 +661,6 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
         break;
 
     default:
-        nvnet_set_reg(s, addr, val, size);
         break;
     }
 }
