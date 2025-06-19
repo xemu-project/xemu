@@ -516,8 +516,8 @@ static void nvnet_mdio_read(NvNetState *s)
 {
     uint32_t mdio_addr = nvnet_get_reg(s, NVNET_MDIO_ADDR, 4);
     uint32_t mdio_data = -1;
-    uint32_t phy_addr = GET_MASK(mdio_addr, NVNET_MDIO_ADDR_PHYADDR);
-    uint32_t phy_reg = GET_MASK(mdio_addr, NVNET_MDIO_ADDR_PHYREG);
+    uint8_t phy_addr = GET_MASK(mdio_addr, NVNET_MDIO_ADDR_PHYADDR);
+    uint8_t phy_reg = GET_MASK(mdio_addr, NVNET_MDIO_ADDR_PHYREG);
 
     if (phy_addr == PHY_ADDR) {
         mdio_data = nvnet_phy_reg_read(s, phy_reg);
@@ -532,8 +532,8 @@ static void nvnet_mdio_write(NvNetState *s)
 {
     uint32_t mdio_addr = nvnet_get_reg(s, NVNET_MDIO_ADDR, 4);
     uint32_t mdio_data = nvnet_get_reg(s, NVNET_MDIO_DATA, 4);
-    uint32_t phy_addr = GET_MASK(mdio_addr, NVNET_MDIO_ADDR_PHYADDR);
-    uint32_t phy_reg = GET_MASK(mdio_addr, NVNET_MDIO_ADDR_PHYREG);
+    uint8_t phy_addr = GET_MASK(mdio_addr, NVNET_MDIO_ADDR_PHYADDR);
+    uint8_t phy_reg = GET_MASK(mdio_addr, NVNET_MDIO_ADDR_PHYREG);
 
     if (phy_addr == PHY_ADDR) {
         nvnet_phy_reg_write(s, phy_reg, mdio_data);
