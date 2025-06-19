@@ -129,10 +129,14 @@
 #  define NVNET_LINKSPEED_10                       10
 #  define NVNET_LINKSPEED_100                      100
 #  define NVNET_LINKSPEED_1000                     1000
+#define NVNET_TX_RING_CURRENT_DESC_PHYS_ADDR     0x11C
+#define NVNET_RX_RING_CURRENT_DESC_PHYS_ADDR     0x120
+#define NVNET_TX_CURRENT_BUFFER_PHYS_ADDR        0x124
+#define NVNET_RX_CURRENT_BUFFER_PHYS_ADDR        0x12C
 #define NVNET_UNKNOWN_SETUP_REG5                 0x130
 #  define NVNET_UNKNOWN_SETUP_REG5_BIT31           (1 << 31)
-#define NVNET_UNKNOWN_SETUP_REG3                 0x134
-#  define NVNET_UNKNOWN_SETUP_REG3_VAL1            0x00200010
+#define NVNET_TX_RING_NEXT_DESC_PHYS_ADDR        0x134
+#define NVNET_RX_RING_NEXT_DESC_PHYS_ADDR        0x138
 #define NVNET_UNKNOWN_SETUP_REG8                 0x13C
 #  define NVNET_UNKNOWN_SETUP_REG8_VAL1            0x00300010
 #define NVNET_UNKNOWN_SETUP_REG7                 0x140
