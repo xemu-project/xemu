@@ -325,7 +325,6 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
 
         bool is_last_packet = flags & NV_TX_LASTPACKET;
         if (is_last_packet) {
-            NVNET_DPRINTF("Sending packet...\n");
             nvnet_send_packet(s, s->tx_dma_buf, s->tx_dma_buf_offset);
             s->tx_dma_buf_offset = 0;
             packet_sent = true;
@@ -347,7 +346,6 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
     }
 
     if (packet_sent) {
-        NVNET_DPRINTF("Triggering interrupt\n");
         uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
         nvnet_set_reg(s, NVNET_IRQ_STATUS, irq_status | NVNET_IRQ_STATUS_TX, 4);
         nvnet_update_irq(s);
