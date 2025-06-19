@@ -238,11 +238,9 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
     uint16_t length = le16_to_cpu(desc.length);
     uint16_t flags = le16_to_cpu(desc.flags);
 
-    NVNET_DPRINTF("RX: Looking at ring descriptor %d (0x%" HWADDR_PRIx "): ",
-                  s->rx_ring_index, rx_ring_addr);
-    NVNET_DPRINTF("Buffer: 0x%x, ", packet_buffer);
-    NVNET_DPRINTF("Length: 0x%x, ", length);
-    NVNET_DPRINTF("Flags: 0x%x\n", flags);
+    NVNET_DPRINTF("RX: Looking at ring descriptor %d (0x%" HWADDR_PRIx "): "
+                  "Buffer: 0x%x, Length: 0x%x, Flags: 0x%x\n",
+                  s->rx_ring_index, rx_ring_addr, packet_buffer, length, flags);
 
     if (flags & NV_RX_AVAIL) {
         assert((length + 1) >= size); // FIXME
@@ -258,9 +256,8 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
         desc.flags = cpu_to_le16(flags);
         pci_dma_write(d, rx_ring_addr, &desc, sizeof(desc));
 
-        NVNET_DPRINTF("Updated ring descriptor: ");
-        NVNET_DPRINTF("Length: 0x%x, ", length);
-        NVNET_DPRINTF("Flags: 0x%x\n", flags);
+        NVNET_DPRINTF("Updated ring descriptor: Length: 0x%x, Flags: 0x%x\n",
+                      length, flags);
 
         NVNET_DPRINTF("Triggering interrupt\n");
         uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
@@ -299,11 +296,10 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         uint16_t length = le16_to_cpu(desc.length);
         uint16_t flags = le16_to_cpu(desc.flags);
 
-        NVNET_DPRINTF("TX: Looking at ring desc %d (%" HWADDR_PRIx "): ",
-                      s->tx_ring_index, tx_ring_addr);
-        NVNET_DPRINTF("Buffer: 0x%x, ", packet_buffer);
-        NVNET_DPRINTF("Length: 0x%x, ", length);
-        NVNET_DPRINTF("Flags: 0x%x\n", flags);
+        NVNET_DPRINTF("TX: Looking at ring desc %d (%" HWADDR_PRIx "): "
+                      "Buffer: 0x%x, Length: 0x%x, Flags: 0x%x\n",
+                      s->tx_ring_index, tx_ring_addr, packet_buffer, length,
+                      flags);
 
         if (!(flags & NV_TX_VALID)) {
             break;
@@ -562,33 +558,35 @@ static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
 
 static void nvnet_dump_ring_descriptors(NvNetState *s)
 {
-#if NVNET_DEBUG
-    struct RingDesc desc;
+#if DEBUG_NVNET
     PCIDevice *d = PCI_DEVICE(s);
 
     NVNET_DPRINTF("------------------------------------------------\n");
+
     for (int i = 0; i < s->tx_ring_size; i++) {
+        struct RingDesc desc;
         dma_addr_t tx_ring_addr = nvnet_get_reg(s, NVNET_TX_RING_PHYS_ADDR, 4);
         tx_ring_addr += i * sizeof(desc);
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("TX: Dumping ring desc %d (%" HWADDR_PRIx "): ", i,
-                      tx_ring_addr);
-        NVNET_DPRINTF("Buffer: 0x%x, ", le32_to_cpu(desc.packet_buffer));
-        NVNET_DPRINTF("Length: 0x%x, ", le16_to_cpu(desc.length));
-        NVNET_DPRINTF("Flags: 0x%x\n", le16_to_cpu(desc.flags));
+        NVNET_DPRINTF("TX desc %d (%" HWADDR_PRIx "): "
+                      "Buffer: 0x%x, Length: 0x%x, Flags: 0x%x\n",
+                      i, tx_ring_addr, le32_to_cpu(desc.packet_buffer),
+                      le16_to_cpu(desc.length), le16_to_cpu(desc.flags));
     }
+
     NVNET_DPRINTF("------------------------------------------------\n");
 
     for (int i = 0; i < s->rx_ring_size; i++) {
+        struct RingDesc desc;
         dma_addr_t rx_ring_addr = nvnet_get_reg(s, NVNET_RX_RING_PHYS_ADDR, 4);
         rx_ring_addr += i * sizeof(desc);
         pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("RX: Dumping ring desc %d (%" HWADDR_PRIx "): ", i,
-                      rx_ring_addr);
-        NVNET_DPRINTF("Buffer: 0x%x, ", le32_to_cpu(desc.packet_buffer));
-        NVNET_DPRINTF("Length: 0x%x, ", le16_to_cpu(desc.length));
-        NVNET_DPRINTF("Flags: 0x%x\n", le16_to_cpu(desc.flags));
+        NVNET_DPRINTF("RX desc %d (%" HWADDR_PRIx "): "
+                      "Buffer: 0x%x, Length: 0x%x, Flags: 0x%x\n",
+                      i, rx_ring_addr, le32_to_cpu(desc.packet_buffer),
+                      le16_to_cpu(desc.length), le16_to_cpu(desc.flags));
     }
+
     NVNET_DPRINTF("------------------------------------------------\n");
 #endif
 }
