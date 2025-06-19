@@ -82,7 +82,7 @@ struct RingDesc {
 
 #define R(r) \
     case r:  \
-        return stringify(r);
+        return #r;
 
 static const char *nvnet_get_reg_name(hwaddr addr)
 {
