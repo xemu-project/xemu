@@ -225,10 +225,8 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
     PCIDevice *d = PCI_DEVICE(s);
     bool did_receive = false;
 
-    nvnet_set_reg(s, NVNET_TX_RX_CONTROL,
-                  nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) &
-                      ~NVNET_TX_RX_CONTROL_IDLE,
-                  4);
+    uint32_t ctrl = nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4);
+    nvnet_set_reg(s, NVNET_TX_RX_CONTROL, ctrl & ~NVNET_TX_RX_CONTROL_IDLE, 4);
 
     for (int i = 0; i < s->rx_ring_size; i++) {
         struct RingDesc desc;
@@ -272,9 +270,8 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
         break;
     }
 
-    nvnet_set_reg(
-        s, NVNET_TX_RX_CONTROL,
-        nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) | NVNET_TX_RX_CONTROL_IDLE, 4);
+    ctrl = nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4);
+    nvnet_set_reg(s, NVNET_TX_RX_CONTROL, ctrl | NVNET_TX_RX_CONTROL_IDLE, 4);
 
     if (did_receive) {
         return size;
@@ -289,10 +286,8 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
     PCIDevice *d = PCI_DEVICE(s);
     bool packet_sent = false;
 
-    nvnet_set_reg(s, NVNET_TX_RX_CONTROL,
-                  nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) &
-                      ~NVNET_TX_RX_CONTROL_IDLE,
-                  4);
+    uint32_t ctrl = nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4);
+    nvnet_set_reg(s, NVNET_TX_RX_CONTROL, ctrl & ~NVNET_TX_RX_CONTROL_IDLE, 4);
 
     for (int i = 0; i < s->tx_ring_size; i++) {
         struct RingDesc desc;
@@ -346,9 +341,8 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         nvnet_update_irq(s);
     }
 
-    nvnet_set_reg(
-        s, NVNET_TX_RX_CONTROL,
-        nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4) | NVNET_TX_RX_CONTROL_IDLE, 4);
+    ctrl = nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4);
+    nvnet_set_reg(s, NVNET_TX_RX_CONTROL, ctrl | NVNET_TX_RX_CONTROL_IDLE, 4);
 
     return 0;
 }
