@@ -333,10 +333,8 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         flags &= ~(NV_TX_VALID | NV_TX_RETRYERROR | NV_TX_DEFERRED |
                    NV_TX_CARRIERLOST | NV_TX_LATECOLLISION | NV_TX_UNDERFLOW |
                    NV_TX_ERROR);
-        length += 5; // FIXME
 
         desc.flags = cpu_to_le16(flags);
-        desc.length = cpu_to_le16(length);
         pci_dma_write(d, tx_ring_addr, &desc, sizeof(desc));
 
         if (is_last_packet) {
