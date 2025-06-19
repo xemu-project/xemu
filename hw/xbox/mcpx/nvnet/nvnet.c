@@ -264,7 +264,6 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
         NVNET_DPRINTF("Length: 0x%x, ", desc.length);
         NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
 
-        /* Trigger interrupt */
         NVNET_DPRINTF("Triggering interrupt\n");
         uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
         nvnet_set_reg(s, NVNET_IRQ_STATUS, irq_status | NVNET_IRQ_STATUS_RX, 4);
@@ -296,7 +295,6 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
                   4);
 
     for (int i = 0; i < s->tx_ring_size; i++) {
-        /* Read ring descriptor */
         struct RingDesc desc;
         s->tx_ring_index %= s->tx_ring_size;
         dma_addr_t tx_ring_addr = nvnet_get_reg(s, NVNET_TX_RING_PHYS_ADDR, 4);
