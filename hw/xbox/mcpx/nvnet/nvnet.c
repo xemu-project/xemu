@@ -149,39 +149,6 @@ static const char *nvnet_get_phy_reg_name(uint8_t reg)
 
 #undef R
 
-static void nvnet_dump_ring_descriptors(NvNetState *s)
-{
-#if NVNET_DEBUG
-    struct RingDesc desc;
-    PCIDevice *d = PCI_DEVICE(s);
-
-    NVNET_DPRINTF("------------------------------------------------\n");
-    for (int i = 0; i < s->tx_ring_size; i++) {
-        dma_addr_t tx_ring_addr = nvnet_get_reg(s, NVNET_TX_RING_PHYS_ADDR, 4);
-        tx_ring_addr += i * sizeof(desc);
-        pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("TX: Dumping ring desc %d (%" HWADDR_PRIx "): ", i,
-                      tx_ring_addr);
-        NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
-        NVNET_DPRINTF("Length: 0x%x, ", desc.length);
-        NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
-    }
-    NVNET_DPRINTF("------------------------------------------------\n");
-
-    for (int i = 0; i < s->rx_ring_size; i++) {
-        dma_addr_t rx_ring_addr = nvnet_get_reg(s, NVNET_RX_RING_PHYS_ADDR, 4);
-        rx_ring_addr += i * sizeof(desc);
-        pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("RX: Dumping ring desc %d (%" HWADDR_PRIx "): ", i,
-                      rx_ring_addr);
-        NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
-        NVNET_DPRINTF("Length: 0x%x, ", desc.length);
-        NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
-    }
-    NVNET_DPRINTF("------------------------------------------------\n");
-#endif
-}
-
 static uint32_t nvnet_get_reg(NvNetState *s, hwaddr addr, unsigned int size)
 {
     assert(addr < MMIO_SIZE);
@@ -593,6 +560,39 @@ static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
 
     trace_nvnet_reg_read(addr, nvnet_get_reg_name(addr & ~3), size, retval);
     return retval;
+}
+
+static void nvnet_dump_ring_descriptors(NvNetState *s)
+{
+#if NVNET_DEBUG
+    struct RingDesc desc;
+    PCIDevice *d = PCI_DEVICE(s);
+
+    NVNET_DPRINTF("------------------------------------------------\n");
+    for (int i = 0; i < s->tx_ring_size; i++) {
+        dma_addr_t tx_ring_addr = nvnet_get_reg(s, NVNET_TX_RING_PHYS_ADDR, 4);
+        tx_ring_addr += i * sizeof(desc);
+        pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
+        NVNET_DPRINTF("TX: Dumping ring desc %d (%" HWADDR_PRIx "): ", i,
+                      tx_ring_addr);
+        NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
+        NVNET_DPRINTF("Length: 0x%x, ", desc.length);
+        NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
+    }
+    NVNET_DPRINTF("------------------------------------------------\n");
+
+    for (int i = 0; i < s->rx_ring_size; i++) {
+        dma_addr_t rx_ring_addr = nvnet_get_reg(s, NVNET_RX_RING_PHYS_ADDR, 4);
+        rx_ring_addr += i * sizeof(desc);
+        pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
+        NVNET_DPRINTF("RX: Dumping ring desc %d (%" HWADDR_PRIx "): ", i,
+                      rx_ring_addr);
+        NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
+        NVNET_DPRINTF("Length: 0x%x, ", desc.length);
+        NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
+    }
+    NVNET_DPRINTF("------------------------------------------------\n");
+#endif
 }
 
 static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
