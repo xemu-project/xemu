@@ -223,32 +223,25 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
                                          size_t size)
 {
     PCIDevice *d = PCI_DEVICE(s);
-    bool did_receive = false;
+    ssize_t rval;
 
     uint32_t ctrl = nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4);
     nvnet_set_reg(s, NVNET_TX_RX_CONTROL, ctrl & ~NVNET_TX_RX_CONTROL_IDLE, 4);
 
-    for (int i = 0; i < s->rx_ring_size; i++) {
-        struct RingDesc desc;
-        s->rx_ring_index %= s->rx_ring_size;
-        dma_addr_t rx_ring_addr = nvnet_get_reg(s, NVNET_RX_RING_PHYS_ADDR, 4);
-        rx_ring_addr += s->rx_ring_index * sizeof(desc);
-        pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
+    struct RingDesc desc;
+    s->rx_ring_index %= s->rx_ring_size;
+    dma_addr_t rx_ring_addr = nvnet_get_reg(s, NVNET_RX_RING_PHYS_ADDR, 4);
+    rx_ring_addr += s->rx_ring_index * sizeof(desc);
+    pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
 
-        NVNET_DPRINTF("RX: Looking at ring descriptor %d (0x%" HWADDR_PRIx
-                      "): ",
-                      s->rx_ring_index, rx_ring_addr);
-        NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
-        NVNET_DPRINTF("Length: 0x%x, ", desc.length);
-        NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
+    NVNET_DPRINTF("RX: Looking at ring descriptor %d (0x%" HWADDR_PRIx "): ",
+                  s->rx_ring_index, rx_ring_addr);
+    NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
+    NVNET_DPRINTF("Length: 0x%x, ", desc.length);
+    NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
 
-        if (!(desc.flags & NV_RX_AVAIL)) {
-            break;
-        }
-
+    if (desc.flags & NV_RX_AVAIL) {
         assert((desc.length + 1) >= size); // FIXME
-
-        s->rx_ring_index += 1;
 
         NVNET_DPRINTF("Transferring packet, size 0x%zx, to memory at 0x%x\n",
                       size, desc.packet_buffer);
@@ -266,19 +259,18 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
         uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
         nvnet_set_reg(s, NVNET_IRQ_STATUS, irq_status | NVNET_IRQ_STATUS_RX, 4);
         nvnet_update_irq(s);
-        did_receive = true;
-        break;
+
+        s->rx_ring_index += 1;
+        rval = size;
+    } else {
+        NVNET_DPRINTF("Could not find free buffer!\n");
+        rval = -1;
     }
 
     ctrl = nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4);
     nvnet_set_reg(s, NVNET_TX_RX_CONTROL, ctrl | NVNET_TX_RX_CONTROL_IDLE, 4);
 
-    if (did_receive) {
-        return size;
-    } else {
-        NVNET_DPRINTF("Could not find free buffer!\n");
-        return -1;
-    }
+    return rval;
 }
 
 static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
