@@ -303,7 +303,7 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
 
         uint32_t buffer_addr = le32_to_cpu(desc.buffer_addr);
-        uint16_t length = le16_to_cpu(desc.length);
+        uint16_t length = le16_to_cpu(desc.length) + 1;
         uint16_t flags = le16_to_cpu(desc.flags);
 
         NVNET_DPRINTF("TX: Looking at ring desc %d (%" HWADDR_PRIx "): "
@@ -317,11 +317,11 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
 
         s->tx_ring_index += 1;
 
-        assert((s->tx_dma_buf_offset + length + 1) <=
+        assert((s->tx_dma_buf_offset + length) <=
                sizeof(s->tx_dma_buf));
         pci_dma_read(d, buffer_addr, &s->tx_dma_buf[s->tx_dma_buf_offset],
-                     length + 1);
-        s->tx_dma_buf_offset += length + 1;
+                     length);
+        s->tx_dma_buf_offset += length;
 
         bool is_last_packet = flags & NV_TX_LASTPACKET;
         if (is_last_packet) {
