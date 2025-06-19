@@ -66,9 +66,7 @@ typedef struct NvNetState {
     uint32_t phy_regs[6];
 
     uint8_t tx_ring_index;
-    uint8_t tx_ring_size;
     uint8_t rx_ring_index;
-    uint8_t rx_ring_size;
     uint8_t tx_dma_buf[TX_ALLOC_BUFSIZE];
     uint32_t tx_dma_buf_offset;
     uint8_t rx_dma_buf[RX_ALLOC_BUFSIZE];
@@ -219,6 +217,18 @@ static void nvnet_send_packet(NvNetState *s, const uint8_t *buf, int size)
     qemu_send_packet(nc, buf, size);
 }
 
+static uint16_t get_tx_ring_size(NvNetState *s)
+{
+    uint32_t ring_size = nvnet_get_reg(s, NVNET_RING_SIZE, 4);
+    return GET_MASK(ring_size, NVNET_RING_SIZE_TX) + 1;
+}
+
+static uint16_t get_rx_ring_size(NvNetState *s)
+{
+    uint32_t ring_size = nvnet_get_reg(s, NVNET_RING_SIZE, 4);
+    return GET_MASK(ring_size, NVNET_RING_SIZE_RX) + 1;
+}
+
 static ssize_t nvnet_dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
                                          size_t size)
 {
@@ -229,7 +239,7 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
     nvnet_set_reg(s, NVNET_TX_RX_CONTROL, ctrl & ~NVNET_TX_RX_CONTROL_IDLE, 4);
 
     struct RingDesc desc;
-    s->rx_ring_index %= s->rx_ring_size;
+    s->rx_ring_index %= get_rx_ring_size(s);
     dma_addr_t rx_ring_addr = nvnet_get_reg(s, NVNET_RX_RING_PHYS_ADDR, 4);
     rx_ring_addr += s->rx_ring_index * sizeof(desc);
     pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
@@ -285,9 +295,9 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
     uint32_t ctrl = nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4);
     nvnet_set_reg(s, NVNET_TX_RX_CONTROL, ctrl & ~NVNET_TX_RX_CONTROL_IDLE, 4);
 
-    for (int i = 0; i < s->tx_ring_size; i++) {
+    for (int i = 0; i < get_tx_ring_size(s); i++) {
         struct RingDesc desc;
-        s->tx_ring_index %= s->tx_ring_size;
+        s->tx_ring_index %= get_tx_ring_size(s);
         dma_addr_t tx_ring_addr = nvnet_get_reg(s, NVNET_TX_RING_PHYS_ADDR, 4);
         tx_ring_addr += s->tx_ring_index * sizeof(desc);
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
@@ -563,7 +573,7 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
 
     NVNET_DPRINTF("------------------------------------------------\n");
 
-    for (int i = 0; i < s->tx_ring_size; i++) {
+    for (int i = 0; i < get_tx_ring_size(s); i++) {
         struct RingDesc desc;
         dma_addr_t tx_ring_addr = nvnet_get_reg(s, NVNET_TX_RING_PHYS_ADDR, 4);
         tx_ring_addr += i * sizeof(desc);
@@ -576,7 +586,7 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
 
     NVNET_DPRINTF("------------------------------------------------\n");
 
-    for (int i = 0; i < s->rx_ring_size; i++) {
+    for (int i = 0; i < get_rx_ring_size(s); i++) {
         struct RingDesc desc;
         dma_addr_t rx_ring_addr = nvnet_get_reg(s, NVNET_RX_RING_PHYS_ADDR, 4);
         rx_ring_addr += i * sizeof(desc);
@@ -600,11 +610,6 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     trace_nvnet_reg_write(addr, nvnet_get_reg_name(addr & ~3), size, val);
 
     switch (addr) {
-    case NVNET_RING_SIZE:
-        s->rx_ring_size = GET_MASK(val, NVNET_RING_SIZE_RX) + 1;
-        s->tx_ring_size = GET_MASK(val, NVNET_RING_SIZE_TX) + 1;
-        break;
-
     case NVNET_MDIO_ADDR:
         assert(size == 4);
         if (val & NVNET_MDIO_ADDR_WRITE) {
@@ -695,9 +700,7 @@ static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
     memset(s->regs, 0, sizeof(s->regs));
 
     s->rx_ring_index = 0;
-    s->rx_ring_size = 0;
     s->tx_ring_index = 0;
-    s->tx_ring_size = 0;
 
     memory_region_init_io(&s->mmio, OBJECT(dev), &nvnet_mmio_ops, s,
                           "nvnet-mmio", MMIO_SIZE);
@@ -731,9 +734,7 @@ static void nvnet_reset(void *opaque)
     memset(&s->regs, 0, sizeof(s->regs));
     memset(&s->phy_regs, 0, sizeof(s->phy_regs));
     s->tx_ring_index = 0;
-    s->tx_ring_size = 0;
     s->rx_ring_index = 0;
-    s->rx_ring_size = 0;
     memset(&s->tx_dma_buf, 0, sizeof(s->tx_dma_buf));
     s->tx_dma_buf_offset = 0;
     memset(&s->rx_dma_buf, 0, sizeof(s->rx_dma_buf));
@@ -754,9 +755,9 @@ static const VMStateDescription vmstate_nvnet = {
                           VMSTATE_UINT8_ARRAY(regs, NvNetState, MMIO_SIZE),
                           VMSTATE_UINT32_ARRAY(phy_regs, NvNetState, 6),
                           VMSTATE_UINT8(tx_ring_index, NvNetState),
-                          VMSTATE_UINT8(tx_ring_size, NvNetState),
+                          VMSTATE_UNUSED(1),
                           VMSTATE_UINT8(rx_ring_index, NvNetState),
-                          VMSTATE_UINT8(rx_ring_size, NvNetState),
+                          VMSTATE_UNUSED(1),
                           VMSTATE_END_OF_LIST() },
 };
 
