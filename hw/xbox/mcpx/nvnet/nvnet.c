@@ -65,8 +65,8 @@ typedef struct NvNetState {
     uint8_t regs[MMIO_SIZE];
     uint32_t phy_regs[6];
 
-    uint8_t tx_dma_buf[TX_ALLOC_BUFSIZE];
     uint32_t tx_dma_buf_offset;
+    uint8_t tx_dma_buf[TX_ALLOC_BUFSIZE];
     uint8_t rx_dma_buf[RX_ALLOC_BUFSIZE];
 
     /* Deprecated */
