@@ -234,26 +234,33 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
     rx_ring_addr += s->rx_ring_index * sizeof(desc);
     pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
 
+    uint32_t packet_buffer = le32_to_cpu(desc.packet_buffer);
+    uint16_t length = le16_to_cpu(desc.length);
+    uint16_t flags = le16_to_cpu(desc.flags);
+
     NVNET_DPRINTF("RX: Looking at ring descriptor %d (0x%" HWADDR_PRIx "): ",
                   s->rx_ring_index, rx_ring_addr);
-    NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
-    NVNET_DPRINTF("Length: 0x%x, ", desc.length);
-    NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
+    NVNET_DPRINTF("Buffer: 0x%x, ", packet_buffer);
+    NVNET_DPRINTF("Length: 0x%x, ", length);
+    NVNET_DPRINTF("Flags: 0x%x\n", flags);
 
-    if (desc.flags & NV_RX_AVAIL) {
-        assert((desc.length + 1) >= size); // FIXME
+    if (flags & NV_RX_AVAIL) {
+        assert((length + 1) >= size); // FIXME
 
         NVNET_DPRINTF("Transferring packet, size 0x%zx, to memory at 0x%x\n",
-                      size, desc.packet_buffer);
-        pci_dma_write(d, desc.packet_buffer, buf, size);
+                      size, packet_buffer);
+        pci_dma_write(d, packet_buffer, buf, size);
 
-        desc.length = size;
-        desc.flags = NV_RX_BIT4 | NV_RX_DESCRIPTORVALID;
+        length = size;
+        flags = NV_RX_BIT4 | NV_RX_DESCRIPTORVALID;
+
+        desc.length = cpu_to_le16(length);
+        desc.flags = cpu_to_le16(flags);
         pci_dma_write(d, rx_ring_addr, &desc, sizeof(desc));
 
         NVNET_DPRINTF("Updated ring descriptor: ");
-        NVNET_DPRINTF("Length: 0x%x, ", desc.length);
-        NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
+        NVNET_DPRINTF("Length: 0x%x, ", length);
+        NVNET_DPRINTF("Flags: 0x%x\n", flags);
 
         NVNET_DPRINTF("Triggering interrupt\n");
         uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
@@ -288,25 +295,29 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         tx_ring_addr += s->tx_ring_index * sizeof(desc);
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
 
+        uint32_t packet_buffer = le32_to_cpu(desc.packet_buffer);
+        uint16_t length = le16_to_cpu(desc.length);
+        uint16_t flags = le16_to_cpu(desc.flags);
+
         NVNET_DPRINTF("TX: Looking at ring desc %d (%" HWADDR_PRIx "): ",
                       s->tx_ring_index, tx_ring_addr);
-        NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
-        NVNET_DPRINTF("Length: 0x%x, ", desc.length);
-        NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
+        NVNET_DPRINTF("Buffer: 0x%x, ", packet_buffer);
+        NVNET_DPRINTF("Length: 0x%x, ", length);
+        NVNET_DPRINTF("Flags: 0x%x\n", flags);
 
-        if (!(desc.flags & NV_TX_VALID)) {
+        if (!(flags & NV_TX_VALID)) {
             break;
         }
 
         s->tx_ring_index += 1;
 
-        assert((s->tx_dma_buf_offset + desc.length + 1) <=
+        assert((s->tx_dma_buf_offset + length + 1) <=
                sizeof(s->tx_dma_buf));
-        pci_dma_read(d, desc.packet_buffer,
-                     &s->tx_dma_buf[s->tx_dma_buf_offset], desc.length + 1);
-        s->tx_dma_buf_offset += desc.length + 1;
+        pci_dma_read(d, packet_buffer, &s->tx_dma_buf[s->tx_dma_buf_offset],
+                     length + 1);
+        s->tx_dma_buf_offset += length + 1;
 
-        bool is_last_packet = desc.flags & NV_TX_LASTPACKET;
+        bool is_last_packet = flags & NV_TX_LASTPACKET;
         if (is_last_packet) {
             NVNET_DPRINTF("Sending packet...\n");
             nvnet_send_packet(s, s->tx_dma_buf, s->tx_dma_buf_offset);
@@ -314,10 +325,13 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
             packet_sent = true;
         }
 
-        desc.flags &= ~(NV_TX_VALID | NV_TX_RETRYERROR | NV_TX_DEFERRED |
-                        NV_TX_CARRIERLOST | NV_TX_LATECOLLISION |
-                        NV_TX_UNDERFLOW | NV_TX_ERROR);
-        desc.length = desc.length + 5;
+        flags &= ~(NV_TX_VALID | NV_TX_RETRYERROR | NV_TX_DEFERRED |
+                   NV_TX_CARRIERLOST | NV_TX_LATECOLLISION | NV_TX_UNDERFLOW |
+                   NV_TX_ERROR);
+        length += 5; // FIXME
+
+        desc.flags = cpu_to_le16(flags);
+        desc.length = cpu_to_le16(length);
         pci_dma_write(d, tx_ring_addr, &desc, sizeof(desc));
 
         if (is_last_packet) {
@@ -559,9 +573,9 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
         NVNET_DPRINTF("TX: Dumping ring desc %d (%" HWADDR_PRIx "): ", i,
                       tx_ring_addr);
-        NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
-        NVNET_DPRINTF("Length: 0x%x, ", desc.length);
-        NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
+        NVNET_DPRINTF("Buffer: 0x%x, ", le32_to_cpu(desc.packet_buffer));
+        NVNET_DPRINTF("Length: 0x%x, ", le16_to_cpu(desc.length));
+        NVNET_DPRINTF("Flags: 0x%x\n", le16_to_cpu(desc.flags));
     }
     NVNET_DPRINTF("------------------------------------------------\n");
 
@@ -571,9 +585,9 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
         pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
         NVNET_DPRINTF("RX: Dumping ring desc %d (%" HWADDR_PRIx "): ", i,
                       rx_ring_addr);
-        NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
-        NVNET_DPRINTF("Length: 0x%x, ", desc.length);
-        NVNET_DPRINTF("Flags: 0x%x\n", desc.flags);
+        NVNET_DPRINTF("Buffer: 0x%x, ", le32_to_cpu(desc.packet_buffer));
+        NVNET_DPRINTF("Length: 0x%x, ", le16_to_cpu(desc.length));
+        NVNET_DPRINTF("Flags: 0x%x\n", le16_to_cpu(desc.flags));
     }
     NVNET_DPRINTF("------------------------------------------------\n");
 #endif
