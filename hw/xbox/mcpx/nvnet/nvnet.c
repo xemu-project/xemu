@@ -359,6 +359,9 @@ static void store_ring_desc(NvNetState *s, dma_addr_t desc_addr,
 {
     PCIDevice *d = PCI_DEVICE(s);
 
+    trace_nvnet_desc_store(desc_addr, desc.buffer_addr, desc.length,
+                           desc.flags);
+
     struct RingDesc raw_desc = {
         .buffer_addr = cpu_to_le32(desc.buffer_addr),
         .length = cpu_to_le16(desc.length),
@@ -424,8 +427,6 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
         desc.flags = NV_RX_BIT4 | NV_RX_DESCRIPTORVALID;
         store_ring_desc(s, cur_desc_addr, desc);
 
-        NVNET_DPRINTF("Updated ring descriptor: Length: 0x%x, Flags: 0x%x\n",
-                      desc.length, desc.flags);
         set_intr_status(s, NVNET_IRQ_STATUS_RX);
 
         advance_next_rx_ring_desc_addr(s);
