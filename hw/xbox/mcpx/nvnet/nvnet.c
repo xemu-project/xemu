@@ -432,11 +432,11 @@ static void dma_packet_from_guest(NvNetState *s)
         }
     }
 
+    or_reg(s, NVNET_TX_RX_CONTROL, NVNET_TX_RX_CONTROL_IDLE);
+
     if (packet_sent) {
         set_intr_status(s, NVNET_IRQ_STATUS_TX);
     }
-
-    or_reg(s, NVNET_TX_RX_CONTROL, NVNET_TX_RX_CONTROL_IDLE);
 }
 
 static bool nvnet_can_receive(NetClientState *nc)
