@@ -375,11 +375,19 @@ static bool rx_buf_available(NvNetState *s)
 
 static bool nvnet_can_receive(NetClientState *nc)
 {
-    NVNET_DPRINTF("nvnet_can_receive called\n");
-
     NvNetState *s = qemu_get_nic_opaque(nc);
 
-    return rx_enabled(s) && dma_enabled(s) && link_up(s) && rx_buf_available(s);
+    bool rx_en = rx_enabled(s);
+    bool dma_en = dma_enabled(s);
+    bool link_en = link_up(s);
+    bool buf_avail = rx_buf_available(s);
+    bool can_rx = rx_en && dma_en && link_en && buf_avail;
+
+    if (!can_rx) {
+        trace_nvnet_cant_rx(rx_en, dma_en, link_en, buf_avail);
+    }
+
+    return can_rx;
 }
 
 static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
@@ -440,7 +448,16 @@ static bool tx_enabled(NvNetState *s)
 
 static bool can_transmit(NvNetState *s)
 {
-    return tx_enabled(s) && dma_enabled(s) && link_up(s);
+    bool tx_en = tx_enabled(s);
+    bool dma_en = dma_enabled(s);
+    bool link_en = link_up(s);
+    bool can_tx = tx_en && dma_en && link_en;
+
+    if (!can_tx) {
+        trace_nvnet_cant_tx(tx_en, dma_en, link_en);
+    }
+
+    return can_tx;
 }
 
 static uint32_t update_current_tx_ring_desc_addr(NvNetState *s)
