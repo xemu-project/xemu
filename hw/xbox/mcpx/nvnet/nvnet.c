@@ -287,18 +287,38 @@ static void reset_descriptor_ring_pointers(NvNetState *s)
     set_reg(s, NVNET_RX_RING_NEXT_DESC_PHYS_ADDR, base_desc_addr);
 }
 
+static bool link_up(NvNetState *s)
+{
+    return s->phy_regs[MII_BMSR] & MII_BMSR_LINK_ST;
+}
+
 static bool dma_enabled(NvNetState *s)
 {
     return (get_reg(s, NVNET_TX_RX_CONTROL) & NVNET_TX_RX_CONTROL_BIT2) == 0;
+}
+
+static bool rx_enabled(NvNetState *s)
+{
+    return get_reg(s, NVNET_RECEIVER_CONTROL) & NVNET_RECEIVER_CONTROL_START;
+}
+
+static bool nvnet_can_receive(NetClientState *nc)
+{
+    NVNET_DPRINTF("nvnet_can_receive called\n");
+
+    NvNetState *s = qemu_get_nic_opaque(nc);
+
+    return rx_enabled(s) && dma_enabled(s) && link_up(s);
 }
 
 static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
                                    size_t size)
 {
     PCIDevice *d = PCI_DEVICE(s);
+    NetClientState *nc = qemu_get_queue(s->nic);
     ssize_t rval;
 
-    if (!dma_enabled(s)) {
+    if (!nvnet_can_receive(nc)) {
         return -1;
     }
 
@@ -361,12 +381,23 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
     return rval;
 }
 
+static bool tx_enabled(NvNetState *s)
+{
+    return get_reg(s, NVNET_TRANSMITTER_CONTROL) &
+           NVNET_TRANSMITTER_CONTROL_START;
+}
+
+static bool can_transmit(NvNetState *s)
+{
+    return tx_enabled(s) && dma_enabled(s) && link_up(s);
+}
+
 static void dma_packet_from_guest(NvNetState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
     bool packet_sent = false;
 
-    if (!dma_enabled(s)) {
+    if (!can_transmit(s)) {
         return;
     }
 
@@ -437,18 +468,6 @@ static void dma_packet_from_guest(NvNetState *s)
     if (packet_sent) {
         set_intr_status(s, NVNET_IRQ_STATUS_TX);
     }
-}
-
-static bool nvnet_can_receive(NetClientState *nc)
-{
-    NVNET_DPRINTF("nvnet_can_receive called\n");
-
-    NvNetState *s = qemu_get_nic_opaque(nc);
-
-    bool link_up = s->phy_regs[MII_BMSR] & MII_BMSR_LINK_ST;
-    bool dma_en = dma_enabled(s);
-
-    return link_up && dma_en;
 }
 
 static bool is_packet_oversized(size_t size)
