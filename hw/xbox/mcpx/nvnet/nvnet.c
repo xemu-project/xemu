@@ -297,6 +297,15 @@ static bool dma_enabled(NvNetState *s)
     return (get_reg(s, NVNET_TX_RX_CONTROL) & NVNET_TX_RX_CONTROL_BIT2) == 0;
 }
 
+static void set_dma_idle(NvNetState *s, bool idle)
+{
+    if (idle) {
+        or_reg(s, NVNET_TX_RX_CONTROL, NVNET_TX_RX_CONTROL_IDLE);
+    } else {
+        and_reg(s, NVNET_TX_RX_CONTROL, ~NVNET_TX_RX_CONTROL_IDLE);
+    }
+}
+
 static bool rx_enabled(NvNetState *s)
 {
     return get_reg(s, NVNET_RECEIVER_CONTROL) & NVNET_RECEIVER_CONTROL_START;
@@ -361,7 +370,7 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
         return -1;
     }
 
-    and_reg(s, NVNET_TX_RX_CONTROL, ~NVNET_TX_RX_CONTROL_IDLE);
+    set_dma_idle(s, false);
 
     uint32_t base_desc_addr = get_reg(s, NVNET_RX_RING_PHYS_ADDR);
     uint32_t cur_desc_addr = update_current_rx_ring_desc_addr(s);
@@ -403,7 +412,7 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
         rval = -1;
     }
 
-    or_reg(s, NVNET_TX_RX_CONTROL, NVNET_TX_RX_CONTROL_IDLE);
+    set_dma_idle(s, true);
 
     return rval;
 }
@@ -457,7 +466,7 @@ static void dma_packet_from_guest(NvNetState *s)
         return;
     }
 
-    and_reg(s, NVNET_TX_RX_CONTROL, ~NVNET_TX_RX_CONTROL_IDLE);
+    set_dma_idle(s, false);
 
     uint32_t base_desc_addr = get_reg(s, NVNET_TX_RING_PHYS_ADDR);
 
@@ -508,7 +517,7 @@ static void dma_packet_from_guest(NvNetState *s)
         }
     }
 
-    or_reg(s, NVNET_TX_RX_CONTROL, NVNET_TX_RX_CONTROL_IDLE);
+    set_dma_idle(s, true);
 
     if (packet_sent) {
         set_intr_status(s, NVNET_IRQ_STATUS_TX);
