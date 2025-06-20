@@ -733,7 +733,7 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
         break;
 
     case NVNET_TX_RX_CONTROL:
-        if (val == NVNET_TX_RX_CONTROL_KICK) {
+        if (val & NVNET_TX_RX_CONTROL_KICK) {
             NVNET_DPRINTF("NVNET_TX_RX_CONTROL = NVNET_TX_RX_CONTROL_KICK!\n");
             dump_ring_descriptors(s);
             dma_packet_from_guest(s);
