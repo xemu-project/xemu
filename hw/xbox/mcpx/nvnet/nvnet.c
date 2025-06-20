@@ -221,6 +221,11 @@ static void and_reg(NvNetState *s, hwaddr addr, uint32_t val)
     set_reg(s, addr, get_reg(s, addr) & val);
 }
 
+static void set_reg_with_mask(NvNetState *s, hwaddr addr, uint32_t val, uint32_t w_mask)
+{
+    set_reg(s, addr, ((get_reg(s, addr) & (val | ~w_mask)) | (val & w_mask)));
+}
+
 static void update_irq(NvNetState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
@@ -719,12 +724,12 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
 {
     NvNetState *s = NVNET(opaque);
 
-    set_reg_ext(s, addr, val, size);
     trace_nvnet_reg_write(addr, get_reg_name(addr), size, val);
 
     switch (addr) {
     case NVNET_MDIO_ADDR:
         assert(size == 4);
+        set_reg_ext(s, addr, val, size);
         if (val & NVNET_MDIO_ADDR_WRITE) {
             mdio_write(s);
         } else {
@@ -733,6 +738,8 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
         break;
 
     case NVNET_TX_RX_CONTROL:
+        set_reg_with_mask(s, addr, val, ~NVNET_TX_RX_CONTROL_IDLE);
+
         if (val & NVNET_TX_RX_CONTROL_KICK) {
             NVNET_DPRINTF("NVNET_TX_RX_CONTROL = NVNET_TX_RX_CONTROL_KICK!\n");
             dump_ring_descriptors(s);
@@ -763,12 +770,16 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     case NVNET_IRQ_STATUS:
     case NVNET_MII_STATUS:
         set_reg_ext(s, addr, get_reg_ext(s, addr, size) & ~val, size);
-        /* fallthru */
+        update_irq(s);
+        break;
+
     case NVNET_IRQ_MASK:
+        set_reg_ext(s, addr, val, size);
         update_irq(s);
         break;
 
     default:
+        set_reg_ext(s, addr, val, size);
         break;
     }
 }
