@@ -774,8 +774,6 @@ static void nvnet_reset(void *opaque)
     memset(&s->rx_dma_buf, 0, sizeof(s->rx_dma_buf));
     s->tx_dma_buf_offset = 0;
 
-    reset_descriptor_ring_pointers(s);
-
     /* Deprecated */
     s->tx_ring_index = 0;
     s->rx_ring_index = 0;
