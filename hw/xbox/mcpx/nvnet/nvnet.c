@@ -287,11 +287,20 @@ static void reset_descriptor_ring_pointers(NvNetState *s)
     set_reg(s, NVNET_RX_RING_NEXT_DESC_PHYS_ADDR, base_desc_addr);
 }
 
+static bool dma_enabled(NvNetState *s)
+{
+    return (get_reg(s, NVNET_TX_RX_CONTROL) & NVNET_TX_RX_CONTROL_BIT2) == 0;
+}
+
 static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
                                    size_t size)
 {
     PCIDevice *d = PCI_DEVICE(s);
     ssize_t rval;
+
+    if (!dma_enabled(s)) {
+        return -1;
+    }
 
     and_reg(s, NVNET_TX_RX_CONTROL, ~NVNET_TX_RX_CONTROL_IDLE);
 
@@ -356,6 +365,10 @@ static ssize_t dma_packet_from_guest(NvNetState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
     bool packet_sent = false;
+
+    if (!dma_enabled(s)) {
+        return -1;
+    }
 
     and_reg(s, NVNET_TX_RX_CONTROL, ~NVNET_TX_RX_CONTROL_IDLE);
 
@@ -435,8 +448,9 @@ static bool nvnet_can_receive(NetClientState *nc)
     NvNetState *s = qemu_get_nic_opaque(nc);
 
     bool link_up = s->phy_regs[MII_BMSR] & MII_BMSR_LINK_ST;
+    bool dma_en = dma_enabled(s);
 
-    return link_up;
+    return link_up && dma_en;
 }
 
 static bool is_packet_oversized(size_t size)
@@ -744,11 +758,6 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
             NVNET_DPRINTF("NVNET_TX_RX_CONTROL = NVNET_TX_RX_CONTROL_KICK!\n");
             dump_ring_descriptors(s);
             dma_packet_from_guest(s);
-        }
-
-        if (val & NVNET_TX_RX_CONTROL_BIT2) {
-            set_reg(s, NVNET_TX_RX_CONTROL, NVNET_TX_RX_CONTROL_IDLE);
-            break;
         }
 
         if (val & NVNET_TX_RX_CONTROL_RESET) {
