@@ -426,7 +426,12 @@ static ssize_t dma_packet_from_guest(NvNetState *s)
 static bool nvnet_can_receive(NetClientState *nc)
 {
     NVNET_DPRINTF("nvnet_can_receive called\n");
-    return true;
+
+    NvNetState *s = qemu_get_nic_opaque(nc);
+
+    bool link_up = s->phy_regs[MII_BMSR] & MII_BMSR_LINK_ST;
+
+    return link_up;
 }
 
 static bool is_packet_oversized(size_t size)
