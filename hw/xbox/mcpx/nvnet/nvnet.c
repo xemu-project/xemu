@@ -798,32 +798,28 @@ static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
 static void dump_ring_descriptors(NvNetState *s)
 {
 #if DEBUG_NVNET
-    PCIDevice *d = PCI_DEVICE(s);
-
     NVNET_DPRINTF("------------------------------------------------\n");
 
     for (int i = 0; i < get_tx_ring_size(s); i++) {
-        struct RingDesc desc;
-        dma_addr_t tx_ring_addr = get_reg(s, NVNET_TX_RING_PHYS_ADDR);
-        tx_ring_addr += i * sizeof(desc);
-        pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
+        dma_addr_t desc_addr =
+            get_reg(s, NVNET_TX_RING_PHYS_ADDR) + i * sizeof(struct RingDesc);
+        struct RingDesc desc = load_ring_desc(s, desc_addr);
         NVNET_DPRINTF("TX desc %d (%" HWADDR_PRIx "): "
                       "Buffer: 0x%x, Length: 0x%x, Flags: 0x%x\n",
-                      i, tx_ring_addr, le32_to_cpu(desc.buffer_addr),
-                      le16_to_cpu(desc.length), le16_to_cpu(desc.flags));
+                      i, desc_addr, desc.buffer_addr, desc.length,
+                      desc.flags);
     }
 
     NVNET_DPRINTF("------------------------------------------------\n");
 
     for (int i = 0; i < get_rx_ring_size(s); i++) {
-        struct RingDesc desc;
-        dma_addr_t rx_ring_addr = get_reg(s, NVNET_RX_RING_PHYS_ADDR);
-        rx_ring_addr += i * sizeof(desc);
-        pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
+        dma_addr_t desc_addr =
+            get_reg(s, NVNET_RX_RING_PHYS_ADDR) + i * sizeof(struct RingDesc);
+        struct RingDesc desc = load_ring_desc(s, desc_addr);
         NVNET_DPRINTF("RX desc %d (%" HWADDR_PRIx "): "
                       "Buffer: 0x%x, Length: 0x%x, Flags: 0x%x\n",
-                      i, rx_ring_addr, le32_to_cpu(desc.buffer_addr),
-                      le16_to_cpu(desc.length), le16_to_cpu(desc.flags));
+                      i, desc_addr, desc.buffer_addr, desc.length,
+                      desc.flags);
     }
 
     NVNET_DPRINTF("------------------------------------------------\n");
