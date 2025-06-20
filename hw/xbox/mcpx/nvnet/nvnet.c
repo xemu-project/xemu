@@ -255,11 +255,11 @@ static void set_mii_intr_status(NvNetState *s, uint32_t status)
     // FIXME: MII status mask?
 }
 
-static void send_packet(NvNetState *s, const uint8_t *buf, int size)
+static void send_packet(NvNetState *s, const uint8_t *buf, size_t size)
 {
     NetClientState *nc = qemu_get_queue(s->nic);
 
-    NVNET_DPRINTF("nvnet: Sending packet!\n");
+    trace_nvnet_packet_tx(size);
     qemu_send_packet(nc, buf, size);
 }
 
