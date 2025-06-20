@@ -69,6 +69,8 @@ typedef struct NvNetState {
     uint8_t tx_dma_buf[TX_ALLOC_BUFSIZE];
     uint8_t rx_dma_buf[RX_ALLOC_BUFSIZE];
 
+    QEMUTimer *autoneg_timer;
+
     /* Deprecated */
     uint8_t tx_ring_index;
     uint8_t rx_ring_index;
@@ -501,23 +503,103 @@ static ssize_t nvnet_receive(NetClientState *nc, const uint8_t *buf,
     return nvnet_receive_iov(nc, &iov, 1);
 }
 
+static void nvnet_update_regs_on_link_down(NvNetState *s)
+{
+    s->phy_regs[MII_BMSR] &= ~MII_BMSR_LINK_ST;
+    s->phy_regs[MII_BMSR] &= ~MII_BMSR_AN_COMP;
+    s->phy_regs[MII_ANLPAR] &= ~MII_ANLPAR_ACK;
+
+    uint32_t adapter_ctrl = nvnet_get_reg(s, NVNET_ADAPTER_CONTROL, 4);
+    adapter_ctrl &= ~NVNET_ADAPTER_CONTROL_LINKUP;
+    nvnet_set_reg(s, NVNET_ADAPTER_CONTROL, adapter_ctrl, 4);
+}
+
 static void nvnet_link_down(NvNetState *s)
 {
     NVNET_DPRINTF("nvnet_link_down called\n");
+
+    nvnet_update_regs_on_link_down(s);
+
+    uint32_t mii_status = nvnet_get_reg(s, NVNET_MII_STATUS, 4);
+    mii_status |= NVNET_MII_STATUS_LINKCHANGE;
+    nvnet_set_reg(s, NVNET_MII_STATUS, mii_status, 4);
+
+    uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
+    irq_status |= NVNET_IRQ_STATUS_MIIEVENT;
+    nvnet_set_reg(s, NVNET_IRQ_STATUS, irq_status, 4);
+    // FIXME: MII status mask?
+
+    nvnet_update_irq(s);
+}
+
+static void nvent_update_regs_on_link_up(NvNetState *s)
+{
+    s->phy_regs[MII_BMSR] |= MII_BMSR_LINK_ST;
+
+    uint32_t adapter_ctrl = nvnet_get_reg(s, NVNET_ADAPTER_CONTROL, 4);
+    adapter_ctrl |= NVNET_ADAPTER_CONTROL_LINKUP;
+    nvnet_set_reg(s, NVNET_ADAPTER_CONTROL, adapter_ctrl, 4);
 }
 
 static void nvnet_link_up(NvNetState *s)
 {
     NVNET_DPRINTF("nvnet_link_up called\n");
+
+    nvent_update_regs_on_link_up(s);
+
+    uint32_t mii_status = nvnet_get_reg(s, NVNET_MII_STATUS, 4);
+    mii_status |= NVNET_MII_STATUS_LINKCHANGE;
+    nvnet_set_reg(s, NVNET_MII_STATUS, mii_status, 4);
+
+    uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
+    irq_status |= NVNET_IRQ_STATUS_MIIEVENT;
+    nvnet_set_reg(s, NVNET_IRQ_STATUS, irq_status, 4);
+    // FIXME: MII status mask?
+
+    nvnet_update_irq(s);
+}
+
+static void nvnet_restart_autoneg(NvNetState *s)
+{
+    timer_mod(s->autoneg_timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 500);
+}
+
+static void nvnet_autoneg_done(void *opaque)
+{
+    NvNetState *s = opaque;
+
+    s->phy_regs[MII_ANLPAR] |= MII_ANLPAR_ACK;
+    s->phy_regs[MII_BMSR] |= MII_BMSR_AN_COMP;
+
+    nvnet_link_up(s);
+}
+
+static void nvnet_autoneg_timer(void *opaque)
+{
+    NvNetState *s = opaque;
+
+    if (!qemu_get_queue(s->nic)->link_down) {
+        nvnet_autoneg_done(s);
+    }
+}
+
+static bool have_autoneg(NvNetState *s)
+{
+    return (s->phy_regs[MII_BMCR] & MII_BMCR_AUTOEN);
 }
 
 static void nvnet_set_link_status(NetClientState *nc)
 {
     NvNetState *s = qemu_get_nic_opaque(nc);
+
     if (nc->link_down) {
         nvnet_link_down(s);
     } else {
-        nvnet_link_up(s);
+        if (have_autoneg(s) && !(s->phy_regs[MII_BMSR] & MII_BMSR_AN_COMP)) {
+            nvnet_restart_autoneg(s);
+        } else {
+            nvnet_link_up(s);
+        }
     }
 }
 
@@ -534,22 +616,10 @@ static uint16_t nvnet_phy_reg_read(NvNetState *s, uint8_t reg)
 {
     uint16_t value;
 
-    switch (reg) {
-    case MII_BMSR:
-        value = MII_BMSR_AN_COMP | MII_BMSR_LINK_ST;
-        break;
-
-    case MII_ANAR:
-        /* Fall through... */
-
-    case MII_ANLPAR:
-        value = MII_ANLPAR_10 | MII_ANLPAR_10FD | MII_ANLPAR_TX |
-                MII_ANLPAR_TXFD | MII_ANLPAR_T4;
-        break;
-
-    default:
+    if (reg < ARRAY_SIZE(s->phy_regs)) {
+        value = s->phy_regs[reg];
+    } else {
         value = 0;
-        break;
     }
 
     trace_nvnet_phy_reg_read(PHY_ADDR, reg, nvnet_get_phy_reg_name(reg), value);
@@ -559,6 +629,10 @@ static uint16_t nvnet_phy_reg_read(NvNetState *s, uint8_t reg)
 static void nvnet_phy_reg_write(NvNetState *s, uint8_t reg, uint16_t value)
 {
     trace_nvnet_phy_reg_write(PHY_ADDR, reg, nvnet_get_phy_reg_name(reg), value);
+
+    if (reg < ARRAY_SIZE(s->phy_regs)) {
+        s->phy_regs[reg] = value;
+    }
 }
 
 static void nvnet_mdio_read(NvNetState *s)
@@ -701,6 +775,11 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
         nvnet_update_irq(s);
         break;
 
+    case NVNET_MII_STATUS:
+        nvnet_set_reg(s, addr, nvnet_get_reg(s, addr, size) & ~val, size);
+        nvnet_update_irq(s);
+        break;
+
     default:
         break;
     }
@@ -752,27 +831,65 @@ static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
         qemu_new_nic(&net_nvnet_info, &s->conf, object_get_typename(OBJECT(s)),
                      dev->id, &dev->mem_reentrancy_guard, s);
     assert(s->nic);
+
+    s->autoneg_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, nvnet_autoneg_timer, s);
 }
 
 static void nvnet_uninit(PCIDevice *dev)
 {
     NvNetState *s = NVNET(dev);
     qemu_del_nic(s->nic);
+    timer_free(s->autoneg_timer);
+}
+
+// clang-format off
+
+static const uint32_t phy_reg_init[] = {
+    [MII_BMCR] =
+        MII_BMCR_FD |
+        MII_BMCR_AUTOEN,
+    [MII_BMSR] =
+        MII_BMSR_AUTONEG |
+        MII_BMSR_AN_COMP |
+        MII_BMSR_LINK_ST,
+    [MII_ANAR] =
+        MII_ANLPAR_10 |
+        MII_ANLPAR_10FD |
+        MII_ANLPAR_TX |
+        MII_ANLPAR_TXFD |
+        MII_ANLPAR_T4,
+    [MII_ANLPAR] =
+        MII_ANLPAR_10 |
+        MII_ANLPAR_10FD |
+        MII_ANLPAR_TX |
+        MII_ANLPAR_TXFD |
+        MII_ANLPAR_T4,
+};
+
+// clang-format on
+
+static void reset_phy_regs(NvNetState *s)
+{
+    assert(sizeof(s->phy_regs) >= sizeof(phy_reg_init));
+    memset(s->phy_regs, 0, sizeof(s->phy_regs));
+    memcpy(s->phy_regs, phy_reg_init, sizeof(phy_reg_init));
 }
 
 static void nvnet_reset(void *opaque)
 {
     NvNetState *s = opaque;
 
-    if (qemu_get_queue(s->nic)->link_down) {
-        nvnet_link_down(s);
-    }
-
     memset(&s->regs, 0, sizeof(s->regs));
-    memset(&s->phy_regs, 0, sizeof(s->phy_regs));
+    reset_phy_regs(s);
     memset(&s->tx_dma_buf, 0, sizeof(s->tx_dma_buf));
     memset(&s->rx_dma_buf, 0, sizeof(s->rx_dma_buf));
     s->tx_dma_buf_offset = 0;
+
+    timer_del(s->autoneg_timer);
+
+    if (qemu_get_queue(s->nic)->link_down) {
+        nvnet_update_regs_on_link_down(s);
+    }
 
     /* Deprecated */
     s->tx_ring_index = 0;
@@ -788,8 +905,12 @@ static void nvnet_reset_hold(Object *obj, ResetType type)
 static int nvnet_post_load(void *opaque, int version_id)
 {
     NvNetState *s = NVNET(opaque);
+    NetClientState *nc = qemu_get_queue(s->nic);
 
     if (version_id < 2) {
+        /* PHY regs were stored but not used until version 2 */
+        reset_phy_regs(s);
+
         /* Migrate old snapshot tx descriptor index */
         uint32_t next_desc_addr =
             nvnet_get_reg(s, NVNET_TX_RING_PHYS_ADDR, 4) +
@@ -803,6 +924,16 @@ static int nvnet_post_load(void *opaque, int version_id)
             (s->rx_ring_index % get_rx_ring_size(s)) * sizeof(struct RingDesc);
         nvnet_set_reg(s, NVNET_RX_RING_NEXT_DESC_PHYS_ADDR, next_desc_addr, 4);
         s->rx_ring_index = 0;
+    }
+
+    /* nc.link_down can't be migrated, so infer link_down according
+     * to link status bit in PHY regs.
+     * Alternatively, restart link negotiation if it was in progress. */
+    nc->link_down = (s->phy_regs[MII_BMSR] & MII_BMSR_LINK_ST) == 0;
+
+    if (have_autoneg(s) && !(s->phy_regs[MII_BMSR] & MII_BMSR_AN_COMP)) {
+        nc->link_down = false;
+        nvnet_restart_autoneg(s);
     }
 
     return 0;
