@@ -598,7 +598,7 @@ static void nvnet_set_link_status(NetClientState *nc)
     }
 }
 
-static NetClientInfo net_nvnet_info = {
+static NetClientInfo nvnet_client_info = {
     .type = NET_CLIENT_DRIVER_NIC,
     .size = sizeof(NICState),
     .can_receive = nvnet_can_receive,
@@ -816,9 +816,9 @@ static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
     pci_register_bar(d, 1, PCI_BASE_ADDRESS_SPACE_IO, &s->io);
 
     qemu_macaddr_default_if_unset(&s->conf.macaddr);
-    s->nic =
-        qemu_new_nic(&net_nvnet_info, &s->conf, object_get_typename(OBJECT(s)),
-                     dev->id, &dev->mem_reentrancy_guard, s);
+    s->nic = qemu_new_nic(&nvnet_client_info, &s->conf,
+                          object_get_typename(OBJECT(s)), dev->id,
+                          &dev->mem_reentrancy_guard, s);
     assert(s->nic);
 
     s->autoneg_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, autoneg_timer, s);
