@@ -516,8 +516,6 @@ static void nvnet_update_regs_on_link_down(NvNetState *s)
 
 static void nvnet_link_down(NvNetState *s)
 {
-    NVNET_DPRINTF("nvnet_link_down called\n");
-
     nvnet_update_regs_on_link_down(s);
 
     uint32_t mii_status = nvnet_get_reg(s, NVNET_MII_STATUS, 4);
@@ -543,8 +541,6 @@ static void nvent_update_regs_on_link_up(NvNetState *s)
 
 static void nvnet_link_up(NvNetState *s)
 {
-    NVNET_DPRINTF("nvnet_link_up called\n");
-
     nvent_update_regs_on_link_up(s);
 
     uint32_t mii_status = nvnet_get_reg(s, NVNET_MII_STATUS, 4);
@@ -561,12 +557,15 @@ static void nvnet_link_up(NvNetState *s)
 
 static void nvnet_restart_autoneg(NvNetState *s)
 {
+    trace_nvnet_link_negotiation_start();
     timer_mod(s->autoneg_timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 500);
 }
 
 static void nvnet_autoneg_done(void *opaque)
 {
     NvNetState *s = opaque;
+
+    trace_nvnet_link_negotiation_done();
 
     s->phy_regs[MII_ANLPAR] |= MII_ANLPAR_ACK;
     s->phy_regs[MII_BMSR] |= MII_BMSR_AN_COMP;
@@ -591,6 +590,8 @@ static bool have_autoneg(NvNetState *s)
 static void nvnet_set_link_status(NetClientState *nc)
 {
     NvNetState *s = qemu_get_nic_opaque(nc);
+
+    trace_nvnet_link_status_changed(nc->link_down ? false : true);
 
     if (nc->link_down) {
         nvnet_link_down(s);
