@@ -589,7 +589,6 @@ static ssize_t nvnet_receive_iov(NetClientState *nc, const struct iovec *iov,
     NVNET_DPRINTF("nvnet: Packet received!\n");
 
     if (is_packet_oversized(size)) {
-        NVNET_DPRINTF("%s packet too large!\n", __func__);
         trace_nvnet_rx_oversized(size);
         return size;
     }
