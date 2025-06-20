@@ -642,9 +642,8 @@ static void mdio_read(NvNetState *s)
         mdio_data = phy_reg_read(s, phy_reg);
     }
 
-    mdio_addr &= ~NVNET_MDIO_ADDR_INUSE;
-    set_reg(s, NVNET_MDIO_ADDR, mdio_addr);
     set_reg(s, NVNET_MDIO_DATA, mdio_data);
+    and_reg(s, NVNET_MDIO_ADDR, ~NVNET_MDIO_ADDR_INUSE);
 }
 
 static void mdio_write(NvNetState *s)
