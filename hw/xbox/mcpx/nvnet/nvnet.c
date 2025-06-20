@@ -230,11 +230,12 @@ static void update_irq(NvNetState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
 
-    uint32_t irq_mask = get_reg(s, NVNET_IRQ_MASK);
     uint32_t irq_status = get_reg(s, NVNET_IRQ_STATUS);
+    uint32_t irq_mask = get_reg(s, NVNET_IRQ_MASK);
+
+    trace_nvnet_update_irq(irq_status, irq_mask);
 
     if (irq_mask & irq_status) {
-        NVNET_DPRINTF("Asserting IRQ\n");
         pci_irq_assert(d);
     } else {
         pci_irq_deassert(d);
