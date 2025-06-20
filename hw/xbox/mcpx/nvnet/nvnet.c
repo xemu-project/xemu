@@ -614,8 +614,6 @@ static ssize_t nvnet_receive_iov(NetClientState *nc, const struct iovec *iov,
     NvNetState *s = qemu_get_nic_opaque(nc);
     size_t size = iov_size(iov, iovcnt);
 
-    NVNET_DPRINTF("nvnet: Packet received!\n");
-
     if (is_packet_oversized(size)) {
         trace_nvnet_rx_oversized(size);
         return size;
@@ -635,8 +633,6 @@ static ssize_t nvnet_receive(NetClientState *nc, const uint8_t *buf,
                              size_t size)
 {
     const struct iovec iov = { .iov_base = (uint8_t *)buf, .iov_len = size };
-
-    NVNET_DPRINTF("nvnet_receive called\n");
     return nvnet_receive_iov(nc, &iov, 1);
 }
 
@@ -849,7 +845,6 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
         set_reg_with_mask(s, addr, val, ~NVNET_TX_RX_CONTROL_IDLE);
 
         if (val & NVNET_TX_RX_CONTROL_KICK) {
-            NVNET_DPRINTF("NVNET_TX_RX_CONTROL = NVNET_TX_RX_CONTROL_KICK!\n");
             dump_ring_descriptors(s);
             dma_packet_from_guest(s);
         }
