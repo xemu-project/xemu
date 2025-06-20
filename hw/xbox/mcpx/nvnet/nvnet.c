@@ -868,6 +868,8 @@ static void nvnet_reset(void *opaque)
     NvNetState *s = opaque;
 
     memset(&s->regs, 0, sizeof(s->regs));
+    or_reg(s, NVNET_TX_RX_CONTROL, NVNET_TX_RX_CONTROL_IDLE);
+
     reset_phy_regs(s);
     memset(&s->tx_dma_buf, 0, sizeof(s->tx_dma_buf));
     memset(&s->rx_dma_buf, 0, sizeof(s->rx_dma_buf));
