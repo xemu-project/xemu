@@ -167,6 +167,10 @@ static void remove_netdev(const char *name)
 static void clear_slirp_port_forwards(void)
 {
     void *s = slirp_get_state_from_netdev(id);
+    if (!s) {
+        return;
+    }
+
     struct in_addr host_addr = { .s_addr = INADDR_ANY };
     for (int i = 0; i < g_config.net.nat.forward_ports_count; i++) {
         slirp_remove_hostfwd(s,
