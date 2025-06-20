@@ -302,13 +302,52 @@ static bool rx_enabled(NvNetState *s)
     return get_reg(s, NVNET_RECEIVER_CONTROL) & NVNET_RECEIVER_CONTROL_START;
 }
 
+static uint32_t update_current_rx_ring_desc_addr(NvNetState *s)
+{
+    uint32_t base_desc_addr = get_reg(s, NVNET_RX_RING_PHYS_ADDR);
+    uint32_t max_desc_addr =
+        base_desc_addr + get_rx_ring_size(s) * sizeof(struct RingDesc);
+    uint32_t cur_desc_addr = get_reg(s, NVNET_RX_RING_NEXT_DESC_PHYS_ADDR);
+    if ((cur_desc_addr < base_desc_addr) ||
+        ((cur_desc_addr + sizeof(struct RingDesc)) > max_desc_addr)) {
+        cur_desc_addr = base_desc_addr;
+    }
+    set_reg(s, NVNET_RX_RING_CURRENT_DESC_PHYS_ADDR, cur_desc_addr);
+    return cur_desc_addr;
+}
+
+static void advance_next_rx_ring_desc_addr(NvNetState *s)
+{
+    uint32_t base_desc_addr = get_reg(s, NVNET_RX_RING_PHYS_ADDR);
+    uint32_t max_desc_addr =
+        base_desc_addr + get_rx_ring_size(s) * sizeof(struct RingDesc);
+    uint32_t cur_desc_addr = get_reg(s, NVNET_RX_RING_CURRENT_DESC_PHYS_ADDR);
+
+    uint32_t next_desc_addr = cur_desc_addr + sizeof(struct RingDesc);
+    if (next_desc_addr >= max_desc_addr) {
+        next_desc_addr = base_desc_addr;
+    }
+    set_reg(s, NVNET_RX_RING_NEXT_DESC_PHYS_ADDR, next_desc_addr);
+}
+
+static bool rx_buf_available(NvNetState *s)
+{
+    PCIDevice *d = PCI_DEVICE(s);
+    struct RingDesc desc;
+
+    uint32_t cur_desc_addr = update_current_rx_ring_desc_addr(s);
+    pci_dma_read(d, cur_desc_addr, &desc, sizeof(desc));
+    uint16_t flags = le16_to_cpu(desc.flags);
+    return flags & NV_RX_AVAIL;
+}
+
 static bool nvnet_can_receive(NetClientState *nc)
 {
     NVNET_DPRINTF("nvnet_can_receive called\n");
 
     NvNetState *s = qemu_get_nic_opaque(nc);
 
-    return rx_enabled(s) && dma_enabled(s) && link_up(s);
+    return rx_enabled(s) && dma_enabled(s) && link_up(s) && rx_buf_available(s);
 }
 
 static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
@@ -325,18 +364,10 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
     and_reg(s, NVNET_TX_RX_CONTROL, ~NVNET_TX_RX_CONTROL_IDLE);
 
     uint32_t base_desc_addr = get_reg(s, NVNET_RX_RING_PHYS_ADDR);
-    uint32_t max_desc_addr =
-        base_desc_addr + get_rx_ring_size(s) * sizeof(struct RingDesc);
-    uint32_t cur_desc_addr = get_reg(s, NVNET_RX_RING_NEXT_DESC_PHYS_ADDR);
-    if ((cur_desc_addr < base_desc_addr) ||
-        ((cur_desc_addr + sizeof(struct RingDesc)) > max_desc_addr)) {
-        cur_desc_addr = base_desc_addr;
-    }
-    set_reg(s, NVNET_RX_RING_CURRENT_DESC_PHYS_ADDR, cur_desc_addr);
-
+    uint32_t cur_desc_addr = update_current_rx_ring_desc_addr(s);
+    
     struct RingDesc desc;
     pci_dma_read(d, cur_desc_addr, &desc, sizeof(desc));
-
     uint32_t buffer_addr = le32_to_cpu(desc.buffer_addr);
     uint16_t length = le16_to_cpu(desc.length);
     uint16_t flags = le16_to_cpu(desc.flags);
@@ -364,11 +395,7 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
                       length, flags);
         set_intr_status(s, NVNET_IRQ_STATUS_RX);
 
-        uint32_t next_desc_addr = cur_desc_addr + sizeof(struct RingDesc);
-        if (next_desc_addr >= max_desc_addr) {
-            next_desc_addr = base_desc_addr;
-        }
-        set_reg(s, NVNET_RX_RING_NEXT_DESC_PHYS_ADDR, next_desc_addr);
+        advance_next_rx_ring_desc_addr(s);
 
         rval = size;
     } else {
