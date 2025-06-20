@@ -23,6 +23,7 @@
 #include "xemu-settings.h"
 
 #include "qemu/osdep.h"
+#include "qapi/qapi-commands-net.h"
 #include "qemu/sockets.h"
 #include "hw/qdev-core.h"
 #include "hw/qdev-properties.h"
@@ -138,6 +139,7 @@ void xemu_net_enable(void)
         xemu_net_disable();
     }
 
+    qmp_set_link("nvnet.0", true, NULL);
     g_config.net.enable = true;
 }
 
@@ -179,6 +181,8 @@ void xemu_net_disable(void)
 
     remove_netdev(id);
     remove_netdev(id_hubport);
+
+    qmp_set_link("nvnet.0", false, NULL);
     g_config.net.enable = false;
 }
 
