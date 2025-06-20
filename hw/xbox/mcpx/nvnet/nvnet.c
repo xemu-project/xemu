@@ -929,7 +929,6 @@ static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
     s->nic = qemu_new_nic(&nvnet_client_info, &s->conf,
                           object_get_typename(OBJECT(s)), dev->id,
                           &dev->mem_reentrancy_guard, s);
-    assert(s->nic);
 
     s->autoneg_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, autoneg_timer, s);
 }
