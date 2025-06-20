@@ -831,6 +831,7 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     NvNetState *s = NVNET(opaque);
 
     trace_nvnet_reg_write(addr, get_reg_name(addr), size, val);
+    assert((addr & 3) == 0 && "Unaligned MMIO write");
 
     switch (addr) {
     case NVNET_MDIO_ADDR:
