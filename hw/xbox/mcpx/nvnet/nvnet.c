@@ -218,6 +218,23 @@ static void nvnet_update_irq(NvNetState *s)
     }
 }
 
+static void nvnet_set_intr_status(NvNetState *s, uint32_t status)
+{
+    uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
+    nvnet_set_reg(s, NVNET_IRQ_STATUS, irq_status | status, 4);
+
+    nvnet_update_irq(s);
+}
+
+static void nvnet_set_mii_intr_status(NvNetState *s, uint32_t status)
+{
+    uint32_t mii_status = nvnet_get_reg(s, NVNET_MII_STATUS, 4);
+    nvnet_set_reg(s, NVNET_MII_STATUS, mii_status | status, 4);
+
+    nvnet_set_intr_status(s, NVNET_IRQ_STATUS_MIIEVENT);
+    // FIXME: MII status mask?
+}
+
 static void nvnet_send_packet(NvNetState *s, const uint8_t *buf, int size)
 {
     NetClientState *nc = qemu_get_queue(s->nic);
@@ -299,11 +316,7 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
 
         NVNET_DPRINTF("Updated ring descriptor: Length: 0x%x, Flags: 0x%x\n",
                       length, flags);
-
-        NVNET_DPRINTF("Triggering interrupt\n");
-        uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
-        nvnet_set_reg(s, NVNET_IRQ_STATUS, irq_status | NVNET_IRQ_STATUS_RX, 4);
-        nvnet_update_irq(s);
+        nvnet_set_intr_status(s, NVNET_IRQ_STATUS_RX);
 
         uint32_t next_desc_addr = cur_desc_addr + sizeof(struct RingDesc);
         if (next_desc_addr >= max_desc_addr) {
@@ -395,9 +408,7 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
     }
 
     if (packet_sent) {
-        uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
-        nvnet_set_reg(s, NVNET_IRQ_STATUS, irq_status | NVNET_IRQ_STATUS_TX, 4);
-        nvnet_update_irq(s);
+        nvnet_set_intr_status(s, NVNET_IRQ_STATUS_TX);
     }
 
     ctrl = nvnet_get_reg(s, NVNET_TX_RX_CONTROL, 4);
@@ -517,17 +528,7 @@ static void nvnet_update_regs_on_link_down(NvNetState *s)
 static void nvnet_link_down(NvNetState *s)
 {
     nvnet_update_regs_on_link_down(s);
-
-    uint32_t mii_status = nvnet_get_reg(s, NVNET_MII_STATUS, 4);
-    mii_status |= NVNET_MII_STATUS_LINKCHANGE;
-    nvnet_set_reg(s, NVNET_MII_STATUS, mii_status, 4);
-
-    uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
-    irq_status |= NVNET_IRQ_STATUS_MIIEVENT;
-    nvnet_set_reg(s, NVNET_IRQ_STATUS, irq_status, 4);
-    // FIXME: MII status mask?
-
-    nvnet_update_irq(s);
+    nvnet_set_mii_intr_status(s, NVNET_MII_STATUS_LINKCHANGE);
 }
 
 static void nvent_update_regs_on_link_up(NvNetState *s)
@@ -542,17 +543,7 @@ static void nvent_update_regs_on_link_up(NvNetState *s)
 static void nvnet_link_up(NvNetState *s)
 {
     nvent_update_regs_on_link_up(s);
-
-    uint32_t mii_status = nvnet_get_reg(s, NVNET_MII_STATUS, 4);
-    mii_status |= NVNET_MII_STATUS_LINKCHANGE;
-    nvnet_set_reg(s, NVNET_MII_STATUS, mii_status, 4);
-
-    uint32_t irq_status = nvnet_get_reg(s, NVNET_IRQ_STATUS, 4);
-    irq_status |= NVNET_IRQ_STATUS_MIIEVENT;
-    nvnet_set_reg(s, NVNET_IRQ_STATUS, irq_status, 4);
-    // FIXME: MII status mask?
-
-    nvnet_update_irq(s);
+    nvnet_set_mii_intr_status(s, NVNET_MII_STATUS_LINKCHANGE);
 }
 
 static void nvnet_restart_autoneg(NvNetState *s)
