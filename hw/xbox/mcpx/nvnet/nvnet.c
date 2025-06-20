@@ -361,13 +361,13 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
     return rval;
 }
 
-static ssize_t dma_packet_from_guest(NvNetState *s)
+static void dma_packet_from_guest(NvNetState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
     bool packet_sent = false;
 
     if (!dma_enabled(s)) {
-        return -1;
+        return;
     }
 
     and_reg(s, NVNET_TX_RX_CONTROL, ~NVNET_TX_RX_CONTROL_IDLE);
@@ -437,8 +437,6 @@ static ssize_t dma_packet_from_guest(NvNetState *s)
     }
 
     or_reg(s, NVNET_TX_RX_CONTROL, NVNET_TX_RX_CONTROL_IDLE);
-
-    return 0;
 }
 
 static bool nvnet_can_receive(NetClientState *nc)
