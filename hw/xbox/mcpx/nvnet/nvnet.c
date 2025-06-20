@@ -419,8 +419,7 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
     if (desc.flags & NV_RX_AVAIL) {
         assert((desc.length + 1) >= size); // FIXME
 
-        NVNET_DPRINTF("Transferring packet, size 0x%zx, to memory at 0x%x\n",
-                      size, desc.buffer_addr);
+        trace_nvnet_rx_dma(desc.buffer_addr, size);
         pci_dma_write(d, desc.buffer_addr, buf, size);
 
         desc.length = size;
@@ -520,6 +519,8 @@ static void dma_packet_from_guest(NvNetState *s)
         }
 
         assert((s->tx_dma_buf_offset + length) <= sizeof(s->tx_dma_buf));
+
+        trace_nvnet_tx_dma(desc.buffer_addr, length);
         pci_dma_read(d, desc.buffer_addr, &s->tx_dma_buf[s->tx_dma_buf_offset],
                      length);
         s->tx_dma_buf_offset += length;

@@ -21,3 +21,5 @@ nvnet_cant_rx(bool rx_en, bool dma_en, bool link_up, bool buf_avail) "Cant rx: r
 nvnet_cant_tx(bool tx_en, bool dma_en, bool link_up) "Cant tx: tx_en:%d dma_en:%d link_up:%d"
 nvnet_update_irq(uint32_t status, uint32_t mask) "IRQ: status:%08x mask:%08x"
 nvnet_desc_store(uint32_t desc_addr, uint32_t buf_addr, uint16_t length, uint16_t flags) "Updated descriptor addr %08x buf %08x length %04x flags %04x"
+nvnet_rx_dma(uint32_t addr, size_t size) "rx dma addr 0x%08x size 0x%zx"
+nvnet_tx_dma(uint32_t addr, size_t size) "tx dma addr 0x%08x size 0x%zx"
