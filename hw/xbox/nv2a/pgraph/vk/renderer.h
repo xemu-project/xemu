@@ -544,6 +544,9 @@ void pgraph_vk_bind_textures(NV2AState *d);
 void pgraph_vk_mark_textures_possibly_dirty(NV2AState *d, hwaddr addr,
                                             hwaddr size);
 void pgraph_vk_trim_texture_cache(PGRAPHState *pg);
+void pgraph_vk_set_anisotropic_filter_level(NV2AState *d, unsigned int level_po2);
+unsigned int pgraph_vk_get_anisotropic_filter_level(NV2AState *d);
+void pgraph_vk_reload_anisotropic_filter_level(PGRAPHState *pg);
 
 // shaders.c
 void pgraph_vk_init_shaders(PGRAPHState *pg);
