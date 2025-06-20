@@ -35,7 +35,7 @@
 #define IOPORT_SIZE 0x8
 #define MMIO_SIZE 0x400
 #define PHY_ADDR 1
-#define AUTONEG_DURATION_MS 500
+#define AUTONEG_DURATION_MS 250
 
 #define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
 
