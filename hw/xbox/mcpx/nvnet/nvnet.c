@@ -35,6 +35,7 @@
 #define IOPORT_SIZE 0x8
 #define MMIO_SIZE 0x400
 #define PHY_ADDR 1
+#define AUTONEG_DURATION_MS 500
 
 #define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
 
@@ -665,7 +666,8 @@ static void set_link_up(NvNetState *s)
 static void restart_autoneg(NvNetState *s)
 {
     trace_nvnet_link_negotiation_start();
-    timer_mod(s->autoneg_timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 500);
+    timer_mod(s->autoneg_timer,
+              qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + AUTONEG_DURATION_MS);
 }
 
 static void autoneg_done(void *opaque)
