@@ -2046,12 +2046,6 @@ static void qemu_create_late_backends(void)
 
     net_init_clients();
 
-#ifdef XBOX
-    if (g_config.net.enable) {
-        xemu_net_enable();
-    }
-#endif
-
     object_option_foreach_add(object_create_late);
 
     /*
@@ -2776,6 +2770,15 @@ void qmp_x_exit_preconfig(Error **errp)
 
     qemu_init_board();
     qemu_create_cli_devices();
+
+#ifdef XBOX
+    if (g_config.net.enable) {
+        xemu_net_enable();
+    } else {
+        xemu_net_disable();
+    }
+#endif
+
     if (!qemu_machine_creation_done(errp)) {
         return;
     }
