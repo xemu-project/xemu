@@ -778,14 +778,7 @@ static void mdio_write(NvNetState *s)
 static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NvNetState *s = NVNET(opaque);
-    uint64_t retval;
-
-    switch (addr) {
-    default:
-        retval = get_reg_ext(s, addr, size);
-        break;
-    }
-
+    uint32_t retval = get_reg_ext(s, addr, size);
     trace_nvnet_reg_read(addr, get_reg_name(addr), size, retval);
     return retval;
 }
