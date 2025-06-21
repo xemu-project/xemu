@@ -3554,7 +3554,7 @@ endif
 
 tomlplusplus = dependency('tomlplusplus', fallback: ['tomlplusplus', 'tomlplusplus_dep'], default_options: ['default_library=static'])
 
-xxhash = dependency('libxxhash', fallback: ['xxhash', 'xxhash_dep'], default_options: ['default_library=static'])
+xxhash = dependency('libxxhash', static: true, fallback: ['xxhash', 'xxhash_dep'], default_options: ['default_library=static'])
 
 #####################
 # Generated sources #

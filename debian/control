@@ -22,6 +22,7 @@ Build-Depends: debhelper (>= 11),
  libslirp-dev,
  libvulkan-dev,
  libcurl4-gnutls-dev,
+ libxxhash-dev,
 Standards-Version: 3.9.8
 Homepage: https://xemu.app
 XS-Debian-Vcs-Browser: https://github.com/mborgerson/xemu
