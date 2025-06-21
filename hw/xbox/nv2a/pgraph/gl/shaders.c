@@ -133,6 +133,7 @@ static void update_shader_constant_locations(ShaderBinding *binding)
         }
     }
     binding->alpha_ref_loc = glGetUniformLocation(binding->gl_program, "alphaRef");
+
     for (int i = 1; i < NV2A_MAX_TEXTURES; i++) {
         snprintf(tmp, sizeof(tmp), "bumpMat%d", i);
         binding->bump_mat_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
@@ -202,6 +203,16 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     } else {
         binding->material_alpha_loc = -1;
         binding->specular_power_loc = -1;
+    }
+
+    for (int i = 0; i < 4; ++i) {
+        snprintf(tmp, sizeof(tmp), "colorKey[%d]", i);
+        binding->color_key_loc[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
+
+        snprintf(tmp, sizeof(tmp), "colorKeyMask[%d]", i);
+        binding->color_key_mask_loc[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
     }
 }
 
@@ -696,6 +707,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
                                     bool binding_changed)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
+    ShaderState *state = &binding->state;
     int i, j;
 
     /* update combiner constants */
@@ -724,7 +736,6 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
                                    NV_PGRAPH_CONTROL_0_ALPHAREF);
         glUniform1i(binding->alpha_ref_loc, alpha_ref);
     }
-
 
     /* For each texture stage */
     for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
@@ -765,6 +776,15 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
             assert(r->texture_binding[i] != NULL);
             glUniform1f(loc, (float)r->texture_binding[i]->scale);
         }
+
+        if (binding->color_key_loc[i] != -1) {
+            glUniform1ui(binding->color_key_loc[i],
+                         pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR0 + i * 4));
+        }
+        if (binding->color_key_mask_loc[i] != -1) {
+            glUniform1ui(binding->color_key_mask_loc[i],
+                         state->psh.colorkey_mask[i]);
+        }
     }
 
     if (binding->fog_color_loc != -1) {
@@ -794,7 +814,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         assert(0);
     }
 
-    if (binding->state.fixed_function) {
+    if (state->fixed_function) {
         /* update lighting constants */
         struct {
             uint32_t* v;
@@ -990,7 +1010,8 @@ static bool test_shaders_dirty(PGRAPHState *pg)
         CF(pg->primitive_mode, primitive_mode) \
         CF(pg->surface_scale_factor, surface_scale_factor) \
         CF(pg->compressed_attrs, compressed_attrs) \
-        CFA(pg->texture_matrix_enable, texture_matrix_enable)
+        CFA(pg->texture_matrix_enable, texture_matrix_enable) \
+        CR_4(NV_PGRAPH_COLORKEYCOLOR0)
 
     #define CR_x(reg, x) CR_x__define(reg, x)
     #define CF_x(type, src, name, x) CF_x__define(type, src, name, x)

@@ -24,6 +24,23 @@
 #include "pgraph.h"
 #include "shaders.h"
 
+// TODO: https://github.com/xemu-project/xemu/issues/2260
+//   Investigate how color keying is handled for components with no alpha or
+//   only alpha.
+static uint32_t get_colorkey_mask(unsigned int color_format)
+{
+    switch (color_format) {
+    case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_X1R5G5B5:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_X8R8G8B8:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X1R5G5B5:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X8R8G8B8:
+        return 0x00FFFFFF;
+
+    default:
+        return 0xFFFFFFFF;
+    }
+}
+
 ShaderState pgraph_get_shader_state(PGRAPHState *pg)
 {
     bool vertex_program = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
@@ -219,6 +236,7 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
         }
 
         state.psh.alphakill[i] = ctl_0 & NV_PGRAPH_TEXCTL0_0_ALPHAKILLEN;
+        state.psh.colorkey_mode[i] = ctl_0 & NV_PGRAPH_TEXCTL0_0_COLORKEYMODE;
 
         uint32_t tex_fmt = pgraph_reg_r(pg, NV_PGRAPH_TEXFMT0 + i * 4);
         state.psh.dim_tex[i] = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_DIMENSIONALITY);
@@ -228,6 +246,7 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
         state.psh.rect_tex[i] = f.linear;
         state.psh.tex_x8y24[i] = color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FIXED ||
                                 color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FLOAT;
+        state.psh.colorkey_mask[i] = get_colorkey_mask(color_format);
 
         uint32_t border_source =
             GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BORDER_SOURCE);
