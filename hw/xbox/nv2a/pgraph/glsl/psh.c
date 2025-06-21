@@ -752,8 +752,10 @@ static MString* psh_convert(struct PixelShader *ps)
                                   "%svec4  fogColor;\n"
                                   "%sivec4 clipRegion[8];\n"
                                   "%svec4  clipRange;\n"
-                                  "%sfloat depthOffset;\n",
-                                  u, u, u, u, u);
+                                  "%sfloat depthOffset;\n"
+                                  "%sfloat depthFactor;\n"
+                                  "%sivec2 surfaceScale;\n",
+                                  u, u, u, u, u, u, u);
     for (int i = 0; i < 4; i++) {
         mstring_append_fmt(preflight, "%smat2  bumpMat%d;\n"
                                       "%sfloat bumpScale%d;\n"
@@ -831,6 +833,23 @@ static MString* psh_convert(struct PixelShader *ps)
         "vec3 dotmap_hilo_hemisphere(vec4 col) {\n"
         "    return col.rgb;\n" // FIXME
         "}\n"
+        // Kahan's algorithm for computing determinant using FMA for higher
+        // precision. See e.g.:
+        // Muller et al, "Handbook of Floating-Point Arithmetic", 2nd ed.
+        // or
+        // Claude-Pierre Jeannerod, Nicolas Louvet, and Jean-Michel Muller,
+        // Further analysis of Kahan's algorithm for the accurate
+        // computation of 2x2 determinants,
+        // Mathematics of Computation 82(284), October 2013.
+        "float kahan_det(vec2 a, vec2 b) {\n"
+        "  precise float cd = a.y*b.x;\n"
+        "  precise float err = fma(-a.y, b.x, cd);\n"
+        "  precise float res = fma(a.x, b.y, -cd) + err;\n"
+        "  return res;\n"
+        "}\n"
+        "float area(vec2 a, vec2 b, vec2 c) {\n"
+        "  return kahan_det(b - a, c - a);\n"
+        "}\n"
         "const float[9] gaussian3x3 = float[9](\n"
         "    1.0/16.0, 2.0/16.0, 1.0/16.0,\n"
         "    2.0/16.0, 4.0/16.0, 2.0/16.0,\n"
@@ -868,46 +887,69 @@ static MString* psh_convert(struct PixelShader *ps)
                              "}\n");
     }
 
+    if (ps->state.z_perspective) {
+        mstring_append(
+            clip,
+            "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n"
+            "precise float bc0 = area(unscaled_xy, vtxPos1.xy, vtxPos2.xy);\n"
+            "precise float bc1 = area(unscaled_xy, vtxPos2.xy, vtxPos0.xy);\n"
+            "precise float bc2 = area(unscaled_xy, vtxPos0.xy, vtxPos1.xy);\n"
+            "bc0 /= vtxPos0.w;\n"
+            "bc1 /= vtxPos1.w;\n"
+            "bc2 /= vtxPos2.w;\n"
+            "float inv_bcsum = 1.0 / (bc0 + bc1 + bc2);\n"
+            // Denominator can be zero in case the rasterized primitive is a
+            // point or a degenerate line or triangle.
+            "if (isinf(inv_bcsum)) {\n"
+            "  inv_bcsum = 0.0;\n"
+            "}\n"
+            "bc1 *= inv_bcsum;\n"
+            "bc2 *= inv_bcsum;\n"
+            "precise float zvalue = vtxPos0.w + (bc1*(vtxPos1.w - vtxPos0.w) + bc2*(vtxPos2.w - vtxPos0.w));\n"
+            // If GPU clipping is inaccurate, the point gl_FragCoord.xy might
+            // be above the horizon of the plane of a rasterized triangle
+            // making the interpolated w-coordinate above zero or negative. We
+            // should prevent such wrapping through infinity by clamping to
+            // infinity.
+            "if (zvalue > 0.0) {\n"
+            "  float zslopeofs = depthFactor*triMZ*zvalue*zvalue;\n"
+            "  zvalue += depthOffset;\n"
+            "  zvalue += zslopeofs;\n"
+            "} else {\n"
+            "  zvalue = uintBitsToFloat(0x7F7FFFFFu);\n"
+            "}\n"
+            "if (isnan(zvalue)) {\n"
+            "  zvalue = uintBitsToFloat(0x7F7FFFFFu);\n"
+            "}\n");
+    } else {
+        mstring_append(
+            clip,
+            "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n"
+            "precise float bc0 = area(unscaled_xy, vtxPos1.xy, vtxPos2.xy);\n"
+            "precise float bc1 = area(unscaled_xy, vtxPos2.xy, vtxPos0.xy);\n"
+            "precise float bc2 = area(unscaled_xy, vtxPos0.xy, vtxPos1.xy);\n"
+            "float inv_bcsum = 1.0 / (bc0 + bc1 + bc2);\n"
+            // Denominator can be zero in case the rasterized primitive is a
+            // point or a degenerate line or triangle.
+            "if (isinf(inv_bcsum)) {\n"
+            "  inv_bcsum = 0.0;\n"
+            "}\n"
+            "bc1 *= inv_bcsum;\n"
+            "bc2 *= inv_bcsum;\n"
+            "precise float zvalue = vtxPos0.z + (bc1*(vtxPos1.z - vtxPos0.z) + bc2*(vtxPos2.z - vtxPos0.z));\n"
+            "zvalue += depthOffset;\n"
+            "zvalue += depthFactor*triMZ;\n");
+    }
+
     /* Depth clipping */
     if (ps->state.depth_clipping) {
-        if (ps->state.z_perspective) {
-            mstring_append(
-                clip, "float zvalue = 1.0/gl_FragCoord.w + depthOffset;\n"
-                      "if (zvalue < clipRange.z || clipRange.w < zvalue) {\n"
-                      "  discard;\n"
-                      "}\n");
-        } else {
-            /* Take care of floating point precision problems. MS dashboard
-             * outputs exactly 0.0 z-coordinates and then our fixed function
-             * vertex shader outputs -w as the z-coordinate when OpenGL is
-             * used. Since -w/w = -1, this should give us exactly 0.0 as
-             * gl_FragCoord.z here. Unfortunately, with AMD Radeon RX 6600 the
-             * result is slightly greater than 0. MS dashboard sets the clip
-             * range to [0.0, 0.0] and so the imprecision causes unwanted
-             * clipping. Note that since Vulkan uses NDC range [0,1] it
-             * doesn't suffer from this problem with Radeon. Also, despite the
-             * imprecision OpenGL Radeon writes the correct value 0 to the depth
-             * buffer (if writing is enabled.) Radeon appears to write floored
-             * values. To compare, Intel integrated UHD 770 has gl_FragCoord.z
-             * exactly 0 (and writes rounded to closest integer values to the
-             * depth buffer.) Radeon OpenGL problem could also be fixed by using
-             * glClipControl(), but it requires OpenGL 4.5.
-             * Above is based on experiments with Linux and Mesa.
-             */
-            if (ps->state.vulkan) {
-                mstring_append(
-                    clip, "if (gl_FragCoord.z*clipRange.y < clipRange.z ||\n"
-                          "    gl_FragCoord.z*clipRange.y > clipRange.w) {\n"
-                          "  discard;\n"
-                          "}\n");
-            } else {
-                mstring_append(
-                    clip, "if ((gl_FragCoord.z + 1.0f/16777216.0f)*clipRange.y < clipRange.z ||\n"
-                          "    (gl_FragCoord.z - 1.0f/16777216.0f)*clipRange.y > clipRange.w) {\n"
-                          "  discard;\n"
-                          "}\n");
-            }
-        }
+        mstring_append(
+            clip, "if (zvalue < clipRange.z || clipRange.w < zvalue) {\n"
+                  "  discard;\n"
+                  "}\n");
+    } else {
+        mstring_append(
+            clip, "zvalue = clamp(zvalue, clipRange.z, clipRange.w);\n");
     }
 
     MString *vars = mstring_new();
@@ -1256,21 +1298,33 @@ static MString* psh_convert(struct PixelShader *ps)
         }
     }
 
-    if (ps->state.z_perspective) {
-        if (!ps->state.depth_clipping) {
-            mstring_append(ps->code,
-                           "float zvalue = 1.0/gl_FragCoord.w + depthOffset;\n");
-        }
-        /* TODO: With integer depth buffers Xbox hardware floors values and so
-         * does Radeon, but Intel UHD 770 rounds to nearest. Should probably
-         * floor here explicitly (in some way that doesn't also cause
-         * imprecision issues due to division by clipRange.y)
-         */
-        mstring_append(ps->code,
-                       "gl_FragDepth = clamp(zvalue, clipRange.z, clipRange.w)/clipRange.y;\n");
-    } else if (!ps->state.depth_clipping) {
-        mstring_append(ps->code,
-                       "gl_FragDepth = clamp(gl_FragCoord.z, clipRange.z/clipRange.y, clipRange.w/clipRange.y);\n");
+    /* With integer depth buffers Xbox hardware floors values. For gl_FragDepth
+     * range [0,1] Radeon floors values to integer depth buffer, but Intel UHD
+     * 770 rounds to nearest. For 24-bit OpenGL/Vulkan integer depth buffer,
+     * we divide the desired depth integer value by 16777216.0, then add 1 in
+     * integer bit representation to get the same result as dividing the
+     * desired depth integer by 16777215.0 would give. (GPUs can't divide by
+     * 16777215.0, only multiply by 1.0/16777215.0 which gives different results
+     * due to rounding.)
+     */
+
+    switch (ps->state.depth_format) {
+    case DEPTH_FORMAT_D16:
+        // 16-bit unsigned int
+        mstring_append(
+            ps->code,
+            "gl_FragDepth = floor(zvalue) / 65535.0;\n");
+        break;
+    case DEPTH_FORMAT_D24:
+        // 24-bit unsigned int
+        mstring_append(
+            ps->code,
+            "gl_FragDepth = uintBitsToFloat(floatBitsToUint(floor(zvalue) / 16777216.0) + 1u);\n");
+        break;
+    default:
+        // TODO: handle floating-point depth buffers properly
+        mstring_append(ps->code, "gl_FragDepth = zvalue / clipRange.y;\n");
+        break;
     }
 
     MString *final = mstring_new();

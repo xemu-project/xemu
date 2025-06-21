@@ -172,9 +172,11 @@ typedef struct ShaderBinding {
     int tex_scale_loc[NV2A_MAX_TEXTURES];
 
     int surface_size_loc;
+    int surface_scale_loc;
     int clip_range_loc;
     int clip_range_floc;
     int depth_offset_loc;
+    int depth_factor_loc;
 
     int vsh_constant_loc;
     uint32_t vsh_constants[NV2A_VERTEXSHADER_CONSTANTS][4];
