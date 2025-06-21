@@ -781,10 +781,6 @@ static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
     uint64_t retval;
 
     switch (addr) {
-    case NVNET_MII_STATUS:
-        retval = 0;
-        break;
-
     default:
         retval = get_reg_ext(s, addr, size);
         break;
