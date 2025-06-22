@@ -951,7 +951,7 @@ static void create_pipeline(PGRAPHState *pg)
     int num_dynamic_states = 2;
 
     snode->has_dynamic_line_width =
-        (r->physical_device_features.wideLines == VK_TRUE)
+        (r->enabled_physical_device_features.wideLines == VK_TRUE)
         && (r->shader_binding->state.polygon_front_mode == POLY_MODE_LINE ||
             r->shader_binding->state.primitive_mode == PRIM_TYPE_LINES ||
             r->shader_binding->state.primitive_mode == PRIM_TYPE_LINE_LOOP ||
