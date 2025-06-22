@@ -545,6 +545,7 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
         F(shaderTessellationAndGeometryPointSize, true),
         F(depthClamp, true),
         F(occlusionQueryPrecise, true),
+        F(fillModeNonSolid, true),
         F(wideLines, false),
         #undef F
         // clang-format on
