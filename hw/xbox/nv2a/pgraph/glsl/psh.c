@@ -50,6 +50,7 @@
  */
 
 
+// clang-format off
 enum PS_TEXTUREMODES
 {                                 // valid in stage 0 1 2 3
     PS_TEXTUREMODES_NONE=                 0x00L, // * * * *
@@ -73,7 +74,9 @@ enum PS_TEXTUREMODES
     PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST= 0x12L, // - - - *
     // 0x13-0x1f reserved
 };
+// clang-format on
 
+// clang-format off
 enum PS_INPUTMAPPING
 {
     PS_INPUTMAPPING_UNSIGNED_IDENTITY= 0x00L, // max(0,x)         OK for final combiner
@@ -85,7 +88,9 @@ enum PS_INPUTMAPPING
     PS_INPUTMAPPING_SIGNED_IDENTITY=   0xc0L, // x                invalid for final combiner
     PS_INPUTMAPPING_SIGNED_NEGATE=     0xe0L, // -x               invalid for final combiner
 };
+// clang-format on
 
+// clang-format off
 enum PS_REGISTER
 {
     PS_REGISTER_ZERO=              0x00L, // r
@@ -109,7 +114,9 @@ enum PS_REGISTER
     PS_REGISTER_ONE_HALF=          PS_REGISTER_ZERO | PS_INPUTMAPPING_HALFBIAS_NEGATE, // invalid for final combiner
     PS_REGISTER_NEGATIVE_ONE_HALF= PS_REGISTER_ZERO | PS_INPUTMAPPING_HALFBIAS_NORMAL, // invalid for final combiner
 };
+// clang-format on
 
+// clang-format off
 enum PS_COMBINERCOUNTFLAGS
 {
     PS_COMBINERCOUNT_MUX_LSB=     0x0000L, // mux on r0.a lsb
@@ -121,7 +128,9 @@ enum PS_COMBINERCOUNTFLAGS
     PS_COMBINERCOUNT_SAME_C1=     0x0000L, // c1 same in each stage
     PS_COMBINERCOUNT_UNIQUE_C1=   0x0100L  // c1 unique in each stage
 };
+// clang-format on
 
+// clang-format off
 enum PS_COMBINEROUTPUT
 {
     PS_COMBINEROUTPUT_IDENTITY=            0x00L, // y = x
@@ -144,15 +153,18 @@ enum PS_COMBINEROUTPUT
     PS_COMBINEROUTPUT_AB_CD_SUM=           0x00L, // 3rd output is AB+CD
     PS_COMBINEROUTPUT_AB_CD_MUX=           0x04L, // 3rd output is MUX(AB,CD) based on R0.a
 };
+// clang-format on
 
+// clang-format off
 enum PS_CHANNEL
 {
     PS_CHANNEL_RGB=   0x00, // used as RGB source
     PS_CHANNEL_BLUE=  0x00, // used as ALPHA source
     PS_CHANNEL_ALPHA= 0x10, // used as RGB or ALPHA source
 };
+// clang-format on
 
-
+// clang-format off
 enum PS_FINALCOMBINERSETTING
 {
     PS_FINALCOMBINERSETTING_CLAMP_SUM=     0x80, // V1+R0 sum clamped to [0,1]
@@ -161,7 +173,9 @@ enum PS_FINALCOMBINERSETTING
 
     PS_FINALCOMBINERSETTING_COMPLEMENT_R0= 0x20, // unsigned invert mapping
 };
+// clang-format on
 
+// clang-format off
 enum PS_DOTMAPPING
 {                              // valid in stage 0 1 2 3
     PS_DOTMAPPING_ZERO_TO_ONE=         0x00L, // - * * *
@@ -173,6 +187,8 @@ enum PS_DOTMAPPING
     PS_DOTMAPPING_HILO_HEMISPHERE_GL=  0x06L, // - * * *
     PS_DOTMAPPING_HILO_HEMISPHERE=     0x07L, // - * * *
 };
+// clang-format on
+
 
 enum PS_COLORKEYMODE {
     COLOR_KEY_NONE = 0,
@@ -185,27 +201,53 @@ enum PS_COLORKEYMODE {
 // Structures to describe the PS definition
 
 struct InputInfo {
-    int reg, mod, chan;
+    int reg;
+    int mod;
+    int chan;
 };
 
 struct InputVarInfo {
-    struct InputInfo a, b, c, d;
+    struct InputInfo a;
+    struct InputInfo b;
+    struct InputInfo c;
+    struct InputInfo d;
 };
 
 struct FCInputInfo {
-    struct InputInfo a, b, c, d, e, f, g;
-    bool v1r0_sum, clamp_sum, inv_v1, inv_r0, enabled;
+    struct InputInfo a;
+    struct InputInfo b;
+    struct InputInfo c;
+    struct InputInfo d;
+    struct InputInfo e;
+    struct InputInfo f;
+    struct InputInfo g;
+    bool v1r0_sum;
+    bool clamp_sum;
+    bool inv_v1;
+    bool inv_r0;
+    bool enabled;
 };
 
 struct OutputInfo {
-    int ab, cd, muxsum, flags, ab_op, cd_op, muxsum_op,
-        mapping, ab_alphablue, cd_alphablue;
+    int ab;
+    int cd;
+    int muxsum;
+    int flags;
+    int ab_op;
+    int cd_op;
+    int muxsum_op;
+    int mapping;
+    int ab_alphablue;
+    int cd_alphablue;
 };
 
 struct PSStageInfo {
-    struct InputVarInfo rgb_input, alpha_input;
-    struct OutputInfo rgb_output, alpha_output;
-    int c0, c1;
+    struct InputVarInfo rgb_input;
+    struct InputVarInfo alpha_input;
+    struct OutputInfo rgb_output;
+    struct OutputInfo alpha_output;
+    int c0;
+    int c1;
 };
 
 struct PixelShader {
@@ -229,52 +271,52 @@ struct PixelShader {
 static void add_var_ref(struct PixelShader *ps, const char *var)
 {
     int i;
-    for (i=0; i<ps->num_var_refs; i++) {
-        if (strcmp((char*)ps->var_refs[i], var) == 0) return;
+    for (i = 0; i < ps->num_var_refs; i++) {
+        if (strcmp((char *)ps->var_refs[i], var) == 0)
+            return;
     }
-    strcpy((char*)ps->var_refs[ps->num_var_refs++], var);
+    strcpy((char *)ps->var_refs[ps->num_var_refs++], var);
 }
 
 static void add_const_ref(struct PixelShader *ps, const char *var)
 {
     int i;
-    for (i=0; i<ps->num_const_refs; i++) {
-        if (strcmp((char*)ps->const_refs[i], var) == 0) return;
+    for (i = 0; i < ps->num_const_refs; i++) {
+        if (strcmp((char *)ps->const_refs[i], var) == 0)
+            return;
     }
-    strcpy((char*)ps->const_refs[ps->num_const_refs++], var);
+    strcpy((char *)ps->const_refs[ps->num_const_refs++], var);
 }
 
 // Get the code for a variable used in the program
-static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
+static MString *get_var(struct PixelShader *ps, int reg, bool is_dest)
 {
     switch (reg) {
     case PS_REGISTER_DISCARD:
         if (is_dest) {
             return mstring_from_str("");
-        } else {
-            return mstring_from_str("vec4(0.0)");
         }
-        break;
+        return mstring_from_str("vec4(0.0)");
     case PS_REGISTER_C0:
         if (ps->flags & PS_COMBINERCOUNT_UNIQUE_C0 || ps->cur_stage == 8) {
             MString *reg_name = mstring_from_fmt("c0_%d", ps->cur_stage);
             add_const_ref(ps, mstring_get_str(reg_name));
             return reg_name;
-        } else {  // Same c0
-            add_const_ref(ps, "c0_0");
-            return mstring_from_str("c0_0");
         }
-        break;
+        // Same c0
+        add_const_ref(ps, "c0_0");
+        return mstring_from_str("c0_0");
+
     case PS_REGISTER_C1:
         if (ps->flags & PS_COMBINERCOUNT_UNIQUE_C1 || ps->cur_stage == 8) {
             MString *reg_name = mstring_from_fmt("c1_%d", ps->cur_stage);
             add_const_ref(ps, mstring_get_str(reg_name));
             return reg_name;
-        } else {  // Same c1
-            add_const_ref(ps, "c1_0");
-            return mstring_from_str("c1_0");
         }
-        break;
+        // Same c1
+        add_const_ref(ps, "c1_0");
+        return mstring_from_str("c1_0");
+
     case PS_REGISTER_FOG:
         return mstring_from_str("pFog");
     case PS_REGISTER_V0:
@@ -299,18 +341,15 @@ static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
         add_var_ref(ps, "r0");
         if (ps->final_input.clamp_sum) {
             return mstring_from_fmt(
-                    "clamp(vec4(%s.rgb + %s.rgb, 0.0), 0.0, 1.0)",
-                    ps->final_input.inv_v1 ? "(1.0 - v1)" : "v1",
-                    ps->final_input.inv_r0 ? "(1.0 - r0)" : "r0");
-        } else {
-            return mstring_from_fmt(
-                    "vec4(%s.rgb + %s.rgb, 0.0)",
-                    ps->final_input.inv_v1 ? "(1.0 - v1)" : "v1",
-                    ps->final_input.inv_r0 ? "(1.0 - r0)" : "r0");
+                "clamp(vec4(%s.rgb + %s.rgb, 0.0), 0.0, 1.0)",
+                ps->final_input.inv_v1 ? "(1.0 - v1)" : "v1",
+                ps->final_input.inv_r0 ? "(1.0 - r0)" : "r0");
         }
+        return mstring_from_fmt("vec4(%s.rgb + %s.rgb, 0.0)",
+                                ps->final_input.inv_v1 ? "(1.0 - v1)" : "v1",
+                                ps->final_input.inv_r0 ? "(1.0 - r0)" : "r0");
     case PS_REGISTER_EF_PROD:
-        return mstring_from_fmt("vec4(%s * %s, 0.0)",
-                                mstring_get_str(ps->varE),
+        return mstring_from_fmt("vec4(%s * %s, 0.0)", mstring_get_str(ps->varE),
                                 mstring_get_str(ps->varF));
     default:
         assert(false);
@@ -319,7 +358,8 @@ static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
 }
 
 // Get input variable code
-static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool is_alpha)
+static MString *get_input_var(struct PixelShader *ps, struct InputInfo in,
+                              bool is_alpha)
 {
     MString *reg = get_var(ps, in.reg, false);
 
@@ -332,7 +372,7 @@ static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
             mstring_append(reg, ".aaa");
             break;
         default:
-            assert(false);
+            assert(!"PS in.channel invalid");
             break;
         }
     } else {
@@ -344,7 +384,7 @@ static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
             mstring_append(reg, ".a");
             break;
         default:
-            assert(false);
+            assert(!"PS in.channel invalid (alpha)");
             break;
         }
     }
@@ -355,13 +395,16 @@ static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
         res = mstring_from_fmt("max(%s, 0.0)", mstring_get_str(reg));
         break;
     case PS_INPUTMAPPING_UNSIGNED_INVERT:
-        res = mstring_from_fmt("(1.0 - clamp(%s, 0.0, 1.0))", mstring_get_str(reg));
+        res = mstring_from_fmt("(1.0 - clamp(%s, 0.0, 1.0))",
+                               mstring_get_str(reg));
         break;
     case PS_INPUTMAPPING_EXPAND_NORMAL:
-        res = mstring_from_fmt("(2.0 * max(%s, 0.0) - 1.0)", mstring_get_str(reg));
+        res = mstring_from_fmt("(2.0 * max(%s, 0.0) - 1.0)",
+                               mstring_get_str(reg));
         break;
     case PS_INPUTMAPPING_EXPAND_NEGATE:
-        res = mstring_from_fmt("(-2.0 * max(%s, 0.0) + 1.0)", mstring_get_str(reg));
+        res = mstring_from_fmt("(-2.0 * max(%s, 0.0) + 1.0)",
+                               mstring_get_str(reg));
         break;
     case PS_INPUTMAPPING_HALFBIAS_NORMAL:
         res = mstring_from_fmt("(max(%s, 0.0) - 0.5)", mstring_get_str(reg));
@@ -377,7 +420,7 @@ static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
         res = mstring_from_fmt("-%s", mstring_get_str(reg));
         break;
     default:
-        assert(false);
+        assert(!"PS in.mod invalid");
         break;
     }
 
@@ -386,7 +429,7 @@ static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
 }
 
 // Get code for the output mapping of a stage
-static MString* get_output(MString *reg, int mapping)
+static MString *get_output(MString *reg, int mapping)
 {
     MString *res;
     switch (mapping) {
@@ -410,17 +453,17 @@ static MString* get_output(MString *reg, int mapping)
         res = mstring_from_fmt("(%s / 2.0)", mstring_get_str(reg));
         break;
     default:
-        assert(false);
+        assert(!"Output mapping invalid");
         break;
     }
     return res;
 }
 
 // Add the GLSL code for a stage
-static MString* add_stage_code(struct PixelShader *ps,
+static MString *add_stage_code(struct PixelShader *ps,
                                struct InputVarInfo input,
-                               struct OutputInfo output,
-                               const char *write_mask, bool is_alpha)
+                               struct OutputInfo output, const char *write_mask,
+                               bool is_alpha)
 {
     MString *ret = mstring_new();
     MString *a = get_input_var(ps, input.a, is_alpha);
@@ -435,20 +478,20 @@ static MString* add_stage_code(struct PixelShader *ps,
 
     MString *ab;
     if (output.ab_op == PS_COMBINEROUTPUT_AB_DOT_PRODUCT) {
-        ab = mstring_from_fmt("dot(%s, %s)",
-                              mstring_get_str(a), mstring_get_str(b));
+        ab = mstring_from_fmt("dot(%s, %s)", mstring_get_str(a),
+                              mstring_get_str(b));
     } else {
-        ab = mstring_from_fmt("(%s * %s)",
-                              mstring_get_str(a), mstring_get_str(b));
+        ab = mstring_from_fmt("(%s * %s)", mstring_get_str(a),
+                              mstring_get_str(b));
     }
 
     MString *cd;
     if (output.cd_op == PS_COMBINEROUTPUT_CD_DOT_PRODUCT) {
-        cd = mstring_from_fmt("dot(%s, %s)",
-                              mstring_get_str(c), mstring_get_str(d));
+        cd = mstring_from_fmt("dot(%s, %s)", mstring_get_str(c),
+                              mstring_get_str(d));
     } else {
-        cd = mstring_from_fmt("(%s * %s)",
-                              mstring_get_str(c), mstring_get_str(d));
+        cd = mstring_from_fmt("(%s * %s)", mstring_get_str(c),
+                              mstring_get_str(d));
     }
 
     MString *ab_mapping = get_output(ab, output.mapping);
@@ -502,26 +545,25 @@ static MString* add_stage_code(struct PixelShader *ps,
     }
 
     if (assign_ab) {
-        mstring_append_fmt(ret, "%s.%s = ab.%s;\n",
-                           mstring_get_str(ab_dest), write_mask, write_mask);
+        mstring_append_fmt(ret, "%s.%s = ab.%s;\n", mstring_get_str(ab_dest),
+                           write_mask, write_mask);
 
         if (!is_alpha && output.flags & PS_COMBINEROUTPUT_AB_BLUE_TO_ALPHA) {
-            mstring_append_fmt(ret, "%s.a = ab.b;\n",
-                               mstring_get_str(ab_dest));
+            mstring_append_fmt(ret, "%s.a = ab.b;\n", mstring_get_str(ab_dest));
         }
     }
     if (assign_cd) {
-        mstring_append_fmt(ret, "%s.%s = cd.%s;\n",
-                           mstring_get_str(cd_dest), write_mask, write_mask);
+        mstring_append_fmt(ret, "%s.%s = cd.%s;\n", mstring_get_str(cd_dest),
+                           write_mask, write_mask);
 
         if (!is_alpha && output.flags & PS_COMBINEROUTPUT_CD_BLUE_TO_ALPHA) {
-            mstring_append_fmt(ret, "%s.a = cd.b;\n",
-                               mstring_get_str(cd_dest));
+            mstring_append_fmt(ret, "%s.a = cd.b;\n", mstring_get_str(cd_dest));
         }
     }
     if (assign_muxsum) {
         mstring_append_fmt(ret, "%s.%s = mux_sum.%s;\n",
-                           mstring_get_str(muxsum_dest), write_mask, write_mask);
+                           mstring_get_str(muxsum_dest), write_mask,
+                           write_mask);
     }
 
     mstring_unref(a);
@@ -542,7 +584,8 @@ static MString* add_stage_code(struct PixelShader *ps,
 }
 
 // Add code for the final combiner stage
-static void add_final_stage_code(struct PixelShader *ps, struct FCInputInfo final)
+static void add_final_stage_code(struct PixelShader *ps,
+                                 struct FCInputInfo final)
 {
     ps->varE = get_input_var(ps, final.e, false);
     ps->varF = get_input_var(ps, final.f, false);
@@ -553,9 +596,10 @@ static void add_final_stage_code(struct PixelShader *ps, struct FCInputInfo fina
     MString *d = get_input_var(ps, final.d, false);
     MString *g = get_input_var(ps, final.g, true);
 
-    mstring_append_fmt(ps->code, "fragColor.rgb = %s + mix(vec3(%s), vec3(%s), vec3(%s));\n",
-                       mstring_get_str(d), mstring_get_str(c),
-                       mstring_get_str(b), mstring_get_str(a));
+    mstring_append_fmt(
+        ps->code, "fragColor.rgb = %s + mix(vec3(%s), vec3(%s), vec3(%s));\n",
+        mstring_get_str(d), mstring_get_str(c), mstring_get_str(b),
+        mstring_get_str(a));
     mstring_append_fmt(ps->code, "fragColor.a = %s;\n", mstring_get_str(g));
 
     mstring_unref(a);
@@ -569,7 +613,8 @@ static void add_final_stage_code(struct PixelShader *ps, struct FCInputInfo fina
     ps->varE = ps->varF = NULL;
 }
 
-static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *state, int i)
+static const char *get_sampler_type(enum PS_TEXTUREMODES mode,
+                                    const PshState *state, int i)
 {
     const char *sampler2D = "sampler2D";
     const char *sampler3D = "sampler3D";
@@ -589,7 +634,8 @@ static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
             }
             return sampler2D;
         }
-        if (state->dim_tex[i] == 3) return sampler3D;
+        if (state->dim_tex[i] == 3)
+            return sampler3D;
         assert(!"Unhandled texture dimensions");
         return NULL;
 
@@ -597,11 +643,14 @@ static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
     case PS_TEXTUREMODES_BUMPENVMAP_LUM:
     case PS_TEXTUREMODES_DOT_ST:
         if (state->shadow_map[i]) {
-            fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
+            fprintf(stderr, "Shadow map support not implemented for mode %d\n",
+                    mode);
             assert(!"Shadow map support not implemented for this mode");
         }
-        if (state->dim_tex[i] == 2) return sampler2D;
-        if (state->dim_tex[i] == 3 && mode != PS_TEXTUREMODES_DOT_ST) return sampler3D;
+        if (state->dim_tex[i] == 2)
+            return sampler2D;
+        if (state->dim_tex[i] == 3 && mode != PS_TEXTUREMODES_DOT_ST)
+            return sampler3D;
         assert(!"Unhandled texture dimensions");
         return NULL;
 
@@ -620,7 +669,8 @@ static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
     case PS_TEXTUREMODES_DOT_RFLCT_SPEC:
     case PS_TEXTUREMODES_DOT_STR_CUBE:
         if (state->shadow_map[i]) {
-            fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
+            fprintf(stderr, "Shadow map support not implemented for mode %d\n",
+                    mode);
             assert(!"Shadow map support not implemented for this mode");
         }
         assert(state->dim_tex[i] == 2);
@@ -629,7 +679,8 @@ static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
     case PS_TEXTUREMODES_DPNDNT_AR:
     case PS_TEXTUREMODES_DPNDNT_GB:
         if (state->shadow_map[i]) {
-            fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
+            fprintf(stderr, "Shadow map support not implemented for mode %d\n",
+                    mode);
             assert(!"Shadow map support not implemented for this mode");
         }
         assert(state->dim_tex[i] == 2);
@@ -638,15 +689,13 @@ static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
 }
 
 static const char *shadow_comparison_map[] = {
-    [SHADOW_DEPTH_FUNC_LESS] = "<",
-    [SHADOW_DEPTH_FUNC_EQUAL] = "==",
-    [SHADOW_DEPTH_FUNC_LEQUAL] = "<=",
-    [SHADOW_DEPTH_FUNC_GREATER] = ">",
-    [SHADOW_DEPTH_FUNC_NOTEQUAL] = "!=",
-    [SHADOW_DEPTH_FUNC_GEQUAL] = ">=",
+    [SHADOW_DEPTH_FUNC_LESS] = "<",      [SHADOW_DEPTH_FUNC_EQUAL] = "==",
+    [SHADOW_DEPTH_FUNC_LEQUAL] = "<=",   [SHADOW_DEPTH_FUNC_GREATER] = ">",
+    [SHADOW_DEPTH_FUNC_NOTEQUAL] = "!=", [SHADOW_DEPTH_FUNC_GEQUAL] = ">=",
 };
 
-static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compare_z, MString *vars)
+static void psh_append_shadowmap(const struct PixelShader *ps, int i,
+                                 bool compare_z, MString *vars)
 {
     if (ps->state.shadow_depth_func == SHADOW_DEPTH_FUNC_NEVER) {
         mstring_append_fmt(vars, "vec4 t%d = vec4(0.0);\n", i);
@@ -690,38 +739,41 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
             "t%d_depth.x *= t%d_max_depth;\n"
             "pT%d.z = clamp(pT%d.z / pT%d.w, 0, t%d_max_depth);\n"
             "vec4 t%d = vec4(t%d_depth.x %s pT%d.z ? 1.0 : 0.0);\n",
-            i, i, i, i, i,
-            i, i, i, i, i, i,
-            i, i, comparison, i);
+            i, i, i, i, i, i, i, i, i, i, i, i, i, comparison, i);
     } else {
-        mstring_append_fmt(
-            vars,
-            "vec4 t%d = vec4(t%d_depth.x %s 0.0 ? 1.0 : 0.0);\n",
-            i, i, comparison);
+        mstring_append_fmt(vars,
+                           "vec4 t%d = vec4(t%d_depth.x %s 0.0 ? 1.0 : 0.0);\n",
+                           i, i, comparison);
     }
 }
 
 // Adjust the s, t coordinates in the given VAR to account for the 4 texel
 // border supported by the hardware.
-static void apply_border_adjustment(const struct PixelShader *ps, MString *vars, int tex_index, const char *var_template)
+static void apply_border_adjustment(const struct PixelShader *ps, MString *vars,
+                                    int tex_index, const char *var_template)
 {
     int i = tex_index;
     if (ps->state.border_logical_size[i][0] == 0.0f) {
         return;
     }
 
-    char var_name[32] = {0};
+    char var_name[32] = { 0 };
     snprintf(var_name, sizeof(var_name), var_template, i);
 
-    mstring_append_fmt(
-        vars,
-        "vec3 t%dLogicalSize = vec3(%f, %f, %f);\n"
-        "%s.xyz = (%s.xyz * t%dLogicalSize + vec3(4, 4, 4)) * vec3(%f, %f, %f);\n",
-        i, ps->state.border_logical_size[i][0], ps->state.border_logical_size[i][1], ps->state.border_logical_size[i][2],
-        var_name, var_name, i, ps->state.border_inv_real_size[i][0], ps->state.border_inv_real_size[i][1], ps->state.border_inv_real_size[i][2]);
+    mstring_append_fmt(vars,
+                       "vec3 t%dLogicalSize = vec3(%f, %f, %f);\n"
+                       "%s.xyz = (%s.xyz * t%dLogicalSize + vec3(4, 4, 4)) * "
+                       "vec3(%f, %f, %f);\n",
+                       i, ps->state.border_logical_size[i][0],
+                       ps->state.border_logical_size[i][1],
+                       ps->state.border_logical_size[i][2], var_name, var_name,
+                       i, ps->state.border_inv_real_size[i][0],
+                       ps->state.border_inv_real_size[i][1],
+                       ps->state.border_inv_real_size[i][2]);
 }
 
-static void apply_convolution_filter(const struct PixelShader *ps, MString *vars, int tex)
+static void apply_convolution_filter(const struct PixelShader *ps,
+                                     MString *vars, int tex)
 {
     assert(ps->state.dim_tex[tex] == 2);
     // FIXME: Quincunx
@@ -730,12 +782,14 @@ static void apply_convolution_filter(const struct PixelShader *ps, MString *vars
     const char *tex_remap = ps->state.rect_tex[tex] ? normalize_tex_coords : "";
 
     mstring_append_fmt(vars,
-        "vec4 t%d = vec4(0.0);\n"
-        "for (int i = 0; i < 9; i++) {\n"
-        "    vec3 texCoordDelta = vec3(convolution3x3[i], 0);\n"
-        "    texCoordDelta.xy /= textureSize(texSamp%d, 0);\n"
-        "    t%d += textureProj(texSamp%d, %s(pT%d.xyw) + texCoordDelta) * gaussian3x3[i];\n"
-        "}\n", tex, tex, tex, tex, tex_remap, tex);
+                       "vec4 t%d = vec4(0.0);\n"
+                       "for (int i = 0; i < 9; i++) {\n"
+                       "    vec3 texCoordDelta = vec3(convolution3x3[i], 0);\n"
+                       "    texCoordDelta.xy /= textureSize(texSamp%d, 0);\n"
+                       "    t%d += textureProj(texSamp%d, %s(pT%d.xyw) + "
+                       "texCoordDelta) * gaussian3x3[i];\n"
+                       "}\n",
+                       tex, tex, tex, tex, tex_remap, tex);
 }
 
 static void define_colorkey_comparator(MString *preflight)
@@ -751,21 +805,22 @@ static void define_colorkey_comparator(MString *preflight)
     // clang-format on
 }
 
-static MString* psh_convert(struct PixelShader *ps)
+static MString *psh_convert(struct PixelShader *ps)
 {
     const char *u = ps->state.vulkan ? "" : "uniform "; // FIXME: Remove
 
     MString *preflight = mstring_new();
     pgraph_get_glsl_vtx_header(preflight, ps->state.vulkan,
-                             ps->state.smooth_shading, true, false, false);
+                               ps->state.smooth_shading, true, false, false);
 
     if (ps->state.vulkan) {
-        mstring_append_fmt(preflight,
-                           "layout(location = 0) out vec4 fragColor;\n"
-                           "layout(binding = %d, std140) uniform PshUniforms {\n", PSH_UBO_BINDING);
+        mstring_append_fmt(
+            preflight,
+            "layout(location = 0) out vec4 fragColor;\n"
+            "layout(binding = %d, std140) uniform PshUniforms {\n",
+            PSH_UBO_BINDING);
     } else {
-        mstring_append_fmt(preflight,
-                           "layout(location = 0) out vec4 fragColor;\n");
+        mstring_append(preflight, "layout(location = 0) out vec4 fragColor;\n");
     }
 
     mstring_append_fmt(preflight,
@@ -778,11 +833,12 @@ static MString* psh_convert(struct PixelShader *ps)
                        "%suint colorKeyMask[4];\n",
                        u, u, u, u, u, u, u);
     for (int i = 0; i < 4; i++) {
-        mstring_append_fmt(preflight, "%smat2  bumpMat%d;\n"
-                                      "%sfloat bumpScale%d;\n"
-                                      "%sfloat bumpOffset%d;\n"
-                                      "%sfloat texScale%d;\n",
-                                      u, i, u, i, u, i, u, i);
+        mstring_append_fmt(preflight,
+                           "%smat2  bumpMat%d;\n"
+                           "%sfloat bumpScale%d;\n"
+                           "%sfloat bumpOffset%d;\n"
+                           "%sfloat texScale%d;\n",
+                           u, i, u, i, u, i, u, i);
     }
     for (int i = 0; i < 9; i++) {
         for (int j = 0; j < 2; j++) {
@@ -805,64 +861,63 @@ static MString* psh_convert(struct PixelShader *ps)
         "dotmap_hilo_hemisphere",
     };
 
-    mstring_append_fmt(preflight,
-        "float sign1(float x) {\n"
-        "    x *= 255.0;\n"
-        "    return (x-128.0)/127.0;\n"
-        "}\n"
-        "float sign2(float x) {\n"
-        "    x *= 255.0;\n"
-        "    if (x >= 128.0) return (x-255.5)/127.5;\n"
-        "               else return (x+0.5)/127.5;\n"
-        "}\n"
-        "float sign3(float x) {\n"
-        "    x *= 255.0;\n"
-        "    if (x >= 128.0) return (x-256.0)/127.0;\n"
-        "               else return (x)/127.0;\n"
-        "}\n"
-        "float sign3_to_0_to_1(float x) {\n"
-        "    if (x >= 0) return x/2;\n"
-        "           else return 1+x/2;\n"
-        "}\n"
-        "vec3 dotmap_zero_to_one(vec4 col) {\n"
-        "    return col.rgb;\n"
-        "}\n"
-        "vec3 dotmap_minus1_to_1_d3d(vec4 col) {\n"
-        "    return vec3(sign1(col.r),sign1(col.g),sign1(col.b));\n"
-        "}\n"
-        "vec3 dotmap_minus1_to_1_gl(vec4 col) {\n"
-        "    return vec3(sign2(col.r),sign2(col.g),sign2(col.b));\n"
-        "}\n"
-        "vec3 dotmap_minus1_to_1(vec4 col) {\n"
-        "    return vec3(sign3(col.r),sign3(col.g),sign3(col.b));\n"
-        "}\n"
-        "vec3 dotmap_hilo_1(vec4 col) {\n"
-        "    uint hi_i = uint(col.a * float(0xff)) << 8\n"
-        "              | uint(col.r * float(0xff));\n"
-        "    uint lo_i = uint(col.g * float(0xff)) << 8\n"
-        "              | uint(col.b * float(0xff));\n"
-        "    float hi_f = float(hi_i) / float(0xffff);\n"
-        "    float lo_f = float(lo_i) / float(0xffff);\n"
-        "    return vec3(hi_f, lo_f, 1.0);\n"
-        "}\n"
-        "vec3 dotmap_hilo_hemisphere_d3d(vec4 col) {\n"
-        "    return col.rgb;\n" // FIXME
-        "}\n"
-        "vec3 dotmap_hilo_hemisphere_gl(vec4 col) {\n"
-        "    return col.rgb;\n" // FIXME
-        "}\n"
-        "vec3 dotmap_hilo_hemisphere(vec4 col) {\n"
-        "    return col.rgb;\n" // FIXME
-        "}\n"
-        "const float[9] gaussian3x3 = float[9](\n"
-        "    1.0/16.0, 2.0/16.0, 1.0/16.0,\n"
-        "    2.0/16.0, 4.0/16.0, 2.0/16.0,\n"
-        "    1.0/16.0, 2.0/16.0, 1.0/16.0);\n"
-        "const vec2[9] convolution3x3 = vec2[9](\n"
-        "    vec2(-1.0,-1.0),vec2(0.0,-1.0),vec2(1.0,-1.0),\n"
-        "    vec2(-1.0, 0.0),vec2(0.0, 0.0),vec2(1.0, 0.0),\n"
-        "    vec2(-1.0, 1.0),vec2(0.0, 1.0),vec2(1.0, 1.0));\n"
-        );
+    mstring_append(preflight,
+                   "float sign1(float x) {\n"
+                   "    x *= 255.0;\n"
+                   "    return (x-128.0)/127.0;\n"
+                   "}\n"
+                   "float sign2(float x) {\n"
+                   "    x *= 255.0;\n"
+                   "    if (x >= 128.0) return (x-255.5)/127.5;\n"
+                   "               else return (x+0.5)/127.5;\n"
+                   "}\n"
+                   "float sign3(float x) {\n"
+                   "    x *= 255.0;\n"
+                   "    if (x >= 128.0) return (x-256.0)/127.0;\n"
+                   "               else return (x)/127.0;\n"
+                   "}\n"
+                   "float sign3_to_0_to_1(float x) {\n"
+                   "    if (x >= 0) return x/2;\n"
+                   "           else return 1+x/2;\n"
+                   "}\n"
+                   "vec3 dotmap_zero_to_one(vec4 col) {\n"
+                   "    return col.rgb;\n"
+                   "}\n"
+                   "vec3 dotmap_minus1_to_1_d3d(vec4 col) {\n"
+                   "    return vec3(sign1(col.r),sign1(col.g),sign1(col.b));\n"
+                   "}\n"
+                   "vec3 dotmap_minus1_to_1_gl(vec4 col) {\n"
+                   "    return vec3(sign2(col.r),sign2(col.g),sign2(col.b));\n"
+                   "}\n"
+                   "vec3 dotmap_minus1_to_1(vec4 col) {\n"
+                   "    return vec3(sign3(col.r),sign3(col.g),sign3(col.b));\n"
+                   "}\n"
+                   "vec3 dotmap_hilo_1(vec4 col) {\n"
+                   "    uint hi_i = uint(col.a * float(0xff)) << 8\n"
+                   "              | uint(col.r * float(0xff));\n"
+                   "    uint lo_i = uint(col.g * float(0xff)) << 8\n"
+                   "              | uint(col.b * float(0xff));\n"
+                   "    float hi_f = float(hi_i) / float(0xffff);\n"
+                   "    float lo_f = float(lo_i) / float(0xffff);\n"
+                   "    return vec3(hi_f, lo_f, 1.0);\n"
+                   "}\n"
+                   "vec3 dotmap_hilo_hemisphere_d3d(vec4 col) {\n"
+                   "    return col.rgb;\n" // FIXME
+                   "}\n"
+                   "vec3 dotmap_hilo_hemisphere_gl(vec4 col) {\n"
+                   "    return col.rgb;\n" // FIXME
+                   "}\n"
+                   "vec3 dotmap_hilo_hemisphere(vec4 col) {\n"
+                   "    return col.rgb;\n" // FIXME
+                   "}\n"
+                   "const float[9] gaussian3x3 = float[9](\n"
+                   "    1.0/16.0, 2.0/16.0, 1.0/16.0,\n"
+                   "    2.0/16.0, 4.0/16.0, 2.0/16.0,\n"
+                   "    1.0/16.0, 2.0/16.0, 1.0/16.0);\n"
+                   "const vec2[9] convolution3x3 = vec2[9](\n"
+                   "    vec2(-1.0,-1.0),vec2(0.0,-1.0),vec2(1.0,-1.0),\n"
+                   "    vec2(-1.0, 0.0),vec2(0.0, 0.0),vec2(1.0, 0.0),\n"
+                   "    vec2(-1.0, 1.0),vec2(0.0, 1.0),vec2(1.0, 1.0));\n");
 
     /* Window Clipping */
     MString *clip = mstring_new();
@@ -871,12 +926,13 @@ static MString* psh_convert(struct PixelShader *ps)
     if (!ps->state.window_clip_exclusive) {
         mstring_append(clip, "bool clipContained = false;\n");
     }
-    mstring_append(clip, "vec2 coord = gl_FragCoord.xy - 0.5;\n"
-                         "for (int i = 0; i < 8; i++) {\n"
-                         "  bool outside = any(bvec4(\n"
-                         "      lessThan(coord, vec2(clipRegion[i].xy)),\n"
-                         "      greaterThanEqual(coord, vec2(clipRegion[i].zw))));\n"
-                         "  if (!outside) {\n");
+    mstring_append(clip,
+                   "vec2 coord = gl_FragCoord.xy - 0.5;\n"
+                   "for (int i = 0; i < 8; i++) {\n"
+                   "  bool outside = any(bvec4(\n"
+                   "      lessThan(coord, vec2(clipRegion[i].xy)),\n"
+                   "      greaterThanEqual(coord, vec2(clipRegion[i].zw))));\n"
+                   "  if (!outside) {\n");
     if (ps->state.window_clip_exclusive) {
         mstring_append(clip, "    discard;\n");
     } else {
@@ -925,8 +981,10 @@ static MString* psh_convert(struct PixelShader *ps)
                           "}\n");
             } else {
                 mstring_append(
-                    clip, "if ((gl_FragCoord.z + 1.0f/16777216.0f)*clipRange.y < clipRange.z ||\n"
-                          "    (gl_FragCoord.z - 1.0f/16777216.0f)*clipRange.y > clipRange.w) {\n"
+                    clip, "if ((gl_FragCoord.z + 1.0f/16777216.0f)*clipRange.y "
+                          "< clipRange.z ||\n"
+                          "    (gl_FragCoord.z - 1.0f/16777216.0f)*clipRange.y "
+                          "> clipRange.w) {\n"
                           "  discard;\n"
                           "}\n");
             }
@@ -934,37 +992,39 @@ static MString* psh_convert(struct PixelShader *ps)
     }
 
     MString *vars = mstring_new();
-    mstring_append(vars, "vec4 pD0 = vtxD0;\n");
-    mstring_append(vars, "vec4 pD1 = vtxD1;\n");
-    mstring_append(vars, "vec4 pB0 = vtxB0;\n");
-    mstring_append(vars, "vec4 pB1 = vtxB1;\n");
-    mstring_append(vars, "vec4 pFog = vec4(fogColor.rgb, clamp(vtxFog, 0.0, 1.0));\n");
-    mstring_append(vars, "vec4 pT0 = vtxT0;\n");
-    mstring_append(vars, "vec4 pT1 = vtxT1;\n");
-    mstring_append(vars, "vec4 pT2 = vtxT2;\n");
+    mstring_append(vars,
+                   "vec4 pD0 = vtxD0;\n"
+                   "vec4 pD1 = vtxD1;\n"
+                   "vec4 pB0 = vtxB0;\n"
+                   "vec4 pB1 = vtxB1;\n"
+                   "vec4 pFog = vec4(fogColor.rgb, clamp(vtxFog, 0.0, 1.0));\n"
+                   "vec4 pT0 = vtxT0;\n"
+                   "vec4 pT1 = vtxT1;\n"
+                   "vec4 pT2 = vtxT2;\n");
     if (ps->state.point_sprite) {
         assert(!ps->state.rect_tex[3]);
         mstring_append(vars, "vec4 pT3 = vec4(gl_PointCoord, 1.0, 1.0);\n");
     } else {
         mstring_append(vars, "vec4 pT3 = vtxT3;\n");
     }
-    mstring_append(vars, "\n");
-    mstring_append(vars, "vec4 v0 = pD0;\n");
-    mstring_append(vars, "vec4 v1 = pD1;\n");
-    mstring_append(vars, "vec4 ab;\n");
-    mstring_append(vars, "vec4 cd;\n");
-    mstring_append(vars, "vec4 mux_sum;\n");
+    mstring_append(vars, "\n"
+                         "vec4 v0 = pD0;\n"
+                         "vec4 v1 = pD1;\n"
+                         "vec4 ab;\n"
+                         "vec4 cd;\n"
+                         "vec4 mux_sum;\n");
 
     ps->code = mstring_new();
 
     bool color_key_comparator_defined = false;
 
     for (int i = 0; i < 4; i++) {
-
-        const char *sampler_type = get_sampler_type(ps->tex_modes[i], &ps->state, i);
+        const char *sampler_type =
+            get_sampler_type(ps->tex_modes[i], &ps->state, i);
 
         g_autofree gchar *normalize_tex_coords = g_strdup_printf("norm%d", i);
-        const char *tex_remap = ps->state.rect_tex[i] ? normalize_tex_coords : "";
+        const char *tex_remap =
+            ps->state.rect_tex[i] ? normalize_tex_coords : "";
 
         assert(ps->dot_map[i] < 8);
         const char *dotmap_func = dotmap_funcs[ps->dot_map[i]];
@@ -974,8 +1034,11 @@ static MString* psh_convert(struct PixelShader *ps)
 
         switch (ps->tex_modes[i]) {
         case PS_TEXTUREMODES_NONE:
-            mstring_append_fmt(vars, "vec4 t%d = vec4(0.0, 0.0, 0.0, 1.0); /* PS_TEXTUREMODES_NONE */\n",
+            // clang-format off
+            mstring_append_fmt(vars,
+                               "vec4 t%d = vec4(0.0, 0.0, 0.0, 1.0); /* PS_TEXTUREMODES_NONE */\n",
                                i);
+            // clang-format on
             break;
         case PS_TEXTUREMODES_PROJECT2D: {
             if (ps->state.shadow_map[i]) {
@@ -987,11 +1050,17 @@ static MString* psh_convert(struct PixelShader *ps)
                     apply_convolution_filter(ps, vars, i);
                 } else {
                     if (ps->state.dim_tex[i] == 2) {
-                        mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, %s(pT%d.xyw));\n",
+                        // clang-format off
+                        mstring_append_fmt(vars,
+                                           "vec4 t%d = textureProj(texSamp%d, %s(pT%d.xyw));\n",
                                            i, i, tex_remap, i);
+                        // clang-format on
                     } else if (ps->state.dim_tex[i] == 3) {
-                        mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, vec4(pT%d.xy, 0.0, pT%d.w));\n",
+                        // clang-format off
+                        mstring_append_fmt(vars,
+                                           "vec4 t%d = textureProj(texSamp%d, vec4(pT%d.xy, 0.0, pT%d.w));\n",
                                            i, i, i, i);
+                        // clang-format on
                     } else {
                         assert(!"Unhandled texture dimensions");
                     }
@@ -1004,26 +1073,29 @@ static MString* psh_convert(struct PixelShader *ps)
                 psh_append_shadowmap(ps, i, true, vars);
             } else {
                 apply_border_adjustment(ps, vars, i, "pT%d");
-                mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, %s(pT%d.xyzw));\n",
-                                   i, i, tex_remap, i);
+                mstring_append_fmt(
+                    vars, "vec4 t%d = textureProj(texSamp%d, %s(pT%d.xyzw));\n",
+                    i, i, tex_remap, i);
             }
             break;
         case PS_TEXTUREMODES_CUBEMAP:
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xyz);\n",
-                               i, i, i);
+            mstring_append_fmt(
+                vars, "vec4 t%d = texture(texSamp%d, pT%d.xyz);\n", i, i, i);
             break;
         case PS_TEXTUREMODES_PASSTHRU:
-            assert(ps->state.border_logical_size[i][0] == 0.0f && "Unexpected border texture on passthru");
+            assert(ps->state.border_logical_size[i][0] == 0.0f &&
+                   "Unexpected border texture on passthru");
             mstring_append_fmt(vars, "vec4 t%d = pT%d;\n", i, i);
             break;
         case PS_TEXTUREMODES_CLIPPLANE: {
             int j;
-            mstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_CLIPPLANE */\n",
-                               i);
+            mstring_append_fmt(
+                vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_CLIPPLANE */\n",
+                i);
             for (j = 0; j < 4; j++) {
                 mstring_append_fmt(vars, "  if(pT%d.%c %s 0.0) { discard; };\n",
                                    i, "xyzw"[j],
-                                   ps->state.compare_mode[i][j] ? ">=" : "<");
+                                   ps -> state.compare_mode[i][j] ? ">=" : "<");
             }
             break;
         }
@@ -1031,24 +1103,33 @@ static MString* psh_convert(struct PixelShader *ps)
             assert(i >= 1);
 
             if (ps->state.snorm_tex[ps->input_tex[i]]) {
-                /* Input color channels already signed (FIXME: May not always want signed textures in this case) */
-                mstring_append_fmt(vars, "vec2 dsdt%d = t%d.bg;\n",
-                                   i, ps->input_tex[i]);
+                /* Input color channels already signed (FIXME: May not always
+                 * want signed textures in this case) */
+                mstring_append_fmt(vars, "vec2 dsdt%d = t%d.bg;\n", i,
+                                   ps->input_tex[i]);
             } else {
-                /* Convert to signed (FIXME: loss of accuracy due to filtering/interpolation) */
-                mstring_append_fmt(vars, "vec2 dsdt%d = vec2(sign3(t%d.b), sign3(t%d.g));\n",
-                                   i, ps->input_tex[i], ps->input_tex[i]);
+                /* Convert to signed (FIXME: loss of accuracy due to
+                 * filtering/interpolation) */
+                mstring_append_fmt(
+                    vars, "vec2 dsdt%d = vec2(sign3(t%d.b), sign3(t%d.g));\n",
+                    i, ps->input_tex[i], ps->input_tex[i]);
             }
 
             mstring_append_fmt(vars, "dsdt%d = bumpMat%d * dsdt%d;\n", i, i, i);
 
             if (ps->state.dim_tex[i] == 2) {
-                mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdt%d));\n",
-                    i, i, tex_remap, i, i);
+                mstring_append_fmt(
+                    vars,
+                    "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdt%d));\n", i,
+                    i, tex_remap, i, i);
             } else if (ps->state.dim_tex[i] == 3) {
-                // FIXME: Does hardware pass through the r/z coordinate or is it 0?
-                mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(pT%d.xy + dsdt%d, pT%d.z));\n",
-                    i, i, i, i, i);
+                // FIXME: Does hardware pass through the r/z coordinate or is it
+                // 0?
+                // clang-format off
+                mstring_append_fmt(vars,
+                                   "vec4 t%d = texture(texSamp%d, vec3(pT%d.xy + dsdt%d, pT%d.z));\n",
+                                   i, i, i, i, i);
+                // clang-format on
             } else {
                 assert(!"Unhandled texture dimensions");
             }
@@ -1057,138 +1138,174 @@ static MString* psh_convert(struct PixelShader *ps)
             assert(i >= 1);
 
             if (ps->state.snorm_tex[ps->input_tex[i]]) {
-                /* Input color channels already signed (FIXME: May not always want signed textures in this case) */
-                mstring_append_fmt(vars, "vec3 dsdtl%d = vec3(t%d.bg, sign3_to_0_to_1(t%d.r));\n",
-                                   i, ps->input_tex[i], ps->input_tex[i]);
+                /* Input color channels already signed (FIXME: May not always
+                 * want signed textures in this case) */
+                mstring_append_fmt(
+                    vars,
+                    "vec3 dsdtl%d = vec3(t%d.bg, sign3_to_0_to_1(t%d.r));\n", i,
+                    ps->input_tex[i], ps->input_tex[i]);
             } else {
-                /* Convert to signed (FIXME: loss of accuracy due to filtering/interpolation) */
-                mstring_append_fmt(vars, "vec3 dsdtl%d = vec3(sign3(t%d.b), sign3(t%d.g), t%d.r);\n",
-                                   i, ps->input_tex[i], ps->input_tex[i], ps->input_tex[i]);
+                /* Convert to signed (FIXME: loss of accuracy due to
+                 * filtering/interpolation) */
+                mstring_append_fmt(
+                    vars,
+                    "vec3 dsdtl%d = vec3(sign3(t%d.b), sign3(t%d.g), t%d.r);\n",
+                    i, ps->input_tex[i], ps->input_tex[i], ps->input_tex[i]);
             }
 
             mstring_append_fmt(vars, "dsdtl%d.st = bumpMat%d * dsdtl%d.st;\n",
                                i, i, i);
 
             if (ps->state.dim_tex[i] == 2) {
-                mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdtl%d.st));\n",
-                    i, i, tex_remap, i, i);
+                // clang-format off
+                mstring_append_fmt(vars,
+                                   "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdtl%d.st));\n",
+                                   i, i, tex_remap, i, i);
+                // clang-format on
             } else if (ps->state.dim_tex[i] == 3) {
-                // FIXME: Does hardware pass through the r/z coordinate or is it 0?
-                mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(pT%d.xy + dsdtl%d.st, pT%d.z));\n",
-                    i, i, i, i, i);
+                // FIXME: Does hardware pass through the r/z coordinate or is it
+                // 0?
+                // clang-format off
+                mstring_append_fmt(vars,
+                                   "vec4 t%d = texture(texSamp%d, vec3(pT%d.xy + dsdtl%d.st, pT%d.z));\n",
+                                   i, i, i, i, i);
+                // clang-format on
             } else {
                 assert(!"Unhandled texture dimensions");
             }
 
-            mstring_append_fmt(vars, "t%d = t%d * (bumpScale%d * dsdtl%d.p + bumpOffset%d);\n",
+            mstring_append_fmt(
+                vars, "t%d = t%d * (bumpScale%d * dsdtl%d.p + bumpOffset%d);\n",
                 i, i, i, i, i);
             break;
         case PS_TEXTUREMODES_BRDF:
             assert(i >= 2);
-            mstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_BRDF */\n",
-                               i);
+            mstring_append_fmt(
+                vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_BRDF */\n", i);
             NV2A_UNIMPLEMENTED("PS_TEXTUREMODES_BRDF");
             break;
         case PS_TEXTUREMODES_DOT_ST:
             assert(i >= 2);
-            mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_ST */\n");
             mstring_append_fmt(vars,
-               "float dot%d = dot(pT%d.xyz, %s(t%d));\n"
-               "vec2 dotST%d = vec2(dot%d, dot%d);\n",
-                i, i, dotmap_func, ps->input_tex[i], i, i-1, i);
+                               "/* PS_TEXTUREMODES_DOT_ST */\n"
+                               "float dot%d = dot(pT%d.xyz, %s(t%d));\n"
+                               "vec2 dotST%d = vec2(dot%d, dot%d);\n",
+                               i, i, dotmap_func, ps->input_tex[i], i, i - 1,
+                               i);
 
             apply_border_adjustment(ps, vars, i, "dotST%d");
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(dotST%d));\n",
-                i, i, tex_remap, i);
+            mstring_append_fmt(vars,
+                               "vec4 t%d = texture(texSamp%d, %s(dotST%d));\n",
+                               i, i, tex_remap, i);
             break;
         case PS_TEXTUREMODES_DOT_ZW:
             assert(i >= 2);
-            mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_ZW */\n");
-            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
-                i, i, dotmap_func, ps->input_tex[i]);
+            mstring_append_fmt(vars,
+                               "/* PS_TEXTUREMODES_DOT_ZW */\n"
+                               "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
+                               i, i, dotmap_func, ps->input_tex[i]);
             mstring_append_fmt(vars, "vec4 t%d = vec4(0.0);\n", i);
             // FIXME: mstring_append_fmt(vars, "gl_FragDepth = t%d.x;\n", i);
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_DIFF:
             assert(i == 2);
-            mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_RFLCT_DIFF */\n");
-            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
-                i, i, dotmap_func, ps->input_tex[i]);
-            assert(ps->dot_map[i+1] < 8);
-            mstring_append_fmt(vars, "float dot%d_n = dot(pT%d.xyz, %s(t%d));\n",
-                i, i+1, dotmap_funcs[ps->dot_map[i+1]], ps->input_tex[i+1]);
-            mstring_append_fmt(vars, "vec3 n_%d = vec3(dot%d, dot%d, dot%d_n);\n",
-                i, i-1, i, i);
+            mstring_append_fmt(vars,
+                               "/* PS_TEXTUREMODES_DOT_RFLCT_DIFF */\n"
+                               "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
+                               i, i, dotmap_func, ps->input_tex[i]);
+            assert(ps->dot_map[i + 1] < 8);
+            mstring_append_fmt(
+                vars, "float dot%d_n = dot(pT%d.xyz, %s(t%d));\n", i, i + 1,
+                dotmap_funcs[ps->dot_map[i + 1]], ps->input_tex[i + 1]);
+            mstring_append_fmt(vars,
+                               "vec3 n_%d = vec3(dot%d, dot%d, dot%d_n);\n", i,
+                               i - 1, i, i);
             apply_border_adjustment(ps, vars, i, "n_%d");
             mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, n_%d);\n",
-                i, i, i);
+                               i, i, i);
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_SPEC:
             assert(i == 3);
-            mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_RFLCT_SPEC */\n");
-            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
-                i, i, dotmap_func, ps->input_tex[i]);
+            mstring_append_fmt(vars,
+                               "/* PS_TEXTUREMODES_DOT_RFLCT_SPEC */\n"
+                               "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
+                               i, i, dotmap_func, ps->input_tex[i]);
             mstring_append_fmt(vars, "vec3 n_%d = vec3(dot%d, dot%d, dot%d);\n",
-                i, i-2, i-1, i);
-            mstring_append_fmt(vars, "vec3 e_%d = vec3(pT%d.w, pT%d.w, pT%d.w);\n",
-                i, i-2, i-1, i);
-            mstring_append_fmt(vars, "vec3 rv_%d = 2*n_%d*dot(n_%d,e_%d)/dot(n_%d,n_%d) - e_%d;\n",
+                               i, i - 2, i - 1, i);
+            mstring_append_fmt(vars,
+                               "vec3 e_%d = vec3(pT%d.w, pT%d.w, pT%d.w);\n", i,
+                               i - 2, i - 1, i);
+            mstring_append_fmt(
+                vars,
+                "vec3 rv_%d = 2*n_%d*dot(n_%d,e_%d)/dot(n_%d,n_%d) - e_%d;\n",
                 i, i, i, i, i, i, i);
             apply_border_adjustment(ps, vars, i, "rv_%d");
             mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, rv_%d);\n",
-                i, i, i);
+                               i, i, i);
             break;
         case PS_TEXTUREMODES_DOT_STR_3D:
             assert(i == 3);
-            mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_3D */\n");
             mstring_append_fmt(vars,
-               "float dot%d = dot(pT%d.xyz, %s(t%d));\n"
-               "vec3 dotSTR%d = vec3(dot%d, dot%d, dot%d);\n",
-                i, i, dotmap_func, ps->input_tex[i],
-                i, i-2, i-1, i);
+                               "/* PS_TEXTUREMODES_DOT_STR_3D */\n"
+                               "float dot%d = dot(pT%d.xyz, %s(t%d));\n"
+                               "vec3 dotSTR%d = vec3(dot%d, dot%d, dot%d);\n",
+                               i, i, dotmap_func, ps->input_tex[i], i, i - 2,
+                               i - 1, i);
 
             apply_border_adjustment(ps, vars, i, "dotSTR%d");
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(dotSTR%d%s));\n",
-                i, i, tex_remap, i, ps->state.dim_tex[i] == 2 ? ".xy" : "");
+            mstring_append_fmt(
+                vars, "vec4 t%d = texture(texSamp%d, %s(dotSTR%d%s));\n", i, i,
+                tex_remap, i, ps->state.dim_tex[i] == 2 ? ".xy" : "");
             break;
         case PS_TEXTUREMODES_DOT_STR_CUBE:
             assert(i == 3);
-            mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_CUBE */\n");
-            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
-                i, i, dotmap_func, ps->input_tex[i]);
-            mstring_append_fmt(vars, "vec3 dotSTR%dCube = vec3(dot%d, dot%d, dot%d);\n",
-                               i, i-2, i-1, i);
+            mstring_append_fmt(vars,
+                               "/* PS_TEXTUREMODES_DOT_STR_CUBE */\n"
+                               "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
+                               i, i, dotmap_func, ps->input_tex[i]);
+            mstring_append_fmt(
+                vars, "vec3 dotSTR%dCube = vec3(dot%d, dot%d, dot%d);\n", i,
+                i - 2, i - 1, i);
             apply_border_adjustment(ps, vars, i, "dotSTR%dCube");
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, dotSTR%dCube);\n",
-                i, i, i);
+            mstring_append_fmt(vars,
+                               "vec4 t%d = texture(texSamp%d, dotSTR%dCube);\n",
+                               i, i, i);
             break;
         case PS_TEXTUREMODES_DPNDNT_AR:
             assert(i >= 1);
             assert(!ps->state.rect_tex[i]);
-            mstring_append_fmt(vars, "vec2 t%dAR = t%d.ar;\n", i, ps->input_tex[i]);
+            mstring_append_fmt(vars, "vec2 t%dAR = t%d.ar;\n", i,
+                               ps->input_tex[i]);
             apply_border_adjustment(ps, vars, i, "t%dAR");
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(t%dAR));\n",
-                i, i, tex_remap, i);
+            mstring_append_fmt(vars,
+                               "vec4 t%d = texture(texSamp%d, %s(t%dAR));\n", i,
+                               i, tex_remap, i);
             break;
         case PS_TEXTUREMODES_DPNDNT_GB:
             assert(i >= 1);
             assert(!ps->state.rect_tex[i]);
-            mstring_append_fmt(vars, "vec2 t%dGB = t%d.gb;\n", i, ps->input_tex[i]);
+            mstring_append_fmt(vars, "vec2 t%dGB = t%d.gb;\n", i,
+                               ps->input_tex[i]);
             apply_border_adjustment(ps, vars, i, "t%dGB");
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(t%dGB));\n",
-                i, i, tex_remap, i);
+            mstring_append_fmt(vars,
+                               "vec4 t%d = texture(texSamp%d, %s(t%dGB));\n", i,
+                               i, tex_remap, i);
             break;
         case PS_TEXTUREMODES_DOTPRODUCT:
             assert(i == 1 || i == 2);
-            mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOTPRODUCT */\n");
-            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
-                i, i, dotmap_func, ps->input_tex[i]);
+            mstring_append_fmt(vars,
+                               "/* PS_TEXTUREMODES_DOTPRODUCT */\n"
+                               "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
+                               i, i, dotmap_func, ps->input_tex[i]);
             mstring_append_fmt(vars, "vec4 t%d = vec4(0.0);\n", i);
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST:
             assert(i == 3);
-            mstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST */\n",
+            // clang-format off
+            mstring_append_fmt(vars,
+                               "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST */\n",
                                i);
+            // clang-format on
             NV2A_UNIMPLEMENTED("PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST");
             break;
         default:
@@ -1199,9 +1316,11 @@ static MString* psh_convert(struct PixelShader *ps)
 
         if (sampler_type != NULL) {
             if (ps->state.vulkan) {
-                mstring_append_fmt(preflight, "layout(binding = %d) ", PSH_TEX_BINDING + i);
+                mstring_append_fmt(preflight, "layout(binding = %d) ",
+                                   PSH_TEX_BINDING + i);
             }
-            mstring_append_fmt(preflight, "uniform %s texSamp%d;\n", sampler_type, i);
+            mstring_append_fmt(preflight, "uniform %s texSamp%d;\n",
+                               sampler_type, i);
 
             /* As this means a texture fetch does happen, do alphakill */
             if (ps->state.alphakill[i]) {
@@ -1244,30 +1363,36 @@ static MString* psh_convert(struct PixelShader *ps)
             }
 
             if (ps->state.rect_tex[i]) {
+                // clang-format off
                 mstring_append_fmt(preflight,
-                "vec2 norm%d(vec2 coord) {\n"
-                "    return coord / (textureSize(texSamp%d, 0) / texScale%d);\n"
-                "}\n",
-                i, i, i);
-                mstring_append_fmt(preflight,
-                "vec3 norm%d(vec3 coord) {\n"
-                "    return vec3(norm%d(coord.xy), coord.z);\n"
-                "}\n",
-                i, i);
-                mstring_append_fmt(preflight,
-                "vec4 norm%d(vec4 coord) {\n"
-                "    return vec4(norm%d(coord.xy), 0, coord.w);\n"
-                "}\n",
-                i, i);
+                                   "vec2 norm%d(vec2 coord) {\n"
+                                   "    return coord / (textureSize(texSamp%d, 0) / texScale%d);\n"
+                                   "}\n",
+                                   i, i, i);
+                // clang-format on
+                mstring_append_fmt(
+                    preflight,
+                    "vec3 norm%d(vec3 coord) {\n"
+                    "    return vec3(norm%d(coord.xy), coord.z);\n"
+                    "}\n",
+                    i, i);
+                mstring_append_fmt(
+                    preflight,
+                    "vec4 norm%d(vec4 coord) {\n"
+                    "    return vec4(norm%d(coord.xy), 0, coord.w);\n"
+                    "}\n",
+                    i, i);
             }
         }
     }
 
     for (int i = 0; i < ps->num_stages; i++) {
         ps->cur_stage = i;
-        mstring_append_fmt(ps->code, "// Stage %d\n", i);
-        MString* color = add_stage_code(ps, ps->stage[i].rgb_input, ps->stage[i].rgb_output, "rgb", false);
-        MString* alpha = add_stage_code(ps, ps->stage[i].alpha_input, ps->stage[i].alpha_output, "a", true);
+        mstring_append_fmt(ps->code, "\n// Stage %d\n", i);
+        MString *color = add_stage_code(ps, ps->stage[i].rgb_input,
+                                        ps->stage[i].rgb_output, "rgb", false);
+        MString *alpha = add_stage_code(ps, ps->stage[i].alpha_input,
+                                        ps->stage[i].alpha_output, "a", true);
 
         mstring_append(ps->code, mstring_get_str(color));
         mstring_append(ps->code, mstring_get_str(alpha));
@@ -1285,22 +1410,35 @@ static MString* psh_convert(struct PixelShader *ps)
         if (ps->state.alpha_func == ALPHA_FUNC_NEVER) {
             mstring_append(ps->code, "discard;\n");
         } else {
-            const char* alpha_op;
+            const char *alpha_op;
             switch (ps->state.alpha_func) {
-            case ALPHA_FUNC_LESS: alpha_op = "<"; break;
-            case ALPHA_FUNC_EQUAL: alpha_op = "=="; break;
-            case ALPHA_FUNC_LEQUAL: alpha_op = "<="; break;
-            case ALPHA_FUNC_GREATER: alpha_op = ">"; break;
-            case ALPHA_FUNC_NOTEQUAL: alpha_op = "!="; break;
-            case ALPHA_FUNC_GEQUAL: alpha_op = ">="; break;
+            case ALPHA_FUNC_LESS:
+                alpha_op = "<";
+                break;
+            case ALPHA_FUNC_EQUAL:
+                alpha_op = "==";
+                break;
+            case ALPHA_FUNC_LEQUAL:
+                alpha_op = "<=";
+                break;
+            case ALPHA_FUNC_GREATER:
+                alpha_op = ">";
+                break;
+            case ALPHA_FUNC_NOTEQUAL:
+                alpha_op = "!=";
+                break;
+            case ALPHA_FUNC_GEQUAL:
+                alpha_op = ">=";
+                break;
             default:
                 assert(false);
                 break;
             }
-            mstring_append_fmt(ps->code,
-                               "int fragAlpha = int(round(fragColor.a * 255.0));\n"
-                               "if (!(fragAlpha %s alphaRef)) discard;\n",
-                               alpha_op);
+            mstring_append_fmt(
+                ps->code,
+                "int fragAlpha = int(round(fragColor.a * 255.0));\n"
+                "if (!(fragAlpha %s alphaRef)) discard;\n",
+                alpha_op);
         }
     }
 
@@ -1317,29 +1455,30 @@ static MString* psh_convert(struct PixelShader *ps)
 
     if (ps->state.z_perspective) {
         if (!ps->state.depth_clipping) {
-            mstring_append(ps->code,
-                           "float zvalue = 1.0/gl_FragCoord.w + depthOffset;\n");
+            mstring_append(
+                ps->code, "float zvalue = 1.0/gl_FragCoord.w + depthOffset;\n");
         }
         /* TODO: With integer depth buffers Xbox hardware floors values and so
          * does Radeon, but Intel UHD 770 rounds to nearest. Should probably
          * floor here explicitly (in some way that doesn't also cause
          * imprecision issues due to division by clipRange.y)
          */
-        mstring_append(ps->code,
-                       "gl_FragDepth = clamp(zvalue, clipRange.z, clipRange.w)/clipRange.y;\n");
+        mstring_append(ps->code, "gl_FragDepth = clamp(zvalue, clipRange.z, "
+                                 "clipRange.w)/clipRange.y;\n");
     } else if (!ps->state.depth_clipping) {
         mstring_append(ps->code,
-                       "gl_FragDepth = clamp(gl_FragCoord.z, clipRange.z/clipRange.y, clipRange.w/clipRange.y);\n");
+                       "gl_FragDepth = clamp(gl_FragCoord.z, "
+                       "clipRange.z/clipRange.y, clipRange.w/clipRange.y);\n");
     }
 
     MString *final = mstring_new();
     mstring_append_fmt(final, "#version %d\n\n", ps->state.vulkan ? 450 : 400);
     mstring_append(final, mstring_get_str(preflight));
-    mstring_append(final, "void main() {\n");
+    mstring_append(final, "\nvoid main() {\n");
     mstring_append(final, mstring_get_str(clip));
     mstring_append(final, mstring_get_str(vars));
     mstring_append(final, mstring_get_str(ps->code));
-    mstring_append(final, "}\n");
+    mstring_append(final, "\n}\n");
 
     mstring_unref(preflight);
     mstring_unref(vars);
@@ -1355,9 +1494,9 @@ static void parse_input(struct InputInfo *var, int value)
     var->mod = value & 0xE0;
 }
 
-static void parse_combiner_inputs(uint32_t value,
-                                struct InputInfo *a, struct InputInfo *b,
-                                struct InputInfo *c, struct InputInfo *d)
+static void parse_combiner_inputs(uint32_t value, struct InputInfo *a,
+                                  struct InputInfo *b, struct InputInfo *c,
+                                  struct InputInfo *d)
 {
     parse_input(d, value & 0xFF);
     parse_input(c, (value >> 8) & 0xFF);
@@ -1404,26 +1543,28 @@ MString *pgraph_gen_psh_glsl(const PshState state)
     ps.input_tex[2] = (state.other_stage_input >> 16) & 0xF;
     ps.input_tex[3] = (state.other_stage_input >> 20) & 0xF;
     for (i = 0; i < ps.num_stages; i++) {
-        parse_combiner_inputs(state.rgb_inputs[i],
-            &ps.stage[i].rgb_input.a, &ps.stage[i].rgb_input.b,
-            &ps.stage[i].rgb_input.c, &ps.stage[i].rgb_input.d);
-        parse_combiner_inputs(state.alpha_inputs[i],
-            &ps.stage[i].alpha_input.a, &ps.stage[i].alpha_input.b,
-            &ps.stage[i].alpha_input.c, &ps.stage[i].alpha_input.d);
+        parse_combiner_inputs(state.rgb_inputs[i], &ps.stage[i].rgb_input.a,
+                              &ps.stage[i].rgb_input.b,
+                              &ps.stage[i].rgb_input.c,
+                              &ps.stage[i].rgb_input.d);
+        parse_combiner_inputs(state.alpha_inputs[i], &ps.stage[i].alpha_input.a,
+                              &ps.stage[i].alpha_input.b,
+                              &ps.stage[i].alpha_input.c,
+                              &ps.stage[i].alpha_input.d);
 
         parse_combiner_output(state.rgb_outputs[i], &ps.stage[i].rgb_output);
-        parse_combiner_output(state.alpha_outputs[i], &ps.stage[i].alpha_output);
+        parse_combiner_output(state.alpha_outputs[i],
+                              &ps.stage[i].alpha_output);
     }
 
     struct InputInfo blank;
     ps.final_input.enabled = state.final_inputs_0 || state.final_inputs_1;
     if (ps.final_input.enabled) {
-        parse_combiner_inputs(state.final_inputs_0,
-                              &ps.final_input.a, &ps.final_input.b,
-                              &ps.final_input.c, &ps.final_input.d);
-        parse_combiner_inputs(state.final_inputs_1,
-                              &ps.final_input.e, &ps.final_input.f,
-                              &ps.final_input.g, &blank);
+        parse_combiner_inputs(state.final_inputs_0, &ps.final_input.a,
+                              &ps.final_input.b, &ps.final_input.c,
+                              &ps.final_input.d);
+        parse_combiner_inputs(state.final_inputs_1, &ps.final_input.e,
+                              &ps.final_input.f, &ps.final_input.g, &blank);
         int flags = state.final_inputs_1 & 0xFF;
         ps.final_input.clamp_sum = flags & PS_FINALCOMBINERSETTING_CLAMP_SUM;
         ps.final_input.inv_v1 = flags & PS_FINALCOMBINERSETTING_COMPLEMENT_V1;
