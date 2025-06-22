@@ -297,6 +297,14 @@ static inline void pgraph_reg_w(PGRAPHState *pg, unsigned int r, uint32_t v)
     pg->regs_[r] = v;
 }
 
+#define PG_GET_MASK(reg, mask) GET_MASK(pgraph_reg_r(pg, reg), mask)
+#define PG_SET_MASK(reg, mask, value)        \
+    do {                                     \
+        uint32_t rv = pgraph_reg_r(pg, reg); \
+        SET_MASK(rv, mask, value);           \
+        pgraph_reg_w(pg, reg, rv);           \
+    } while (0)
+
 void pgraph_clear_dirty_reg_map(PGRAPHState *pg);
 
 static inline bool pgraph_is_reg_dirty(PGRAPHState *pg, unsigned int reg)
@@ -367,6 +375,13 @@ static inline void pgraph_apply_scaling_factor(PGRAPHState *pg,
 {
     *width *= pg->surface_scale_factor;
     *height *= pg->surface_scale_factor;
+}
+
+static inline float pgraph_get_line_width(PGRAPHState *pg)
+{
+    uint32_t line_width =
+        PG_GET_MASK(NV_PGRAPH_SETUPRASTER, NV_PGRAPH_SETUPRASTER_LINEWIDTH);
+    return line_width / 8.0f; /* 6.3 format */
 }
 
 void pgraph_get_clear_color(PGRAPHState *pg, float rgba[4]);
