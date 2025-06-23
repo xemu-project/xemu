@@ -54,6 +54,8 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
         GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
 
         "\n"
+        "#define FLOAT_MAX uintBitsToFloat(0x7F7FFFFFu)\n"
+        "\n"
         "vec4 oPos = vec4(0.0,0.0,0.0,1.0);\n"
         "vec4 oD0 = vec4(0.0,0.0,0.0,1.0);\n"
         "vec4 oD1 = vec4(0.0,0.0,0.0,1.0);\n"
@@ -244,7 +246,13 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
             break;
         }
 
-        mstring_append(body, "  oFog = NaNToOne(vec4(fogFactor));\n");
+        /* Fog is clamped to min/max normal float values here to match HW
+         * interpolation. It is then clamped to [0,1] in the pixel shader.
+         */
+        // clang-format off
+        mstring_append(body,
+                       "  oFog = clamp(NaNToOne(vec4(fogFactor)), -FLOAT_MAX, FLOAT_MAX);\n");
+        // clang-format on
     } else {
         /* FIXME: Is the fog still calculated / passed somehow?!
          */
