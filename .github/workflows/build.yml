@@ -471,7 +471,7 @@ jobs:
         tar -C src -xf src.tar.gz
 
         # Ensure subprojects are uploaded
-        rm src/subprojects/.gitignore
+        find src/subprojects -name "*.gitignore" -exec rm {} \;
     - name: Integrate Debian packaging
       run: |
         pushd src
