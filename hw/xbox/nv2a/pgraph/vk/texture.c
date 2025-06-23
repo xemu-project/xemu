@@ -1089,12 +1089,9 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     BasicColorFormatInfo f_basic = kelvin_color_format_info_map[state.color_format];
 
     const hwaddr texture_vram_offset = pgraph_get_texture_phys_addr(pg, texture_idx);
-    size_t texture_palette_data_size;
-    const hwaddr texture_palette_vram_offset =
-        pgraph_get_texture_palette_phys_addr_length(pg, texture_idx,
-                                                    &texture_palette_data_size);
-
     size_t texture_length = pgraph_get_texture_length(pg, &state);
+    hwaddr texture_palette_vram_offset = 0;
+    size_t texture_palette_data_size = 0;
 
     uint32_t filter =
         pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + texture_idx * 4);
@@ -1102,23 +1099,27 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + texture_idx * 4);
     uint32_t border_color_pack32 =
         pgraph_reg_r(pg, NV_PGRAPH_BORDERCOLOR0 + texture_idx * 4);
+    bool is_indexed = (state.color_format ==
+            NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8);
 
     TextureKey key;
     memset(&key, 0, sizeof(key));
     key.state = state;
     key.texture_vram_offset = texture_vram_offset;
     key.texture_length = texture_length;
-    key.palette_vram_offset = texture_palette_vram_offset;
-    key.palette_length = texture_palette_data_size;
+    if (is_indexed) {
+        texture_palette_vram_offset =
+            pgraph_get_texture_palette_phys_addr_length(
+                pg, texture_idx, &texture_palette_data_size);
+        key.palette_vram_offset = texture_palette_vram_offset;
+        key.palette_length = texture_palette_data_size;
+    }
     key.scale = 1;
 
     // FIXME: Separate sampler from texture
     key.filter = filter;
     key.address = address;
     key.border_color = border_color_pack32;
-
-    bool is_indexed = (state.color_format ==
-            NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8);
 
     bool possibly_dirty = false;
     bool possibly_dirty_checked = false;
