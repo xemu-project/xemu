@@ -69,6 +69,8 @@ typedef struct PshState {
     bool snorm_tex[4];
     bool compare_mode[4][4];
     bool alphakill[4];
+    int colorkey_mode[4];
+    uint32_t colorkey_mask[4];
     enum ConvolutionFilter conv_tex[4];
     bool tex_x8y24[4];
     int dim_tex[4];

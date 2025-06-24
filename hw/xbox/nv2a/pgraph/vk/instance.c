@@ -522,36 +522,48 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
         .pQueuePriorities = &queuePriority,
     };
 
-    // Ensure device supports required features
-    VkPhysicalDeviceFeatures available_features, enabled_features;
-    vkGetPhysicalDeviceFeatures(r->physical_device, &available_features);
-    memset(&enabled_features, 0, sizeof(enabled_features));
+    // Check device features
+    VkPhysicalDeviceFeatures physical_device_features;
+    vkGetPhysicalDeviceFeatures(r->physical_device, &physical_device_features);
+    memset(&r->enabled_physical_device_features, 0,
+           sizeof(r->enabled_physical_device_features));
 
     struct {
         const char *name;
         VkBool32 available, *enabled;
-    } required_features[] = {
-        #define F(n) { #n, available_features.n, &enabled_features.n }
-        F(shaderClipDistance),
-        F(geometryShader),
-        F(shaderTessellationAndGeometryPointSize),
-        F(depthClamp),
-        F(occlusionQueryPrecise),
+        bool required;
+    } desired_features[] = {
+        // clang-format off
+        #define F(n, req) { \
+            .name = #n, \
+            .available = physical_device_features.n, \
+            .enabled = &r->enabled_physical_device_features.n, \
+            .required = req, \
+        }
+        F(shaderClipDistance, true),
+        F(geometryShader, true),
+        F(shaderTessellationAndGeometryPointSize, true),
+        F(depthClamp, true),
+        F(occlusionQueryPrecise, true),
+        F(fillModeNonSolid, true),
+        F(wideLines, false),
         #undef F
+        // clang-format on
     };
 
-    bool all_features_available = true;
-    for (int i = 0; i < ARRAY_SIZE(required_features); i++) {
-        if (required_features[i].available != VK_TRUE) {
+    bool all_required_features_available = true;
+    for (int i = 0; i < ARRAY_SIZE(desired_features); i++) {
+        if (desired_features[i].required &&
+            desired_features[i].available != VK_TRUE) {
             fprintf(stderr,
                     "Error: Device does not support required feature %s\n",
-                    required_features[i].name);
-            all_features_available = false;
+                    desired_features[i].name);
+            all_required_features_available = false;
         }
-        *required_features[i].enabled = VK_TRUE;
+        *desired_features[i].enabled = desired_features[i].available;
     }
 
-    if (!all_features_available) {
+    if (!all_required_features_available) {
         error_setg(errp, "Device does not support required features");
         return false;
     }
@@ -584,7 +596,7 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &queue_create_info,
-        .pEnabledFeatures = &enabled_features,
+        .pEnabledFeatures = &r->enabled_physical_device_features,
         .enabledExtensionCount = enabled_extension_names->len,
         .ppEnabledExtensionNames =
             &g_array_index(enabled_extension_names, const char *, 0),

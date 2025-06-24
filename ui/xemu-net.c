@@ -23,6 +23,7 @@
 #include "xemu-settings.h"
 
 #include "qemu/osdep.h"
+#include "qapi/qapi-commands-net.h"
 #include "qemu/sockets.h"
 #include "hw/qdev-core.h"
 #include "hw/qdev-properties.h"
@@ -138,6 +139,7 @@ void xemu_net_enable(void)
         xemu_net_disable();
     }
 
+    qmp_set_link("nvnet.0", true, NULL);
     g_config.net.enable = true;
 }
 
@@ -162,23 +164,33 @@ static void remove_netdev(const char *name)
     qemu_del_net_client(nc);
 }
 
+static void clear_slirp_port_forwards(void)
+{
+    void *s = slirp_get_state_from_netdev(id);
+    if (!s) {
+        return;
+    }
+
+    struct in_addr host_addr = { .s_addr = INADDR_ANY };
+    for (int i = 0; i < g_config.net.nat.forward_ports_count; i++) {
+        slirp_remove_hostfwd(s,
+                             g_config.net.nat.forward_ports[i].protocol ==
+                                 CONFIG_NET_NAT_FORWARD_PORTS_PROTOCOL_UDP,
+                             host_addr,
+                             g_config.net.nat.forward_ports[i].host);
+    }
+}
+
 void xemu_net_disable(void)
 {
     if (g_config.net.backend == CONFIG_NET_BACKEND_NAT) {
-        void *s = slirp_get_state_from_netdev(id);
-        assert(s != NULL);
-        struct in_addr host_addr = { .s_addr = INADDR_ANY };
-        for (int i = 0; i < g_config.net.nat.forward_ports_count; i++) {
-            slirp_remove_hostfwd(s,
-                                 g_config.net.nat.forward_ports[i].protocol ==
-                                     CONFIG_NET_NAT_FORWARD_PORTS_PROTOCOL_UDP,
-                                 host_addr,
-                                 g_config.net.nat.forward_ports[i].host);
-        }
+        clear_slirp_port_forwards();
     }
 
     remove_netdev(id);
     remove_netdev(id_hubport);
+
+    qmp_set_link("nvnet.0", false, NULL);
     g_config.net.enable = false;
 }
 

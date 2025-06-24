@@ -174,6 +174,13 @@ enum PS_DOTMAPPING
     PS_DOTMAPPING_HILO_HEMISPHERE=     0x07L, // - * * *
 };
 
+enum PS_COLORKEYMODE {
+    COLOR_KEY_NONE = 0,
+    COLOR_KEY_KILL_ALPHA = 1,
+    COLOR_KEY_KILL_COLOR_AND_ALPHA = 2,
+    COLOR_KEY_DISCARD = 3,
+};
+
 
 // Structures to describe the PS definition
 
@@ -731,6 +738,19 @@ static void apply_convolution_filter(const struct PixelShader *ps, MString *vars
         "}\n", tex, tex, tex, tex, tex_remap, tex);
 }
 
+static void define_colorkey_comparator(MString *preflight)
+{
+    // clang-format off
+    mstring_append(
+        preflight,
+        "bool check_color_key(vec4 texel, uint color_key, uint color_key_mask) {\n"
+        "    uvec4 c = uvec4(texel * 255.0 + 0.5);\n"
+        "    uint color = (c.a << 24) | (c.r << 16) | (c.g << 8) | c.b;\n"
+        "    return (color & color_key_mask) == (color_key & color_key_mask);\n"
+        "}\n");
+    // clang-format on
+}
+
 static MString* psh_convert(struct PixelShader *ps)
 {
     const char *u = ps->state.vulkan ? "" : "uniform "; // FIXME: Remove
@@ -748,12 +768,15 @@ static MString* psh_convert(struct PixelShader *ps)
                            "layout(location = 0) out vec4 fragColor;\n");
     }
 
-    mstring_append_fmt(preflight, "%sint alphaRef;\n"
-                                  "%svec4  fogColor;\n"
-                                  "%sivec4 clipRegion[8];\n"
-                                  "%svec4  clipRange;\n"
-                                  "%sfloat depthOffset;\n",
-                                  u, u, u, u, u);
+    mstring_append_fmt(preflight,
+                       "%sint alphaRef;\n"
+                       "%svec4  fogColor;\n"
+                       "%sivec4 clipRegion[8];\n"
+                       "%svec4  clipRange;\n"
+                       "%sfloat depthOffset;\n"
+                       "%suint colorKey[4];\n"
+                       "%suint colorKeyMask[4];\n",
+                       u, u, u, u, u, u, u);
     for (int i = 0; i < 4; i++) {
         mstring_append_fmt(preflight, "%smat2  bumpMat%d;\n"
                                       "%sfloat bumpScale%d;\n"
@@ -933,6 +956,8 @@ static MString* psh_convert(struct PixelShader *ps)
     mstring_append(vars, "vec4 mux_sum;\n");
 
     ps->code = mstring_new();
+
+    bool color_key_comparator_defined = false;
 
     for (int i = 0; i < 4; i++) {
 
@@ -1182,6 +1207,40 @@ static MString* psh_convert(struct PixelShader *ps)
             if (ps->state.alphakill[i]) {
                 mstring_append_fmt(vars, "if (t%d.a == 0.0) { discard; };\n",
                                    i);
+            }
+
+            enum PS_COLORKEYMODE color_key_mode = ps->state.colorkey_mode[i];
+            if (color_key_mode != COLOR_KEY_NONE) {
+                if (!color_key_comparator_defined) {
+                    define_colorkey_comparator(preflight);
+                    color_key_comparator_defined = true;
+                }
+
+                // clang-format off
+                mstring_append_fmt(
+                    vars,
+                    "if (check_color_key(t%d, colorKey[%d], colorKeyMask[%d])) {\n",
+                    i, i, i);
+                // clang-format on
+
+                switch (color_key_mode) {
+                case COLOR_KEY_DISCARD:
+                    mstring_append(vars, "  discard;\n");
+                    break;
+
+                case COLOR_KEY_KILL_ALPHA:
+                    mstring_append_fmt(vars, "  t%d.a = 0.0;\n", i);
+                    break;
+
+                case COLOR_KEY_KILL_COLOR_AND_ALPHA:
+                    mstring_append_fmt(vars, "  t%d = vec4(0.0);\n", i);
+                    break;
+
+                default:
+                    assert(!"Unhandled key mode.");
+                }
+
+                mstring_append(vars, "}\n");
             }
 
             if (ps->state.rect_tex[i]) {

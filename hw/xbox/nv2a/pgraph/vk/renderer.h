@@ -77,6 +77,7 @@ typedef struct PipelineBinding {
     VkPipeline pipeline;
     VkRenderPass render_pass;
     unsigned int draw_time;
+    bool has_dynamic_line_width;
 } PipelineBinding;
 
 enum Buffer {
@@ -194,6 +195,9 @@ typedef struct ShaderBinding {
 
     int clip_region_loc;
     int material_alpha_loc;
+
+    int color_key_loc;
+    int color_key_mask_loc;
 
     int uniform_attrs_loc;
 } ShaderBinding;
@@ -331,6 +335,7 @@ typedef struct PGRAPHVkState {
     bool memory_budget_extension_enabled;
 
     VkPhysicalDevice physical_device;
+    VkPhysicalDeviceFeatures enabled_physical_device_features;
     VkPhysicalDeviceProperties device_props;
     VkDevice device;
     VmaAllocator allocator;

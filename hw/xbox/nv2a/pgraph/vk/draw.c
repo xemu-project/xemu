@@ -20,6 +20,7 @@
 #include "qemu/osdep.h"
 #include "qemu/fast-hash.h"
 #include "renderer.h"
+#include <math.h>
 
 void pgraph_vk_draw_begin(NV2AState *d)
 {
@@ -945,12 +946,23 @@ static void create_pipeline(PGRAPHState *pg)
         .blendConstants[3] = blend_constant[3],
     };
 
-    VkDynamicState dynamic_states[2] = { VK_DYNAMIC_STATE_VIEWPORT,
+    VkDynamicState dynamic_states[3] = { VK_DYNAMIC_STATE_VIEWPORT,
                                          VK_DYNAMIC_STATE_SCISSOR };
+    int num_dynamic_states = 2;
+
+    snode->has_dynamic_line_width =
+        (r->enabled_physical_device_features.wideLines == VK_TRUE)
+        && (r->shader_binding->state.polygon_front_mode == POLY_MODE_LINE ||
+            r->shader_binding->state.primitive_mode == PRIM_TYPE_LINES ||
+            r->shader_binding->state.primitive_mode == PRIM_TYPE_LINE_LOOP ||
+            r->shader_binding->state.primitive_mode == PRIM_TYPE_LINE_STRIP);
+    if (snode->has_dynamic_line_width) {
+        dynamic_states[num_dynamic_states++] = VK_DYNAMIC_STATE_LINE_WIDTH;
+    }
 
     VkPipelineDynamicStateCreateInfo dynamic_state = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .dynamicStateCount = ARRAY_SIZE(dynamic_states),
+        .dynamicStateCount = num_dynamic_states,
         .pDynamicStates = dynamic_states,
     };
 
@@ -1420,6 +1432,21 @@ static void begin_pre_draw(PGRAPHState *pg)
     pgraph_vk_ensure_command_buffer(pg);
 }
 
+static float clamp_line_width_to_device_limits(PGRAPHState *pg, float width)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    float min_width = r->device_props.limits.lineWidthRange[0];
+    float max_width = r->device_props.limits.lineWidthRange[1];
+    float granularity = r->device_props.limits.lineWidthGranularity;
+
+    if (granularity != 0.0f) {
+        float steps = roundf((width - min_width) / granularity);
+        width = min_width + steps * granularity;
+    }
+    return fminf(fmaxf(min_width, width), max_width);
+}
+
 static void begin_draw(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -1491,6 +1518,12 @@ static void begin_draw(PGRAPHState *pg)
             .extent.height = scissor_height,
         };
         vkCmdSetScissor(r->command_buffer, 0, 1, &scissor);
+
+        if (r->pipeline_binding->has_dynamic_line_width) {
+            float line_width =
+                clamp_line_width_to_device_limits(pg, pg->surface_scale_factor);
+            vkCmdSetLineWidth(r->command_buffer, line_width);
+        }
     }
 
     if (!pg->clearing) {
