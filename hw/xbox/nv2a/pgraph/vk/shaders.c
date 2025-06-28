@@ -397,8 +397,9 @@ static void apply_uniform_updates(ShaderUniformLayout *layout,
 // FIXME: Dirty tracking
 static void update_shader_uniforms(PGRAPHState *pg)
 {
-    PGRAPHVkState *r = pg->vk_renderer_state;
     NV2A_VK_DGROUP_BEGIN("%s", __func__);
+
+    PGRAPHVkState *r = pg->vk_renderer_state;
     nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND);
 
     assert(r->shader_binding);
