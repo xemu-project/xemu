@@ -3,6 +3,7 @@
  *
  * Copyright (c) 2014 Jannik Vogel
  * Copyright (c) 2012 espes
+ * Copyright (c) 2025 Matt Borgerson
  *
  * Based on:
  * Cxbx, VertexShader.cpp
