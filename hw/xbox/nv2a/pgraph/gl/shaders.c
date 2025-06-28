@@ -171,7 +171,7 @@ static void generate_shaders(ShaderBinding *binding)
 
     /* generate a fragment shader from register combiners */
     MString *fragment_shader_code =
-        pgraph_gen_psh_glsl(state->psh, (GenPshGlslOptions){ 0 });
+        pgraph_gen_psh_glsl(&state->psh, (GenPshGlslOptions){ 0 });
     const char *fragment_shader_code_str =
         mstring_get_str(fragment_shader_code);
     GLuint fragment_shader = create_gl_shader(GL_FRAGMENT_SHADER,
