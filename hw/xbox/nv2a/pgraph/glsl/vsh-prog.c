@@ -230,8 +230,6 @@ static const char* out_reg_name[] = {
     "A0.x",
 };
 
-
-
 // Retrieves a number of bits in the instruction token
 static int vsh_get_from_token(const uint32_t *shader_token,
                               uint8_t subtoken,
@@ -250,7 +248,6 @@ uint8_t vsh_get_field(const uint32_t *shader_token, VshFieldName field_name)
                                         field_mapping[field_name].bit_length));
 }
 
-
 // Converts the C register address to disassembly format
 static int16_t convert_c_register(const int16_t c_reg)
 {
@@ -259,9 +256,7 @@ static int16_t convert_c_register(const int16_t c_reg)
     return r; //FIXME: = c_reg?!
 }
 
-
-
-static MString* decode_swizzle(const uint32_t *shader_token,
+static MString *decode_swizzle(const uint32_t *shader_token,
                                VshFieldName swizzle_field)
 {
     const char* swizzle_str = "xyzw";
@@ -299,10 +294,9 @@ static MString* decode_swizzle(const uint32_t *shader_token,
     }
 }
 
-static MString* decode_opcode_input(const uint32_t *shader_token,
+static MString *decode_opcode_input(const uint32_t *shader_token,
                                     VshParameterType param,
-                                    VshFieldName neg_field,
-                                    int reg_num)
+                                    VshFieldName neg_field, int reg_num)
 {
     /* This function decodes a vertex shader opcode parameter into a string.
      * Input A, B or C is controlled via the Param and NEG fieldnames,
@@ -352,13 +346,10 @@ static MString* decode_opcode_input(const uint32_t *shader_token,
     return ret_str;
 }
 
-
-static MString* decode_opcode(const uint32_t *shader_token,
-                              VshOutputMux out_mux,
-                              uint32_t mask,
-                              const char *opcode,
-                              const char *inputs,
-                              MString** suffix)
+static MString *decode_opcode(const uint32_t *shader_token,
+                              VshOutputMux out_mux, uint32_t mask,
+                              const char *opcode, const char *inputs,
+                              MString **suffix)
 {
     MString *ret = mstring_new();
     int reg_num = vsh_get_field(shader_token, FLD_OUT_R);
@@ -440,8 +431,7 @@ static MString* decode_opcode(const uint32_t *shader_token,
     return ret;
 }
 
-
-static MString* decode_token(const uint32_t *shader_token)
+static MString *decode_token(const uint32_t *shader_token)
 {
     MString *ret;
 
