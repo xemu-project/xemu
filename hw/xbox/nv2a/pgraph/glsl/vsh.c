@@ -21,11 +21,9 @@
 
 #include "qemu/osdep.h"
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
-#include "common.h"
 #include "vsh.h"
 #include "vsh-ff.h"
 #include "vsh-prog.h"
-#include <stdbool.h>
 
 DEF_UNIFORM_INFO_ARR(VshUniform, VSH_UNIFORM_DECL_X)
 

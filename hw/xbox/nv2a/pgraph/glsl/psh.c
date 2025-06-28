@@ -27,13 +27,6 @@
  */
 
 #include "qemu/osdep.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
-#include <stdint.h>
-
 #include "hw/xbox/nv2a/debug.h"
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "psh.h"
