@@ -163,12 +163,7 @@ void pgraph_glsl_set_vsh_state(PGRAPHState *pg, VshState *vsh)
 
 MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
 {
-    MString *output =
-        mstring_from_fmt("#version %d\n\n", opts.vulkan ? 450 : 400);
-
-    MString *header = mstring_from_str("");
-
-    MString *uniforms = mstring_from_str("");
+    MString *uniforms = mstring_new();
     const char *u = opts.vulkan ? "" : "uniform ";
     for (int i = 0; i < ARRAY_SIZE(VshUniformInfo); i++) {
         const UniformInfo *info = &VshUniformInfo[i];
@@ -186,7 +181,7 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         }
     }
 
-    mstring_append(header,
+    MString *header = mstring_from_str(
         GLSL_DEFINE(fogPlane, GLSL_C(NV_IGRAPH_XF_XFCTX_FOG))
         GLSL_DEFINE(texMat0, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T0MAT))
         GLSL_DEFINE(texMat1, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T1MAT))
@@ -433,6 +428,9 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
     mstring_append(body, "}\n");
 
     /* Return combined header + source */
+    MString *output =
+        mstring_from_fmt("#version %d\n\n", opts.vulkan ? 450 : 400);
+
     if (opts.vulkan) {
         // FIXME: Optimize uniforms
         if (num_uniform_attrs > 0) {
@@ -462,6 +460,7 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
 
     mstring_append(output, mstring_get_str(body));
     mstring_unref(body);
+
     return output;
 }
 
