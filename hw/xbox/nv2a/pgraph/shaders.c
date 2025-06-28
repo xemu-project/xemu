@@ -59,7 +59,6 @@ static void set_fixed_function_vsh_state(PGRAPHState *pg,
     ff->local_eye =
         GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LOCALEYE);
 
-    /* color material */
     ff->emission_src = (enum MaterialColorSource)GET_MASK(
         pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_EMISSION);
     ff->ambient_src = (enum MaterialColorSource)GET_MASK(
@@ -69,12 +68,10 @@ static void set_fixed_function_vsh_state(PGRAPHState *pg,
     ff->specular_src = (enum MaterialColorSource)GET_MASK(
         pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_SPECULAR);
 
-    /* Texture matrices */
     for (int i = 0; i < 4; i++) {
         ff->texture_matrix_enable[i] = pg->texture_matrix_enable[i];
     }
 
-    /* Texgen */
     for (int i = 0; i < 4; i++) {
         unsigned int reg = (i < 2) ? NV_PGRAPH_CSV1_A : NV_PGRAPH_CSV1_B;
         for (int j = 0; j < 4; j++) {
@@ -89,7 +86,6 @@ static void set_fixed_function_vsh_state(PGRAPHState *pg,
         }
     }
 
-    /* Lighting */
     ff->lighting =
         GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LIGHTING);
     if (ff->lighting) {
@@ -170,7 +166,6 @@ static void set_vsh_state(PGRAPHState *pg, VshState *vsh)
                                    NV_PGRAPH_CONTROL_3_SHADEMODE) ==
                           NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
 
-    /* Fog */
     vsh->fog_enable =
         pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3) & NV_PGRAPH_CONTROL_3_FOGENABLE;
     if (vsh->fog_enable) {
@@ -229,7 +224,6 @@ static void set_psh_state(PGRAPHState *pg, PshState *psh)
                                    NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
                           NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CULL;
 
-    /* Copy content of enabled combiner stages */
     int num_stages = pgraph_reg_r(pg, NV_PGRAPH_COMBINECTL) & 0xFF;
     for (int i = 0; i < num_stages; i++) {
         psh->rgb_inputs[i] = pgraph_reg_r(pg, NV_PGRAPH_COMBINECOLORI0 + i * 4);
