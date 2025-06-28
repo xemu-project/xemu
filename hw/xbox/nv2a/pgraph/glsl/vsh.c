@@ -175,8 +175,10 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
             state->programmable.program_length, header, body);
     }
 
-    if (state->fog_enable) {
-
+    if (!state->fog_enable) {
+        /* FIXME: Is the fog still calculated / passed somehow?! */
+        mstring_append(body, "  oFog = vec4(1.0);\n");
+    } else {
         if (!state->is_fixed_function) {
             /* FIXME: Does foggen do something here? Let's do some tracking..
              *
@@ -255,10 +257,6 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
         mstring_append(body,
                        "  oFog = clamp(NaNToOne(vec4(fogFactor)), -FLOAT_MAX, FLOAT_MAX);\n");
         // clang-format on
-    } else {
-        /* FIXME: Is the fog still calculated / passed somehow?!
-         */
-        mstring_append(body, "  oFog = vec4(1.0);\n");
     }
 
     mstring_append(body, "\n"
