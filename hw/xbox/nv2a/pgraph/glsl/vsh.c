@@ -432,16 +432,13 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
 
     if (opts.vulkan) {
         // FIXME: Optimize uniforms
-        if (num_uniform_attrs > 0) {
-            if (opts.use_push_constants_for_uniform_attrs) {
-                mstring_append_fmt(output,
-                    "layout(push_constant) uniform PushConstants {\n"
-                    "    vec4 inlineValue[%d];\n"
-                    "};\n\n", num_uniform_attrs);
-            } else {
-                mstring_append_fmt(uniforms, "    vec4 inlineValue[%d];\n",
-                                   NV2A_VERTEXSHADER_ATTRIBUTES);
-            }
+        if (num_uniform_attrs > 0 &&
+            opts.use_push_constants_for_uniform_attrs) {
+            mstring_append_fmt(output,
+                               "layout(push_constant) uniform PushConstants {\n"
+                               "    vec4 inlineValue[%d];\n"
+                               "};\n\n",
+                               num_uniform_attrs);
         }
         mstring_append_fmt(
             output,
