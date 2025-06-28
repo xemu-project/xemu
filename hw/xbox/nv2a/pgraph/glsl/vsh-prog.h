@@ -22,6 +22,8 @@
 #ifndef HW_XBOX_NV2A_PGRAPH_GLSL_VSH_PROG_H
 #define HW_XBOX_NV2A_PGRAPH_GLSL_VSH_PROG_H
 
+#include "qemu/mstring.h"
+
 void pgraph_gen_vsh_prog_glsl(uint16_t version, const uint32_t *tokens,
                               unsigned int length, MString *header,
                               MString *body);
