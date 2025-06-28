@@ -27,7 +27,7 @@
 #include "vsh-prog.h"
 #include <stdbool.h>
 
-MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
+MString *pgraph_gen_vsh_glsl(const VshState *state, bool prefix_outputs)
 {
     int i;
     MString *output = mstring_new();
@@ -158,23 +158,20 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
 
     }
 
-    if (state->fixed_function) {
+    if (state->is_fixed_function) {
         pgraph_gen_vsh_ff_glsl(state, header, body, uniforms);
-    } else if (state->vertex_program) {
-        pgraph_gen_vsh_prog_glsl(VSH_VERSION_XVS,
-                                 (uint32_t *)state->program_data,
-                                 state->program_length,
-                                 state->vulkan, header, body);
     } else {
-        assert(false);
+        pgraph_gen_vsh_prog_glsl(VSH_VERSION_XVS,
+                                 (uint32_t *)state->programmable.program_data,
+                                 state->programmable.program_length,
+                                 state->vulkan, header, body);
     }
-
 
     /* Fog */
 
     if (state->fog_enable) {
 
-        if (state->vertex_program) {
+        if (!state->is_fixed_function) {
             /* FIXME: Does foggen do something here? Let's do some tracking..
              *
              *   "RollerCoaster Tycoon" has

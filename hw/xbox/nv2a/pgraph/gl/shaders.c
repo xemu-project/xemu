@@ -195,7 +195,7 @@ static void update_shader_constant_locations(ShaderBinding *binding)
         binding->point_params_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
     }
 
-    if (binding->state.fixed_function) {
+    if (binding->state.vsh.is_fixed_function) {
         binding->material_alpha_loc =
             glGetUniformLocation(binding->gl_program, "material_alpha");
         binding->specular_power_loc =
@@ -230,14 +230,11 @@ static void generate_shaders(ShaderBinding *binding)
     ShaderState *state = &binding->state;
 
     /* Create an optional geometry shader and find primitive type */
-    GLenum gl_primitive_mode =
-        get_gl_primitive_mode(state->polygon_front_mode, state->primitive_mode);
-    MString* geometry_shader_code =
-        pgraph_gen_geom_glsl(state->polygon_front_mode,
-                                 state->polygon_back_mode,
-                                 state->primitive_mode,
-                                 state->smooth_shading,
-                                 false);
+    GLenum gl_primitive_mode = get_gl_primitive_mode(
+        state->vsh.polygon_front_mode, state->vsh.primitive_mode);
+    MString *geometry_shader_code = pgraph_gen_geom_glsl(
+        state->vsh.polygon_front_mode, state->vsh.polygon_back_mode,
+        state->vsh.primitive_mode, state->vsh.smooth_shading, false);
     if (geometry_shader_code) {
         const char* geometry_shader_code_str =
              mstring_get_str(geometry_shader_code);
@@ -250,7 +247,7 @@ static void generate_shaders(ShaderBinding *binding)
 
     /* create the vertex shader */
     MString *vertex_shader_code =
-        pgraph_gen_vsh_glsl(state, geometry_shader_code != NULL);
+        pgraph_gen_vsh_glsl(&state->vsh, geometry_shader_code != NULL);
     GLuint vertex_shader = create_gl_shader(GL_VERTEX_SHADER,
                                             mstring_get_str(vertex_shader_code),
                                             "vertex shader");
@@ -378,8 +375,9 @@ bool pgraph_gl_shader_load_from_memory(ShaderBinding *binding)
     glUseProgram(gl_program);
 
     binding->gl_program = gl_program;
-    binding->gl_primitive_mode = get_gl_primitive_mode(
-        binding->state.polygon_front_mode, binding->state.primitive_mode);
+    binding->gl_primitive_mode =
+        get_gl_primitive_mode(binding->state.vsh.polygon_front_mode,
+                              binding->state.vsh.primitive_mode);
     binding->initialized = true;
 
     g_free(binding->program);
@@ -814,7 +812,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         assert(0);
     }
 
-    if (state->fixed_function) {
+    if (state->vsh.is_fixed_function) {
         /* update lighting constants */
         struct {
             uint32_t* v;
@@ -1047,7 +1045,7 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
 
     ShaderBinding *old_binding = r->shader_binding;
     ShaderState state = pgraph_get_shader_state(pg);
-    assert(!state.vulkan);
+    assert(!state.vsh.vulkan);
 
     NV2A_GL_DGROUP_BEGIN("%s (VP: %s FFP: %s)", __func__,
                          state.vertex_program ? "yes" : "no",

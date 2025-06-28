@@ -20,8 +20,8 @@
 #ifndef HW_NV2A_VSH_H
 #define HW_NV2A_VSH_H
 
-#include <stdbool.h>
-#include "qemu/mstring.h"
+#include "qemu/osdep.h"
+#include "hw/xbox/nv2a/nv2a_regs.h"
 
 enum VshLight {
     LIGHT_OFF,
@@ -127,5 +127,83 @@ typedef enum {
 } VshFieldName;
 
 uint8_t vsh_get_field(const uint32_t *shader_token, VshFieldName field_name);
+
+enum ShaderPrimitiveMode {
+    PRIM_TYPE_INVALID,
+    PRIM_TYPE_POINTS,
+    PRIM_TYPE_LINES,
+    PRIM_TYPE_LINE_LOOP,
+    PRIM_TYPE_LINE_STRIP,
+    PRIM_TYPE_TRIANGLES,
+    PRIM_TYPE_TRIANGLE_STRIP,
+    PRIM_TYPE_TRIANGLE_FAN,
+    PRIM_TYPE_QUADS,
+    PRIM_TYPE_QUAD_STRIP,
+    PRIM_TYPE_POLYGON,
+};
+
+enum ShaderPolygonMode {
+    POLY_MODE_FILL,
+    POLY_MODE_POINT,
+    POLY_MODE_LINE,
+};
+
+enum MaterialColorSource {
+    MATERIAL_COLOR_SRC_MATERIAL,
+    MATERIAL_COLOR_SRC_DIFFUSE,
+    MATERIAL_COLOR_SRC_SPECULAR,
+};
+
+typedef struct {
+    bool vulkan;
+    bool use_push_constants_for_uniform_attrs;
+    unsigned int surface_scale_factor;  // FIXME: Remove
+
+    uint16_t compressed_attrs;
+    uint16_t uniform_attrs;
+    uint16_t swizzle_attrs;
+
+    /* primitive format for geometry shader */
+    enum ShaderPolygonMode polygon_front_mode;
+    enum ShaderPolygonMode polygon_back_mode;
+    enum ShaderPrimitiveMode primitive_mode;
+
+    bool is_fixed_function;
+    struct {
+        bool normalization;
+        bool texture_matrix_enable[4];
+        enum VshTexgen texgen[4][4];
+        enum VshFoggen foggen;
+        enum VshSkinning skinning;
+        bool lighting;
+        enum VshLight light[NV2A_MAX_LIGHTS];
+        enum MaterialColorSource emission_src;
+        enum MaterialColorSource ambient_src;
+        enum MaterialColorSource diffuse_src;
+        enum MaterialColorSource specular_src;
+        bool local_eye;
+    } fixed_function;
+
+    struct {
+        uint32_t program_data[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH]
+                             [VSH_TOKEN_SIZE];
+        int program_length;
+    } programmable;
+
+    bool fog_enable;
+    enum VshFogMode fog_mode;
+    bool specular_enable;
+    bool separate_specular;
+    bool ignore_specular_alpha;
+    float specular_power;
+    float specular_power_back;
+
+    bool z_perspective;
+    bool point_params_enable;
+    float point_size;
+    float point_params[8];
+
+    bool smooth_shading;
+} VshState;
 
 #endif

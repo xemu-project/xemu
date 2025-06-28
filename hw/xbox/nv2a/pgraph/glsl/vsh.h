@@ -28,6 +28,6 @@
 // FIXME: Move to struct
 #define VSH_UBO_BINDING 0
 
-MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs);
+MString *pgraph_gen_vsh_glsl(const VshState *state, bool prefix_outputs);
 
 #endif
