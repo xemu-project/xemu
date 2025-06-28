@@ -248,84 +248,88 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     for (int i = 0; i < 9; i++) {
         for (int j = 0; j < 2; j++) {
             snprintf(tmp, sizeof(tmp), "c%d_%d", j, i);
-            binding->psh_constant_loc[i][j] =
+            binding->uniform_locs.psh.psh_constant[i][j] =
                 uniform_index(&binding->fragment->uniforms, tmp);
         }
     }
-    binding->alpha_ref_loc =
+    binding->uniform_locs.psh.alpha_ref =
         uniform_index(&binding->fragment->uniforms, "alphaRef");
-    binding->fog_color_loc =
+    binding->uniform_locs.psh.fog_color =
         uniform_index(&binding->fragment->uniforms, "fogColor");
     for (int i = 1; i < NV2A_MAX_TEXTURES; i++) {
         snprintf(tmp, sizeof(tmp), "bumpMat%d", i);
-        binding->bump_mat_loc[i] =
+        binding->uniform_locs.psh.bump_mat[i] =
             uniform_index(&binding->fragment->uniforms, tmp);
         snprintf(tmp, sizeof(tmp), "bumpScale%d", i);
-        binding->bump_scale_loc[i] =
+        binding->uniform_locs.psh.bump_scale[i] =
             uniform_index(&binding->fragment->uniforms, tmp);
         snprintf(tmp, sizeof(tmp), "bumpOffset%d", i);
-        binding->bump_offset_loc[i] =
+        binding->uniform_locs.psh.bump_offset[i] =
             uniform_index(&binding->fragment->uniforms, tmp);
     }
 
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
         snprintf(tmp, sizeof(tmp), "texScale%d", i);
-        binding->tex_scale_loc[i] =
+        binding->uniform_locs.psh.tex_scale[i] =
             uniform_index(&binding->fragment->uniforms, tmp);
     }
 
     /* lookup vertex shader uniforms */
-    binding->vsh_constant_loc = uniform_index(&binding->vertex->uniforms, "c");
-    binding->surface_size_loc =
+    binding->uniform_locs.vsh.vsh_constant =
+        uniform_index(&binding->vertex->uniforms, "c");
+    binding->uniform_locs.psh.surface_size =
         uniform_index(&binding->vertex->uniforms, "surfaceSize");
-    binding->clip_range_loc =
+    binding->uniform_locs.vsh.clip_range =
         uniform_index(&binding->vertex->uniforms, "clipRange");
-    binding->clip_range_floc =
+    binding->uniform_locs.psh.clip_range =
         uniform_index(&binding->fragment->uniforms, "clipRange");
-    binding->depth_offset_loc =
+    binding->uniform_locs.psh.depth_offset =
         uniform_index(&binding->fragment->uniforms, "depthOffset");
-    binding->fog_param_loc =
+    binding->uniform_locs.vsh.fog_param =
         uniform_index(&binding->vertex->uniforms, "fogParam");
 
-    binding->ltctxa_loc = uniform_index(&binding->vertex->uniforms, "ltctxa");
-    binding->ltctxb_loc = uniform_index(&binding->vertex->uniforms, "ltctxb");
-    binding->ltc1_loc = uniform_index(&binding->vertex->uniforms, "ltc1");
+    binding->uniform_locs.vsh.ltctxa =
+        uniform_index(&binding->vertex->uniforms, "ltctxa");
+    binding->uniform_locs.vsh.ltctxb =
+        uniform_index(&binding->vertex->uniforms, "ltctxb");
+    binding->uniform_locs.vsh.ltc1 =
+        uniform_index(&binding->vertex->uniforms, "ltc1");
 
     for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
         snprintf(tmp, sizeof(tmp), "lightInfiniteHalfVector%d", i);
-        binding->light_infinite_half_vector_loc[i] =
+        binding->uniform_locs.vsh.light_infinite_half_vector[i] =
             uniform_index(&binding->vertex->uniforms, tmp);
         snprintf(tmp, sizeof(tmp), "lightInfiniteDirection%d", i);
-        binding->light_infinite_direction_loc[i] =
+        binding->uniform_locs.vsh.light_infinite_direction[i] =
             uniform_index(&binding->vertex->uniforms, tmp);
 
         snprintf(tmp, sizeof(tmp), "lightLocalPosition%d", i);
-        binding->light_local_position_loc[i] =
+        binding->uniform_locs.vsh.light_local_position[i] =
             uniform_index(&binding->vertex->uniforms, tmp);
         snprintf(tmp, sizeof(tmp), "lightLocalAttenuation%d", i);
-        binding->light_local_attenuation_loc[i] =
+        binding->uniform_locs.vsh.light_local_attenuation[i] =
             uniform_index(&binding->vertex->uniforms, tmp);
     }
 
-    binding->clip_region_loc =
+    binding->uniform_locs.psh.clip_region =
         uniform_index(&binding->fragment->uniforms, "clipRegion");
 
-    binding->point_params_loc =
+    binding->uniform_locs.vsh.point_params =
         uniform_index(&binding->vertex->uniforms, "pointParams");
 
-    binding->material_alpha_loc =
+    binding->uniform_locs.vsh.material_alpha =
         uniform_index(&binding->vertex->uniforms, "material_alpha");
 
-    binding->color_key_loc =
+    binding->uniform_locs.psh.color_key =
         uniform_index(&binding->fragment->uniforms, "colorKey");
 
-    binding->color_key_mask_loc =
+    binding->uniform_locs.psh.color_key_mask =
         uniform_index(&binding->fragment->uniforms, "colorKeyMask");
 
-    binding->uniform_attrs_loc =
+    binding->uniform_locs.vsh.uniform_attrs =
         uniform_index(&binding->vertex->uniforms, "inlineValue");
 
-    binding->specular_power_loc =
+    binding->uniform_locs.vsh.specular_power =
         uniform_index(&binding->vertex->uniforms, "specularPower");
 }
 
@@ -472,7 +476,8 @@ static void update_uniform_attr_values(PGRAPHState *pg, ShaderBinding *binding)
                              &num_uniform_attrs);
 
     if (num_uniform_attrs > 0) {
-        uniform1fv(&binding->vertex->uniforms, binding->uniform_attrs_loc,
+        uniform1fv(&binding->vertex->uniforms,
+                   binding->uniform_locs.vsh.uniform_attrs,
                    num_uniform_attrs * 4, &values[0][0]);
     }
 }
@@ -496,7 +501,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding)
         }
 
         for (int j = 0; j < 2; j++) {
-            GLint loc = binding->psh_constant_loc[i][j];
+            GLint loc = binding->uniform_locs.psh.psh_constant[i][j];
             if (loc != -1) {
                 float value[4];
                 pgraph_argb_pack32_to_rgba_float(constant[j], value);
@@ -504,21 +509,21 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding)
             }
         }
     }
-    if (binding->alpha_ref_loc != -1) {
+    if (binding->uniform_locs.psh.alpha_ref != -1) {
         int alpha_ref = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0),
-                                   NV_PGRAPH_CONTROL_0_ALPHAREF);
-        uniform1i(&binding->fragment->uniforms, binding->alpha_ref_loc,
-                         alpha_ref);
+                                 NV_PGRAPH_CONTROL_0_ALPHAREF);
+        uniform1i(&binding->fragment->uniforms,
+                  binding->uniform_locs.psh.alpha_ref, alpha_ref);
     }
-    if (binding->color_key_loc != -1) {
+    if (binding->uniform_locs.psh.color_key != -1) {
         uint32_t color_key_colors[4] = {
             pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR0),
             pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR1),
             pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR2),
             pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR3),
         };
-        uniform1uiv(&binding->fragment->uniforms, binding->color_key_loc, 4,
-                    color_key_colors);
+        uniform1uiv(&binding->fragment->uniforms,
+                    binding->uniform_locs.psh.color_key, 4, color_key_colors);
     }
     uint32_t color_key_mask[4] = { 0 };
 
@@ -528,7 +533,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding)
 
         /* Bump luminance only during stages 1 - 3 */
         if (i > 0) {
-            loc = binding->bump_mat_loc[i];
+            loc = binding->uniform_locs.psh.bump_mat[i];
             if (loc != -1) {
                 uint32_t m_u32[4];
                 m_u32[0] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT00 + 4 * (i - 1));
@@ -536,29 +541,27 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding)
                 m_u32[2] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT10 + 4 * (i - 1));
                 m_u32[3] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT11 + 4 * (i - 1));
                 float m[4];
-                m[0] = *(float*)&m_u32[0];
-                m[1] = *(float*)&m_u32[1];
-                m[2] = *(float*)&m_u32[2];
-                m[3] = *(float*)&m_u32[3];
+                m[0] = *(float *)&m_u32[0];
+                m[1] = *(float *)&m_u32[1];
+                m[2] = *(float *)&m_u32[2];
+                m[3] = *(float *)&m_u32[3];
                 uniformMatrix2fv(&binding->fragment->uniforms, loc, m);
             }
-            loc = binding->bump_scale_loc[i];
+            loc = binding->uniform_locs.psh.bump_scale[i];
             if (loc != -1) {
                 uint32_t v =
                     pgraph_reg_r(pg, NV_PGRAPH_BUMPSCALE1 + (i - 1) * 4);
-                uniform1f(&binding->fragment->uniforms, loc,
-                                 *(float *)&v);
+                uniform1f(&binding->fragment->uniforms, loc, *(float *)&v);
             }
-            loc = binding->bump_offset_loc[i];
+            loc = binding->uniform_locs.psh.bump_offset[i];
             if (loc != -1) {
                 uint32_t v =
                     pgraph_reg_r(pg, NV_PGRAPH_BUMPOFFSET1 + (i - 1) * 4);
-                uniform1f(&binding->fragment->uniforms, loc,
-                                 *(float *)&v);
+                uniform1f(&binding->fragment->uniforms, loc, *(float *)&v);
             }
         }
 
-        loc = binding->tex_scale_loc[i];
+        loc = binding->uniform_locs.psh.tex_scale[i];
         if (loc != -1) {
             assert(pg->vk_renderer_state->texture_bindings[i] != NULL);
             float scale = pg->vk_renderer_state->texture_bindings[i]->key.scale;
@@ -575,26 +578,28 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding)
         color_key_mask[i] = pgraph_get_color_key_mask_for_texture(pg, i);
     }
 
-    if (binding->color_key_mask_loc != -1) {
-        uniform1uiv(&binding->fragment->uniforms, binding->color_key_mask_loc,
-                    4, color_key_mask);
+    if (binding->uniform_locs.psh.color_key_mask != -1) {
+        uniform1uiv(&binding->fragment->uniforms,
+                    binding->uniform_locs.psh.color_key_mask, 4,
+                    color_key_mask);
     }
 
-    if (binding->fog_color_loc != -1) {
+    if (binding->uniform_locs.psh.fog_color != -1) {
         uint32_t fog_color = pgraph_reg_r(pg, NV_PGRAPH_FOGCOLOR);
-        uniform4f(&binding->fragment->uniforms, binding->fog_color_loc,
-                         GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_RED) / 255.0,
-                         GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_GREEN) / 255.0,
-                         GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_BLUE) / 255.0,
-                         GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_ALPHA) / 255.0);
+        uniform4f(&binding->fragment->uniforms,
+                  binding->uniform_locs.psh.fog_color,
+                  GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_RED) / 255.0,
+                  GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_GREEN) / 255.0,
+                  GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_BLUE) / 255.0,
+                  GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_ALPHA) / 255.0);
     }
-    if (binding->fog_param_loc != -1) {
+    if (binding->uniform_locs.vsh.fog_param != -1) {
         uint32_t v[2];
         v[0] = pgraph_reg_r(pg, NV_PGRAPH_FOGPARAM0);
         v[1] = pgraph_reg_r(pg, NV_PGRAPH_FOGPARAM1);
         uniform2f(&binding->vertex->uniforms,
-                         binding->fog_param_loc, *(float *)&v[0],
-                         *(float *)&v[1]);
+                  binding->uniform_locs.vsh.fog_param, *(float *)&v[0],
+                  *(float *)&v[1]);
     }
 
     float zmax;
@@ -616,77 +621,86 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding)
             int locs;
             size_t len;
         } lighting_arrays[] = {
-            { &pg->ltctxa[0][0], binding->ltctxa_loc, NV2A_LTCTXA_COUNT },
-            { &pg->ltctxb[0][0], binding->ltctxb_loc, NV2A_LTCTXB_COUNT },
-            { &pg->ltc1[0][0], binding->ltc1_loc, NV2A_LTC1_COUNT },
+            { &pg->ltctxa[0][0], binding->uniform_locs.vsh.ltctxa,
+              NV2A_LTCTXA_COUNT },
+            { &pg->ltctxb[0][0], binding->uniform_locs.vsh.ltctxb,
+              NV2A_LTCTXB_COUNT },
+            { &pg->ltc1[0][0], binding->uniform_locs.vsh.ltc1,
+              NV2A_LTC1_COUNT },
         };
 
         for (int i = 0; i < ARRAY_SIZE(lighting_arrays); i++) {
-            uniform1iv(
-                &binding->vertex->uniforms, lighting_arrays[i].locs,
-                lighting_arrays[i].len * 4, (void *)lighting_arrays[i].v);
+            uniform1iv(&binding->vertex->uniforms, lighting_arrays[i].locs,
+                       lighting_arrays[i].len * 4,
+                       (void *)lighting_arrays[i].v);
         }
 
         for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
-            int loc = binding->light_infinite_half_vector_loc[i];
+            int loc = binding->uniform_locs.vsh.light_infinite_half_vector[i];
             if (loc != -1) {
                 uniform1fv(&binding->vertex->uniforms, loc, 3,
-                                 pg->light_infinite_half_vector[i]);
+                           pg->light_infinite_half_vector[i]);
             }
-            loc = binding->light_infinite_direction_loc[i];
+            loc = binding->uniform_locs.vsh.light_infinite_direction[i];
             if (loc != -1) {
                 uniform1fv(&binding->vertex->uniforms, loc, 3,
-                                 pg->light_infinite_direction[i]);
+                           pg->light_infinite_direction[i]);
             }
 
-            loc = binding->light_local_position_loc[i];
+            loc = binding->uniform_locs.vsh.light_local_position[i];
             if (loc != -1) {
                 uniform1fv(&binding->vertex->uniforms, loc, 3,
-                                 pg->light_local_position[i]);
+                           pg->light_local_position[i]);
             }
-            loc = binding->light_local_attenuation_loc[i];
+            loc = binding->uniform_locs.vsh.light_local_attenuation[i];
             if (loc != -1) {
                 uniform1fv(&binding->vertex->uniforms, loc, 3,
-                                 pg->light_local_attenuation[i]);
+                           pg->light_local_attenuation[i]);
             }
         }
 
-        if (binding->specular_power_loc != -1) {
-            uniform1f(&binding->vertex->uniforms, binding->specular_power_loc,
+        if (binding->uniform_locs.vsh.specular_power != -1) {
+            uniform1f(&binding->vertex->uniforms,
+                      binding->uniform_locs.vsh.specular_power,
                       pg->specular_power);
         }
     }
 
     /* update vertex program constants */
-    uniform1iv(&binding->vertex->uniforms, binding->vsh_constant_loc,
+    uniform1iv(&binding->vertex->uniforms,
+               binding->uniform_locs.vsh.vsh_constant,
                NV2A_VERTEXSHADER_CONSTANTS * 4, (void *)pg->vsh_constants);
 
-    if (binding->surface_size_loc != -1) {
+    if (binding->uniform_locs.psh.surface_size != -1) {
         unsigned int aa_width = 1, aa_height = 1;
         pgraph_apply_anti_aliasing_factor(pg, &aa_width, &aa_height);
-        uniform2f(&binding->vertex->uniforms, binding->surface_size_loc,
-                         pg->surface_binding_dim.width / aa_width,
-                         pg->surface_binding_dim.height / aa_height);
+        uniform2f(&binding->vertex->uniforms,
+                  binding->uniform_locs.psh.surface_size,
+                  pg->surface_binding_dim.width / aa_width,
+                  pg->surface_binding_dim.height / aa_height);
     }
 
-    if (binding->clip_range_loc != -1 || binding->clip_range_floc != -1) {
+    if (binding->uniform_locs.vsh.clip_range != -1 ||
+        binding->uniform_locs.psh.clip_range != -1) {
         uint32_t v[2];
         v[0] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
         v[1] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMAX);
         float zclip_min = *(float *)&v[0];
         float zclip_max = *(float *)&v[1];
 
-        if (binding->clip_range_loc != -1) {
-            uniform4f(&binding->vertex->uniforms, binding->clip_range_loc, 0,
-                      zmax, zclip_min, zclip_max);
+        if (binding->uniform_locs.vsh.clip_range != -1) {
+            uniform4f(&binding->vertex->uniforms,
+                      binding->uniform_locs.vsh.clip_range, 0, zmax, zclip_min,
+                      zclip_max);
         }
-        if (binding->clip_range_floc != -1) {
-            uniform4f(&binding->fragment->uniforms, binding->clip_range_floc, 0,
-                      zmax, zclip_min, zclip_max);
+        if (binding->uniform_locs.psh.clip_range != -1) {
+            uniform4f(&binding->fragment->uniforms,
+                      binding->uniform_locs.psh.clip_range, 0, zmax, zclip_min,
+                      zclip_max);
         }
     }
 
-    if (binding->depth_offset_loc != -1) {
+    if (binding->uniform_locs.psh.depth_offset != -1) {
         float zbias = 0.0f;
 
         if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
@@ -708,8 +722,8 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding)
             }
         }
 
-        uniform1f(&binding->fragment->uniforms, binding->depth_offset_loc,
-                  zbias);
+        uniform1f(&binding->fragment->uniforms,
+                  binding->uniform_locs.psh.depth_offset, zbias);
     }
 
     /* Clipping regions */
@@ -737,21 +751,22 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding)
         clip_regions[i][2] = x_max;
         clip_regions[i][3] = y_max;
     }
-    uniform1iv(&binding->fragment->uniforms, binding->clip_region_loc,
-                     8 * 4, (void *)clip_regions);
+    uniform1iv(&binding->fragment->uniforms,
+               binding->uniform_locs.psh.clip_region, 8 * 4,
+               (void *)clip_regions);
 
-    if (binding->point_params_loc != -1) {
-        uniform1iv(&binding->vertex->uniforms, binding->point_params_loc,
+    if (binding->uniform_locs.vsh.point_params != -1) {
+        uniform1iv(&binding->vertex->uniforms,
+                   binding->uniform_locs.vsh.point_params,
                    ARRAY_SIZE(pg->point_params), (void *)pg->point_params);
     }
 
-    if (binding->material_alpha_loc != -1) {
-        uniform1f(&binding->vertex->uniforms, binding->material_alpha_loc,
-                         pg->material_alpha);
+    if (binding->uniform_locs.vsh.material_alpha != -1) {
+        uniform1f(&binding->vertex->uniforms,
+                  binding->uniform_locs.vsh.material_alpha, pg->material_alpha);
     }
 
-    if (!r->use_push_constants_for_uniform_attrs &&
-        state->vsh.uniform_attrs) {
+    if (!r->use_push_constants_for_uniform_attrs && state->vsh.uniform_attrs) {
         update_uniform_attr_values(pg, binding);
     }
 }

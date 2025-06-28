@@ -108,7 +108,8 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
         char samplerName[16];
         snprintf(samplerName, sizeof(samplerName), "texSamp%d", i);
-        GLint texSampLoc = glGetUniformLocation(binding->gl_program, samplerName);
+        GLint texSampLoc =
+            glGetUniformLocation(binding->gl_program, samplerName);
         if (texSampLoc >= 0) {
             glUniform1i(texSampLoc, i);
         }
@@ -118,89 +119,107 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     for (int i = 0; i < 9; i++) {
         for (int j = 0; j < 2; j++) {
             snprintf(tmp, sizeof(tmp), "c%d_%d", j, i);
-            binding->psh_constant_loc[i][j] = glGetUniformLocation(binding->gl_program, tmp);
+            binding->uniform_locs.psh.psh_constant[i][j] =
+                glGetUniformLocation(binding->gl_program, tmp);
         }
     }
-    binding->alpha_ref_loc = glGetUniformLocation(binding->gl_program, "alphaRef");
+    binding->uniform_locs.psh.alpha_ref =
+        glGetUniformLocation(binding->gl_program, "alphaRef");
 
     for (int i = 1; i < NV2A_MAX_TEXTURES; i++) {
         snprintf(tmp, sizeof(tmp), "bumpMat%d", i);
-        binding->bump_mat_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        binding->uniform_locs.psh.bump_mat[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
         snprintf(tmp, sizeof(tmp), "bumpScale%d", i);
-        binding->bump_scale_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        binding->uniform_locs.psh.bump_scale[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
         snprintf(tmp, sizeof(tmp), "bumpOffset%d", i);
-        binding->bump_offset_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        binding->uniform_locs.psh.bump_offset[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
     }
 
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
         snprintf(tmp, sizeof(tmp), "texScale%d", i);
-        binding->tex_scale_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        binding->uniform_locs.psh.tex_scale[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
     }
 
     /* lookup vertex shader uniforms */
     for (int i = 0; i < NV2A_VERTEXSHADER_CONSTANTS; i++) {
         snprintf(tmp, sizeof(tmp), "c[%d]", i);
-        binding->vsh_constant_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        binding->uniform_locs.vsh.vsh_constant[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
     }
-    binding->surface_size_loc = glGetUniformLocation(binding->gl_program, "surfaceSize");
-    binding->clip_range_loc = glGetUniformLocation(binding->gl_program, "clipRange");
-    binding->depth_offset_loc = glGetUniformLocation(binding->gl_program, "depthOffset");
-    binding->fog_color_loc = glGetUniformLocation(binding->gl_program, "fogColor");
-    binding->fog_param_loc = glGetUniformLocation(binding->gl_program, "fogParam");
+    binding->uniform_locs.psh.surface_size =
+        glGetUniformLocation(binding->gl_program, "surfaceSize");
+    binding->uniform_locs.psh.clip_range =
+        glGetUniformLocation(binding->gl_program, "clipRange");
+    binding->uniform_locs.psh.depth_offset =
+        glGetUniformLocation(binding->gl_program, "depthOffset");
+    binding->uniform_locs.psh.fog_color =
+        glGetUniformLocation(binding->gl_program, "fogColor");
+    binding->uniform_locs.vsh.fog_param =
+        glGetUniformLocation(binding->gl_program, "fogParam");
 
     for (int i = 0; i < NV2A_LTCTXA_COUNT; i++) {
         snprintf(tmp, sizeof(tmp), "ltctxa[%d]", i);
-        binding->ltctxa_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        binding->uniform_locs.vsh.ltctxa[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
     }
     for (int i = 0; i < NV2A_LTCTXB_COUNT; i++) {
         snprintf(tmp, sizeof(tmp), "ltctxb[%d]", i);
-        binding->ltctxb_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        binding->uniform_locs.vsh.ltctxb[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
     }
     for (int i = 0; i < NV2A_LTC1_COUNT; i++) {
         snprintf(tmp, sizeof(tmp), "ltc1[%d]", i);
-        binding->ltc1_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        binding->uniform_locs.vsh.ltc1[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
     }
     for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
         snprintf(tmp, sizeof(tmp), "lightInfiniteHalfVector%d", i);
-        binding->light_infinite_half_vector_loc[i] =
+        binding->uniform_locs.vsh.light_infinite_half_vector[i] =
             glGetUniformLocation(binding->gl_program, tmp);
         snprintf(tmp, sizeof(tmp), "lightInfiniteDirection%d", i);
-        binding->light_infinite_direction_loc[i] =
+        binding->uniform_locs.vsh.light_infinite_direction[i] =
             glGetUniformLocation(binding->gl_program, tmp);
 
         snprintf(tmp, sizeof(tmp), "lightLocalPosition%d", i);
-        binding->light_local_position_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        binding->uniform_locs.vsh.light_local_position[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
         snprintf(tmp, sizeof(tmp), "lightLocalAttenuation%d", i);
-        binding->light_local_attenuation_loc[i] =
+        binding->uniform_locs.vsh.light_local_attenuation[i] =
             glGetUniformLocation(binding->gl_program, tmp);
     }
     for (int i = 0; i < 8; i++) {
         snprintf(tmp, sizeof(tmp), "clipRegion[%d]", i);
-        binding->clip_region_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        binding->uniform_locs.psh.clip_region[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
     }
 
     for (int i = 0; i < 8; ++i) {
         snprintf(tmp, sizeof(tmp), "pointParams[%d]", i);
-        binding->point_params_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        binding->uniform_locs.vsh.point_params[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
     }
 
     if (binding->state.vsh.is_fixed_function) {
-        binding->material_alpha_loc =
+        binding->uniform_locs.vsh.material_alpha =
             glGetUniformLocation(binding->gl_program, "material_alpha");
-        binding->specular_power_loc =
+        binding->uniform_locs.vsh.specular_power =
             glGetUniformLocation(binding->gl_program, "specularPower");
     } else {
-        binding->material_alpha_loc = -1;
-        binding->specular_power_loc = -1;
+        binding->uniform_locs.vsh.material_alpha = -1;
+        binding->uniform_locs.vsh.specular_power = -1;
     }
 
     for (int i = 0; i < 4; ++i) {
         snprintf(tmp, sizeof(tmp), "colorKey[%d]", i);
-        binding->color_key_loc[i] =
+        binding->uniform_locs.psh.color_key[i] =
             glGetUniformLocation(binding->gl_program, tmp);
 
         snprintf(tmp, sizeof(tmp), "colorKeyMask[%d]", i);
-        binding->color_key_mask_loc[i] =
+        binding->uniform_locs.psh.color_key_mask[i] =
             glGetUniformLocation(binding->gl_program, tmp);
     }
 }
@@ -724,7 +743,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         }
 
         for (j = 0; j < 2; j++) {
-            GLint loc = binding->psh_constant_loc[i][j];
+            GLint loc = binding->uniform_locs.psh.psh_constant[i][j];
             if (loc != -1) {
                 float value[4];
                 pgraph_argb_pack32_to_rgba_float(constant[j], value);
@@ -732,10 +751,10 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
             }
         }
     }
-    if (binding->alpha_ref_loc != -1) {
+    if (binding->uniform_locs.psh.alpha_ref != -1) {
         int alpha_ref = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0),
-                                   NV_PGRAPH_CONTROL_0_ALPHAREF);
-        glUniform1i(binding->alpha_ref_loc, alpha_ref);
+                                 NV_PGRAPH_CONTROL_0_ALPHAREF);
+        glUniform1i(binding->uniform_locs.psh.alpha_ref, alpha_ref);
     }
 
     /* For each texture stage */
@@ -744,7 +763,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
 
         /* Bump luminance only during stages 1 - 3 */
         if (i > 0) {
-            loc = binding->bump_mat_loc[i];
+            loc = binding->uniform_locs.psh.bump_mat[i];
             if (loc != -1) {
                 uint32_t m_u32[4];
                 m_u32[0] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT00 + 4 * (i - 1));
@@ -752,55 +771,56 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
                 m_u32[2] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT10 + 4 * (i - 1));
                 m_u32[3] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT11 + 4 * (i - 1));
                 float m[4];
-                m[0] = *(float*)&m_u32[0];
-                m[1] = *(float*)&m_u32[1];
-                m[2] = *(float*)&m_u32[2];
-                m[3] = *(float*)&m_u32[3];
+                m[0] = *(float *)&m_u32[0];
+                m[1] = *(float *)&m_u32[1];
+                m[2] = *(float *)&m_u32[2];
+                m[3] = *(float *)&m_u32[3];
                 glUniformMatrix2fv(loc, 1, GL_FALSE, m);
             }
-            loc = binding->bump_scale_loc[i];
+            loc = binding->uniform_locs.psh.bump_scale[i];
             if (loc != -1) {
                 uint32_t v =
                     pgraph_reg_r(pg, NV_PGRAPH_BUMPSCALE1 + (i - 1) * 4);
-                glUniform1f(loc, *(float*)&v);
+                glUniform1f(loc, *(float *)&v);
             }
-            loc = binding->bump_offset_loc[i];
+            loc = binding->uniform_locs.psh.bump_offset[i];
             if (loc != -1) {
                 uint32_t v =
                     pgraph_reg_r(pg, NV_PGRAPH_BUMPOFFSET1 + (i - 1) * 4);
-                glUniform1f(loc, *(float*)&v);
+                glUniform1f(loc, *(float *)&v);
             }
         }
 
-        loc = r->shader_binding->tex_scale_loc[i];
+        loc = r->shader_binding->uniform_locs.psh.tex_scale[i];
         if (loc != -1) {
             assert(r->texture_binding[i] != NULL);
             glUniform1f(loc, (float)r->texture_binding[i]->scale);
         }
 
-        if (binding->color_key_loc[i] != -1) {
-            glUniform1ui(binding->color_key_loc[i],
+        if (binding->uniform_locs.psh.color_key[i] != -1) {
+            glUniform1ui(binding->uniform_locs.psh.color_key[i],
                          pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR0 + i * 4));
         }
-        if (binding->color_key_mask_loc[i] != -1) {
-            glUniform1ui(binding->color_key_mask_loc[i],
+        if (binding->uniform_locs.psh.color_key_mask[i] != -1) {
+            glUniform1ui(binding->uniform_locs.psh.color_key_mask[i],
                          pgraph_get_color_key_mask_for_texture(pg, i));
         }
     }
 
-    if (binding->fog_color_loc != -1) {
+    if (binding->uniform_locs.psh.fog_color != -1) {
         uint32_t fog_color = pgraph_reg_r(pg, NV_PGRAPH_FOGCOLOR);
-        glUniform4f(binding->fog_color_loc,
+        glUniform4f(binding->uniform_locs.psh.fog_color,
                     GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_RED) / 255.0,
                     GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_GREEN) / 255.0,
                     GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_BLUE) / 255.0,
                     GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_ALPHA) / 255.0);
     }
-    if (binding->fog_param_loc != -1) {
+    if (binding->uniform_locs.vsh.fog_param != -1) {
         uint32_t v[2];
         v[0] = pgraph_reg_r(pg, NV_PGRAPH_FOGPARAM0);
         v[1] = pgraph_reg_r(pg, NV_PGRAPH_FOGPARAM1);
-        glUniform2f(binding->fog_param_loc, *(float *)&v[0], *(float *)&v[1]);
+        glUniform2f(binding->uniform_locs.vsh.fog_param, *(float *)&v[0],
+                    *(float *)&v[1]);
     }
 
     float zmax;
@@ -818,26 +838,30 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
     if (state->vsh.is_fixed_function) {
         /* update lighting constants */
         struct {
-            uint32_t* v;
-            bool* dirty;
-            GLint* locs;
+            uint32_t *v;
+            bool *dirty;
+            GLint *locs;
             size_t len;
         } lighting_arrays[] = {
-            {&pg->ltctxa[0][0], &pg->ltctxa_dirty[0], binding->ltctxa_loc, NV2A_LTCTXA_COUNT},
-            {&pg->ltctxb[0][0], &pg->ltctxb_dirty[0], binding->ltctxb_loc, NV2A_LTCTXB_COUNT},
-            {&pg->ltc1[0][0], &pg->ltc1_dirty[0], binding->ltc1_loc, NV2A_LTC1_COUNT},
+            { &pg->ltctxa[0][0], &pg->ltctxa_dirty[0],
+              binding->uniform_locs.vsh.ltctxa, NV2A_LTCTXA_COUNT },
+            { &pg->ltctxb[0][0], &pg->ltctxb_dirty[0],
+              binding->uniform_locs.vsh.ltctxb, NV2A_LTCTXB_COUNT },
+            { &pg->ltc1[0][0], &pg->ltc1_dirty[0],
+              binding->uniform_locs.vsh.ltc1, NV2A_LTC1_COUNT },
         };
 
-        for (i=0; i<ARRAY_SIZE(lighting_arrays); i++) {
+        for (i = 0; i < ARRAY_SIZE(lighting_arrays); i++) {
             uint32_t *lighting_v = lighting_arrays[i].v;
             bool *lighting_dirty = lighting_arrays[i].dirty;
             GLint *lighting_locs = lighting_arrays[i].locs;
             size_t lighting_len = lighting_arrays[i].len;
-            for (j=0; j<lighting_len; j++) {
-                if (!lighting_dirty[j] && !binding_changed) continue;
+            for (j = 0; j < lighting_len; j++) {
+                if (!lighting_dirty[j] && !binding_changed)
+                    continue;
                 GLint loc = lighting_locs[j];
                 if (loc != -1) {
-                    glUniform4fv(loc, 1, (const GLfloat*)&lighting_v[j*4]);
+                    glUniform4fv(loc, 1, (const GLfloat *)&lighting_v[j * 4]);
                 }
                 lighting_dirty[j] = false;
             }
@@ -845,35 +869,37 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
 
         for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
             GLint loc;
-            loc = binding->light_infinite_half_vector_loc[i];
+            loc = binding->uniform_locs.vsh.light_infinite_half_vector[i];
             if (loc != -1) {
                 glUniform3fv(loc, 1, pg->light_infinite_half_vector[i]);
             }
-            loc = binding->light_infinite_direction_loc[i];
+            loc = binding->uniform_locs.vsh.light_infinite_direction[i];
             if (loc != -1) {
                 glUniform3fv(loc, 1, pg->light_infinite_direction[i]);
             }
 
-            loc = binding->light_local_position_loc[i];
+            loc = binding->uniform_locs.vsh.light_local_position[i];
             if (loc != -1) {
                 glUniform3fv(loc, 1, pg->light_local_position[i]);
             }
-            loc = binding->light_local_attenuation_loc[i];
+            loc = binding->uniform_locs.vsh.light_local_attenuation[i];
             if (loc != -1) {
                 glUniform3fv(loc, 1, pg->light_local_attenuation[i]);
             }
         }
 
-        if (binding->specular_power_loc != -1) {
-    	    glUniform1f(binding->specular_power_loc, pg->specular_power);
-	    }
+        if (binding->uniform_locs.vsh.specular_power != -1) {
+            glUniform1f(binding->uniform_locs.vsh.specular_power,
+                        pg->specular_power);
+        }
     }
 
     /* update vertex program constants */
-    for (i=0; i<NV2A_VERTEXSHADER_CONSTANTS; i++) {
-        if (!pg->vsh_constants_dirty[i] && !binding_changed) continue;
+    for (i = 0; i < NV2A_VERTEXSHADER_CONSTANTS; i++) {
+        if (!pg->vsh_constants_dirty[i] && !binding_changed)
+            continue;
 
-        GLint loc = binding->vsh_constant_loc[i];
+        GLint loc = binding->uniform_locs.vsh.vsh_constant[i];
         if ((loc != -1) &&
             memcmp(binding->vsh_constants[i], pg->vsh_constants[i],
                    sizeof(pg->vsh_constants[1]))) {
@@ -885,24 +911,25 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         pg->vsh_constants_dirty[i] = false;
     }
 
-    if (binding->surface_size_loc != -1) {
+    if (binding->uniform_locs.psh.surface_size != -1) {
         unsigned int aa_width = 1, aa_height = 1;
         pgraph_apply_anti_aliasing_factor(pg, &aa_width, &aa_height);
-        glUniform2f(binding->surface_size_loc,
+        glUniform2f(binding->uniform_locs.psh.surface_size,
                     pg->surface_binding_dim.width / aa_width,
                     pg->surface_binding_dim.height / aa_height);
     }
 
-    if (binding->clip_range_loc != -1) {
+    if (binding->uniform_locs.psh.clip_range != -1) {
         uint32_t v[2];
         v[0] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
         v[1] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMAX);
         float zclip_min = *(float *)&v[0];
         float zclip_max = *(float *)&v[1];
-        glUniform4f(binding->clip_range_loc, 0, zmax, zclip_min, zclip_max);
+        glUniform4f(binding->uniform_locs.psh.clip_range, 0, zmax, zclip_min,
+                    zclip_max);
     }
 
-    if (binding->depth_offset_loc != -1) {
+    if (binding->uniform_locs.psh.depth_offset != -1) {
         float zbias = 0.0f;
 
         if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
@@ -924,7 +951,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
             }
         }
 
-        glUniform1f(binding->depth_offset_loc, zbias);
+        glUniform1f(binding->uniform_locs.psh.depth_offset, zbias);
     }
 
     /* Clipping regions */
@@ -945,19 +972,20 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         pgraph_apply_scaling_factor(pg, &x_min, &y_min);
         pgraph_apply_scaling_factor(pg, &x_max, &y_max);
 
-        glUniform4i(r->shader_binding->clip_region_loc[i],
-                    x_min, y_min, x_max, y_max);
+        glUniform4i(r->shader_binding->uniform_locs.psh.clip_region[i], x_min,
+                    y_min, x_max, y_max);
     }
 
     for (i = 0; i < 8; ++i) {
-        GLint loc = binding->point_params_loc[i];
+        GLint loc = binding->uniform_locs.vsh.point_params[i];
         if (loc != -1) {
             glUniform1f(loc, pg->point_params[i]);
         }
     }
 
-    if (binding->material_alpha_loc != -1) {
-        glUniform1f(binding->material_alpha_loc, pg->material_alpha);
+    if (binding->uniform_locs.vsh.material_alpha != -1) {
+        glUniform1f(binding->uniform_locs.vsh.material_alpha,
+                    pg->material_alpha);
     }
 }
 
