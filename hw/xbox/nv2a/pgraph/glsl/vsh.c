@@ -86,7 +86,6 @@ static void set_programmable_vsh_state(PGRAPHState *pg,
     int program_start = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C),
                                  NV_PGRAPH_CSV0_C_CHEOPS_PROGRAM_START);
 
-    // copy in vertex program tokens
     prog->program_length = 0;
     for (int i = program_start; i < NV2A_MAX_TRANSFORM_PROGRAM_LENGTH; i++) {
         uint32_t *cur_token = (uint32_t *)&pg->program_data[i];
