@@ -36,8 +36,8 @@ typedef struct GenGeomGlslOptions {
     bool vulkan;
 } GenGeomGlslOptions;
 
-void pgraph_set_geom_state(PGRAPHState *pg, GeomState *geom);
+void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *geom);
 
-MString *pgraph_gen_geom_glsl(const GeomState *state, GenGeomGlslOptions opts);
+MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts);
 
 #endif

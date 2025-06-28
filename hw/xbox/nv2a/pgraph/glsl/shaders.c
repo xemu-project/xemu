@@ -20,7 +20,7 @@
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "shaders.h"
 
-ShaderState pgraph_get_shader_state(PGRAPHState *pg)
+ShaderState pgraph_glsl_get_shader_state(PGRAPHState *pg)
 {
     pg->program_data_dirty = false; /* fixme */
 
@@ -29,14 +29,15 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
     // We will hash it, so make sure any padding is zeroed
     memset(&state, 0, sizeof(ShaderState));
 
-    pgraph_set_vsh_state(pg, &state.vsh);
-    pgraph_set_geom_state(pg, &state.geom);
-    pgraph_set_psh_state(pg, &state.psh);
+    pgraph_glsl_set_vsh_state(pg, &state.vsh);
+    pgraph_glsl_set_geom_state(pg, &state.geom);
+    pgraph_glsl_set_psh_state(pg, &state.psh);
 
     return state;
 }
 
-bool pgraph_check_shader_state_dirty(PGRAPHState *pg, const ShaderState *state)
+bool pgraph_glsl_check_shader_state_dirty(PGRAPHState *pg,
+                                          const ShaderState *state)
 {
     if (pg->program_data_dirty) {
         return true;

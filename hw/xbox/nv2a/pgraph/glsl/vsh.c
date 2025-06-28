@@ -100,7 +100,7 @@ static void set_programmable_vsh_state(PGRAPHState *pg,
     }
 }
 
-void pgraph_set_vsh_state(PGRAPHState *pg, VshState *vsh)
+void pgraph_glsl_set_vsh_state(PGRAPHState *pg, VshState *vsh)
 {
     bool vertex_program = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
                                    NV_PGRAPH_CSV0_D_MODE) == 2;
@@ -161,8 +161,7 @@ void pgraph_set_vsh_state(PGRAPHState *pg, VshState *vsh)
     }
 }
 
-MString *pgraph_gen_vsh_glsl(const VshState *state,
-                             GenVshGlslOptions opts)
+MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
 {
     MString *output =
         mstring_from_fmt("#version %d\n\n", opts.vulkan ? 450 : 400);
@@ -237,8 +236,8 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
         "  return trunc(pos * 16.0f) / 16.0f;\n"
         "}\n");
 
-    pgraph_get_glsl_vtx_header(header, opts.vulkan, state->smooth_shading,
-                             false, opts.prefix_outputs, false);
+    pgraph_glsl_get_vtx_header(header, opts.vulkan, state->smooth_shading,
+                               false, opts.prefix_outputs, false);
 
     if (opts.prefix_outputs) {
         mstring_append(header,
@@ -300,9 +299,9 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
     }
 
     if (state->is_fixed_function) {
-        pgraph_gen_vsh_ff_glsl(state, header, body);
+        pgraph_glsl_gen_vsh_ff(state, header, body);
     } else {
-        pgraph_gen_vsh_prog_glsl(
+        pgraph_glsl_gen_vsh_prog(
             VSH_VERSION_XVS, (uint32_t *)state->programmable.program_data,
             state->programmable.program_length, header, body);
     }
@@ -466,9 +465,9 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
     return output;
 }
 
-void pgraph_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
-                                   const VshUniformLocs locs,
-                                   VshUniformValues *values)
+void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
+                                        const VshUniformLocs locs,
+                                        VshUniformValues *values)
 {
     if (locs[VshUniform_c] != -1) {
         QEMU_BUILD_BUG_MSG(sizeof(values->c) != sizeof(pg->vsh_constants),
@@ -477,7 +476,7 @@ void pgraph_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
     }
 
     if (locs[VshUniform_clipRange] != -1) {
-        pgraph_set_clip_range_uniform_value(pg, values->clipRange[0]);
+        pgraph_glsl_set_clip_range_uniform_value(pg, values->clipRange[0]);
     }
 
     if (locs[VshUniform_fogParam] != -1) {

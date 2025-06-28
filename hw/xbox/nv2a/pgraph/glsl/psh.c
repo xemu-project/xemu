@@ -58,7 +58,7 @@ static uint32_t get_color_key_mask_for_texture(PGRAPHState *pg, int i)
     return get_colorkey_mask(color_format);
 }
 
-void pgraph_set_psh_state(PGRAPHState *pg, PshState *state)
+void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
 {
     state->window_clip_exclusive = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                                    NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE;
@@ -779,7 +779,7 @@ static void define_colorkey_comparator(MString *preflight)
 static MString* psh_convert(struct PixelShader *ps)
 {
     MString *preflight = mstring_new();
-    pgraph_get_glsl_vtx_header(preflight, ps->opts.vulkan,
+    pgraph_glsl_get_vtx_header(preflight, ps->opts.vulkan,
                              ps->state->smooth_shading, true, false, false);
 
     if (ps->opts.vulkan) {
@@ -1400,7 +1400,7 @@ static void parse_combiner_output(uint32_t value, struct OutputInfo *out)
     out->cd_alphablue = flags & 0x40;
 }
 
-MString *pgraph_gen_psh_glsl(const PshState *state, GenPshGlslOptions opts)
+MString *pgraph_glsl_gen_psh(const PshState *state, GenPshGlslOptions opts)
 {
     int i;
     struct PixelShader ps;
@@ -1454,8 +1454,9 @@ MString *pgraph_gen_psh_glsl(const PshState *state, GenPshGlslOptions opts)
     return psh_convert(&ps);
 }
 
-void pgraph_set_psh_uniform_values(PGRAPHState *pg, const PshUniformLocs locs,
-                                   PshUniformValues *values)
+void pgraph_glsl_set_psh_uniform_values(PGRAPHState *pg,
+                                        const PshUniformLocs locs,
+                                        PshUniformValues *values)
 {
     if (locs[PshUniform_consts] != -1) {
         for (int i = 0; i < 9; i++) {
@@ -1539,7 +1540,7 @@ void pgraph_set_psh_uniform_values(PGRAPHState *pg, const PshUniformLocs locs,
     }
 
     if (locs[PshUniform_clipRange] != -1) {
-        pgraph_set_clip_range_uniform_value(pg, values->clipRange[0]);
+        pgraph_glsl_set_clip_range_uniform_value(pg, values->clipRange[0]);
     }
 
     if (locs[PshUniform_depthOffset] != -1) {

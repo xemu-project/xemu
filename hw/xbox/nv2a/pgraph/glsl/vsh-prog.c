@@ -723,7 +723,7 @@ static const char* vsh_header =
     "  return t;\n"
     "}\n";
 
-void pgraph_gen_vsh_prog_glsl(uint16_t version, const uint32_t *tokens,
+void pgraph_glsl_gen_vsh_prog(uint16_t version, const uint32_t *tokens,
                               unsigned int length, MString *header,
                               MString *body)
 {

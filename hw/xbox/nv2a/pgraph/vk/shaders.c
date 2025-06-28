@@ -328,7 +328,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
         /* Ensure numeric values are printed with '.' radix, no grouping */
         setlocale(LC_NUMERIC, "C");
 
-        MString *geometry_shader_code = pgraph_gen_geom_glsl(
+        MString *geometry_shader_code = pgraph_glsl_gen_geom(
             &state->geom, (GenGeomGlslOptions){ .vulkan = true });
         if (geometry_shader_code) {
             NV2A_VK_DPRINTF("geometry shader: \n%s",
@@ -341,7 +341,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
             snode->geometry = NULL;
         }
 
-        MString *vertex_shader_code = pgraph_gen_vsh_glsl(
+        MString *vertex_shader_code = pgraph_glsl_gen_vsh(
             &state->vsh, (GenVshGlslOptions){
                              .vulkan = true,
                              .prefix_outputs = geometry_shader_code != NULL,
@@ -356,7 +356,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
             mstring_get_str(vertex_shader_code));
         mstring_unref(vertex_shader_code);
 
-        MString *fragment_shader_code = pgraph_gen_psh_glsl(
+        MString *fragment_shader_code = pgraph_glsl_gen_psh(
             &state->psh, (GenPshGlslOptions){
                 .vulkan = true,
                 .ubo_binding = PSH_UBO_BINDING,
@@ -408,14 +408,14 @@ static void update_shader_uniforms(PGRAPHState *pg)
                                        &binding->fragment->uniforms };
 
     VshUniformValues vsh_values;
-    pgraph_set_vsh_uniform_values(pg, &binding->state.vsh,
+    pgraph_glsl_set_vsh_uniform_values(pg, &binding->state.vsh,
                                   binding->uniform_locs.vsh, &vsh_values);
     apply_uniform_updates(&binding->vertex->uniforms, VshUniformInfo,
                           binding->uniform_locs.vsh, &vsh_values,
                           VshUniform__COUNT);
 
     PshUniformValues psh_values;
-    pgraph_set_psh_uniform_values(pg, binding->uniform_locs.psh, &psh_values);
+    pgraph_glsl_set_psh_uniform_values(pg, binding->uniform_locs.psh, &psh_values);
     for (int i = 0; i < 4; i++) {
         assert(r->texture_bindings[i] != NULL);
         float scale = r->texture_bindings[i]->key.scale;
@@ -457,8 +457,8 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
     r->shader_bindings_changed = false;
 
     if (!r->shader_binding ||
-        pgraph_check_shader_state_dirty(pg, &r->shader_binding->state)) {
-        ShaderState new_state = pgraph_get_shader_state(pg);
+        pgraph_glsl_check_shader_state_dirty(pg, &r->shader_binding->state)) {
+        ShaderState new_state = pgraph_glsl_get_shader_state(pg);
         if (!r->shader_binding || memcmp(&r->shader_binding->state, &new_state,
                                          sizeof(ShaderState))) {
             r->shader_binding = gen_shaders(pg, &new_state);

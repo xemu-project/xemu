@@ -64,7 +64,7 @@ static void append_skinning_code(MString *str, bool mix, unsigned int count,
     }
 }
 
-void pgraph_gen_vsh_ff_glsl(const VshState *state, MString *header,
+void pgraph_glsl_gen_vsh_ff(const VshState *state, MString *header,
                             MString *body)
 {
     int i, j;
