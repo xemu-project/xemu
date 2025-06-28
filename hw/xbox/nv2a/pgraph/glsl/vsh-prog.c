@@ -37,62 +37,6 @@
 #include "vsh.h"
 #include "vsh-prog.h"
 
-#define VSH_D3DSCM_CORRECTION 96
-
-
-typedef enum {
-    PARAM_UNKNOWN = 0,
-    PARAM_R,
-    PARAM_V,
-    PARAM_C
-} VshParameterType;
-
-typedef enum {
-    OUTPUT_C = 0,
-    OUTPUT_O
-} VshOutputType;
-
-typedef enum {
-    OMUX_MAC = 0,
-    OMUX_ILU
-} VshOutputMux;
-
-typedef enum {
-    ILU_NOP = 0,
-    ILU_MOV,
-    ILU_RCP,
-    ILU_RCC,
-    ILU_RSQ,
-    ILU_EXP,
-    ILU_LOG,
-    ILU_LIT
-} VshILU;
-
-typedef enum {
-    MAC_NOP,
-    MAC_MOV,
-    MAC_MUL,
-    MAC_ADD,
-    MAC_MAD,
-    MAC_DP3,
-    MAC_DPH,
-    MAC_DP4,
-    MAC_DST,
-    MAC_MIN,
-    MAC_MAX,
-    MAC_SLT,
-    MAC_SGE,
-    MAC_ARL
-} VshMAC;
-
-typedef enum {
-    SWIZZLE_X = 0,
-    SWIZZLE_Y,
-    SWIZZLE_Z,
-    SWIZZLE_W
-} VshSwizzle;
-
-
 typedef struct VshFieldMapping {
     VshFieldName field_name;
     uint8_t subtoken;
@@ -143,7 +87,6 @@ static const VshFieldMapping field_mapping[] = {
     {  FLD_A0X,              3,    1,     1 },
     {  FLD_FINAL,            3,    0,     1 }
 };
-
 
 typedef struct VshOpcodeParams {
     bool A;
