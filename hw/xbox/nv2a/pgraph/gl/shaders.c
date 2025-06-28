@@ -96,11 +96,8 @@ static GLuint create_gl_shader(GLenum gl_shader_type,
     return shader;
 }
 
-static void update_shader_uniform_locs(ShaderBinding *binding)
+static void set_texture_sampler_uniforms(ShaderBinding *binding)
 {
-    char tmp[64];
-
-    /* set texture samplers */
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
         char samplerName[16];
         snprintf(samplerName, sizeof(samplerName), "texSamp%d", i);
@@ -110,6 +107,11 @@ static void update_shader_uniform_locs(ShaderBinding *binding)
             glUniform1i(texSampLoc, i);
         }
     }
+}
+
+static void update_shader_uniform_locs(ShaderBinding *binding)
+{
+    char tmp[64];
 
     for (int i = 0; i < ARRAY_SIZE(binding->uniform_locs.vsh); i++) {
         const char *name = VshUniformInfo[i].name;
@@ -193,6 +195,12 @@ static void generate_shaders(ShaderBinding *binding)
 
     glUseProgram(program);
 
+    binding->gl_program = program;
+    binding->gl_primitive_mode = gl_primitive_mode;
+    binding->initialized = true;
+
+    set_texture_sampler_uniforms(binding);
+
     /* validate the program */
     GLint valid = 0;
     glValidateProgram(program);
@@ -204,9 +212,6 @@ static void generate_shaders(ShaderBinding *binding)
         abort();
     }
 
-    binding->initialized = true;
-    binding->gl_program = program;
-    binding->gl_primitive_mode = gl_primitive_mode;
     update_shader_uniform_locs(binding);
 
     if (previous_numeric_locale) {
@@ -288,6 +293,19 @@ bool pgraph_gl_shader_load_from_memory(ShaderBinding *binding)
         return false;
     }
 
+    glUseProgram(gl_program);
+
+    g_free(binding->program);
+
+    binding->program = NULL;
+    binding->gl_program = gl_program;
+    binding->gl_primitive_mode =
+        get_gl_primitive_mode(binding->state.geom.polygon_front_mode,
+                              binding->state.geom.primitive_mode);
+    binding->initialized = true;
+
+    set_texture_sampler_uniforms(binding);
+
     glValidateProgram(gl_program);
     GLint valid = 0;
     glGetProgramiv(gl_program, GL_VALIDATE_STATUS, &valid);
@@ -298,17 +316,6 @@ bool pgraph_gl_shader_load_from_memory(ShaderBinding *binding)
         glDeleteProgram(gl_program);
         return false;
     }
-
-    glUseProgram(gl_program);
-
-    binding->gl_program = gl_program;
-    binding->gl_primitive_mode =
-        get_gl_primitive_mode(binding->state.geom.polygon_front_mode,
-                              binding->state.geom.primitive_mode);
-    binding->initialized = true;
-
-    g_free(binding->program);
-    binding->program = NULL;
 
     update_shader_uniform_locs(binding);
 
