@@ -33,4 +33,6 @@ typedef struct PGRAPHState PGRAPHState;
 
 ShaderState pgraph_get_shader_state(PGRAPHState *pg);
 
+bool pgraph_check_shader_state_dirty(PGRAPHState *pg, const ShaderState *state);
+
 #endif
