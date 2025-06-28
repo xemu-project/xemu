@@ -437,7 +437,7 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
                 mstring_append_fmt(output,
                     "layout(push_constant) uniform PushConstants {\n"
                     "    vec4 inlineValue[%d];\n"
-                    "};\n\n", NV2A_VERTEXSHADER_ATTRIBUTES);
+                    "};\n\n", num_uniform_attrs);
             } else {
                 mstring_append_fmt(uniforms, "    vec4 inlineValue[%d];\n",
                                    NV2A_VERTEXSHADER_ATTRIBUTES);
