@@ -88,7 +88,7 @@ typedef struct GenPshGlslOptions {
     int tex_binding;
 } GenPshGlslOptions;
 
-MString *pgraph_gen_psh_glsl(const PshState state, GenPshGlslOptions opts);
+MString *pgraph_gen_psh_glsl(const PshState *state, GenPshGlslOptions opts);
 
 void pgraph_set_psh_uniform_values(PGRAPHState *pg,
                                    const PshUniformLocs locs,

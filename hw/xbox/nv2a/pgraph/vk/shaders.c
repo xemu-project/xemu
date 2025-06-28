@@ -357,7 +357,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
         mstring_unref(vertex_shader_code);
 
         MString *fragment_shader_code = pgraph_gen_psh_glsl(
-            state->psh, (GenPshGlslOptions){
+            &state->psh, (GenPshGlslOptions){
                 .vulkan = true,
                 .ubo_binding = PSH_UBO_BINDING,
                 .tex_binding = PSH_TEX_BINDING,
