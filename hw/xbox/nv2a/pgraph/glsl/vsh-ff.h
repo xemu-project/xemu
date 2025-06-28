@@ -25,7 +25,7 @@
 #include "qemu/mstring.h"
 #include "vsh.h"
 
-void pgraph_gen_vsh_ff_glsl(GenVshGlslOptions opts, const VshState *state,
-                            MString *header, MString *body, MString *uniforms);
+void pgraph_gen_vsh_ff_glsl(const VshState *state, MString *header,
+                            MString *body);
 
 #endif

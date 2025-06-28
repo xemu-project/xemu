@@ -30,11 +30,10 @@ static void append_skinning_code(MString* str, bool mix,
                                  const char* output, const char* input,
                                  const char* matrix, const char* swizzle);
 
-void pgraph_gen_vsh_ff_glsl(GenVshGlslOptions opts, const VshState *state,
-                            MString *header, MString *body, MString *uniforms)
+void pgraph_gen_vsh_ff_glsl(const VshState *state, MString *header,
+                            MString *body)
 {
     int i, j;
-    const char *u = opts.vulkan ? "" : "uniform "; // FIXME: Remove
 
     /* generate vertex shader mimicking fixed function */
     mstring_append(header,
@@ -55,11 +54,6 @@ void pgraph_gen_vsh_ff_glsl(GenVshGlslOptions opts, const VshState *state,
 "#define reserved2     v14\n"
 "#define reserved3     v15\n"
 "\n");
-    mstring_append_fmt(uniforms,
-"%svec4 ltctxa[" stringify(NV2A_LTCTXA_COUNT) "];\n"
-"%svec4 ltctxb[" stringify(NV2A_LTCTXB_COUNT) "];\n"
-"%svec4 ltc1[" stringify(NV2A_LTC1_COUNT) "];\n", u, u, u
-);
     mstring_append(header,
 "\n"
 GLSL_DEFINE(projectionMat, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_PMAT0))
@@ -236,15 +230,11 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         mstring_append(body, "  oB1 = backSpecular;\n");
     } else {
         //FIXME: Do 2 passes if we want 2 sided-lighting?
-
-        mstring_append_fmt(uniforms, "%sfloat specularPower;\n", u);
-
         static char alpha_source_diffuse[] = "diffuse.a";
         static char alpha_source_specular[] = "specular.a";
         static char alpha_source_material[] = "material_alpha";
         const char *alpha_source = alpha_source_diffuse;
         if (state->fixed_function.diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) {
-            mstring_append_fmt(uniforms, "%sfloat material_alpha;\n", u);
             alpha_source = alpha_source_material;
         } else if (state->fixed_function.diffuse_src == MATERIAL_COLOR_SRC_SPECULAR) {
             alpha_source = alpha_source_specular;
@@ -285,19 +275,15 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             if (state->fixed_function.light[i] == LIGHT_LOCAL
                     || state->fixed_function.light[i] == LIGHT_SPOT) {
 
-                mstring_append_fmt(uniforms,
-                    "%svec3 lightLocalPosition%d;\n"
-                    "%svec3 lightLocalAttenuation%d;\n",
-                    u, i, u, i);
                 mstring_append_fmt(body,
                     "  vec3 tPos = tPosition.xyz/tPosition.w;\n"
-                    "  vec3 VP = lightLocalPosition%d - tPos;\n"
+                    "  vec3 VP = lightLocalPosition[%d] - tPos;\n"
                     "  float d = length(VP);\n"
                     "  if (d <= lightLocalRange(%d)) {\n"  /* FIXME: Double check that range is inclusive */
                     "    VP = normalize(VP);\n"
-                    "    float attenuation = 1.0 / (lightLocalAttenuation%d.x\n"
-                    "                                 + lightLocalAttenuation%d.y * d\n"
-                    "                                 + lightLocalAttenuation%d.z * d * d);\n"
+                    "    float attenuation = 1.0 / (lightLocalAttenuation[%d].x\n"
+                    "                                 + lightLocalAttenuation[%d].y * d\n"
+                    "                                 + lightLocalAttenuation[%d].z * d * d);\n"
                     "    vec3 halfVector = normalize(VP + %s);\n"
                     "    float nDotVP = max(0.0, dot(tNormal, VP));\n"
                     "    float nDotHV = max(0.0, dot(tNormal, halfVector));\n",
@@ -311,14 +297,10 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
                 /* lightLocalRange will be 1e+30 here */
 
-                mstring_append_fmt(uniforms,
-                    "%svec3 lightInfiniteHalfVector%d;\n"
-                    "%svec3 lightInfiniteDirection%d;\n",
-                    u, i, u, i);
                 mstring_append_fmt(body,
                     "  {\n"
                     "    float attenuation = 1.0;\n"
-                    "    vec3 lightDirection = normalize(lightInfiniteDirection%d);\n"
+                    "    vec3 lightDirection = normalize(lightInfiniteDirection[%d]);\n"
                     "    float nDotVP = max(0.0, dot(tNormal, lightDirection));\n",
                     i);
                 if (state->fixed_function.local_eye) {
@@ -327,7 +309,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                     );
                 } else {
                     mstring_append_fmt(body,
-                        "    float nDotHV = max(0.0, dot(tNormal, lightInfiniteHalfVector%d));\n",
+                        "    float nDotHV = max(0.0, dot(tNormal, lightInfiniteHalfVector[%d]));\n",
                         i
                     );
                 }
@@ -482,7 +464,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
     /* FIXME: Testing */
     if (state->point_params_enable) {
-        mstring_append_fmt(uniforms, "%sfloat pointParams[8];\n", u);
         mstring_append(
             body,
             "  float d_e = length(position * modelViewMat0);\n"

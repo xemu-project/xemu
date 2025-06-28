@@ -20,32 +20,40 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
+#include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "common.h"
 #include "vsh.h"
 #include "vsh-ff.h"
 #include "vsh-prog.h"
 #include <stdbool.h>
 
+DEF_UNIFORM_INFO_ARR(VshUniform, VSH_UNIFORM_DECL_X)
+
 MString *pgraph_gen_vsh_glsl(const VshState *state,
                              GenVshGlslOptions opts)
 {
-    int i;
-    MString *output = mstring_new();
-    mstring_append_fmt(output, "#version %d\n\n", opts.vulkan ? 450 : 400);
+    MString *output =
+        mstring_from_fmt("#version %d\n\n", opts.vulkan ? 450 : 400);
 
     MString *header = mstring_from_str("");
+
     MString *uniforms = mstring_from_str("");
-
-    const char *u = opts.vulkan ? "" : "uniform "; // FIXME: Remove
-
-    mstring_append_fmt(uniforms,
-        "%svec4 clipRange;\n"
-        "%svec2 surfaceSize;\n"
-        "%svec4 c[" stringify(NV2A_VERTEXSHADER_CONSTANTS) "];\n"
-        "%svec2 fogParam;\n",
-        u, u, u, u
-        );
+    const char *u = opts.vulkan ? "" : "uniform ";
+    for (int i = 0; i < ARRAY_SIZE(VshUniformInfo); i++) {
+        const UniformInfo *info = &VshUniformInfo[i];
+        const char *type_str = uniform_element_type_to_str[info->type];
+        if (i == VshUniform_inlineValue &&
+            opts.use_push_constants_for_uniform_attrs) {
+            continue;
+        }
+        if (info->count == 1) {
+            mstring_append_fmt(uniforms, "%s%s %s;\n", u, type_str,
+                               info->name);
+        } else {
+            mstring_append_fmt(uniforms, "%s%s %s[%zd];\n", u, type_str,
+                               info->name, info->count);
+        }
+    }
 
     mstring_append(header,
         GLSL_DEFINE(fogPlane, GLSL_C(NV_IGRAPH_XF_XFCTX_FOG))
@@ -117,7 +125,7 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
 
     int num_uniform_attrs = 0;
 
-    for (i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+    for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
         bool is_uniform = state->uniform_attrs & (1 << i);
         bool is_swizzled = state->swizzle_attrs & (1 << i);
         bool is_compressed = state->compressed_attrs & (1 << i);
@@ -147,7 +155,7 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
 
     MString *body = mstring_from_str("void main() {\n");
 
-    for (i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+    for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
         if (state->compressed_attrs & (1 << i)) {
             mstring_append_fmt(
                 body, "vec4 v%d = decompress_11_11_10(v%d_cmp);\n", i, i);
@@ -160,7 +168,7 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
     }
 
     if (state->is_fixed_function) {
-        pgraph_gen_vsh_ff_glsl(opts, state, header, body, uniforms);
+        pgraph_gen_vsh_ff_glsl(state, header, body);
     } else {
         pgraph_gen_vsh_prog_glsl(
             VSH_VERSION_XVS, (uint32_t *)state->programmable.program_data,
@@ -307,10 +315,10 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
                 mstring_append_fmt(output,
                     "layout(push_constant) uniform PushConstants {\n"
                     "    vec4 inlineValue[%d];\n"
-                    "};\n\n", num_uniform_attrs);
+                    "};\n\n", NV2A_VERTEXSHADER_ATTRIBUTES);
             } else {
                 mstring_append_fmt(uniforms, "    vec4 inlineValue[%d];\n",
-                                   num_uniform_attrs);
+                                   NV2A_VERTEXSHADER_ATTRIBUTES);
             }
         }
         mstring_append_fmt(
@@ -330,4 +338,127 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
     mstring_append(output, mstring_get_str(body));
     mstring_unref(body);
     return output;
+}
+
+void pgraph_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
+                                   const VshUniformLocs locs,
+                                   VshUniformValues *values)
+{
+    if (locs[VshUniform_c] != -1) {
+        QEMU_BUILD_BUG_MSG(sizeof(values->c) != sizeof(pg->vsh_constants),
+                           "Uniform value size inconsistency");
+        memcpy(values->c, pg->vsh_constants, sizeof(pg->vsh_constants));
+    }
+
+    if (locs[VshUniform_clipRange] != -1) {
+        float zmax;
+        switch (pg->surface_shape.zeta_format) {
+        case NV097_SET_SURFACE_FORMAT_ZETA_Z16:
+            zmax = pg->surface_shape.z_format ? f16_max : (float)0xFFFF;
+            break;
+        case NV097_SET_SURFACE_FORMAT_ZETA_Z24S8:
+            zmax = pg->surface_shape.z_format ? f24_max : (float)0xFFFFFF;
+            break;
+        default:
+            assert(0);
+        }
+
+        uint32_t zclip_min = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
+        uint32_t zclip_max = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMAX);
+
+        values->clipRange[0][0] = 0;
+        values->clipRange[0][1] = zmax;
+        values->clipRange[0][2] = *(float *)&zclip_min;
+        values->clipRange[0][3] = *(float *)&zclip_max;
+    }
+
+    if (locs[VshUniform_fogParam] != -1) {
+        uint32_t param_0 = pgraph_reg_r(pg, NV_PGRAPH_FOGPARAM0);
+        uint32_t param_1 = pgraph_reg_r(pg, NV_PGRAPH_FOGPARAM1);
+        values->fogParam[0][0] = *(float *)&param_0;
+        values->fogParam[0][1] = *(float *)&param_1;
+    }
+
+    if (locs[VshUniform_pointParams] != -1) {
+        QEMU_BUILD_BUG_MSG(sizeof(values->pointParams) !=
+                               sizeof(pg->point_params),
+                           "Uniform value size inconsistency");
+        memcpy(values->pointParams, pg->point_params, sizeof(pg->point_params));
+    }
+
+    if (locs[VshUniform_material_alpha] != -1) {
+        values->material_alpha[0] = pg->material_alpha;
+    }
+
+    if (locs[VshUniform_inlineValue] != -1) {
+        pgraph_get_inline_values(pg, state->uniform_attrs, values->inlineValue,
+                                 NULL);
+    }
+
+    if (locs[VshUniform_surfaceSize] != -1) {
+        unsigned int aa_width = 1, aa_height = 1;
+        pgraph_apply_anti_aliasing_factor(pg, &aa_width, &aa_height);
+        float width = (float)pg->surface_binding_dim.width / aa_width;
+        float height = (float)pg->surface_binding_dim.height / aa_height;
+        values->surfaceSize[0][0] = width;
+        values->surfaceSize[0][1] = height;
+    }
+
+    if (state->is_fixed_function) {
+        /* update lighting constants */
+        if (locs[VshUniform_ltctxa] != -1) {
+            QEMU_BUILD_BUG_MSG(sizeof(values->ltctxa) != sizeof(pg->ltctxa),
+                               "Uniform value size inconsistency");
+            memcpy(values->ltctxa, pg->ltctxa, sizeof(pg->ltctxa));
+        }
+
+        if (locs[VshUniform_ltctxb] != -1) {
+            QEMU_BUILD_BUG_MSG(sizeof(values->ltctxb) != sizeof(pg->ltctxb),
+                               "Uniform value size inconsistency");
+            memcpy(values->ltctxb, pg->ltctxb, sizeof(pg->ltctxb));
+        }
+
+        if (locs[VshUniform_ltc1] != -1) {
+            QEMU_BUILD_BUG_MSG(sizeof(values->ltc1) != sizeof(pg->ltc1),
+                               "Uniform value size inconsistency");
+            memcpy(values->ltc1, pg->ltc1, sizeof(pg->ltc1));
+        }
+
+        if (locs[VshUniform_lightInfiniteHalfVector] != -1) {
+            QEMU_BUILD_BUG_MSG(sizeof(values->lightInfiniteHalfVector) !=
+                                   sizeof(pg->light_infinite_half_vector),
+                               "Uniform value size inconsistency");
+            memcpy(values->lightInfiniteHalfVector,
+                   pg->light_infinite_half_vector,
+                   sizeof(pg->light_infinite_half_vector));
+        }
+
+        if (locs[VshUniform_lightInfiniteDirection] != -1) {
+            QEMU_BUILD_BUG_MSG(sizeof(values->lightInfiniteDirection) !=
+                                   sizeof(pg->light_infinite_direction),
+                               "Uniform value size inconsistency");
+            memcpy(values->lightInfiniteDirection, pg->light_infinite_direction,
+                   sizeof(pg->light_infinite_direction));
+        }
+
+        if (locs[VshUniform_lightLocalPosition] != -1) {
+            QEMU_BUILD_BUG_MSG(sizeof(values->lightLocalPosition) !=
+                                   sizeof(pg->light_local_position),
+                               "Uniform value size inconsistency");
+            memcpy(values->lightLocalPosition, pg->light_local_position,
+                   sizeof(pg->light_local_position));
+        }
+
+        if (locs[VshUniform_lightLocalAttenuation] != -1) {
+            QEMU_BUILD_BUG_MSG(sizeof(values->lightLocalAttenuation) !=
+                                   sizeof(pg->light_local_attenuation),
+                               "Uniform value size inconsistency");
+            memcpy(values->lightLocalAttenuation, pg->light_local_attenuation,
+                   sizeof(pg->light_local_attenuation));
+        }
+
+        if (locs[VshUniform_specularPower] != -1) {
+            values->specularPower[0] = pg->specular_power;
+        }
+    }
 }

@@ -30,6 +30,8 @@
 #include "hw/xbox/nv2a/pgraph/surface.h"
 #include "hw/xbox/nv2a/pgraph/texture.h"
 #include "hw/xbox/nv2a/pgraph/shaders.h"
+#include "hw/xbox/nv2a/pgraph/glsl/vsh.h"
+#include "hw/xbox/nv2a/pgraph/glsl/psh.h"
 
 #include <vulkan/vulkan.h>
 #include <glslang/Include/glslang_c_interface.h>
@@ -165,39 +167,8 @@ typedef struct ShaderBinding {
     ShaderModuleInfo *fragment;
 
     struct {
-        struct {
-            int alpha_ref;
-            int bump_mat[NV2A_MAX_TEXTURES];
-            int bump_offset[NV2A_MAX_TEXTURES];
-            int bump_scale[NV2A_MAX_TEXTURES];
-            int clip_range;
-            int clip_region;
-            int color_key;
-            int color_key_mask;
-            int depth_offset;
-            int fog_color;
-            int psh_constant[9][2];
-            int surface_size;
-            int tex_scale[NV2A_MAX_TEXTURES];
-        } psh;
-
-        struct {
-            int clip_range;
-            int fog_param;
-            int light_infinite_direction[NV2A_MAX_LIGHTS];
-            int light_infinite_half_vector[NV2A_MAX_LIGHTS];
-            int light_local_attenuation[NV2A_MAX_LIGHTS];
-            int light_local_position[NV2A_MAX_LIGHTS];
-            int ltc1;
-            int ltctxa;
-            int ltctxb;
-            int material_alpha;
-            int point_params;
-            int specular_power;
-            int uniform_attrs;
-            int vsh_constant;
-            uint32_t vsh_constants[NV2A_VERTEXSHADER_CONSTANTS][4];
-        } vsh;
+        PshUniformLocs psh;
+        VshUniformLocs vsh;
     } uniform_locs;
 } ShaderBinding;
 
@@ -555,7 +526,6 @@ void pgraph_vk_init_shaders(PGRAPHState *pg);
 void pgraph_vk_finalize_shaders(PGRAPHState *pg);
 void pgraph_vk_update_descriptor_sets(PGRAPHState *pg);
 void pgraph_vk_bind_shaders(PGRAPHState *pg);
-void pgraph_vk_update_shader_uniforms(PGRAPHState *pg);
 
 // reports.c
 void pgraph_vk_init_reports(PGRAPHState *pg);

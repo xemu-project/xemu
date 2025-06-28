@@ -19,6 +19,11 @@
 
 #include "common.h"
 
+#define DECL_UNIFORM_ELEMENT_NAME(type) #type,
+const char *uniform_element_type_to_str[] = {
+    UNIFORM_ELEMENT_TYPE_X(DECL_UNIFORM_ELEMENT_NAME)
+};
+
 MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bool in, bool prefix, bool array)
 {
     const char *smooth_s = "";

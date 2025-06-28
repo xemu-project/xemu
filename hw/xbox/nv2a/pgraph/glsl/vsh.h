@@ -24,6 +24,26 @@
 
 #include "qemu/mstring.h"
 #include "hw/xbox/nv2a/pgraph/vsh.h"
+#include "common.h"
+
+#define VSH_UNIFORM_DECL_X(S, DECL)                          \
+    DECL(S, c, vec4, NV2A_VERTEXSHADER_CONSTANTS)            \
+    DECL(S, clipRange, vec4, 1)                              \
+    DECL(S, fogParam, vec2, 1)                               \
+    DECL(S, inlineValue, vec4, NV2A_VERTEXSHADER_ATTRIBUTES) \
+    DECL(S, lightInfiniteDirection, vec3, NV2A_MAX_LIGHTS)   \
+    DECL(S, lightInfiniteHalfVector, vec3, NV2A_MAX_LIGHTS)  \
+    DECL(S, lightLocalAttenuation, vec3, NV2A_MAX_LIGHTS)    \
+    DECL(S, lightLocalPosition, vec3, NV2A_MAX_LIGHTS)       \
+    DECL(S, ltc1, vec4, NV2A_LTC1_COUNT)                     \
+    DECL(S, ltctxa, vec4, NV2A_LTCTXA_COUNT)                 \
+    DECL(S, ltctxb, vec4, NV2A_LTCTXB_COUNT)                 \
+    DECL(S, material_alpha, float, 1)                        \
+    DECL(S, pointParams, float, 8)                           \
+    DECL(S, specularPower, float, 1)                         \
+    DECL(S, surfaceSize, vec2, 1)
+
+DECL_UNIFORM_TYPES(VshUniform, VSH_UNIFORM_DECL_X)
 
 typedef struct GenVshGlslOptions {
     bool vulkan;
@@ -32,7 +52,13 @@ typedef struct GenVshGlslOptions {
     int ubo_binding;
 } GenVshGlslOptions;
 
+typedef struct PGRAPHState PGRAPHState;
+
 MString *pgraph_gen_vsh_glsl(const VshState *state,
                              GenVshGlslOptions glsl_opts);
+
+void pgraph_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
+                                   const VshUniformLocs locs,
+                                   VshUniformValues *values);
 
 #endif
