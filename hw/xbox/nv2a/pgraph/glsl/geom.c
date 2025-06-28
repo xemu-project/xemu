@@ -23,15 +23,11 @@
 #include "common.h"
 #include "geom.h"
 
-MString *pgraph_gen_geom_glsl(enum ShaderPolygonMode polygon_front_mode,
-                              enum ShaderPolygonMode polygon_back_mode,
-                              enum ShaderPrimitiveMode primitive_mode,
-                              bool smooth_shading,
-                              bool vulkan)
+MString *pgraph_gen_geom_glsl(const VshState *state, GenGeomGlslOptions opts)
 {
     /* FIXME: Missing support for 2-sided-poly mode */
-    assert(polygon_front_mode == polygon_back_mode);
-    enum ShaderPolygonMode polygon_mode = polygon_front_mode;
+    assert(state->polygon_front_mode == state->polygon_back_mode);
+    enum ShaderPolygonMode polygon_mode = state->polygon_front_mode;
 
     /* POINT mode shouldn't require any special work */
     if (polygon_mode == POLY_MODE_POINT) {
@@ -42,7 +38,7 @@ MString *pgraph_gen_geom_glsl(enum ShaderPolygonMode polygon_front_mode,
     const char *layout_in = NULL;
     const char *layout_out = NULL;
     const char *body = NULL;
-    switch (primitive_mode) {
+    switch (state->primitive_mode) {
     case PRIM_TYPE_POINTS: return NULL;
     case PRIM_TYPE_LINES: return NULL;
     case PRIM_TYPE_LINE_LOOP: return NULL;
@@ -145,7 +141,7 @@ MString *pgraph_gen_geom_glsl(enum ShaderPolygonMode polygon_front_mode,
             return NULL;
         }
         if (polygon_mode == POLY_MODE_FILL) {
-            if (smooth_shading) {
+            if (state->smooth_shading) {
                 return NULL;
             }
             layout_in = "layout(triangles) in;\n";
@@ -170,14 +166,16 @@ MString *pgraph_gen_geom_glsl(enum ShaderPolygonMode polygon_front_mode,
     assert(layout_out);
     assert(body);
     MString *s = mstring_new();
-    mstring_append_fmt(s, "#version %d\n\n", vulkan ? 450 : 400);
+    mstring_append_fmt(s, "#version %d\n\n", opts.vulkan ? 450 : 400);
     mstring_append(s, layout_in);
     mstring_append(s, layout_out);
     mstring_append(s, "\n");
-    pgraph_get_glsl_vtx_header(s, vulkan, smooth_shading, true, true, true);
-    pgraph_get_glsl_vtx_header(s, vulkan, smooth_shading, false, false, false);
+    pgraph_get_glsl_vtx_header(s, opts.vulkan, state->smooth_shading, true,
+                               true, true);
+    pgraph_get_glsl_vtx_header(s, opts.vulkan, state->smooth_shading, false,
+                               false, false);
 
-    if (smooth_shading) {
+    if (state->smooth_shading) {
         mstring_append(s,
                        "void emit_vertex(int index, int _unused) {\n"
                        "  gl_Position = gl_in[index].gl_Position;\n"

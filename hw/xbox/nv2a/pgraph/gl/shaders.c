@@ -150,9 +150,8 @@ static void generate_shaders(ShaderBinding *binding)
     /* Create an optional geometry shader and find primitive type */
     GLenum gl_primitive_mode = get_gl_primitive_mode(
         state->vsh.polygon_front_mode, state->vsh.primitive_mode);
-    MString *geometry_shader_code = pgraph_gen_geom_glsl(
-        state->vsh.polygon_front_mode, state->vsh.polygon_back_mode,
-        state->vsh.primitive_mode, state->vsh.smooth_shading, false);
+    MString *geometry_shader_code =
+        pgraph_gen_geom_glsl(&state->vsh, (GenGeomGlslOptions){ 0 });
     if (geometry_shader_code) {
         const char* geometry_shader_code_str =
              mstring_get_str(geometry_shader_code);
