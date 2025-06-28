@@ -565,7 +565,6 @@ static MString* add_stage_code(struct PixelShader *ps,
     return ret;
 }
 
-// Add code for the final combiner stage
 static void add_final_stage_code(struct PixelShader *ps, struct FCInputInfo final)
 {
     ps->varE = get_input_var(ps, final.e, false);
