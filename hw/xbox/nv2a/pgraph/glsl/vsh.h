@@ -26,6 +26,63 @@
 #include "hw/xbox/nv2a/pgraph/vsh.h"
 #include "common.h"
 
+typedef struct PGRAPHState PGRAPHState;
+
+typedef struct FixedFunctionVshState {
+    bool normalization;
+    bool texture_matrix_enable[4];
+    enum VshTexgen texgen[4][4];
+    enum VshFoggen foggen;
+    enum VshSkinning skinning;
+    bool lighting;
+    enum VshLight light[NV2A_MAX_LIGHTS];
+    enum MaterialColorSource emission_src;
+    enum MaterialColorSource ambient_src;
+    enum MaterialColorSource diffuse_src;
+    enum MaterialColorSource specular_src;
+    bool local_eye;
+} FixedFunctionVshState;
+
+typedef struct ProgrammableVshState {
+    uint32_t program_data[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH][VSH_TOKEN_SIZE];
+    int program_length;
+} ProgrammableVshState;
+
+typedef struct {
+    unsigned int surface_scale_factor;  // FIXME: Remove
+
+    uint16_t compressed_attrs;
+    uint16_t uniform_attrs;
+    uint16_t swizzle_attrs;
+
+    /* primitive format for geometry shader */
+    enum ShaderPolygonMode polygon_front_mode;
+    enum ShaderPolygonMode polygon_back_mode;
+    enum ShaderPrimitiveMode primitive_mode;
+
+    bool fog_enable;
+    enum VshFogMode fog_mode;
+
+    bool specular_enable;
+    bool separate_specular;
+    bool ignore_specular_alpha;
+    float specular_power;
+    float specular_power_back;
+
+    bool point_params_enable;
+    float point_size;
+    float point_params[8];
+
+    bool smooth_shading;
+    bool z_perspective;
+
+    bool is_fixed_function;
+    FixedFunctionVshState fixed_function;
+    ProgrammableVshState programmable;
+} VshState;
+
+void pgraph_set_vsh_state(PGRAPHState *pg, VshState *vsh);
+
 #define VSH_UNIFORM_DECL_X(S, DECL)                          \
     DECL(S, c, vec4, NV2A_VERTEXSHADER_CONSTANTS)            \
     DECL(S, clipRange, vec4, 1)                              \
@@ -51,8 +108,6 @@ typedef struct GenVshGlslOptions {
     bool use_push_constants_for_uniform_attrs;
     int ubo_binding;
 } GenVshGlslOptions;
-
-typedef struct PGRAPHState PGRAPHState;
 
 MString *pgraph_gen_vsh_glsl(const VshState *state,
                              GenVshGlslOptions glsl_opts);

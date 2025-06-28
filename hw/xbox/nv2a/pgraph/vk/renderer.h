@@ -29,9 +29,7 @@
 #include "hw/xbox/nv2a/nv2a_regs.h"
 #include "hw/xbox/nv2a/pgraph/surface.h"
 #include "hw/xbox/nv2a/pgraph/texture.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
-#include "hw/xbox/nv2a/pgraph/glsl/vsh.h"
-#include "hw/xbox/nv2a/pgraph/glsl/psh.h"
+#include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
 
 #include <vulkan/vulkan.h>
 #include <glslang/Include/glslang_c_interface.h>

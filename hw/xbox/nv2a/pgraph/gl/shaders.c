@@ -26,10 +26,6 @@
 
 #include "xemu-version.h"
 #include "ui/xemu-settings.h"
-#include "hw/xbox/nv2a/pgraph/glsl/geom.h"
-#include "hw/xbox/nv2a/pgraph/glsl/vsh.h"
-#include "hw/xbox/nv2a/pgraph/glsl/psh.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
 #include "hw/xbox/nv2a/pgraph/util.h"
 #include "debug.h"
 #include "renderer.h"

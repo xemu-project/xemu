@@ -20,8 +20,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/xbox/nv2a/pgraph/glsl/vsh.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
 #include "common.h"
 #include "vsh-ff.h"
 
