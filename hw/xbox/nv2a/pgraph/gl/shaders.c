@@ -783,7 +783,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         }
         if (binding->color_key_mask_loc[i] != -1) {
             glUniform1ui(binding->color_key_mask_loc[i],
-                         state->psh.colorkey_mask[i]);
+                         pgraph_get_color_key_mask_for_texture(pg, i));
         }
     }
 

@@ -41,6 +41,14 @@ static uint32_t get_colorkey_mask(unsigned int color_format)
     }
 }
 
+uint32_t pgraph_get_color_key_mask_for_texture(PGRAPHState *pg, int i)
+{
+    assert(i < NV2A_MAX_TEXTURES);
+    uint32_t fmt = pgraph_reg_r(pg, NV_PGRAPH_TEXFMT0 + i*4);
+    unsigned int color_format = GET_MASK(fmt, NV_PGRAPH_TEXFMT0_COLOR);
+    return get_colorkey_mask(color_format);
+}
+
 ShaderState pgraph_get_shader_state(PGRAPHState *pg)
 {
     bool vertex_program = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
@@ -246,7 +254,6 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
         state.psh.rect_tex[i] = f.linear;
         state.psh.tex_x8y24[i] = color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FIXED ||
                                 color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FLOAT;
-        state.psh.colorkey_mask[i] = get_colorkey_mask(color_format);
 
         uint32_t border_source =
             GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BORDER_SOURCE);
