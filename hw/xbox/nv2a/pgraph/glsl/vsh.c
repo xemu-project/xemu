@@ -175,8 +175,6 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
             state->programmable.program_length, header, body);
     }
 
-    /* Fog */
-
     if (state->fog_enable) {
 
         if (!state->is_fixed_function) {
@@ -240,7 +238,6 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
             assert(false);
             break;
         }
-        /* Calculate absolute for the modes which need it */
         switch (state->fog_mode) {
         case FOG_MODE_LINEAR_ABS:
         case FOG_MODE_EXP_ABS:
@@ -264,7 +261,6 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
         mstring_append(body, "  oFog = vec4(1.0);\n");
     }
 
-    /* Set outputs */
     mstring_append(body, "\n"
                    "  vtxD0 = clamp(NaNToOne(oD0), 0.0, 1.0);\n"
                    "  vtxB0 = clamp(NaNToOne(oB0), 0.0, 1.0);\n"
@@ -405,7 +401,6 @@ void pgraph_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
     }
 
     if (state->is_fixed_function) {
-        /* update lighting constants */
         if (locs[VshUniform_ltctxa] != -1) {
             QEMU_BUILD_BUG_MSG(sizeof(values->ltctxa) != sizeof(pg->ltctxa),
                                "Uniform value size inconsistency");

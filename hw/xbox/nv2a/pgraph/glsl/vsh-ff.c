@@ -35,7 +35,6 @@ void pgraph_gen_vsh_ff_glsl(const VshState *state, MString *header,
 {
     int i, j;
 
-    /* generate vertex shader mimicking fixed function */
     mstring_append(header,
 "#define position      v0\n"
 "#define weight        v1\n"
@@ -111,7 +110,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 "\n"
 );
 
-    /* Skinning */
     unsigned int count;
     bool mix;
     switch (state->fixed_function.skinning) {
@@ -143,12 +141,10 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                          "tNormal", "vec4(normal, 0.0)",
                          "invModelViewMat", "xyz");
 
-    /* Normalization */
     if (state->fixed_function.normalization) {
         mstring_append(body, "tNormal = normalize(tNormal);\n");
     }
 
-    /* Texgen */
     for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
         mstring_append_fmt(body, "/* Texgen for stage %d */\n",
                            i);
@@ -213,7 +209,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         }
     }
 
-    /* Apply texture matrices */
     for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
         if (state->fixed_function.texture_matrix_enable[i]) {
             mstring_append_fmt(body,
@@ -222,7 +217,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         }
     }
 
-    /* Lighting */
     if (!state->fixed_function.lighting) {
         mstring_append(body, "  oD0 = diffuse;\n");
         mstring_append(body, "  oD1 = specular;\n");
@@ -417,9 +411,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         }
     }
 
-    /* Fog */
     if (state->fog_enable) {
-
         /* From: https://www.opengl.org/registry/specs/NV/fog_distance.txt */
         switch(state->fixed_function.foggen) {
         case FOGGEN_SPEC_ALPHA:

@@ -864,7 +864,6 @@ static MString* psh_convert(struct PixelShader *ps)
         "    vec2(-1.0, 1.0),vec2(0.0, 1.0),vec2(1.0, 1.0));\n"
         );
 
-    /* Window Clipping */
     MString *clip = mstring_new();
     mstring_append_fmt(clip, "/*  Window-clip (%slusive) */\n",
                        ps->state.window_clip_exclusive ? "Exc" : "Inc");
@@ -891,7 +890,6 @@ static MString* psh_convert(struct PixelShader *ps)
                              "}\n");
     }
 
-    /* Depth clipping */
     if (ps->state.depth_clipping) {
         if (ps->state.z_perspective) {
             mstring_append(
@@ -1437,7 +1435,6 @@ MString *pgraph_gen_psh_glsl(const PshState state, GenPshGlslOptions opts)
 void pgraph_set_psh_uniform_values(PGRAPHState *pg, const PshUniformLocs locs,
                                    PshUniformValues *values)
 {
-    /* update combiner constants */
     if (locs[PshUniform_consts] != -1) {
         for (int i = 0; i < 9; i++) {
             uint32_t constant[2];
@@ -1477,7 +1474,6 @@ void pgraph_set_psh_uniform_values(PGRAPHState *pg, const PshUniformLocs locs,
         }
     }
 
-    /* For each texture stage */
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
         /* Bump luminance only during stages 1 - 3 */
         if (i > 0) {
@@ -1568,7 +1564,6 @@ void pgraph_set_psh_uniform_values(PGRAPHState *pg, const PshUniformLocs locs,
         values->depthOffset[0] = zbias;
     }
 
-    /* Clipping regions */
     unsigned int max_gl_width = pg->surface_binding_dim.width;
     unsigned int max_gl_height = pg->surface_binding_dim.height;
     pgraph_apply_scaling_factor(pg, &max_gl_width, &max_gl_height);
