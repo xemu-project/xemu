@@ -81,7 +81,7 @@ typedef struct {
     ProgrammableVshState programmable;
 } VshState;
 
-void pgraph_set_vsh_state(PGRAPHState *pg, VshState *vsh);
+void pgraph_set_vsh_state(PGRAPHState *pg, VshState *state);
 
 #define VSH_UNIFORM_DECL_X(S, DECL)                          \
     DECL(S, c, vec4, NV2A_VERTEXSHADER_CONSTANTS)            \

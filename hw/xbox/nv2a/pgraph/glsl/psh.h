@@ -64,7 +64,7 @@ typedef struct PshState {
     bool z_perspective;
 } PshState;
 
-void pgraph_set_psh_state(PGRAPHState *pg, PshState *psh);
+void pgraph_set_psh_state(PGRAPHState *pg, PshState *state);
 
 #define PSH_UNIFORM_DECL_X(S, DECL) \
     DECL(S, alphaRef, int, 1)       \

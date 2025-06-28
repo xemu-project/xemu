@@ -58,52 +58,54 @@ static uint32_t get_color_key_mask_for_texture(PGRAPHState *pg, int i)
     return get_colorkey_mask(color_format);
 }
 
-void pgraph_set_psh_state(PGRAPHState *pg, PshState *psh)
+void pgraph_set_psh_state(PGRAPHState *pg, PshState *state)
 {
-    psh->window_clip_exclusive = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-                                 NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE;
-    psh->combiner_control = pgraph_reg_r(pg, NV_PGRAPH_COMBINECTL);
-    psh->shader_stage_program = pgraph_reg_r(pg, NV_PGRAPH_SHADERPROG);
-    psh->other_stage_input = pgraph_reg_r(pg, NV_PGRAPH_SHADERCTL);
-    psh->final_inputs_0 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG0);
-    psh->final_inputs_1 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG1);
+    state->window_clip_exclusive = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+                                   NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE;
+    state->combiner_control = pgraph_reg_r(pg, NV_PGRAPH_COMBINECTL);
+    state->shader_stage_program = pgraph_reg_r(pg, NV_PGRAPH_SHADERPROG);
+    state->other_stage_input = pgraph_reg_r(pg, NV_PGRAPH_SHADERCTL);
+    state->final_inputs_0 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG0);
+    state->final_inputs_1 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG1);
 
-    psh->alpha_test = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
-                      NV_PGRAPH_CONTROL_0_ALPHATESTENABLE;
-    psh->alpha_func = (enum PshAlphaFunc)GET_MASK(
+    state->alpha_test = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                        NV_PGRAPH_CONTROL_0_ALPHATESTENABLE;
+    state->alpha_func = (enum PshAlphaFunc)GET_MASK(
         pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0), NV_PGRAPH_CONTROL_0_ALPHAFUNC);
 
-    psh->point_sprite = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-                        NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE;
+    state->point_sprite = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+                          NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE;
 
-    psh->shadow_depth_func =
+    state->shadow_depth_func =
         (enum PshShadowDepthFunc)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_SHADOWCTL),
                                           NV_PGRAPH_SHADOWCTL_SHADOW_ZFUNC);
-    psh->z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
-                         NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
+    state->z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                           NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
 
-    psh->smooth_shading = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
-                                   NV_PGRAPH_CONTROL_3_SHADEMODE) ==
-                          NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
+    state->smooth_shading = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
+                                     NV_PGRAPH_CONTROL_3_SHADEMODE) ==
+                            NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
 
-    psh->depth_clipping = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_ZCOMPRESSOCCLUDE),
-                                   NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
-                          NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CULL;
+    state->depth_clipping =
+        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_ZCOMPRESSOCCLUDE),
+                 NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
+        NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CULL;
 
     int num_stages = pgraph_reg_r(pg, NV_PGRAPH_COMBINECTL) & 0xFF;
     for (int i = 0; i < num_stages; i++) {
-        psh->rgb_inputs[i] = pgraph_reg_r(pg, NV_PGRAPH_COMBINECOLORI0 + i * 4);
-        psh->rgb_outputs[i] =
+        state->rgb_inputs[i] =
+            pgraph_reg_r(pg, NV_PGRAPH_COMBINECOLORI0 + i * 4);
+        state->rgb_outputs[i] =
             pgraph_reg_r(pg, NV_PGRAPH_COMBINECOLORO0 + i * 4);
-        psh->alpha_inputs[i] =
+        state->alpha_inputs[i] =
             pgraph_reg_r(pg, NV_PGRAPH_COMBINEALPHAI0 + i * 4);
-        psh->alpha_outputs[i] =
+        state->alpha_outputs[i] =
             pgraph_reg_r(pg, NV_PGRAPH_COMBINEALPHAO0 + i * 4);
     }
 
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
-            psh->compare_mode[i][j] =
+            state->compare_mode[i][j] =
                 (pgraph_reg_r(pg, NV_PGRAPH_SHADERCLIPMODE) >> (4 * i + j)) & 1;
         }
 
@@ -114,16 +116,16 @@ void pgraph_set_psh_state(PGRAPHState *pg, PshState *psh)
             continue;
         }
 
-        psh->alphakill[i] = ctl_0 & NV_PGRAPH_TEXCTL0_0_ALPHAKILLEN;
-        psh->colorkey_mode[i] = ctl_0 & NV_PGRAPH_TEXCTL0_0_COLORKEYMODE;
+        state->alphakill[i] = ctl_0 & NV_PGRAPH_TEXCTL0_0_ALPHAKILLEN;
+        state->colorkey_mode[i] = ctl_0 & NV_PGRAPH_TEXCTL0_0_COLORKEYMODE;
 
         uint32_t tex_fmt = pgraph_reg_r(pg, NV_PGRAPH_TEXFMT0 + i * 4);
-        psh->dim_tex[i] = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_DIMENSIONALITY);
+        state->dim_tex[i] = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_DIMENSIONALITY);
 
         unsigned int color_format = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_COLOR);
         BasicColorFormatInfo f = kelvin_color_format_info_map[color_format];
-        psh->rect_tex[i] = f.linear;
-        psh->tex_x8y24[i] =
+        state->rect_tex[i] = f.linear;
+        state->tex_x8y24[i] =
             color_format ==
                 NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FIXED ||
             color_format ==
@@ -132,9 +134,9 @@ void pgraph_set_psh_state(PGRAPHState *pg, PshState *psh)
         uint32_t border_source =
             GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BORDER_SOURCE);
         bool cubemap = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_CUBEMAPENABLE);
-        psh->border_logical_size[i][0] = 0.0f;
-        psh->border_logical_size[i][1] = 0.0f;
-        psh->border_logical_size[i][2] = 0.0f;
+        state->border_logical_size[i][0] = 0.0f;
+        state->border_logical_size[i][1] = 0.0f;
+        state->border_logical_size[i][2] = 0.0f;
         if (border_source != NV_PGRAPH_TEXFMT0_BORDER_SOURCE_COLOR) {
             if (!f.linear && !cubemap) {
                 // The actual texture will be (at least) double the reported
@@ -147,26 +149,26 @@ void pgraph_set_psh_state(PGRAPHState *pg, PshState *psh)
                 unsigned int reported_depth =
                     1 << GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BASE_SIZE_P);
 
-                psh->border_logical_size[i][0] = reported_width;
-                psh->border_logical_size[i][1] = reported_height;
-                psh->border_logical_size[i][2] = reported_depth;
+                state->border_logical_size[i][0] = reported_width;
+                state->border_logical_size[i][1] = reported_height;
+                state->border_logical_size[i][2] = reported_depth;
 
                 if (reported_width < 8) {
-                    psh->border_inv_real_size[i][0] = 0.0625f;
+                    state->border_inv_real_size[i][0] = 0.0625f;
                 } else {
-                    psh->border_inv_real_size[i][0] =
+                    state->border_inv_real_size[i][0] =
                         1.0f / (reported_width * 2.0f);
                 }
                 if (reported_height < 8) {
-                    psh->border_inv_real_size[i][1] = 0.0625f;
+                    state->border_inv_real_size[i][1] = 0.0625f;
                 } else {
-                    psh->border_inv_real_size[i][1] =
+                    state->border_inv_real_size[i][1] =
                         1.0f / (reported_height * 2.0f);
                 }
                 if (reported_depth < 8) {
-                    psh->border_inv_real_size[i][2] = 0.0625f;
+                    state->border_inv_real_size[i][2] = 0.0625f;
                 } else {
-                    psh->border_inv_real_size[i][2] =
+                    state->border_inv_real_size[i][2] =
                         1.0f / (reported_depth * 2.0f);
                 }
             } else {
@@ -189,7 +191,7 @@ void pgraph_set_psh_state(PGRAPHState *pg, PshState *psh)
         psh->snorm_tex[i] = (f.gl_internal_format == GL_RGB8_SNORM)
                                  || (f.gl_internal_format == GL_RG8_SNORM);
 #endif
-        psh->shadow_map[i] = f.depth;
+        state->shadow_map[i] = f.depth;
 
         uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i * 4);
         unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
@@ -205,7 +207,7 @@ void pgraph_set_psh_state(PGRAPHState *pg, PshState *psh)
             kernel = (enum ConvolutionFilter)k;
         }
 
-        psh->conv_tex[i] = kernel;
+        state->conv_tex[i] = kernel;
     }
 }
 
