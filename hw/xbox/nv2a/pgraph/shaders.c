@@ -115,14 +115,35 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
             pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_DIFFUSE);
         state.specular_src = (enum MaterialColorSource)GET_MASK(
             pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_SPECULAR);
+
+        state.local_eye = GET_MASK(
+            pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LOCALEYE);
+
+        /* Texture matrices */
+        for (int i = 0; i < 4; i++) {
+            state.texture_matrix_enable[i] = pg->texture_matrix_enable[i];
+        }
+
+        /* Texgen */
+        for (int i = 0; i < 4; i++) {
+            unsigned int reg = (i < 2) ? NV_PGRAPH_CSV1_A : NV_PGRAPH_CSV1_B;
+            for (int j = 0; j < 4; j++) {
+                unsigned int masks[] = {
+                    (i % 2) ? NV_PGRAPH_CSV1_A_T1_S : NV_PGRAPH_CSV1_A_T0_S,
+                    (i % 2) ? NV_PGRAPH_CSV1_A_T1_T : NV_PGRAPH_CSV1_A_T0_T,
+                    (i % 2) ? NV_PGRAPH_CSV1_A_T1_R : NV_PGRAPH_CSV1_A_T0_R,
+                    (i % 2) ? NV_PGRAPH_CSV1_A_T1_Q : NV_PGRAPH_CSV1_A_T0_Q
+                };
+                state.texgen[i][j] =
+                    (enum VshTexgen)GET_MASK(pgraph_reg_r(pg, reg), masks[j]);
+            }
+        }
     }
 
     state.separate_specular = GET_MASK(
         pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_SEPARATE_SPECULAR);
     state.ignore_specular_alpha = !GET_MASK(
         pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_ALPHA_FROM_MATERIAL_SPECULAR);
-    state.local_eye = GET_MASK(
-        pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LOCALEYE);
 
     state.specular_power = pg->specular_power;
     state.specular_power_back = pg->specular_power_back;
@@ -176,21 +197,6 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
         }
     }
 
-    /* Texgen */
-    for (int i = 0; i < 4; i++) {
-        unsigned int reg = (i < 2) ? NV_PGRAPH_CSV1_A : NV_PGRAPH_CSV1_B;
-        for (int j = 0; j < 4; j++) {
-            unsigned int masks[] = {
-                (i % 2) ? NV_PGRAPH_CSV1_A_T1_S : NV_PGRAPH_CSV1_A_T0_S,
-                (i % 2) ? NV_PGRAPH_CSV1_A_T1_T : NV_PGRAPH_CSV1_A_T0_T,
-                (i % 2) ? NV_PGRAPH_CSV1_A_T1_R : NV_PGRAPH_CSV1_A_T0_R,
-                (i % 2) ? NV_PGRAPH_CSV1_A_T1_Q : NV_PGRAPH_CSV1_A_T0_Q
-            };
-            state.texgen[i][j] =
-                (enum VshTexgen)GET_MASK(pgraph_reg_r(pg, reg), masks[j]);
-        }
-    }
-
     /* Fog */
     state.fog_enable =
         pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3) & NV_PGRAPH_CONTROL_3_FOGENABLE;
@@ -204,11 +210,6 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
         /* FIXME: Do we still pass the fogmode? */
         state.fog_mode = (enum VshFogMode)0;
         state.foggen = (enum VshFoggen)0;
-    }
-
-    /* Texture matrices */
-    for (int i = 0; i < 4; i++) {
-        state.texture_matrix_enable[i] = pg->texture_matrix_enable[i];
     }
 
     /* Lighting */
