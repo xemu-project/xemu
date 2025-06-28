@@ -23,7 +23,7 @@
 #define HW_XBOX_NV2A_PGRAPH_GLSL_VSH_H
 
 #include "qemu/mstring.h"
-#include "hw/xbox/nv2a/pgraph/vsh.h"
+#include "hw/xbox/nv2a/pgraph/vsh_regs.h"
 #include "common.h"
 
 typedef struct PGRAPHState PGRAPHState;

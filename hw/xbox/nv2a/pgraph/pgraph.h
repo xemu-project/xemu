@@ -32,7 +32,7 @@
 #include "surface.h"
 #include "texture.h"
 #include "util.h"
-#include "vsh.h"
+#include "vsh_regs.h"
 
 typedef struct NV2AState NV2AState;
 typedef struct PGRAPHNullState PGRAPHNullState;
