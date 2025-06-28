@@ -168,7 +168,8 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         const UniformInfo *info = &VshUniformInfo[i];
         const char *type_str = uniform_element_type_to_str[info->type];
         if (i == VshUniform_inlineValue &&
-            opts.use_push_constants_for_uniform_attrs) {
+            (!state->uniform_attrs ||
+             opts.use_push_constants_for_uniform_attrs)) {
             continue;
         }
         if (info->count == 1) {
