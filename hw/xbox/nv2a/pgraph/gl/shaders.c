@@ -710,9 +710,8 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
     ShaderBinding *old_binding = r->shader_binding;
     ShaderState state = pgraph_get_shader_state(pg);
 
-    NV2A_GL_DGROUP_BEGIN("%s (VP: %s FFP: %s)", __func__,
-                         state.vertex_program ? "yes" : "no",
-                         state.fixed_function ? "yes" : "no");
+    NV2A_GL_DGROUP_BEGIN("%s (%s)", __func__,
+                         state.vsh.is_fixed_function ? "FF" : "PROG");
 
     qemu_mutex_lock(&r->shader_cache_lock);
 
