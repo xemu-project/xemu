@@ -112,5 +112,6 @@ typedef struct ShaderState {
 typedef struct PGRAPHState PGRAPHState;
 
 ShaderState pgraph_get_shader_state(PGRAPHState *pg);
+uint32_t pgraph_get_color_key_mask_for_texture(PGRAPHState *pg, int i);
 
 #endif

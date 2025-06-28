@@ -506,10 +506,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         uniform1uiv(&binding->fragment->uniforms, binding->color_key_loc, 4,
                     color_key_colors);
     }
-    if (binding->color_key_mask_loc != -1) {
-        uniform1uiv(&binding->fragment->uniforms, binding->color_key_mask_loc,
-                    4, state->psh.colorkey_mask);
-    }
+    uint32_t color_key_mask[4] = { 0 };
 
     /* For each texture stage */
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
@@ -557,6 +554,13 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
             }
             uniform1f(&binding->fragment->uniforms, loc, scale);
         }
+
+        color_key_mask[i] = pgraph_get_color_key_mask_for_texture(pg, i);
+    }
+
+    if (binding->color_key_mask_loc != -1) {
+        uniform1uiv(&binding->fragment->uniforms, binding->color_key_mask_loc,
+                    4, color_key_mask);
     }
 
     if (binding->fog_color_loc != -1) {
