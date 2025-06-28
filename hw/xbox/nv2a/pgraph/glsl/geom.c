@@ -181,18 +181,19 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
     assert(layout_in);
     assert(layout_out);
     assert(body);
-    MString *s = mstring_new();
-    mstring_append_fmt(s, "#version %d\n\n", opts.vulkan ? 450 : 400);
-    mstring_append(s, layout_in);
-    mstring_append(s, layout_out);
-    mstring_append(s, "\n");
-    pgraph_glsl_get_vtx_header(s, opts.vulkan, state->smooth_shading, true,
+    MString *output =
+        mstring_from_fmt("#version %d\n\n"
+                         "%s"
+                         "%s"
+                         "\n",
+                         opts.vulkan ? 450 : 400, layout_in, layout_out);
+    pgraph_glsl_get_vtx_header(output, opts.vulkan, state->smooth_shading, true,
                                true, true);
-    pgraph_glsl_get_vtx_header(s, opts.vulkan, state->smooth_shading, false,
-                               false, false);
+    pgraph_glsl_get_vtx_header(output, opts.vulkan, state->smooth_shading,
+                               false, false, false);
 
     if (state->smooth_shading) {
-        mstring_append(s,
+        mstring_append(output,
                        "void emit_vertex(int index, int _unused) {\n"
                        "  gl_Position = gl_in[index].gl_Position;\n"
                        "  gl_PointSize = gl_in[index].gl_PointSize;\n"
@@ -208,7 +209,7 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                        "  EmitVertex();\n"
                        "}\n");
     } else {
-        mstring_append(s,
+        mstring_append(output,
                        "void emit_vertex(int index, int provoking_index) {\n"
                        "  gl_Position = gl_in[index].gl_Position;\n"
                        "  gl_PointSize = gl_in[index].gl_PointSize;\n"
@@ -225,10 +226,12 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                        "}\n");
     }
 
-    mstring_append(s, "\n"
-                      "void main() {\n");
-    mstring_append(s, body);
-    mstring_append(s, "}\n");
+    mstring_append_fmt(output,
+                       "\n"
+                       "void main() {\n"
+                       "%s"
+                       "}\n",
+                       body);
 
-    return s;
+    return output;
 }
