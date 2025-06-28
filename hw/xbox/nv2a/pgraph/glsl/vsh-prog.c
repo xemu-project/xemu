@@ -747,12 +747,10 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version, const uint32_t *tokens,
         const uint32_t* cur_token = &tokens[slot * VSH_TOKEN_SIZE];
         MString *token_str = decode_token(cur_token);
         mstring_append_fmt(body,
-                           "  /* Slot %d: 0x%08X 0x%08X 0x%08X 0x%08X */",
-                           slot,
-                           cur_token[0],cur_token[1],cur_token[2],cur_token[3]);
-        mstring_append(body, "\n");
-        mstring_append(body, mstring_get_str(token_str));
-        mstring_append(body, "\n");
+                           "  /* Slot %d: 0x%08X 0x%08X 0x%08X 0x%08X */\n"
+                           "  %s\n",
+                           slot, cur_token[0], cur_token[1], cur_token[2],
+                           cur_token[3], mstring_get_str(token_str));
         mstring_unref(token_str);
 
         if (vsh_get_field(cur_token, FLD_FINAL)) {
