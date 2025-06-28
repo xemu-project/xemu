@@ -96,7 +96,7 @@ static GLuint create_gl_shader(GLenum gl_shader_type,
     return shader;
 }
 
-static void update_shader_constant_locations(ShaderBinding *binding)
+static void update_shader_uniform_locs(ShaderBinding *binding)
 {
     char tmp[64];
 
@@ -207,7 +207,7 @@ static void generate_shaders(ShaderBinding *binding)
     binding->initialized = true;
     binding->gl_program = program;
     binding->gl_primitive_mode = gl_primitive_mode;
-    update_shader_constant_locations(binding);
+    update_shader_uniform_locs(binding);
 
     if (previous_numeric_locale) {
         setlocale(LC_NUMERIC, previous_numeric_locale);
@@ -310,7 +310,7 @@ bool pgraph_gl_shader_load_from_memory(ShaderBinding *binding)
     g_free(binding->program);
     binding->program = NULL;
 
-    update_shader_constant_locations(binding);
+    update_shader_uniform_locs(binding);
 
     return true;
 }
