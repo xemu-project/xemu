@@ -272,7 +272,6 @@ static void add_const_ref(struct PixelShader *ps, const char *var)
     strcpy((char*)ps->const_refs[ps->num_const_refs++], var);
 }
 
-// Get the code for a variable used in the program
 static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
 {
     switch (reg) {
@@ -346,7 +345,6 @@ static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
     }
 }
 
-// Get input variable code
 static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool is_alpha)
 {
     MString *reg = get_var(ps, in.reg, false);
@@ -413,7 +411,6 @@ static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
     return res;
 }
 
-// Get code for the output mapping of a stage
 static MString* get_output(MString *reg, int mapping)
 {
     MString *res;
@@ -444,7 +441,6 @@ static MString* get_output(MString *reg, int mapping)
     return res;
 }
 
-// Add the GLSL code for a stage
 static MString* add_stage_code(struct PixelShader *ps,
                                struct InputVarInfo input,
                                struct OutputInfo output,
