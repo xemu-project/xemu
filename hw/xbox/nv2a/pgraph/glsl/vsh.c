@@ -28,26 +28,26 @@
 DEF_UNIFORM_INFO_ARR(VshUniform, VSH_UNIFORM_DECL_X)
 
 static void set_fixed_function_vsh_state(PGRAPHState *pg,
-                                         FixedFunctionVshState *ff)
+                                         FixedFunctionVshState *state)
 {
-    ff->skinning = (enum VshSkinning)GET_MASK(
+    state->skinning = (enum VshSkinning)GET_MASK(
         pgraph_reg_r(pg, NV_PGRAPH_CSV0_D), NV_PGRAPH_CSV0_D_SKIN);
-    ff->normalization = pgraph_reg_r(pg, NV_PGRAPH_CSV0_C) &
-                        NV_PGRAPH_CSV0_C_NORMALIZATION_ENABLE;
-    ff->local_eye =
+    state->normalization = pgraph_reg_r(pg, NV_PGRAPH_CSV0_C) &
+                           NV_PGRAPH_CSV0_C_NORMALIZATION_ENABLE;
+    state->local_eye =
         GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LOCALEYE);
 
-    ff->emission_src = (enum MaterialColorSource)GET_MASK(
+    state->emission_src = (enum MaterialColorSource)GET_MASK(
         pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_EMISSION);
-    ff->ambient_src = (enum MaterialColorSource)GET_MASK(
+    state->ambient_src = (enum MaterialColorSource)GET_MASK(
         pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_AMBIENT);
-    ff->diffuse_src = (enum MaterialColorSource)GET_MASK(
+    state->diffuse_src = (enum MaterialColorSource)GET_MASK(
         pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_DIFFUSE);
-    ff->specular_src = (enum MaterialColorSource)GET_MASK(
+    state->specular_src = (enum MaterialColorSource)GET_MASK(
         pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_SPECULAR);
 
     for (int i = 0; i < 4; i++) {
-        ff->texture_matrix_enable[i] = pg->texture_matrix_enable[i];
+        state->texture_matrix_enable[i] = pg->texture_matrix_enable[i];
     }
 
     for (int i = 0; i < 4; i++) {
@@ -59,23 +59,23 @@ static void set_fixed_function_vsh_state(PGRAPHState *pg,
                 (i % 2) ? NV_PGRAPH_CSV1_A_T1_R : NV_PGRAPH_CSV1_A_T0_R,
                 (i % 2) ? NV_PGRAPH_CSV1_A_T1_Q : NV_PGRAPH_CSV1_A_T0_Q
             };
-            ff->texgen[i][j] =
+            state->texgen[i][j] =
                 (enum VshTexgen)GET_MASK(pgraph_reg_r(pg, reg), masks[j]);
         }
     }
 
-    ff->lighting =
+    state->lighting =
         GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LIGHTING);
-    if (ff->lighting) {
+    if (state->lighting) {
         for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
-            ff->light[i] =
+            state->light[i] =
                 (enum VshLight)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
                                         NV_PGRAPH_CSV0_D_LIGHT0 << (i * 2));
         }
     }
 
     if (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3) & NV_PGRAPH_CONTROL_3_FOGENABLE) {
-        ff->foggen = (enum VshFoggen)GET_MASK(
+        state->foggen = (enum VshFoggen)GET_MASK(
             pgraph_reg_r(pg, NV_PGRAPH_CSV0_D), NV_PGRAPH_CSV0_D_FOGGENMODE);
     }
 }
