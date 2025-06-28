@@ -405,8 +405,8 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
         setlocale(LC_NUMERIC, "C");
 
         MString *geometry_shader_code = pgraph_gen_geom_glsl(
-            state->polygon_front_mode, state->polygon_back_mode,
-            state->primitive_mode, state->smooth_shading, true);
+            state->vsh.polygon_front_mode, state->vsh.polygon_back_mode,
+            state->vsh.primitive_mode, state->vsh.smooth_shading, true);
         if (geometry_shader_code) {
             NV2A_VK_DPRINTF("geometry shader: \n%s",
                             mstring_get_str(geometry_shader_code));
@@ -419,7 +419,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
         }
 
         MString *vertex_shader_code =
-            pgraph_gen_vsh_glsl(state, geometry_shader_code != NULL);
+            pgraph_gen_vsh_glsl(&state->vsh, geometry_shader_code != NULL);
         NV2A_VK_DPRINTF("vertex shader: \n%s",
                         mstring_get_str(vertex_shader_code));
         snode->vertex = pgraph_vk_create_shader_module_from_glsl(
@@ -453,7 +453,7 @@ static void update_uniform_attr_values(PGRAPHState *pg, ShaderBinding *binding)
     float values[NV2A_VERTEXSHADER_ATTRIBUTES][4];
     int num_uniform_attrs = 0;
 
-    pgraph_get_inline_values(pg, binding->state.uniform_attrs, values,
+    pgraph_get_inline_values(pg, binding->state.vsh.uniform_attrs, values,
                              &num_uniform_attrs);
 
     if (num_uniform_attrs > 0) {
@@ -463,9 +463,7 @@ static void update_uniform_attr_values(PGRAPHState *pg, ShaderBinding *binding)
 }
 
 // FIXME: Move to common
-static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
-                                    bool binding_changed, bool vertex_program,
-                                    bool fixed_function)
+static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding)
 {
     ShaderState *state = &binding->state;
 
@@ -548,7 +546,10 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         if (loc != -1) {
             assert(pg->vk_renderer_state->texture_bindings[i] != NULL);
             float scale = pg->vk_renderer_state->texture_bindings[i]->key.scale;
-            BasicColorFormatInfo f_basic = kelvin_color_format_info_map[pg->vk_renderer_state->texture_bindings[i]->key.state.color_format];
+            BasicColorFormatInfo f_basic =
+                kelvin_color_format_info_map[pg->vk_renderer_state
+                                                 ->texture_bindings[i]
+                                                 ->key.state.color_format];
             if (!f_basic.linear) {
                 scale = 1.0;
             }
@@ -592,7 +593,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         assert(0);
     }
 
-    if (fixed_function) {
+    if (binding->state.vsh.is_fixed_function) {
         /* update lighting constants */
         struct {
             uint32_t *v;
@@ -733,7 +734,8 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
                          pg->material_alpha);
     }
 
-    if (!state->use_push_constants_for_uniform_attrs && state->uniform_attrs) {
+    if (!state->vsh.use_push_constants_for_uniform_attrs &&
+        state->vsh.uniform_attrs) {
         update_uniform_attr_values(pg, binding);
     }
 }
@@ -786,20 +788,27 @@ static bool check_shaders_dirty(PGRAPHState *pg)
     }
 
     ShaderState *state = &r->shader_binding->state;
-    if (pg->uniform_attrs != state->uniform_attrs ||
-        pg->swizzle_attrs != state->swizzle_attrs ||
-        pg->compressed_attrs != state->compressed_attrs ||
-        pg->primitive_mode != state->primitive_mode ||
-        pg->surface_scale_factor != state->surface_scale_factor) {
+    if (pg->uniform_attrs != state->vsh.uniform_attrs ||
+        pg->swizzle_attrs != state->vsh.swizzle_attrs ||
+        pg->compressed_attrs != state->vsh.compressed_attrs ||
+        pg->primitive_mode != state->vsh.primitive_mode ||
+        pg->surface_scale_factor != state->vsh.surface_scale_factor) {
         return true;
     }
 
     // Textures
     for (int i = 0; i < 4; i++) {
-        if (pg->texture_matrix_enable[i] != pg->vk_renderer_state->shader_binding->state.texture_matrix_enable[i] ||
-            pgraph_is_reg_dirty(pg, NV_PGRAPH_TEXCTL0_0 + i * 4) ||
+        if (pgraph_is_reg_dirty(pg, NV_PGRAPH_TEXCTL0_0 + i * 4) ||
             pgraph_is_reg_dirty(pg, NV_PGRAPH_TEXFILTER0 + i * 4) ||
             pgraph_is_reg_dirty(pg, NV_PGRAPH_TEXFMT0 + i * 4)) {
+            return true;
+        }
+
+        if (pg->vk_renderer_state->shader_binding->state.vsh
+                .is_fixed_function &&
+            (pg->texture_matrix_enable[i] !=
+             pg->vk_renderer_state->shader_binding->state.vsh.fixed_function
+                 .texture_matrix_enable[i])) {
             return true;
         }
     }
@@ -821,11 +830,11 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
         ShaderState new_state;
         memset(&new_state, 0, sizeof(ShaderState));
         new_state = pgraph_get_shader_state(pg);
-        new_state.vulkan = true;
-        new_state.psh.vulkan = true;
-        new_state.use_push_constants_for_uniform_attrs =
+        new_state.vsh.vulkan = true;
+        new_state.vsh.use_push_constants_for_uniform_attrs =
             (r->device_props.limits.maxPushConstantsSize >=
              MAX_UNIFORM_ATTR_VALUES_SIZE);
+        new_state.psh.vulkan = true;
 
         if (!r->shader_binding || memcmp(&r->shader_binding->state, &new_state, sizeof(ShaderState))) {
             r->shader_binding = gen_shaders(pg, &new_state);
@@ -849,9 +858,7 @@ void pgraph_vk_update_shader_uniforms(PGRAPHState *pg)
     ShaderBinding *binding = r->shader_binding;
     ShaderUniformLayout *layouts[] = { &binding->vertex->uniforms,
                                         &binding->fragment->uniforms };
-    shader_update_constants(pg, r->shader_binding, true,
-                            r->shader_binding->state.vertex_program,
-                            r->shader_binding->state.fixed_function);
+    shader_update_constants(pg, r->shader_binding);
 
     for (int i = 0; i < ARRAY_SIZE(layouts); i++) {
         uint64_t hash = fast_hash(layouts[i]->allocation, layouts[i]->total_size);

@@ -29,7 +29,7 @@ static void append_skinning_code(MString* str, bool mix,
                                  const char* output, const char* input,
                                  const char* matrix, const char* swizzle);
 
-void pgraph_gen_vsh_ff_glsl(const ShaderState *state, MString *header,
+void pgraph_gen_vsh_ff_glsl(const VshState *state, MString *header,
                              MString *body, MString *uniforms)
 {
     int i, j;
@@ -119,7 +119,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     /* Skinning */
     unsigned int count;
     bool mix;
-    switch (state->skinning) {
+    switch (state->fixed_function.skinning) {
     case SKINNING_OFF:
         mix = false; count = 0; break;
     case SKINNING_1WEIGHTS:
@@ -139,7 +139,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         break;
     }
     mstring_append_fmt(body, "/* Skinning mode %d */\n",
-                       state->skinning);
+                       state->fixed_function.skinning);
 
     append_skinning_code(body, mix, count, "vec4",
                          "tPosition", "position",
@@ -149,7 +149,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                          "invModelViewMat", "xyz");
 
     /* Normalization */
-    if (state->normalization) {
+    if (state->fixed_function.normalization) {
         mstring_append(body, "tNormal = normalize(tNormal);\n");
     }
 
@@ -163,7 +163,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             /* TODO: TexGen View Model missing! */
             char c = "xyzw"[j];
             char cSuffix = "STRQ"[j];
-            switch (state->texgen[i][j]) {
+            switch (state->fixed_function.texgen[i][j]) {
             case TEXGEN_DISABLE:
                 mstring_append_fmt(body, "oT%d.%c = texture%d.%c;\n",
                                    i, c, i, c);
@@ -220,7 +220,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
     /* Apply texture matrices */
     for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
-        if (state->texture_matrix_enable[i]) {
+        if (state->fixed_function.texture_matrix_enable[i]) {
             mstring_append_fmt(body,
                                "oT%d = oT%d * texMat%d;\n",
                                i, i, i);
@@ -228,7 +228,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     }
 
     /* Lighting */
-    if (!state->lighting) {
+    if (!state->fixed_function.lighting) {
         mstring_append(body, "  oD0 = diffuse;\n");
         mstring_append(body, "  oD1 = specular;\n");
         mstring_append(body, "  oB0 = backDiffuse;\n");
@@ -242,47 +242,47 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         static char alpha_source_specular[] = "specular.a";
         static char alpha_source_material[] = "material_alpha";
         const char *alpha_source = alpha_source_diffuse;
-        if (state->diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) {
+        if (state->fixed_function.diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) {
             mstring_append_fmt(uniforms, "%sfloat material_alpha;\n", u);
             alpha_source = alpha_source_material;
-        } else if (state->diffuse_src == MATERIAL_COLOR_SRC_SPECULAR) {
+        } else if (state->fixed_function.diffuse_src == MATERIAL_COLOR_SRC_SPECULAR) {
             alpha_source = alpha_source_specular;
         }
 
-        if (state->ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
+        if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
             mstring_append_fmt(body, "oD0 = vec4(sceneAmbientColor, %s);\n", alpha_source);
-        } else if (state->ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
+        } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
             mstring_append_fmt(body, "oD0 = vec4(diffuse.rgb, %s);\n", alpha_source);
-        } else if (state->ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
+        } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
             mstring_append_fmt(body, "oD0 = vec4(specular.rgb, %s);\n", alpha_source);
         }
 
         mstring_append(body, "oD0.rgb *= materialEmissionColor.rgb;\n");
-        if (state->emission_src == MATERIAL_COLOR_SRC_MATERIAL) {
+        if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_MATERIAL) {
             mstring_append(body, "oD0.rgb += sceneAmbientColor;\n");
-        } else if (state->emission_src == MATERIAL_COLOR_SRC_DIFFUSE) {
+        } else if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_DIFFUSE) {
             mstring_append(body, "oD0.rgb += diffuse.rgb;\n");
-        } else if (state->emission_src == MATERIAL_COLOR_SRC_SPECULAR) {
+        } else if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_SPECULAR) {
             mstring_append(body, "oD0.rgb += specular.rgb;\n");
         }
 
         mstring_append(body, "oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n");
 
-        if (state->local_eye) {
+        if (state->fixed_function.local_eye) {
             mstring_append(body,
                 "vec3 VPeye = normalize(eyePosition.xyz / eyePosition.w - tPosition.xyz / tPosition.w);\n"
             );
         }
 
         for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
-            if (state->light[i] == LIGHT_OFF) {
+            if (state->fixed_function.light[i] == LIGHT_OFF) {
                 continue;
             }
 
             mstring_append_fmt(body, "/* Light %d */ {\n", i);
 
-            if (state->light[i] == LIGHT_LOCAL
-                    || state->light[i] == LIGHT_SPOT) {
+            if (state->fixed_function.light[i] == LIGHT_LOCAL
+                    || state->fixed_function.light[i] == LIGHT_SPOT) {
 
                 mstring_append_fmt(uniforms,
                     "%svec3 lightLocalPosition%d;\n"
@@ -301,11 +301,11 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                     "    float nDotVP = max(0.0, dot(tNormal, VP));\n"
                     "    float nDotHV = max(0.0, dot(tNormal, halfVector));\n",
                     i, i, i, i, i,
-                    state->local_eye ? "VPeye" : "vec3(0.0, 0.0, 0.0)"
+                    state->fixed_function.local_eye ? "VPeye" : "vec3(0.0, 0.0, 0.0)"
                 );
             }
 
-            switch(state->light[i]) {
+            switch(state->fixed_function.light[i]) {
             case LIGHT_INFINITE:
 
                 /* lightLocalRange will be 1e+30 here */
@@ -320,7 +320,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                     "    vec3 lightDirection = normalize(lightInfiniteDirection%d);\n"
                     "    float nDotVP = max(0.0, dot(tNormal, lightDirection));\n",
                     i);
-                if (state->local_eye) {
+                if (state->fixed_function.local_eye) {
                     mstring_append(body,
                         "    float nDotHV = max(0.0, dot(tNormal, normalize(lightDirection + VPeye)));\n"
                     );
@@ -371,7 +371,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             mstring_append(body,
                 "    oD0.xyz += lightAmbient;\n");
 
-            switch (state->diffuse_src) {
+            switch (state->fixed_function.diffuse_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
                 mstring_append(body,
                                "    oD0.xyz += lightDiffuse;\n");
@@ -386,7 +386,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 break;
             }
 
-            switch (state->specular_src) {
+            switch (state->fixed_function.specular_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
                 mstring_append(body,
                                "    oD1.xyz += lightSpecular;\n");
@@ -415,7 +415,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         mstring_append(body, "  oB1 = vec4(0.0, 0.0, 0.0, 1.0);\n");
     } else {
         if (!state->separate_specular) {
-            if (state->lighting) {
+            if (state->fixed_function.lighting) {
 				mstring_append(body,
 				               "  oD0.xyz += oD1.xyz;\n"
 				               "  oB0.xyz += oB1.xyz;\n"
@@ -438,7 +438,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     if (state->fog_enable) {
 
         /* From: https://www.opengl.org/registry/specs/NV/fog_distance.txt */
-        switch(state->foggen) {
+        switch(state->fixed_function.foggen) {
         case FOGGEN_SPEC_ALPHA:
             /* FIXME: Do we have to clamp here? */
             mstring_append(body, "  float fogDistance = clamp(specular.a, 0.0, 1.0);\n");
@@ -449,7 +449,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         case FOGGEN_PLANAR:
         case FOGGEN_ABS_PLANAR:
             mstring_append(body, "  float fogDistance = dot(fogPlane.xyz, tPosition.xyz) + fogPlane.w;\n");
-            if (state->foggen == FOGGEN_ABS_PLANAR) {
+            if (state->fixed_function.foggen == FOGGEN_ABS_PLANAR) {
                 mstring_append(body, "  fogDistance = abs(fogDistance);\n");
             }
             break;
@@ -464,7 +464,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     }
 
     /* If skinning is off the composite matrix already includes the MV matrix */
-    if (state->skinning == SKINNING_OFF) {
+    if (state->fixed_function.skinning == SKINNING_OFF) {
         mstring_append(body, "  tPosition = position;\n");
     }
 

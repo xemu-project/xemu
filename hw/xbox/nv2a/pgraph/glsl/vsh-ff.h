@@ -25,7 +25,7 @@
 #include "qemu/mstring.h"
 #include "hw/xbox/nv2a/pgraph/shaders.h"
 
-void pgraph_gen_vsh_ff_glsl(const ShaderState *state, MString *header,
+void pgraph_gen_vsh_ff_glsl(const VshState *state, MString *header,
                             MString *body, MString *uniforms);
 
 #endif
