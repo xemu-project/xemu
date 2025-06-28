@@ -29,9 +29,10 @@
 #include "qemu/thread.h"
 #include "cpu.h"
 
-#include "shaders.h"
 #include "surface.h"
+#include "texture.h"
 #include "util.h"
+#include "vsh.h"
 
 typedef struct NV2AState NV2AState;
 typedef struct PGRAPHNullState PGRAPHNullState;

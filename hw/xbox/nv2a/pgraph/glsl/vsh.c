@@ -29,6 +29,149 @@
 
 DEF_UNIFORM_INFO_ARR(VshUniform, VSH_UNIFORM_DECL_X)
 
+static void set_fixed_function_vsh_state(PGRAPHState *pg,
+                                         FixedFunctionVshState *ff)
+{
+    ff->skinning = (enum VshSkinning)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_CSV0_D), NV_PGRAPH_CSV0_D_SKIN);
+    ff->normalization = pgraph_reg_r(pg, NV_PGRAPH_CSV0_C) &
+                        NV_PGRAPH_CSV0_C_NORMALIZATION_ENABLE;
+    ff->local_eye =
+        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LOCALEYE);
+
+    ff->emission_src = (enum MaterialColorSource)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_EMISSION);
+    ff->ambient_src = (enum MaterialColorSource)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_AMBIENT);
+    ff->diffuse_src = (enum MaterialColorSource)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_DIFFUSE);
+    ff->specular_src = (enum MaterialColorSource)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_SPECULAR);
+
+    for (int i = 0; i < 4; i++) {
+        ff->texture_matrix_enable[i] = pg->texture_matrix_enable[i];
+    }
+
+    for (int i = 0; i < 4; i++) {
+        unsigned int reg = (i < 2) ? NV_PGRAPH_CSV1_A : NV_PGRAPH_CSV1_B;
+        for (int j = 0; j < 4; j++) {
+            unsigned int masks[] = {
+                (i % 2) ? NV_PGRAPH_CSV1_A_T1_S : NV_PGRAPH_CSV1_A_T0_S,
+                (i % 2) ? NV_PGRAPH_CSV1_A_T1_T : NV_PGRAPH_CSV1_A_T0_T,
+                (i % 2) ? NV_PGRAPH_CSV1_A_T1_R : NV_PGRAPH_CSV1_A_T0_R,
+                (i % 2) ? NV_PGRAPH_CSV1_A_T1_Q : NV_PGRAPH_CSV1_A_T0_Q
+            };
+            ff->texgen[i][j] =
+                (enum VshTexgen)GET_MASK(pgraph_reg_r(pg, reg), masks[j]);
+        }
+    }
+
+    ff->lighting =
+        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LIGHTING);
+    if (ff->lighting) {
+        for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
+            ff->light[i] =
+                (enum VshLight)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
+                                        NV_PGRAPH_CSV0_D_LIGHT0 << (i * 2));
+        }
+    }
+
+    if (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3) & NV_PGRAPH_CONTROL_3_FOGENABLE) {
+        ff->foggen = (enum VshFoggen)GET_MASK(
+            pgraph_reg_r(pg, NV_PGRAPH_CSV0_D), NV_PGRAPH_CSV0_D_FOGGENMODE);
+    }
+}
+
+static void set_programmable_vsh_state(PGRAPHState *pg,
+                                       ProgrammableVshState *prog)
+{
+    int program_start = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C),
+                                 NV_PGRAPH_CSV0_C_CHEOPS_PROGRAM_START);
+
+    // copy in vertex program tokens
+    prog->program_length = 0;
+    for (int i = program_start; i < NV2A_MAX_TRANSFORM_PROGRAM_LENGTH; i++) {
+        uint32_t *cur_token = (uint32_t *)&pg->program_data[i];
+        memcpy(&prog->program_data[prog->program_length], cur_token,
+               VSH_TOKEN_SIZE * sizeof(uint32_t));
+        prog->program_length++;
+
+        if (vsh_get_field(cur_token, FLD_FINAL)) {
+            break;
+        }
+    }
+}
+
+void pgraph_set_vsh_state(PGRAPHState *pg, VshState *vsh)
+{
+    bool vertex_program = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
+                                   NV_PGRAPH_CSV0_D_MODE) == 2;
+
+    bool fixed_function = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
+                                   NV_PGRAPH_CSV0_D_MODE) == 0;
+
+    assert(vertex_program || fixed_function);
+
+    vsh->surface_scale_factor = pg->surface_scale_factor; // FIXME
+
+    vsh->compressed_attrs = pg->compressed_attrs;
+    vsh->uniform_attrs = pg->uniform_attrs;
+    vsh->swizzle_attrs = pg->swizzle_attrs;
+
+    vsh->specular_enable = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C),
+                                    NV_PGRAPH_CSV0_C_SPECULAR_ENABLE);
+    vsh->separate_specular = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C),
+                                      NV_PGRAPH_CSV0_C_SEPARATE_SPECULAR);
+    vsh->ignore_specular_alpha =
+        !GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C),
+                  NV_PGRAPH_CSV0_C_ALPHA_FROM_MATERIAL_SPECULAR);
+    vsh->specular_power = pg->specular_power;
+    vsh->specular_power_back = pg->specular_power_back;
+
+    vsh->z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                         NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
+
+    vsh->point_params_enable = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
+                                        NV_PGRAPH_CSV0_D_POINTPARAMSENABLE);
+    vsh->point_size = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_POINTSIZE),
+                               NV097_SET_POINT_SIZE_V) /
+                      8.0f;
+    if (vsh->point_params_enable) {
+        for (int i = 0; i < 8; i++) {
+            vsh->point_params[i] = pg->point_params[i];
+        }
+    }
+
+    vsh->smooth_shading = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
+                                   NV_PGRAPH_CONTROL_3_SHADEMODE) ==
+                          NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
+
+    vsh->fog_enable =
+        pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3) & NV_PGRAPH_CONTROL_3_FOGENABLE;
+    if (vsh->fog_enable) {
+        /*FIXME: Use CSV0_D? */
+        vsh->fog_mode =
+            (enum VshFogMode)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
+                                      NV_PGRAPH_CONTROL_3_FOG_MODE);
+    }
+
+    /* geometry shader stuff */
+    vsh->primitive_mode = (enum ShaderPrimitiveMode)pg->primitive_mode;
+    vsh->polygon_front_mode = (enum ShaderPolygonMode)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER),
+        NV_PGRAPH_SETUPRASTER_FRONTFACEMODE);
+    vsh->polygon_back_mode = (enum ShaderPolygonMode)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER),
+        NV_PGRAPH_SETUPRASTER_BACKFACEMODE);
+
+    vsh->is_fixed_function = fixed_function;
+    if (fixed_function) {
+        set_fixed_function_vsh_state(pg, &vsh->fixed_function);
+    } else {
+        set_programmable_vsh_state(pg, &vsh->programmable);
+    }
+}
+
 MString *pgraph_gen_vsh_glsl(const VshState *state,
                              GenVshGlslOptions opts)
 {

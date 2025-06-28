@@ -33,9 +33,8 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "hw/xbox/nv2a/pgraph/glsl/vsh.h"
-#include "hw/xbox/nv2a/pgraph/vsh.h"
 #include "common.h"
+#include "vsh.h"
 #include "vsh-prog.h"
 
 #define VSH_D3DSCM_CORRECTION 96

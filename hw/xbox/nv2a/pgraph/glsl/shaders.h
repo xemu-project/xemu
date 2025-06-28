@@ -1,9 +1,7 @@
 /*
  * Geforce NV2A PGRAPH GLSL Shader Generator
  *
- * Copyright (c) 2015 espes
- * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2020-2025 Matt Borgerson
+ * Copyright (c) 2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -19,16 +17,20 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef HW_XBOX_NV2A_PGRAPH_GLSL_GEOM_H
-#define HW_XBOX_NV2A_PGRAPH_GLSL_GEOM_H
+#ifndef HW_XBOX_NV2A_PGRAPH_GLSL_SHADERS_H
+#define HW_XBOX_NV2A_PGRAPH_GLSL_SHADERS_H
 
-#include "qemu/mstring.h"
+#include "geom.h"
 #include "vsh.h"
+#include "psh.h"
 
-typedef struct GenGeomGlslOptions {
-    bool vulkan;
-} GenGeomGlslOptions;
+typedef struct ShaderState {
+    VshState vsh;
+    PshState psh;
+} ShaderState;
 
-MString *pgraph_gen_geom_glsl(const VshState *state, GenGeomGlslOptions opts);
+typedef struct PGRAPHState PGRAPHState;
+
+ShaderState pgraph_get_shader_state(PGRAPHState *pg);
 
 #endif

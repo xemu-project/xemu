@@ -24,11 +24,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
 #include "hw/xbox/nv2a/pgraph/util.h"
-#include "hw/xbox/nv2a/pgraph/glsl/geom.h"
-#include "hw/xbox/nv2a/pgraph/glsl/vsh.h"
-#include "hw/xbox/nv2a/pgraph/glsl/psh.h"
 #include "qemu/fast-hash.h"
 #include "qemu/mstring.h"
 #include "renderer.h"
