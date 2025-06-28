@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+#
+# FreeBSD VM image
+#
+# Copyright 2017-2019 Red Hat Inc.
+#
+# Authors:
+#  Fam Zheng <famz@redhat.com>
+#  Gerd Hoffmann <kraxel@redhat.com>
+#
+# This code is licensed under the GPL version 2 or later.  See
+# the COPYING file in the top-level directory.
+#
+
+import os
+import re
+import sys
+import time
+import socket
+import subprocess
+import basevm
+
+FREEBSD_CONFIG = {
+    'cpu'	: "max,sse4.2=off",
+}
+
+class FreeBSDVM(basevm.BaseVM):
+    name = "freebsd"
+    arch = "x86_64"
+
+    link = "https://download.freebsd.org/releases/CI-IMAGES/14.1-RELEASE/amd64/Latest/FreeBSD-14.1-RELEASE-amd64-BASIC-CI.raw.xz"
+    csum = "202fe27a05427f0a86d3ebb97712745186f2776ccc4f70d95466dd99a0238ba5"
+    size = "20G"
+
+    BUILD_SCRIPT = """
+        set -e;
+        rm -rf /home/qemu/qemu-test.*
+        cd $(mktemp -d /home/qemu/qemu-test.XXXXXX);
+        mkdir src build; cd src;
+        tar -xf /dev/vtbd1;
+        cd ../build;
+        ../src/configure --extra-ldflags=-L/usr/local/lib \
+                         --extra-cflags=-I/usr/local/include {configure_opts};
+        gmake --output-sync -j{jobs} {target} {verbose};
+    """
+
+    def build_image(self, img):
+        self.print_step("Downloading disk image")
+        cimg = self._download_with_cache(self.link, sha256sum=self.csum)
+        tmp_raw = img + ".tmp.raw"
+        tmp_raw_xz = tmp_raw + ".xz"
+        img_tmp = img + ".tmp.qcow2"
+
+        self.print_step("Preparing disk image")
+        subprocess.check_call(["cp", "-f", cimg, tmp_raw_xz])
+        subprocess.check_call(["xz", "-dvf", tmp_raw_xz])
+        self.exec_qemu_img("convert", "-O", "qcow2", tmp_raw, img_tmp)
+        self.exec_qemu_img("resize", img_tmp, self.size)
+        os.remove(tmp_raw)
+
+        self.print_step("Preparing disk image")
+        self.boot(img_tmp, extra_args = [
+            "-machine", "graphics=off",
+            "-vga", "none"
+        ])
+        self.console_init()
+        self.console_wait_send("login:", "root\n")
+        self.console_wait_send("~ #", "service growfs onestart\n")
+
+        # root user
+        self.console_wait_send("~ #", "passwd\n")
+        self.console_wait("New Password:")
+        self.console_send("%s\n" % self._config["root_pass"])
+        self.console_wait("Retype New Password:")
+        self.console_send("%s\n" % self._config["root_pass"])
+
+        # qemu user
+        self.console_wait_send("~ #", "adduser\n")
+        self.console_wait("Username")
+        self.console_send("%s\n" % self._config["guest_user"])
+        self.console_wait("Full name")
+        self.console_send("%s\n" % self._config["guest_user"])
+        self.console_wait_send("Uid",                   "\n")
+        self.console_wait_send("Login group",           "\n")
+        self.console_wait_send("Login group",           "\n")
+        self.console_wait_send("Login class",           "\n")
+        self.console_wait_send("Shell",                 "\n")
+        self.console_wait_send("Home directory",        "\n")
+        self.console_wait_send("Home directory perm",   "\n")
+        self.console_wait_send("Use password",          "\n")
+        self.console_wait_send("Use an empty password", "\n")
+        self.console_wait_send("Use a random password", "\n")
+        self.console_wait("Enter password:")
+        self.console_send("%s\n" % self._config["guest_pass"])
+        self.console_wait("Enter password again:")
+        self.console_send("%s\n" % self._config["guest_pass"])
+        self.console_wait_send("Lock out",              "\n")
+        self.console_wait_send("OK",                    "yes\n")
+        self.console_wait_send("Add another user",      "no\n")
+        self.console_wait_send("~ #", "exit\n")
+
+        # setup qemu user
+        prompt = "$"
+        self.console_ssh_init(prompt, self._config["guest_user"], self._config["guest_pass"])
+        self.console_wait_send(prompt, "exit\n")
+
+        # setup root user
+        prompt = "root@freebsd:~ #"
+        self.console_ssh_init(prompt, "root", self._config["root_pass"])
+        self.console_sshd_config(prompt)
+        self.console_wait_send(prompt, "service sshd reload\n")
+
+        # setup virtio-blk #1 (tarfile)
+        self.console_wait(prompt)
+        self.console_send("echo 'chmod 666 /dev/vtbd1' >> /etc/rc.local\n")
+
+        pkgs = self.get_qemu_packages_from_lcitool_json()
+        self.print_step("Installing packages")
+        self.ssh_root_check("pkg install -y %s\n" % " ".join(pkgs))
+
+        # shutdown
+        self.ssh_root(self.poweroff)
+        self.wait()
+
+        if os.path.exists(img):
+            os.remove(img)
+        os.rename(img_tmp, img)
+        self.print_step("All done")
+
+if __name__ == "__main__":
+    sys.exit(basevm.main(FreeBSDVM, config=FREEBSD_CONFIG))

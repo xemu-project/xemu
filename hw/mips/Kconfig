@@ -1,0 +1,95 @@
+config MALTA
+    bool
+    default y
+    depends on MIPS
+    imply PCNET_PCI
+    imply PCI_DEVICES
+    imply TEST_DEVICES
+    select FDC37M81X
+    select GT64120
+    select MIPS_CPS
+    select PIIX
+    select PFLASH_CFI01
+    select SERIAL_MM
+    select SMBUS_EEPROM
+
+config MIPSSIM
+    bool
+    default y
+    depends on MIPS
+    select SERIAL_MM
+    select MIPSNET
+
+config JAZZ
+    bool
+    default y
+    depends on MIPS64
+    select ISA_BUS
+    select RC4030
+    select I8259
+    select I8254
+    select I8257
+    select PCSPK
+    select VGA_MMIO
+    select G364FB
+    select DP8393X
+    select ESP
+    select FDC_SYSBUS
+    select MC146818RTC
+    select PCKBD
+    select SERIAL_MM
+    select PARALLEL
+    select DS1225Y
+    select JAZZ_LED
+
+config FULOONG
+    bool
+    default y
+    depends on MIPS64 && !TARGET_BIG_ENDIAN
+    imply PCI_DEVICES
+    imply TEST_DEVICES
+    imply ATI_VGA
+    imply RTL8139_PCI
+    select PCI_BONITO
+    select SMBUS_EEPROM
+    select VT82C686
+
+config LOONGSON3V
+    bool
+    default y
+    depends on MIPS64 && !TARGET_BIG_ENDIAN
+    imply PCI_DEVICES
+    imply TEST_DEVICES
+    imply VIRTIO_PCI
+    imply VIRTIO_NET
+    imply VIRTIO_VGA
+    imply QXL if SPICE
+    imply USB_OHCI_PCI
+    select SERIAL_MM
+    select GOLDFISH_RTC
+    select LOONGSON_IPI
+    select LOONGSON_LIOINTC
+    select PCI_EXPRESS_GENERIC_BRIDGE
+    select MSI_NONBROKEN
+    select FW_CFG_MIPS
+    select UNIMP
+
+config MIPS_CPS
+    bool
+    select MIPS_ITU
+
+config MIPS_BOSTON
+    bool
+    default y
+    depends on MIPS64 && !TARGET_BIG_ENDIAN && FDT
+    imply PCI_DEVICES
+    imply TEST_DEVICES
+    select DEVICE_TREE
+    select FITLOADER
+    select MIPS_CPS
+    select PCI_EXPRESS_XILINX
+    select AHCI_ICH9
+    select SERIAL_MM
+
+config FW_CFG_MIPS
+    bool
