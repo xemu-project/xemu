@@ -23,10 +23,46 @@
 #include "common.h"
 #include "vsh-ff.h"
 
-static void append_skinning_code(MString* str, bool mix,
-                                 unsigned int count, const char* type,
-                                 const char* output, const char* input,
-                                 const char* matrix, const char* swizzle);
+static void append_skinning_code(MString *str, bool mix, unsigned int count,
+                                 const char *type, const char *output,
+                                 const char *input, const char *matrix,
+                                 const char *swizzle)
+{
+    if (count == 0) {
+        mstring_append_fmt(str, "%s %s = (%s * %s0).%s;\n",
+                           type, output, input, matrix, swizzle);
+    } else {
+        mstring_append_fmt(str, "%s %s = %s(0.0);\n", type, output, type);
+        if (mix) {
+            /* Generated final weight (like GL_WEIGHT_SUM_UNITY_ARB) */
+            mstring_append(str, "{\n"
+                                "  float weight_i;\n"
+                                "  float weight_n = 1.0;\n");
+            int i;
+            for (i = 0; i < count; i++) {
+                if (i < (count - 1)) {
+                    char c = "xyzw"[i];
+                    mstring_append_fmt(str, "  weight_i = weight.%c;\n"
+                                            "  weight_n -= weight_i;\n",
+                                       c);
+                } else {
+                    mstring_append(str, "  weight_i = weight_n;\n");
+                }
+                mstring_append_fmt(str, "  %s += (%s * %s%d).%s * weight_i;\n",
+                                   output, input, matrix, i, swizzle);
+            }
+            mstring_append(str, "}\n");
+        } else {
+            /* Individual weights */
+            int i;
+            for (i = 0; i < count; i++) {
+                char c = "xyzw"[i];
+                mstring_append_fmt(str, "%s += (%s * %s%d).%s * weight.%c;\n",
+                                   output, input, matrix, i, swizzle, c);
+            }
+        }
+    }
+}
 
 void pgraph_gen_vsh_ff_glsl(const VshState *state, MString *header,
                             MString *body)
@@ -463,46 +499,5 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     } else {
         mstring_append_fmt(body, "  oPts.x = %f * %d;\n", state->point_size,
                            state->surface_scale_factor);
-    }
-}
-
-static void append_skinning_code(MString* str, bool mix,
-                                 unsigned int count, const char* type,
-                                 const char* output, const char* input,
-                                 const char* matrix, const char* swizzle)
-{
-    if (count == 0) {
-        mstring_append_fmt(str, "%s %s = (%s * %s0).%s;\n",
-                           type, output, input, matrix, swizzle);
-    } else {
-        mstring_append_fmt(str, "%s %s = %s(0.0);\n", type, output, type);
-        if (mix) {
-            /* Generated final weight (like GL_WEIGHT_SUM_UNITY_ARB) */
-            mstring_append(str, "{\n"
-                                "  float weight_i;\n"
-                                "  float weight_n = 1.0;\n");
-            int i;
-            for (i = 0; i < count; i++) {
-                if (i < (count - 1)) {
-                    char c = "xyzw"[i];
-                    mstring_append_fmt(str, "  weight_i = weight.%c;\n"
-                                            "  weight_n -= weight_i;\n",
-                                       c);
-                } else {
-                    mstring_append(str, "  weight_i = weight_n;\n");
-                }
-                mstring_append_fmt(str, "  %s += (%s * %s%d).%s * weight_i;\n",
-                                   output, input, matrix, i, swizzle);
-            }
-            mstring_append(str, "}\n");
-        } else {
-            /* Individual weights */
-            int i;
-            for (i = 0; i < count; i++) {
-                char c = "xyzw"[i];
-                mstring_append_fmt(str, "%s += (%s * %s%d).%s * weight.%c;\n",
-                                   output, input, matrix, i, swizzle, c);
-            }
-        }
     }
 }
