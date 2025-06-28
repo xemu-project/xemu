@@ -75,7 +75,7 @@ typedef struct {
     ProgrammableVshState programmable;
 } VshState;
 
-void pgraph_set_vsh_state(PGRAPHState *pg, VshState *state);
+void pgraph_glsl_set_vsh_state(PGRAPHState *pg, VshState *state);
 
 #define VSH_UNIFORM_DECL_X(S, DECL)                          \
     DECL(S, c, vec4, NV2A_VERTEXSHADER_CONSTANTS)            \
@@ -103,11 +103,11 @@ typedef struct GenVshGlslOptions {
     int ubo_binding;
 } GenVshGlslOptions;
 
-MString *pgraph_gen_vsh_glsl(const VshState *state,
+MString *pgraph_glsl_gen_vsh(const VshState *state,
                              GenVshGlslOptions glsl_opts);
 
-void pgraph_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
-                                   const VshUniformLocs locs,
-                                   VshUniformValues *values);
+void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
+                                        const VshUniformLocs locs,
+                                        VshUniformValues *values);
 
 #endif

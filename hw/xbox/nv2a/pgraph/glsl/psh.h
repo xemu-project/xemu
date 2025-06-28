@@ -63,7 +63,7 @@ typedef struct PshState {
     bool z_perspective;
 } PshState;
 
-void pgraph_set_psh_state(PGRAPHState *pg, PshState *state);
+void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state);
 
 #define PSH_UNIFORM_DECL_X(S, DECL) \
     DECL(S, alphaRef, int, 1)       \
@@ -87,10 +87,10 @@ typedef struct GenPshGlslOptions {
     int tex_binding;
 } GenPshGlslOptions;
 
-MString *pgraph_gen_psh_glsl(const PshState *state, GenPshGlslOptions opts);
+MString *pgraph_glsl_gen_psh(const PshState *state, GenPshGlslOptions opts);
 
-void pgraph_set_psh_uniform_values(PGRAPHState *pg,
-                                   const PshUniformLocs locs,
-                                   PshUniformValues *values);
+void pgraph_glsl_set_psh_uniform_values(PGRAPHState *pg,
+                                        const PshUniformLocs locs,
+                                        PshUniformValues *values);
 
 #endif

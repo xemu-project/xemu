@@ -25,7 +25,8 @@ const char *uniform_element_type_to_str[] = {
     UNIFORM_ELEMENT_TYPE_X(DECL_UNIFORM_ELEMENT_NAME)
 };
 
-MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bool in, bool prefix, bool array)
+MString *pgraph_glsl_get_vtx_header(MString *out, bool location, bool smooth,
+                                    bool in, bool prefix, bool array)
 {
     const char *smooth_s = "";
     const char *flat_s = "flat ";
@@ -61,7 +62,7 @@ MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bo
     return out;
 }
 
-void pgraph_set_clip_range_uniform_value(PGRAPHState *pg, float clipRange[4])
+void pgraph_glsl_set_clip_range_uniform_value(PGRAPHState *pg, float clipRange[4])
 {
     float zmax;
     switch (pg->surface_shape.zeta_format) {

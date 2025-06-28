@@ -23,7 +23,7 @@
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "geom.h"
 
-void pgraph_set_geom_state(PGRAPHState *pg, GeomState *state)
+void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *state)
 {
     state->primitive_mode = (enum ShaderPrimitiveMode)pg->primitive_mode;
 
@@ -39,7 +39,7 @@ void pgraph_set_geom_state(PGRAPHState *pg, GeomState *state)
                             NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
 }
 
-MString *pgraph_gen_geom_glsl(const GeomState *state, GenGeomGlslOptions opts)
+MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
 {
     /* FIXME: Missing support for 2-sided-poly mode */
     assert(state->polygon_front_mode == state->polygon_back_mode);
@@ -186,9 +186,9 @@ MString *pgraph_gen_geom_glsl(const GeomState *state, GenGeomGlslOptions opts)
     mstring_append(s, layout_in);
     mstring_append(s, layout_out);
     mstring_append(s, "\n");
-    pgraph_get_glsl_vtx_header(s, opts.vulkan, state->smooth_shading, true,
+    pgraph_glsl_get_vtx_header(s, opts.vulkan, state->smooth_shading, true,
                                true, true);
-    pgraph_get_glsl_vtx_header(s, opts.vulkan, state->smooth_shading, false,
+    pgraph_glsl_get_vtx_header(s, opts.vulkan, state->smooth_shading, false,
                                false, false);
 
     if (state->smooth_shading) {

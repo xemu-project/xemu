@@ -147,7 +147,7 @@ static void generate_shaders(ShaderBinding *binding)
     GLenum gl_primitive_mode = get_gl_primitive_mode(
         state->geom.polygon_front_mode, state->geom.primitive_mode);
     MString *geometry_shader_code =
-        pgraph_gen_geom_glsl(&state->geom, (GenGeomGlslOptions){ 0 });
+        pgraph_glsl_gen_geom(&state->geom, (GenGeomGlslOptions){ 0 });
     if (geometry_shader_code) {
         const char* geometry_shader_code_str =
              mstring_get_str(geometry_shader_code);
@@ -159,7 +159,7 @@ static void generate_shaders(ShaderBinding *binding)
     }
 
     /* create the vertex shader */
-    MString *vertex_shader_code = pgraph_gen_vsh_glsl(
+    MString *vertex_shader_code = pgraph_glsl_gen_vsh(
         &state->vsh, (GenVshGlslOptions){
                          .prefix_outputs = geometry_shader_code != NULL,
                      });
@@ -171,7 +171,7 @@ static void generate_shaders(ShaderBinding *binding)
 
     /* generate a fragment shader from register combiners */
     MString *fragment_shader_code =
-        pgraph_gen_psh_glsl(&state->psh, (GenPshGlslOptions){ 0 });
+        pgraph_glsl_gen_psh(&state->psh, (GenPshGlslOptions){ 0 });
     const char *fragment_shader_code_str =
         mstring_get_str(fragment_shader_code);
     GLuint fragment_shader = create_gl_shader(GL_FRAGMENT_SHADER,
@@ -678,13 +678,13 @@ static void update_shader_uniforms(PGRAPHState *pg, ShaderBinding *binding)
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     VshUniformValues vsh_values;
-    pgraph_set_vsh_uniform_values(pg, &binding->state.vsh,
+    pgraph_glsl_set_vsh_uniform_values(pg, &binding->state.vsh,
                                   binding->uniform_locs.vsh, &vsh_values);
     apply_uniform_updates(VshUniformInfo, binding->uniform_locs.vsh,
                           &vsh_values, VshUniform__COUNT);
 
     PshUniformValues psh_values;
-    pgraph_set_psh_uniform_values(pg, binding->uniform_locs.psh, &psh_values);
+    pgraph_glsl_set_psh_uniform_values(pg, binding->uniform_locs.psh, &psh_values);
 
     for (int i = 0; i < 4; i++) {
         if (r->texture_binding[i] != NULL) {
@@ -702,13 +702,13 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
 
     bool binding_changed = false;
     if (r->shader_binding &&
-        !pgraph_check_shader_state_dirty(pg, &r->shader_binding->state)) {
+        !pgraph_glsl_check_shader_state_dirty(pg, &r->shader_binding->state)) {
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND_NOTDIRTY);
         goto update_uniforms;
     }
 
     ShaderBinding *old_binding = r->shader_binding;
-    ShaderState state = pgraph_get_shader_state(pg);
+    ShaderState state = pgraph_glsl_get_shader_state(pg);
 
     NV2A_GL_DGROUP_BEGIN("%s (%s)", __func__,
                          state.vsh.is_fixed_function ? "FF" : "PROG");
