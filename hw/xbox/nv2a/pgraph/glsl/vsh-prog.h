@@ -5,13 +5,6 @@
  * Copyright (c) 2012 espes
  * Copyright (c) 2025 Matt Borgerson
  *
- * Based on:
- * Cxbx, VertexShader.cpp
- * Copyright (c) 2004 Aaron Robinson <caustik@caustik.com>
- *                    Kingofc <kingofc@freenet.de>
- * Dxbx, uPushBuffer.pas
- * Copyright (c) 2007 Shadow_tj, PatrickvL
- *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation; either version 2 or
