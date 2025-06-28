@@ -30,6 +30,7 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
     memset(&state, 0, sizeof(ShaderState));
 
     pgraph_set_vsh_state(pg, &state.vsh);
+    pgraph_set_geom_state(pg, &state.geom);
     pgraph_set_psh_state(pg, &state.psh);
 
     return state;
@@ -70,7 +71,7 @@ bool pgraph_check_shader_state_dirty(PGRAPHState *pg, const ShaderState *state)
     if (pg->uniform_attrs != state->vsh.uniform_attrs ||
         pg->swizzle_attrs != state->vsh.swizzle_attrs ||
         pg->compressed_attrs != state->vsh.compressed_attrs ||
-        pg->primitive_mode != state->vsh.primitive_mode ||
+        pg->primitive_mode != state->geom.primitive_mode ||
         pg->surface_scale_factor != state->vsh.surface_scale_factor) {
         return true;
     }

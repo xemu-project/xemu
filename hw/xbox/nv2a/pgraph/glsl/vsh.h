@@ -54,11 +54,6 @@ typedef struct {
     uint16_t uniform_attrs;
     uint16_t swizzle_attrs;
 
-    /* primitive format for geometry shader */
-    enum ShaderPolygonMode polygon_front_mode;
-    enum ShaderPolygonMode polygon_back_mode;
-    enum ShaderPrimitiveMode primitive_mode;
-
     bool fog_enable;
     enum VshFogMode fog_mode;
 

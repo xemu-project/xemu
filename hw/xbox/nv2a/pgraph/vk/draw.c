@@ -51,8 +51,8 @@ static VkPrimitiveTopology get_primitive_topology(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    int polygon_mode = r->shader_binding->state.vsh.polygon_front_mode;
-    int primitive_mode = r->shader_binding->state.vsh.primitive_mode;
+    int polygon_mode = r->shader_binding->state.geom.polygon_front_mode;
+    int primitive_mode = r->shader_binding->state.geom.primitive_mode;
 
     if (polygon_mode == POLY_MODE_POINT) {
         return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
@@ -816,7 +816,7 @@ static void create_pipeline(PGRAPHState *pg)
         .depthClampEnable = VK_TRUE,
         .rasterizerDiscardEnable = VK_FALSE,
         .polygonMode = pgraph_polygon_mode_vk_map[r->shader_binding->state
-                                                      .vsh.polygon_front_mode],
+                                                      .geom.polygon_front_mode],
         .lineWidth = 1.0f,
         .frontFace = (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                       NV_PGRAPH_SETUPRASTER_FRONTFACE) ?
@@ -952,10 +952,10 @@ static void create_pipeline(PGRAPHState *pg)
 
     snode->has_dynamic_line_width =
         (r->enabled_physical_device_features.wideLines == VK_TRUE) &&
-        (r->shader_binding->state.vsh.polygon_front_mode == POLY_MODE_LINE ||
-         r->shader_binding->state.vsh.primitive_mode == PRIM_TYPE_LINES ||
-         r->shader_binding->state.vsh.primitive_mode == PRIM_TYPE_LINE_LOOP ||
-         r->shader_binding->state.vsh.primitive_mode == PRIM_TYPE_LINE_STRIP);
+        (r->shader_binding->state.geom.polygon_front_mode == POLY_MODE_LINE ||
+         r->shader_binding->state.geom.primitive_mode == PRIM_TYPE_LINES ||
+         r->shader_binding->state.geom.primitive_mode == PRIM_TYPE_LINE_LOOP ||
+         r->shader_binding->state.geom.primitive_mode == PRIM_TYPE_LINE_STRIP);
     if (snode->has_dynamic_line_width) {
         dynamic_states[num_dynamic_states++] = VK_DYNAMIC_STATE_LINE_WIDTH;
     }

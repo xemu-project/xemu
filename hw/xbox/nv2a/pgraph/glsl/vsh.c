@@ -153,15 +153,6 @@ void pgraph_set_vsh_state(PGRAPHState *pg, VshState *vsh)
                                       NV_PGRAPH_CONTROL_3_FOG_MODE);
     }
 
-    /* geometry shader stuff */
-    vsh->primitive_mode = (enum ShaderPrimitiveMode)pg->primitive_mode;
-    vsh->polygon_front_mode = (enum ShaderPolygonMode)GET_MASK(
-        pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER),
-        NV_PGRAPH_SETUPRASTER_FRONTFACEMODE);
-    vsh->polygon_back_mode = (enum ShaderPolygonMode)GET_MASK(
-        pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER),
-        NV_PGRAPH_SETUPRASTER_BACKFACEMODE);
-
     vsh->is_fixed_function = fixed_function;
     if (fixed_function) {
         set_fixed_function_vsh_state(pg, &vsh->fixed_function);

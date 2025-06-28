@@ -145,9 +145,9 @@ static void generate_shaders(ShaderBinding *binding)
 
     /* Create an optional geometry shader and find primitive type */
     GLenum gl_primitive_mode = get_gl_primitive_mode(
-        state->vsh.polygon_front_mode, state->vsh.primitive_mode);
+        state->geom.polygon_front_mode, state->geom.primitive_mode);
     MString *geometry_shader_code =
-        pgraph_gen_geom_glsl(&state->vsh, (GenGeomGlslOptions){ 0 });
+        pgraph_gen_geom_glsl(&state->geom, (GenGeomGlslOptions){ 0 });
     if (geometry_shader_code) {
         const char* geometry_shader_code_str =
              mstring_get_str(geometry_shader_code);
@@ -303,8 +303,8 @@ bool pgraph_gl_shader_load_from_memory(ShaderBinding *binding)
 
     binding->gl_program = gl_program;
     binding->gl_primitive_mode =
-        get_gl_primitive_mode(binding->state.vsh.polygon_front_mode,
-                              binding->state.vsh.primitive_mode);
+        get_gl_primitive_mode(binding->state.geom.polygon_front_mode,
+                              binding->state.geom.primitive_mode);
     binding->initialized = true;
 
     g_free(binding->program);

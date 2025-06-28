@@ -20,12 +20,13 @@
 #ifndef HW_XBOX_NV2A_PGRAPH_GLSL_SHADERS_H
 #define HW_XBOX_NV2A_PGRAPH_GLSL_SHADERS_H
 
-#include "geom.h"
 #include "vsh.h"
+#include "geom.h"
 #include "psh.h"
 
 typedef struct ShaderState {
     VshState vsh;
+    GeomState geom;
     PshState psh;
 } ShaderState;
 
