@@ -114,17 +114,6 @@ static void update_shader_constant_locations(ShaderBinding *binding)
         }
     }
 
-    /* validate the program */
-    glValidateProgram(binding->gl_program);
-    GLint valid = 0;
-    glGetProgramiv(binding->gl_program, GL_VALIDATE_STATUS, &valid);
-    if (!valid) {
-        GLchar log[1024];
-        glGetProgramInfoLog(binding->gl_program, 1024, NULL, log);
-        fprintf(stderr, "nv2a: shader validation failed: %s\n", log);
-        abort();
-    }
-
     /* lookup fragment shader uniforms */
     for (int i = 0; i < 9; i++) {
         for (int j = 0; j < 2; j++) {
@@ -279,6 +268,17 @@ static void generate_shaders(ShaderBinding *binding)
     }
 
     glUseProgram(program);
+
+    /* validate the program */
+    GLint valid = 0;
+    glValidateProgram(program);
+    glGetProgramiv(program, GL_VALIDATE_STATUS, &valid);
+    if (!valid) {
+        GLchar log[1024];
+        glGetProgramInfoLog(program, 1024, NULL, log);
+        fprintf(stderr, "nv2a: shader validation failed: %s\n", log);
+        abort();
+    }
 
     binding->initialized = true;
     binding->gl_program = program;
