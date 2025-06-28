@@ -418,8 +418,13 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
             snode->geometry = NULL;
         }
 
-        MString *vertex_shader_code =
-            pgraph_gen_vsh_glsl(&state->vsh, geometry_shader_code != NULL);
+        MString *vertex_shader_code = pgraph_gen_vsh_glsl(
+            &state->vsh, (GenVshGlslOptions){
+                             .vulkan = true,
+                             .prefix_outputs = geometry_shader_code != NULL,
+                             .use_push_constants_for_uniform_attrs =
+                                 r->use_push_constants_for_uniform_attrs,
+                         });
         NV2A_VK_DPRINTF("vertex shader: \n%s",
                         mstring_get_str(vertex_shader_code));
         snode->vertex = pgraph_vk_create_shader_module_from_glsl(
@@ -427,7 +432,8 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
             mstring_get_str(vertex_shader_code));
         mstring_unref(vertex_shader_code);
 
-        MString *fragment_shader_code = pgraph_gen_psh_glsl(state->psh);
+        MString *fragment_shader_code = pgraph_gen_psh_glsl(
+            state->psh, (GenPshGlslOptions){ .vulkan = true });
         NV2A_VK_DPRINTF("fragment shader: \n%s",
                         mstring_get_str(fragment_shader_code));
         snode->fragment = pgraph_vk_create_shader_module_from_glsl(
@@ -465,6 +471,7 @@ static void update_uniform_attr_values(PGRAPHState *pg, ShaderBinding *binding)
 // FIXME: Move to common
 static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding)
 {
+    PGRAPHVkState *r = pg->vk_renderer_state;
     ShaderState *state = &binding->state;
 
     /* update combiner constants */
@@ -734,7 +741,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding)
                          pg->material_alpha);
     }
 
-    if (!state->vsh.use_push_constants_for_uniform_attrs &&
+    if (!r->use_push_constants_for_uniform_attrs &&
         state->vsh.uniform_attrs) {
         update_uniform_attr_values(pg, binding);
     }
@@ -827,15 +834,7 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
     r->shader_bindings_changed = false;
 
     if (check_shaders_dirty(pg)) {
-        ShaderState new_state;
-        memset(&new_state, 0, sizeof(ShaderState));
-        new_state = pgraph_get_shader_state(pg);
-        new_state.vsh.vulkan = true;
-        new_state.vsh.use_push_constants_for_uniform_attrs =
-            (r->device_props.limits.maxPushConstantsSize >=
-             MAX_UNIFORM_ATTR_VALUES_SIZE);
-        new_state.psh.vulkan = true;
-
+        ShaderState new_state = pgraph_get_shader_state(pg);
         if (!r->shader_binding || memcmp(&r->shader_binding->state, &new_state, sizeof(ShaderState))) {
             r->shader_binding = gen_shaders(pg, &new_state);
             r->shader_bindings_changed = true;
@@ -875,11 +874,17 @@ void pgraph_vk_update_shader_uniforms(PGRAPHState *pg)
 
 void pgraph_vk_init_shaders(PGRAPHState *pg)
 {
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
     pgraph_vk_init_glsl_compiler();
     create_descriptor_pool(pg);
     create_descriptor_set_layout(pg);
     create_descriptor_sets(pg);
     shader_cache_init(pg);
+
+    r->use_push_constants_for_uniform_attrs =
+        (r->device_props.limits.maxPushConstantsSize >=
+         MAX_UNIFORM_ATTR_VALUES_SIZE);
 }
 
 void pgraph_vk_finalize_shaders(PGRAPHState *pg)

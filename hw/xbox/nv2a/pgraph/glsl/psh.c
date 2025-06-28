@@ -209,6 +209,7 @@ struct PSStageInfo {
 };
 
 struct PixelShader {
+    GenPshGlslOptions opts;
     PshState state;
 
     int num_stages, flags;
@@ -569,11 +570,12 @@ static void add_final_stage_code(struct PixelShader *ps, struct FCInputInfo fina
     ps->varE = ps->varF = NULL;
 }
 
-static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *state, int i)
+static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES mode, int i)
 {
     const char *sampler2D = "sampler2D";
     const char *sampler3D = "sampler3D";
     const char *samplerCube = "samplerCube";
+    struct PshState *state = &ps->state;
     int dim = state->dim_tex[i];
 
     // FIXME: Cleanup
@@ -584,7 +586,7 @@ static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
 
     case PS_TEXTUREMODES_PROJECT2D:
         if (state->dim_tex[i] == 2) {
-            if (state->tex_x8y24[i] && state->vulkan) {
+            if (state->tex_x8y24[i] && ps->opts.vulkan) {
                 return "usampler2D";
             }
             return sampler2D;
@@ -607,7 +609,7 @@ static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
 
     case PS_TEXTUREMODES_PROJECT3D:
     case PS_TEXTUREMODES_DOT_STR_3D:
-        if (state->tex_x8y24[i] && state->vulkan) {
+        if (state->tex_x8y24[i] && ps->opts.vulkan) {
             return "usampler2D";
         }
         if (state->shadow_map[i]) {
@@ -663,7 +665,7 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
 
     const char *comparison = shadow_comparison_map[ps->state.shadow_depth_func];
 
-    bool extract_msb_24b = ps->state.tex_x8y24[i] && ps->state.vulkan;
+    bool extract_msb_24b = ps->state.tex_x8y24[i] && ps->opts.vulkan;
 
     mstring_append_fmt(
         vars, "%svec4 t%d_depth%s = textureProj(texSamp%d, %s(pT%d.xyw));\n",
@@ -753,13 +755,13 @@ static void define_colorkey_comparator(MString *preflight)
 
 static MString* psh_convert(struct PixelShader *ps)
 {
-    const char *u = ps->state.vulkan ? "" : "uniform "; // FIXME: Remove
+    const char *u = ps->opts.vulkan ? "" : "uniform "; // FIXME: Remove
 
     MString *preflight = mstring_new();
-    pgraph_get_glsl_vtx_header(preflight, ps->state.vulkan,
+    pgraph_get_glsl_vtx_header(preflight, ps->opts.vulkan,
                              ps->state.smooth_shading, true, false, false);
 
-    if (ps->state.vulkan) {
+    if (ps->opts.vulkan) {
         mstring_append_fmt(preflight,
                            "layout(location = 0) out vec4 fragColor;\n"
                            "layout(binding = %d, std140) uniform PshUniforms {\n", PSH_UBO_BINDING);
@@ -790,7 +792,7 @@ static MString* psh_convert(struct PixelShader *ps)
         }
     }
 
-    if (ps->state.vulkan) {
+    if (ps->opts.vulkan) {
         mstring_append(preflight, "};\n");
     }
 
@@ -917,7 +919,7 @@ static MString* psh_convert(struct PixelShader *ps)
              * glClipControl(), but it requires OpenGL 4.5.
              * Above is based on experiments with Linux and Mesa.
              */
-            if (ps->state.vulkan) {
+            if (ps->opts.vulkan) {
                 mstring_append(
                     clip, "if (gl_FragCoord.z*clipRange.y < clipRange.z ||\n"
                           "    gl_FragCoord.z*clipRange.y > clipRange.w) {\n"
@@ -961,7 +963,7 @@ static MString* psh_convert(struct PixelShader *ps)
 
     for (int i = 0; i < 4; i++) {
 
-        const char *sampler_type = get_sampler_type(ps->tex_modes[i], &ps->state, i);
+        const char *sampler_type = get_sampler_type(ps, ps->tex_modes[i], i);
 
         g_autofree gchar *normalize_tex_coords = g_strdup_printf("norm%d", i);
         const char *tex_remap = ps->state.rect_tex[i] ? normalize_tex_coords : "";
@@ -1198,7 +1200,7 @@ static MString* psh_convert(struct PixelShader *ps)
         }
 
         if (sampler_type != NULL) {
-            if (ps->state.vulkan) {
+            if (ps->opts.vulkan) {
                 mstring_append_fmt(preflight, "layout(binding = %d) ", PSH_TEX_BINDING + i);
             }
             mstring_append_fmt(preflight, "uniform %s texSamp%d;\n", sampler_type, i);
@@ -1333,7 +1335,7 @@ static MString* psh_convert(struct PixelShader *ps)
     }
 
     MString *final = mstring_new();
-    mstring_append_fmt(final, "#version %d\n\n", ps->state.vulkan ? 450 : 400);
+    mstring_append_fmt(final, "#version %d\n\n", ps->opts.vulkan ? 450 : 400);
     mstring_append(final, mstring_get_str(preflight));
     mstring_append(final, "void main() {\n");
     mstring_append(final, mstring_get_str(clip));
@@ -1380,12 +1382,13 @@ static void parse_combiner_output(uint32_t value, struct OutputInfo *out)
     out->cd_alphablue = flags & 0x40;
 }
 
-MString *pgraph_gen_psh_glsl(const PshState state)
+MString *pgraph_gen_psh_glsl(const PshState state, GenPshGlslOptions opts)
 {
     int i;
     struct PixelShader ps;
     memset(&ps, 0, sizeof(ps));
 
+    ps.opts = opts;
     ps.state = state;
 
     ps.num_stages = state.combiner_control & 0xFF;

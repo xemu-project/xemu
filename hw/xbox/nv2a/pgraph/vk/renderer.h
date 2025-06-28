@@ -410,6 +410,7 @@ typedef struct PGRAPHVkState {
     ShaderBinding *shader_binding;
     ShaderModuleInfo *quad_vert_module, *solid_frag_module;
     bool shader_bindings_changed;
+    bool use_push_constants_for_uniform_attrs;
 
     // FIXME: Merge these into a structure
     uint64_t uniform_buffer_hashes[2];

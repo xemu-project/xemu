@@ -32,6 +32,7 @@
 #include <stdbool.h>
 #include <assert.h>
 
+#include "hw/xbox/nv2a/pgraph/glsl/vsh.h"
 #include "hw/xbox/nv2a/pgraph/vsh.h"
 #include "common.h"
 #include "vsh-prog.h"
@@ -789,11 +790,9 @@ static const char* vsh_header =
     "  return t;\n"
     "}\n";
 
-void pgraph_gen_vsh_prog_glsl(uint16_t version,
-                   const uint32_t *tokens,
-                   unsigned int length,
-                   bool vulkan,
-                   MString *header, MString *body)
+void pgraph_gen_vsh_prog_glsl(uint16_t version, const uint32_t *tokens,
+                              unsigned int length, MString *header,
+                              MString *body)
 {
 
     mstring_append(header, vsh_header);

@@ -20,6 +20,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/xbox/nv2a/pgraph/glsl/vsh.h"
 #include "hw/xbox/nv2a/pgraph/shaders.h"
 #include "common.h"
 #include "vsh-ff.h"
@@ -29,11 +30,11 @@ static void append_skinning_code(MString* str, bool mix,
                                  const char* output, const char* input,
                                  const char* matrix, const char* swizzle);
 
-void pgraph_gen_vsh_ff_glsl(const VshState *state, MString *header,
-                             MString *body, MString *uniforms)
+void pgraph_gen_vsh_ff_glsl(GenVshGlslOptions opts, const VshState *state,
+                            MString *header, MString *body, MString *uniforms)
 {
     int i, j;
-    const char *u = state->vulkan ? "" : "uniform "; // FIXME: Remove
+    const char *u = opts.vulkan ? "" : "uniform "; // FIXME: Remove
 
     /* generate vertex shader mimicking fixed function */
     mstring_append(header,

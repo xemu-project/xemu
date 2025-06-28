@@ -246,8 +246,10 @@ static void generate_shaders(ShaderBinding *binding)
     }
 
     /* create the vertex shader */
-    MString *vertex_shader_code =
-        pgraph_gen_vsh_glsl(&state->vsh, geometry_shader_code != NULL);
+    MString *vertex_shader_code = pgraph_gen_vsh_glsl(
+        &state->vsh, (GenVshGlslOptions){
+                         .prefix_outputs = geometry_shader_code != NULL,
+                     });
     GLuint vertex_shader = create_gl_shader(GL_VERTEX_SHADER,
                                             mstring_get_str(vertex_shader_code),
                                             "vertex shader");
@@ -255,7 +257,8 @@ static void generate_shaders(ShaderBinding *binding)
     mstring_unref(vertex_shader_code);
 
     /* generate a fragment shader from register combiners */
-    MString *fragment_shader_code = pgraph_gen_psh_glsl(state->psh);
+    MString *fragment_shader_code =
+        pgraph_gen_psh_glsl(state->psh, (GenPshGlslOptions){ 0 });
     const char *fragment_shader_code_str =
         mstring_get_str(fragment_shader_code);
     GLuint fragment_shader = create_gl_shader(GL_FRAGMENT_SHADER,
@@ -1045,7 +1048,6 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
 
     ShaderBinding *old_binding = r->shader_binding;
     ShaderState state = pgraph_get_shader_state(pg);
-    assert(!state.vsh.vulkan);
 
     NV2A_GL_DGROUP_BEGIN("%s (VP: %s FFP: %s)", __func__,
                          state.vertex_program ? "yes" : "no",
