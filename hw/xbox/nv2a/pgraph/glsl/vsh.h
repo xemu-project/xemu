@@ -23,11 +23,18 @@
 #define HW_XBOX_NV2A_PGRAPH_GLSL_VSH_H
 
 #include "qemu/mstring.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
+#include "hw/xbox/nv2a/pgraph/vsh.h"
 
 // FIXME: Move to struct
 #define VSH_UBO_BINDING 0
 
-MString *pgraph_gen_vsh_glsl(const VshState *state, bool prefix_outputs);
+typedef struct GenVshGlslOptions {
+    bool vulkan;
+    bool prefix_outputs;
+    bool use_push_constants_for_uniform_attrs;
+} GenVshGlslOptions;
+
+MString *pgraph_gen_vsh_glsl(const VshState *state,
+                             GenVshGlslOptions glsl_opts);
 
 #endif

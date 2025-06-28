@@ -30,12 +30,16 @@
 #define HW_XBOX_NV2A_PGRAPH_GLSL_PSH_H
 
 #include "qemu/mstring.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
+#include "hw/xbox/nv2a/pgraph/psh.h"
 
 // FIXME: Move to struct
 #define PSH_UBO_BINDING 1
 #define PSH_TEX_BINDING 2
 
-MString *pgraph_gen_psh_glsl(const PshState state);
+typedef struct GenPshGlslOptions {
+    bool vulkan;
+} GenPshGlslOptions;
+
+MString *pgraph_gen_psh_glsl(const PshState state, GenPshGlslOptions opts);
 
 #endif

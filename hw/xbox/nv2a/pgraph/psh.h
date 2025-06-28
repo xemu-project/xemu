@@ -52,8 +52,6 @@ enum ConvolutionFilter {
 };
 
 typedef struct PshState {
-    bool vulkan;
-
     /* fragment shader - register combiner stuff */
     uint32_t combiner_control;
     uint32_t shader_stage_program;

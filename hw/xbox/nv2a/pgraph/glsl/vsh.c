@@ -27,16 +27,17 @@
 #include "vsh-prog.h"
 #include <stdbool.h>
 
-MString *pgraph_gen_vsh_glsl(const VshState *state, bool prefix_outputs)
+MString *pgraph_gen_vsh_glsl(const VshState *state,
+                             GenVshGlslOptions opts)
 {
     int i;
     MString *output = mstring_new();
-    mstring_append_fmt(output, "#version %d\n\n", state->vulkan ? 450 : 400);
+    mstring_append_fmt(output, "#version %d\n\n", opts.vulkan ? 450 : 400);
 
     MString *header = mstring_from_str("");
     MString *uniforms = mstring_from_str("");
 
-    const char *u = state->vulkan ? "" : "uniform "; // FIXME: Remove
+    const char *u = opts.vulkan ? "" : "uniform "; // FIXME: Remove
 
     mstring_append_fmt(uniforms,
         "%svec4 clipRange;\n"
@@ -96,10 +97,10 @@ MString *pgraph_gen_vsh_glsl(const VshState *state, bool prefix_outputs)
         "  return trunc(pos * 16.0f) / 16.0f;\n"
         "}\n");
 
-    pgraph_get_glsl_vtx_header(header, state->vulkan, state->smooth_shading,
-                             false, prefix_outputs, false);
+    pgraph_get_glsl_vtx_header(header, opts.vulkan, state->smooth_shading,
+                             false, opts.prefix_outputs, false);
 
-    if (prefix_outputs) {
+    if (opts.prefix_outputs) {
         mstring_append(header,
                        "#define vtxD0 v_vtxD0\n"
                        "#define vtxD1 v_vtxD1\n"
@@ -159,12 +160,11 @@ MString *pgraph_gen_vsh_glsl(const VshState *state, bool prefix_outputs)
     }
 
     if (state->is_fixed_function) {
-        pgraph_gen_vsh_ff_glsl(state, header, body, uniforms);
+        pgraph_gen_vsh_ff_glsl(opts, state, header, body, uniforms);
     } else {
-        pgraph_gen_vsh_prog_glsl(VSH_VERSION_XVS,
-                                 (uint32_t *)state->programmable.program_data,
-                                 state->programmable.program_length,
-                                 state->vulkan, header, body);
+        pgraph_gen_vsh_prog_glsl(
+            VSH_VERSION_XVS, (uint32_t *)state->programmable.program_data,
+            state->programmable.program_length, header, body);
     }
 
     /* Fog */
@@ -287,7 +287,7 @@ MString *pgraph_gen_vsh_glsl(const VshState *state, bool prefix_outputs)
         );
     }
 
-    if (state->vulkan) {
+    if (opts.vulkan) {
         mstring_append(body,
                    "  gl_Position = oPos;\n"
         );
@@ -300,10 +300,10 @@ MString *pgraph_gen_vsh_glsl(const VshState *state, bool prefix_outputs)
     mstring_append(body, "}\n");
 
     /* Return combined header + source */
-    if (state->vulkan) {
+    if (opts.vulkan) {
         // FIXME: Optimize uniforms
         if (num_uniform_attrs > 0) {
-            if (state->use_push_constants_for_uniform_attrs) {
+            if (opts.use_push_constants_for_uniform_attrs) {
                 mstring_append_fmt(output,
                     "layout(push_constant) uniform PushConstants {\n"
                     "    vec4 inlineValue[%d];\n"

@@ -1012,7 +1012,7 @@ static void create_pipeline(PGRAPHState *pg)
     };
 
     VkPushConstantRange push_constant_range;
-    if (r->shader_binding->state.vsh.use_push_constants_for_uniform_attrs) {
+    if (r->use_push_constants_for_uniform_attrs) {
         int num_uniform_attributes =
             __builtin_popcount(r->shader_binding->state.vsh.uniform_attrs);
         if (num_uniform_attributes) {
@@ -1067,7 +1067,7 @@ static void push_vertex_attr_values(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    if (!r->shader_binding->state.vsh.use_push_constants_for_uniform_attrs) {
+    if (!r->use_push_constants_for_uniform_attrs) {
         return;
     }
 
