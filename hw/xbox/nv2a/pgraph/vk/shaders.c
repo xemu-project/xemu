@@ -329,7 +329,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
         setlocale(LC_NUMERIC, "C");
 
         MString *geometry_shader_code = pgraph_gen_geom_glsl(
-            &state->vsh, (GenGeomGlslOptions){ .vulkan = true });
+            &state->geom, (GenGeomGlslOptions){ .vulkan = true });
         if (geometry_shader_code) {
             NV2A_VK_DPRINTF("geometry shader: \n%s",
                             mstring_get_str(geometry_shader_code));

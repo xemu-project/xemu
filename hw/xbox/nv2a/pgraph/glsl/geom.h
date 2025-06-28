@@ -22,13 +22,22 @@
 #ifndef HW_XBOX_NV2A_PGRAPH_GLSL_GEOM_H
 #define HW_XBOX_NV2A_PGRAPH_GLSL_GEOM_H
 
-#include "qemu/mstring.h"
-#include "vsh.h"
+#include "common.h"
+#include "hw/xbox/nv2a/pgraph/vsh_regs.h"
+
+typedef struct {
+    enum ShaderPrimitiveMode primitive_mode;
+    enum ShaderPolygonMode polygon_front_mode;
+    enum ShaderPolygonMode polygon_back_mode;
+    bool smooth_shading;
+} GeomState;
 
 typedef struct GenGeomGlslOptions {
     bool vulkan;
 } GenGeomGlslOptions;
 
-MString *pgraph_gen_geom_glsl(const VshState *state, GenGeomGlslOptions opts);
+void pgraph_set_geom_state(PGRAPHState *pg, GeomState *geom);
+
+MString *pgraph_gen_geom_glsl(const GeomState *state, GenGeomGlslOptions opts);
 
 #endif

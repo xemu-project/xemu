@@ -19,10 +19,27 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "common.h"
+#include "qemu/osdep.h"
+#include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "geom.h"
 
-MString *pgraph_gen_geom_glsl(const VshState *state, GenGeomGlslOptions opts)
+void pgraph_set_geom_state(PGRAPHState *pg, GeomState *state)
+{
+    state->primitive_mode = (enum ShaderPrimitiveMode)pg->primitive_mode;
+
+    state->polygon_front_mode = (enum ShaderPolygonMode)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER),
+        NV_PGRAPH_SETUPRASTER_FRONTFACEMODE);
+    state->polygon_back_mode = (enum ShaderPolygonMode)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER),
+        NV_PGRAPH_SETUPRASTER_BACKFACEMODE);
+
+    state->smooth_shading = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
+                                     NV_PGRAPH_CONTROL_3_SHADEMODE) ==
+                            NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
+}
+
+MString *pgraph_gen_geom_glsl(const GeomState *state, GenGeomGlslOptions opts)
 {
     /* FIXME: Missing support for 2-sided-poly mode */
     assert(state->polygon_front_mode == state->polygon_back_mode);
