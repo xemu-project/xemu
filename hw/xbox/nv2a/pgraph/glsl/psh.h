@@ -32,12 +32,10 @@
 #include "qemu/mstring.h"
 #include "hw/xbox/nv2a/pgraph/psh.h"
 
-// FIXME: Move to struct
-#define PSH_UBO_BINDING 1
-#define PSH_TEX_BINDING 2
-
 typedef struct GenPshGlslOptions {
     bool vulkan;
+    int ubo_binding;
+    int tex_binding;
 } GenPshGlslOptions;
 
 MString *pgraph_gen_psh_glsl(const PshState state, GenPshGlslOptions opts);

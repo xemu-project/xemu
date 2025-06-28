@@ -318,7 +318,7 @@ MString *pgraph_gen_vsh_glsl(const VshState *state,
             "layout(binding = %d, std140) uniform VshUniforms {\n"
             "%s"
             "};\n\n",
-            VSH_UBO_BINDING, mstring_get_str(uniforms));
+            opts.ubo_binding, mstring_get_str(uniforms));
     } else {
         mstring_append(
             output, mstring_get_str(uniforms));

@@ -762,9 +762,11 @@ static MString* psh_convert(struct PixelShader *ps)
                              ps->state.smooth_shading, true, false, false);
 
     if (ps->opts.vulkan) {
-        mstring_append_fmt(preflight,
-                           "layout(location = 0) out vec4 fragColor;\n"
-                           "layout(binding = %d, std140) uniform PshUniforms {\n", PSH_UBO_BINDING);
+        mstring_append_fmt(
+            preflight,
+            "layout(location = 0) out vec4 fragColor;\n"
+            "layout(binding = %d, std140) uniform PshUniforms {\n",
+            ps->opts.ubo_binding);
     } else {
         mstring_append_fmt(preflight,
                            "layout(location = 0) out vec4 fragColor;\n");
@@ -1201,7 +1203,7 @@ static MString* psh_convert(struct PixelShader *ps)
 
         if (sampler_type != NULL) {
             if (ps->opts.vulkan) {
-                mstring_append_fmt(preflight, "layout(binding = %d) ", PSH_TEX_BINDING + i);
+                mstring_append_fmt(preflight, "layout(binding = %d) ", ps->opts.tex_binding + i);
             }
             mstring_append_fmt(preflight, "uniform %s texSamp%d;\n", sampler_type, i);
 

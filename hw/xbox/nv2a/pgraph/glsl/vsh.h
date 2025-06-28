@@ -25,13 +25,11 @@
 #include "qemu/mstring.h"
 #include "hw/xbox/nv2a/pgraph/vsh.h"
 
-// FIXME: Move to struct
-#define VSH_UBO_BINDING 0
-
 typedef struct GenVshGlslOptions {
     bool vulkan;
     bool prefix_outputs;
     bool use_push_constants_for_uniform_attrs;
+    int ubo_binding;
 } GenVshGlslOptions;
 
 MString *pgraph_gen_vsh_glsl(const VshState *state,

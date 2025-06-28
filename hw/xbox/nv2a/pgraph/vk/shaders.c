@@ -34,6 +34,10 @@
 #include "renderer.h"
 #include <locale.h>
 
+#define VSH_UBO_BINDING 0
+#define PSH_UBO_BINDING 1
+#define PSH_TEX_BINDING 2
+
 const size_t MAX_UNIFORM_ATTR_VALUES_SIZE = NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float);
 
 static void create_descriptor_pool(PGRAPHState *pg)
@@ -424,6 +428,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
                              .prefix_outputs = geometry_shader_code != NULL,
                              .use_push_constants_for_uniform_attrs =
                                  r->use_push_constants_for_uniform_attrs,
+                             .ubo_binding = VSH_UBO_BINDING,
                          });
         NV2A_VK_DPRINTF("vertex shader: \n%s",
                         mstring_get_str(vertex_shader_code));
@@ -433,7 +438,11 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
         mstring_unref(vertex_shader_code);
 
         MString *fragment_shader_code = pgraph_gen_psh_glsl(
-            state->psh, (GenPshGlslOptions){ .vulkan = true });
+            state->psh, (GenPshGlslOptions){
+                .vulkan = true,
+                .ubo_binding = PSH_UBO_BINDING,
+                .tex_binding = PSH_TEX_BINDING,
+            });
         NV2A_VK_DPRINTF("fragment shader: \n%s",
                         mstring_get_str(fragment_shader_code));
         snode->fragment = pgraph_vk_create_shader_module_from_glsl(
