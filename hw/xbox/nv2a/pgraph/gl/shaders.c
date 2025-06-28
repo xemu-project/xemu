@@ -696,87 +696,13 @@ static void update_shader_uniforms(PGRAPHState *pg, ShaderBinding *binding)
                           &psh_values, PshUniform__COUNT);
 }
 
-static bool test_shaders_dirty(PGRAPHState *pg)
-{
-    #define CR_1(reg) CR_x(reg, 1)
-    #define CR_4(reg) CR_x(reg, 4)
-    #define CR_8(reg) CR_x(reg, 8)
-    #define CF(src, name)  CF_x(typeof(src), (&src), name, 1)
-    #define CFA(src, name) CF_x(typeof(src[0]), src, name, ARRAY_SIZE(src))
-    #define CNAME(name) reg_check__ ## name
-    #define CX_x__define(type, name, x) static type CNAME(name)[x];
-    #define CR_x__define(reg, x) CX_x__define(uint32_t, reg, x)
-    #define CF_x__define(type, src, name, x) CX_x__define(type, name, x)
-    #define CR_x__check(reg, x) \
-        for (int i = 0; i < x; i++) { if (pgraph_reg_r(pg, reg+i*4) != CNAME(reg)[i]) goto dirty; }
-    #define CF_x__check(type, src, name, x) \
-        for (int i = 0; i < x; i++) { if (src[i] != CNAME(name)[i]) goto dirty; }
-    #define CR_x__update(reg, x) \
-        for (int i = 0; i < x; i++) { CNAME(reg)[i] = pgraph_reg_r(pg, reg+i*4); }
-    #define CF_x__update(type, src, name, x) \
-        for (int i = 0; i < x; i++) { CNAME(name)[i] = src[i]; }
-
-    #define DIRTY_REGS \
-        CR_1(NV_PGRAPH_COMBINECTL) \
-        CR_1(NV_PGRAPH_SHADERCTL) \
-        CR_1(NV_PGRAPH_SHADOWCTL) \
-        CR_1(NV_PGRAPH_COMBINESPECFOG0) \
-        CR_1(NV_PGRAPH_COMBINESPECFOG1) \
-        CR_1(NV_PGRAPH_CONTROL_0) \
-        CR_1(NV_PGRAPH_CONTROL_3) \
-        CR_1(NV_PGRAPH_CSV0_C) \
-        CR_1(NV_PGRAPH_CSV0_D) \
-        CR_1(NV_PGRAPH_CSV1_A) \
-        CR_1(NV_PGRAPH_CSV1_B) \
-        CR_1(NV_PGRAPH_SETUPRASTER) \
-        CR_1(NV_PGRAPH_SHADERPROG) \
-        CR_1(NV_PGRAPH_ZCOMPRESSOCCLUDE) \
-        CR_8(NV_PGRAPH_COMBINECOLORI0) \
-        CR_8(NV_PGRAPH_COMBINECOLORO0) \
-        CR_8(NV_PGRAPH_COMBINEALPHAI0) \
-        CR_8(NV_PGRAPH_COMBINEALPHAO0) \
-        CR_8(NV_PGRAPH_COMBINEFACTOR0) \
-        CR_8(NV_PGRAPH_COMBINEFACTOR1) \
-        CR_1(NV_PGRAPH_SHADERCLIPMODE) \
-        CR_4(NV_PGRAPH_TEXCTL0_0) \
-        CR_4(NV_PGRAPH_TEXFMT0) \
-        CR_4(NV_PGRAPH_TEXFILTER0) \
-        CR_8(NV_PGRAPH_WINDOWCLIPX0) \
-        CR_8(NV_PGRAPH_WINDOWCLIPY0) \
-        CF(pg->primitive_mode, primitive_mode) \
-        CF(pg->surface_scale_factor, surface_scale_factor) \
-        CF(pg->compressed_attrs, compressed_attrs) \
-        CFA(pg->texture_matrix_enable, texture_matrix_enable) \
-        CR_4(NV_PGRAPH_COLORKEYCOLOR0)
-
-    #define CR_x(reg, x) CR_x__define(reg, x)
-    #define CF_x(type, src, name, x) CF_x__define(type, src, name, x)
-    DIRTY_REGS
-    #undef CR_x
-    #undef CF_x
-
-    #define CR_x(reg, x) CR_x__check(reg, x)
-    #define CF_x(type, src, name, x) CF_x__check(type, src, name, x)
-    DIRTY_REGS
-    #undef CR_x
-    #undef CF_x
-    return false;
-
-dirty:
-    #define CR_x(reg, x) CR_x__update(reg, x)
-    #define CF_x(type, src, name, x) CF_x__update(type, src, name, x)
-    DIRTY_REGS
-    #undef CR_x
-    #undef CF_x
-    return true;
-}
-
 void pgraph_gl_bind_shaders(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     bool binding_changed = false;
-    if (r->shader_binding && !test_shaders_dirty(pg) && !pg->program_data_dirty) {
+    if (r->shader_binding &&
+        !pgraph_check_shader_state_dirty(pg, &r->shader_binding->state)) {
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND_NOTDIRTY);
         goto update_uniforms;
     }
