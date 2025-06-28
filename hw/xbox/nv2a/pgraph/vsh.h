@@ -154,6 +154,26 @@ enum MaterialColorSource {
     MATERIAL_COLOR_SRC_SPECULAR,
 };
 
+typedef struct FixedFunctionVshState {
+    bool normalization;
+    bool texture_matrix_enable[4];
+    enum VshTexgen texgen[4][4];
+    enum VshFoggen foggen;
+    enum VshSkinning skinning;
+    bool lighting;
+    enum VshLight light[NV2A_MAX_LIGHTS];
+    enum MaterialColorSource emission_src;
+    enum MaterialColorSource ambient_src;
+    enum MaterialColorSource diffuse_src;
+    enum MaterialColorSource specular_src;
+    bool local_eye;
+} FixedFunctionVshState;
+
+typedef struct ProgrammableVshState {
+    uint32_t program_data[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH][VSH_TOKEN_SIZE];
+    int program_length;
+} ProgrammableVshState;
+
 typedef struct {
     unsigned int surface_scale_factor;  // FIXME: Remove
 
@@ -166,42 +186,25 @@ typedef struct {
     enum ShaderPolygonMode polygon_back_mode;
     enum ShaderPrimitiveMode primitive_mode;
 
-    bool is_fixed_function;
-    struct {
-        bool normalization;
-        bool texture_matrix_enable[4];
-        enum VshTexgen texgen[4][4];
-        enum VshFoggen foggen;
-        enum VshSkinning skinning;
-        bool lighting;
-        enum VshLight light[NV2A_MAX_LIGHTS];
-        enum MaterialColorSource emission_src;
-        enum MaterialColorSource ambient_src;
-        enum MaterialColorSource diffuse_src;
-        enum MaterialColorSource specular_src;
-        bool local_eye;
-    } fixed_function;
-
-    struct {
-        uint32_t program_data[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH]
-                             [VSH_TOKEN_SIZE];
-        int program_length;
-    } programmable;
-
     bool fog_enable;
     enum VshFogMode fog_mode;
+
     bool specular_enable;
     bool separate_specular;
     bool ignore_specular_alpha;
     float specular_power;
     float specular_power_back;
 
-    bool z_perspective;
     bool point_params_enable;
     float point_size;
     float point_params[8];
 
     bool smooth_shading;
+    bool z_perspective;
+
+    bool is_fixed_function;
+    FixedFunctionVshState fixed_function;
+    ProgrammableVshState programmable;
 } VshState;
 
 #endif
