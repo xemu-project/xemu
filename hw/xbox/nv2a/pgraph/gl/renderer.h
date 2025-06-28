@@ -34,6 +34,8 @@
 #include "hw/xbox/nv2a/pgraph/surface.h"
 #include "hw/xbox/nv2a/pgraph/texture.h"
 #include "hw/xbox/nv2a/pgraph/shaders.h"
+#include "hw/xbox/nv2a/pgraph/glsl/vsh.h"
+#include "hw/xbox/nv2a/pgraph/glsl/psh.h"
 
 #include "gloffscreen.h"
 #include "constants.h"
@@ -96,39 +98,9 @@ typedef struct ShaderBinding {
     GLuint gl_program;
     GLenum gl_primitive_mode;
 
-    uint32_t vsh_constants[NV2A_VERTEXSHADER_CONSTANTS][4];
-
     struct {
-        struct {
-            GLint alpha_ref;
-            GLint bump_mat[NV2A_MAX_TEXTURES];
-            GLint bump_offset[NV2A_MAX_TEXTURES];
-            GLint bump_scale[NV2A_MAX_TEXTURES];
-            GLint clip_range;
-            GLint clip_region[8];
-            GLint color_key[4];
-            GLint color_key_mask[4];
-            GLint depth_offset;
-            GLint fog_color;
-            GLint psh_constant[9][2];
-            GLint surface_size;
-            GLint tex_scale[NV2A_MAX_TEXTURES];
-        } psh;
-
-        struct {
-            GLint fog_param;
-            GLint light_infinite_direction[NV2A_MAX_LIGHTS];
-            GLint light_infinite_half_vector[NV2A_MAX_LIGHTS];
-            GLint light_local_attenuation[NV2A_MAX_LIGHTS];
-            GLint light_local_position[NV2A_MAX_LIGHTS];
-            GLint ltc1[NV2A_LTC1_COUNT];
-            GLint ltctxa[NV2A_LTCTXA_COUNT];
-            GLint ltctxb[NV2A_LTCTXB_COUNT];
-            GLint material_alpha;
-            GLint point_params[8];
-            GLint vsh_constant[NV2A_VERTEXSHADER_CONSTANTS];
-            int specular_power;
-        } vsh;
+        PshUniformLocs psh;
+        VshUniformLocs vsh;
     } uniform_locs;
 } ShaderBinding;
 

@@ -34,10 +34,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "common.h"
 #include "hw/xbox/nv2a/debug.h"
-#include "hw/xbox/nv2a/pgraph/psh.h"
+#include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "psh.h"
+
+DEF_UNIFORM_INFO_ARR(PshUniform, PSH_UNIFORM_DECL_X)
 
 /*
  * This implements translation of register combiners into glsl
@@ -755,8 +756,6 @@ static void define_colorkey_comparator(MString *preflight)
 
 static MString* psh_convert(struct PixelShader *ps)
 {
-    const char *u = ps->opts.vulkan ? "" : "uniform "; // FIXME: Remove
-
     MString *preflight = mstring_new();
     pgraph_get_glsl_vtx_header(preflight, ps->opts.vulkan,
                              ps->state.smooth_shading, true, false, false);
@@ -772,25 +771,22 @@ static MString* psh_convert(struct PixelShader *ps)
                            "layout(location = 0) out vec4 fragColor;\n");
     }
 
-    mstring_append_fmt(preflight,
-                       "%sint alphaRef;\n"
-                       "%svec4  fogColor;\n"
-                       "%sivec4 clipRegion[8];\n"
-                       "%svec4  clipRange;\n"
-                       "%sfloat depthOffset;\n"
-                       "%suint colorKey[4];\n"
-                       "%suint colorKeyMask[4];\n",
-                       u, u, u, u, u, u, u);
-    for (int i = 0; i < 4; i++) {
-        mstring_append_fmt(preflight, "%smat2  bumpMat%d;\n"
-                                      "%sfloat bumpScale%d;\n"
-                                      "%sfloat bumpOffset%d;\n"
-                                      "%sfloat texScale%d;\n",
-                                      u, i, u, i, u, i, u, i);
+    const char *u = ps->opts.vulkan ? "" : "uniform ";
+    for (int i = 0; i < ARRAY_SIZE(PshUniformInfo); i++) {
+        const UniformInfo *info = &PshUniformInfo[i];
+        const char *type_str = uniform_element_type_to_str[info->type];
+        if (info->count == 1) {
+            mstring_append_fmt(preflight, "%s%s %s;\n", u, type_str,
+                               info->name);
+        } else {
+            mstring_append_fmt(preflight, "%s%s %s[%zd];\n", u, type_str,
+                               info->name, info->count);
+        }
     }
+
     for (int i = 0; i < 9; i++) {
         for (int j = 0; j < 2; j++) {
-            mstring_append_fmt(preflight, "%svec4 c%d_%d;\n", u, j, i);
+            mstring_append_fmt(preflight, "#define c%d_%d consts[%d]\n", j, i, i*2+j);
         }
     }
 
@@ -1044,7 +1040,7 @@ static MString* psh_convert(struct PixelShader *ps)
                                    i, ps->input_tex[i], ps->input_tex[i]);
             }
 
-            mstring_append_fmt(vars, "dsdt%d = bumpMat%d * dsdt%d;\n", i, i, i);
+            mstring_append_fmt(vars, "dsdt%d = bumpMat[%d] * dsdt%d;\n", i, i, i);
 
             if (ps->state.dim_tex[i] == 2) {
                 mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdt%d));\n",
@@ -1070,7 +1066,7 @@ static MString* psh_convert(struct PixelShader *ps)
                                    i, ps->input_tex[i], ps->input_tex[i], ps->input_tex[i]);
             }
 
-            mstring_append_fmt(vars, "dsdtl%d.st = bumpMat%d * dsdtl%d.st;\n",
+            mstring_append_fmt(vars, "dsdtl%d.st = bumpMat[%d] * dsdtl%d.st;\n",
                                i, i, i);
 
             if (ps->state.dim_tex[i] == 2) {
@@ -1084,7 +1080,7 @@ static MString* psh_convert(struct PixelShader *ps)
                 assert(!"Unhandled texture dimensions");
             }
 
-            mstring_append_fmt(vars, "t%d = t%d * (bumpScale%d * dsdtl%d.p + bumpOffset%d);\n",
+            mstring_append_fmt(vars, "t%d = t%d * (bumpScale[%d] * dsdtl%d.p + bumpOffset[%d]);\n",
                 i, i, i, i, i);
             break;
         case PS_TEXTUREMODES_BRDF:
@@ -1250,7 +1246,7 @@ static MString* psh_convert(struct PixelShader *ps)
             if (ps->state.rect_tex[i]) {
                 mstring_append_fmt(preflight,
                 "vec2 norm%d(vec2 coord) {\n"
-                "    return coord / (textureSize(texSamp%d, 0) / texScale%d);\n"
+                "    return coord / (textureSize(texSamp%d, 0) / texScale[%d]);\n"
                 "}\n",
                 i, i, i);
                 mstring_append_fmt(preflight,
@@ -1436,4 +1432,165 @@ MString *pgraph_gen_psh_glsl(const PshState state, GenPshGlslOptions opts)
     }
 
     return psh_convert(&ps);
+}
+
+void pgraph_set_psh_uniform_values(PGRAPHState *pg, const PshUniformLocs locs,
+                                   PshUniformValues *values)
+{
+    /* update combiner constants */
+    if (locs[PshUniform_consts] != -1) {
+        for (int i = 0; i < 9; i++) {
+            uint32_t constant[2];
+            if (i == 8) {
+                /* final combiner */
+                constant[0] = pgraph_reg_r(pg, NV_PGRAPH_SPECFOGFACTOR0);
+                constant[1] = pgraph_reg_r(pg, NV_PGRAPH_SPECFOGFACTOR1);
+            } else {
+                constant[0] =
+                    pgraph_reg_r(pg, NV_PGRAPH_COMBINEFACTOR0 + i * 4);
+                constant[1] =
+                    pgraph_reg_r(pg, NV_PGRAPH_COMBINEFACTOR1 + i * 4);
+            }
+
+            for (int j = 0; j < 2; j++) {
+                int idx = i * 2 + j;
+                pgraph_argb_pack32_to_rgba_float(constant[j],
+                                                 values->consts[idx]);
+            }
+        }
+    }
+    if (locs[PshUniform_alphaRef] != -1) {
+        int alpha_ref = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0),
+                                 NV_PGRAPH_CONTROL_0_ALPHAREF);
+        values->alphaRef[0] = alpha_ref;
+    }
+    if (locs[PshUniform_colorKey] != -1) {
+        values->colorKey[0] = pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR0);
+        values->colorKey[1] = pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR1);
+        values->colorKey[2] = pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR2);
+        values->colorKey[3] = pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR3);
+    }
+    if (locs[PshUniform_colorKeyMask] != -1) {
+       for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+            values->colorKeyMask[i] =
+                pgraph_get_color_key_mask_for_texture(pg, i);
+        }
+    }
+
+    /* For each texture stage */
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        /* Bump luminance only during stages 1 - 3 */
+        if (i > 0) {
+            if (locs[PshUniform_bumpMat] != -1) {
+                uint32_t m_u32[4];
+                m_u32[0] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT00 + 4 * (i - 1));
+                m_u32[1] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT01 + 4 * (i - 1));
+                m_u32[2] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT10 + 4 * (i - 1));
+                m_u32[3] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT11 + 4 * (i - 1));
+                values->bumpMat[i][0] = *(float *)&m_u32[0];
+                values->bumpMat[i][1] = *(float *)&m_u32[1];
+                values->bumpMat[i][2] = *(float *)&m_u32[2];
+                values->bumpMat[i][3] = *(float *)&m_u32[3];
+            }
+            if (locs[PshUniform_bumpScale] != -1) {
+                uint32_t v =
+                    pgraph_reg_r(pg, NV_PGRAPH_BUMPSCALE1 + (i - 1) * 4);
+                values->bumpScale[i] = *(float *)&v;
+            }
+            if (locs[PshUniform_bumpOffset] != -1) {
+                uint32_t v =
+                    pgraph_reg_r(pg, NV_PGRAPH_BUMPOFFSET1 + (i - 1) * 4);
+                values->bumpOffset[i] = *(float *)&v;
+            }
+        }
+        if (locs[PshUniform_texScale] != -1) {
+            values->texScale[0] = 1.0; /* Renderer will override this */
+        }
+    }
+
+    if (locs[PshUniform_fogColor] != -1) {
+        uint32_t fog_color = pgraph_reg_r(pg, NV_PGRAPH_FOGCOLOR);
+        values->fogColor[0][0] =
+            GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_RED) / 255.0;
+        values->fogColor[0][1] =
+            GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_GREEN) / 255.0;
+        values->fogColor[0][2] =
+            GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_BLUE) / 255.0;
+        values->fogColor[0][3] =
+            GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_ALPHA) / 255.0;
+    }
+
+
+    float zmax;
+    switch (pg->surface_shape.zeta_format) {
+    case NV097_SET_SURFACE_FORMAT_ZETA_Z16:
+        zmax = pg->surface_shape.z_format ? f16_max : (float)0xFFFF;
+        break;
+    case NV097_SET_SURFACE_FORMAT_ZETA_Z24S8:
+        zmax = pg->surface_shape.z_format ? f24_max : (float)0xFFFFFF;
+        break;
+    default:
+        assert(0);
+    }
+
+    if (locs[PshUniform_clipRange] != -1) {
+        uint32_t zclip_min = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
+        uint32_t zclip_max = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMAX);
+
+        values->clipRange[0][0] = 0;
+        values->clipRange[0][1] = zmax;
+        values->clipRange[0][2] = *(float *)&zclip_min;
+        values->clipRange[0][3] = *(float *)&zclip_max;
+    }
+
+    if (locs[PshUniform_depthOffset] != -1) {
+        float zbias = 0.0f;
+
+        if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
+            uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
+            zbias = *(float *)&zbias_u32;
+
+            if (pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR) != 0 &&
+                (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                 NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE)) {
+                /* TODO: emulate zfactor when z_perspective true, i.e.
+                 * w-buffering. Perhaps calculate an additional offset based on
+                 * triangle orientation in geometry shader and pass the result
+                 * to fragment shader and add it to gl_FragDepth as well.
+                 */
+                NV2A_UNIMPLEMENTED("NV_PGRAPH_ZOFFSETFACTOR for w-buffering");
+            }
+        }
+
+        values->depthOffset[0] = zbias;
+    }
+
+    /* Clipping regions */
+    unsigned int max_gl_width = pg->surface_binding_dim.width;
+    unsigned int max_gl_height = pg->surface_binding_dim.height;
+    pgraph_apply_scaling_factor(pg, &max_gl_width, &max_gl_height);
+
+    for (int i = 0; i < 8; i++) {
+        uint32_t x = pgraph_reg_r(pg, NV_PGRAPH_WINDOWCLIPX0 + i * 4);
+        unsigned int x_min = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN);
+        unsigned int x_max = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX) + 1;
+
+        uint32_t y = pgraph_reg_r(pg, NV_PGRAPH_WINDOWCLIPY0 + i * 4);
+        unsigned int y_min = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMIN);
+        unsigned int y_max = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX) + 1;
+
+        pgraph_apply_anti_aliasing_factor(pg, &x_min, &y_min);
+        pgraph_apply_anti_aliasing_factor(pg, &x_max, &y_max);
+
+        pgraph_apply_scaling_factor(pg, &x_min, &y_min);
+        pgraph_apply_scaling_factor(pg, &x_max, &y_max);
+
+        values->clipRegion[i][0] = x_min;
+        values->clipRegion[i][1] = y_min;
+        values->clipRegion[i][2] = x_max;
+        values->clipRegion[i][3] = y_max;
+    }
 }

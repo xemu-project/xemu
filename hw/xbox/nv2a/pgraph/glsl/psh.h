@@ -24,6 +24,23 @@
 
 #include "qemu/mstring.h"
 #include "hw/xbox/nv2a/pgraph/psh.h"
+#include "common.h"
+
+#define PSH_UNIFORM_DECL_X(S, DECL) \
+    DECL(S, alphaRef, int, 1)       \
+    DECL(S, bumpMat, mat2, 4)       \
+    DECL(S, bumpOffset, float, 4)   \
+    DECL(S, bumpScale, float, 4)    \
+    DECL(S, clipRange, vec4, 1)     \
+    DECL(S, clipRegion, ivec4, 8)   \
+    DECL(S, colorKey, uint, 4)      \
+    DECL(S, colorKeyMask, uint, 4)  \
+    DECL(S, consts, vec4, 18)       \
+    DECL(S, depthOffset, float, 1)  \
+    DECL(S, fogColor, vec4, 1)      \
+    DECL(S, texScale, float, 4)
+
+DECL_UNIFORM_TYPES(PshUniform, PSH_UNIFORM_DECL_X)
 
 typedef struct GenPshGlslOptions {
     bool vulkan;
@@ -31,6 +48,12 @@ typedef struct GenPshGlslOptions {
     int tex_binding;
 } GenPshGlslOptions;
 
+typedef struct PGRAPHState PGRAPHState;
+
 MString *pgraph_gen_psh_glsl(const PshState state, GenPshGlslOptions opts);
+
+void pgraph_set_psh_uniform_values(PGRAPHState *pg,
+                                   const PshUniformLocs locs,
+                                   PshUniformValues *values);
 
 #endif
