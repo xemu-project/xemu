@@ -18,6 +18,7 @@
  */
 
 #include "common.h"
+#include "hw/xbox/nv2a/pgraph/pgraph.h"
 
 #define DECL_UNIFORM_ELEMENT_NAME(type) #type,
 const char *uniform_element_type_to_str[] = {
@@ -58,4 +59,27 @@ MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bo
     }
 
     return out;
+}
+
+void pgraph_set_clip_range_uniform_value(PGRAPHState *pg, float clipRange[4])
+{
+    float zmax;
+    switch (pg->surface_shape.zeta_format) {
+    case NV097_SET_SURFACE_FORMAT_ZETA_Z16:
+        zmax = pg->surface_shape.z_format ? f16_max : (float)0xFFFF;
+        break;
+    case NV097_SET_SURFACE_FORMAT_ZETA_Z24S8:
+        zmax = pg->surface_shape.z_format ? f24_max : (float)0xFFFFFF;
+        break;
+    default:
+        assert(0);
+    }
+
+    uint32_t zclip_min = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
+    uint32_t zclip_max = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMAX);
+
+    clipRange[0] = 0;
+    clipRange[1] = zmax;
+    clipRange[2] = *(float *)&zclip_min;
+    clipRange[3] = *(float *)&zclip_max;
 }

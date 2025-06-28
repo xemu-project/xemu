@@ -97,4 +97,8 @@ typedef struct UniformInfo {
 
 MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bool in, bool prefix, bool array);
 
+typedef struct PGRAPHState PGRAPHState;
+
+void pgraph_set_clip_range_uniform_value(PGRAPHState *pg, float clipRange[4]);
+
 #endif

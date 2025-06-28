@@ -486,25 +486,7 @@ void pgraph_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
     }
 
     if (locs[VshUniform_clipRange] != -1) {
-        float zmax;
-        switch (pg->surface_shape.zeta_format) {
-        case NV097_SET_SURFACE_FORMAT_ZETA_Z16:
-            zmax = pg->surface_shape.z_format ? f16_max : (float)0xFFFF;
-            break;
-        case NV097_SET_SURFACE_FORMAT_ZETA_Z24S8:
-            zmax = pg->surface_shape.z_format ? f24_max : (float)0xFFFFFF;
-            break;
-        default:
-            assert(0);
-        }
-
-        uint32_t zclip_min = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
-        uint32_t zclip_max = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMAX);
-
-        values->clipRange[0][0] = 0;
-        values->clipRange[0][1] = zmax;
-        values->clipRange[0][2] = *(float *)&zclip_min;
-        values->clipRange[0][3] = *(float *)&zclip_max;
+        pgraph_set_clip_range_uniform_value(pg, values->clipRange[0]);
     }
 
     if (locs[VshUniform_fogParam] != -1) {
