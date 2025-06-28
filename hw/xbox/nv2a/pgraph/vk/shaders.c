@@ -236,7 +236,7 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
     r->descriptor_set_index++;
 }
 
-static void update_shader_constant_locations(ShaderBinding *binding)
+static void update_shader_uniform_locs(ShaderBinding *binding)
 {
     for (int i = 0; i < ARRAY_SIZE(binding->uniform_locs.vsh); i++) {
         binding->uniform_locs.vsh[i] =
@@ -374,7 +374,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
             g_free(previous_numeric_locale);
         }
 
-        update_shader_constant_locations(snode);
+        update_shader_uniform_locs(snode);
 
         snode->initialized = true;
     }
