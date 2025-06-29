@@ -291,5 +291,7 @@ void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg);
 void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale);
 unsigned int pgraph_gl_get_surface_scale_factor(NV2AState *d);
 int pgraph_gl_get_framebuffer_surface(NV2AState *d);
+void pgraph_gl_determine_gpu_properties(NV2AState *d);
+GPUProperties *pgraph_gl_get_gpu_properties(void);
 
 #endif
