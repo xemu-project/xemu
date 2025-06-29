@@ -232,38 +232,85 @@ unsigned int pgraph_gl_bind_inline_array(NV2AState *d)
     return index_count;
 }
 
-static void vertex_cache_entry_init(Lru *lru, LruNode *node, void *key)
+unsigned int pgraph_gl_bind_elements_array(NV2AState *d)
 {
-    VertexLruNode *vnode = container_of(node, VertexLruNode, node);
-    memcpy(&vnode->key, key, sizeof(struct VertexKey));
-    vnode->initialized = false;
-}
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
 
-static bool vertex_cache_entry_compare(Lru *lru, LruNode *node, void *key)
-{
-    VertexLruNode *vnode = container_of(node, VertexLruNode, node);
-    return memcmp(&vnode->key, key, sizeof(VertexKey));
-}
+    struct {
+        uint8_t *src;
+        size_t len;
+        size_t src_stride;
+        size_t dst_offset;
+    } copy_params[NV2A_VERTEXSHADER_ATTRIBUTES];
 
-static const size_t element_cache_size = 50*1024;
+    memset(copy_params, 0, sizeof(copy_params));
+    unsigned int max_attr_size = 0;
+    unsigned int offset = 0;
+
+    for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+        VertexAttribute *attr = &pg->vertex_attributes[i];
+        if (attr->count == 0) {
+            continue;
+        }
+
+        hwaddr dma_len;
+        uint8_t *attr_data = (uint8_t *)nv_dma_map(
+            d, attr->dma_select ? pg->dma_vertex_b : pg->dma_vertex_a,
+            &dma_len);
+        assert(attr->offset < dma_len);
+
+        copy_params[i].src = attr_data + attr->offset;
+        copy_params[i].src_stride = attr->stride;
+        copy_params[i].len = attr->size * attr->count;
+        offset = ROUND_UP(offset, attr->size);
+        copy_params[i].dst_offset = offset;
+        attr->inline_array_offset = offset;
+
+        offset += copy_params[i].len;
+        max_attr_size = MAX(max_attr_size, attr->size);
+    }
+
+    unsigned int vertex_size = ROUND_UP(offset, max_attr_size);
+    unsigned int index_count = pg->inline_elements_length;
+
+    NV2A_DPRINTF("draw inline elements array %d, %d\n", vertex_size, index_count);
+    assert(index_count * vertex_size <= sizeof(pg->inline_array));
+    uint8_t *dst = (uint8_t *)&pg->inline_array[0];
+
+    for (int k = 0; k < index_count; k++) {
+        unsigned int index = pg->inline_elements[k];
+
+        for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+            uint8_t *src = copy_params[i].src;
+            if (!src) {
+                continue;
+            }
+
+            memcpy(dst + copy_params[i].dst_offset,
+                   src + index * copy_params[i].src_stride,
+                   copy_params[i].len);
+        }
+
+        dst += vertex_size;
+    }
+
+    nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_4);
+    glBindBuffer(GL_ARRAY_BUFFER, r->gl_inline_array_buffer);
+    glBufferData(GL_ARRAY_BUFFER, NV2A_MAX_BATCH_LENGTH * sizeof(uint32_t),
+                 NULL, GL_STREAM_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, index_count * vertex_size,
+                    pg->inline_array);
+    pgraph_gl_bind_vertex_attributes(d, 0, index_count - 1, true, vertex_size,
+                                     index_count - 1);
+
+    return index_count;
+}
 
 void pgraph_gl_init_buffers(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
-
-    lru_init(&r->element_cache);
-    r->element_cache_entries = g_malloc_n(element_cache_size, sizeof(VertexLruNode));
-    assert(r->element_cache_entries != NULL);
-    GLuint element_cache_buffers[element_cache_size];
-    glGenBuffers(element_cache_size, element_cache_buffers);
-    for (int i = 0; i < element_cache_size; i++) {
-        r->element_cache_entries[i].gl_buffer = element_cache_buffers[i];
-        lru_add_free(&r->element_cache, &r->element_cache_entries[i].node);
-    }
-
-    r->element_cache.init_node = vertex_cache_entry_init;
-    r->element_cache.compare_nodes = vertex_cache_entry_compare;
 
     GLint max_vertex_attributes;
     glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &max_vertex_attributes);
@@ -286,16 +333,6 @@ void pgraph_gl_init_buffers(NV2AState *d)
 void pgraph_gl_finalize_buffers(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
-
-    GLuint element_cache_buffers[element_cache_size];
-    for (int i = 0; i < element_cache_size; i++) {
-        element_cache_buffers[i] = r->element_cache_entries[i].gl_buffer;
-    }
-    glDeleteBuffers(element_cache_size, element_cache_buffers);
-    lru_flush(&r->element_cache);
-
-    g_free(r->element_cache_entries);
-    r->element_cache_entries = NULL;
 
     glDeleteBuffers(NV2A_VERTEXSHADER_ATTRIBUTES, r->gl_inline_buffer);
     memset(r->gl_inline_buffer, 0, sizeof(r->gl_inline_buffer));

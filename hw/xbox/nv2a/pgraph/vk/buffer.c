@@ -87,19 +87,6 @@ void pgraph_vk_init_buffers(NV2AState *d)
         .buffer_size = r->storage_buffers[BUFFER_COMPUTE_DST].buffer_size,
     };
 
-    r->storage_buffers[BUFFER_INDEX] = (StorageBuffer){
-        .alloc_info = device_alloc_create_info,
-        .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-        .buffer_size = sizeof(pg->inline_elements) * 100,
-    };
-
-    r->storage_buffers[BUFFER_INDEX_STAGING] = (StorageBuffer){
-        .alloc_info = host_alloc_create_info,
-        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        .buffer_size = r->storage_buffers[BUFFER_INDEX].buffer_size,
-    };
-
     // FIXME: Don't assume that we can render with host mapped buffer
     r->storage_buffers[BUFFER_VERTEX_RAM] = (StorageBuffer){
         .alloc_info = host_alloc_create_info,
@@ -145,7 +132,6 @@ void pgraph_vk_init_buffers(NV2AState *d)
     // FIXME: Add fallback path for device using host mapped memory
 
     int buffers_to_map[] = { BUFFER_VERTEX_RAM,
-                             BUFFER_INDEX_STAGING,
                              BUFFER_VERTEX_INLINE_STAGING,
                              BUFFER_UNIFORM_STAGING };
 

@@ -25,6 +25,8 @@ const char *uniform_element_type_to_str[] = {
     UNIFORM_ELEMENT_TYPE_X(DECL_UNIFORM_ELEMENT_NAME)
 };
 
+#define NUM_VSH_GEOM_ATTRS 1
+
 MString *pgraph_glsl_get_vtx_header(MString *out, bool location, bool smooth,
                                     bool in, bool prefix, bool array)
 {
@@ -33,6 +35,7 @@ MString *pgraph_glsl_get_vtx_header(MString *out, bool location, bool smooth,
     const char *qualifier_s = smooth ? smooth_s : flat_s;
     const char *in_out_s = in ? "in" : "out";
     const char *float_s = "float";
+    const char *int_s = "int";
     const char *vec4_s = "vec4";
     const char *prefix_s = prefix ? "v_" : "";
     const char *suffix_s = array ? "[]" : "";
@@ -48,9 +51,21 @@ MString *pgraph_glsl_get_vtx_header(MString *out, bool location, bool smooth,
         { smooth_s,    vec4_s,  "vtxT1"  },
         { smooth_s,    vec4_s,  "vtxT2"  },
         { smooth_s,    vec4_s,  "vtxT3"  },
+        { flat_s,      vec4_s,  "vtxPos0" },
+        { flat_s,      vec4_s,  "vtxPos1" },
+        { flat_s,      vec4_s,  "vtxPos2" },
+        { flat_s,      float_s, "triMZ"  },
+        // The following is only between vertex and geometry shaders
+        { flat_s,      int_s,   "vtxInd" },
     };
 
-    for (int i = 0; i < ARRAY_SIZE(attr); i++) {
+    int num_attrs = ARRAY_SIZE(attr);
+    bool vsh_geom = (!in && prefix && !array) || (in && prefix && array);
+    if (!vsh_geom) {
+        num_attrs -= NUM_VSH_GEOM_ATTRS;
+    }
+
+    for (int i = 0; i < num_attrs; i++) {
         if (location) {
             mstring_append_fmt(out, "layout(location = %d) ", i);
         }

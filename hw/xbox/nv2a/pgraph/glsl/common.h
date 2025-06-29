@@ -25,6 +25,7 @@
 #include "qemu/osdep.h"
 #include "qemu/mstring.h"
 
+typedef int ivec2[2];
 typedef int ivec4[4];
 typedef float mat2[2 * 2];
 typedef unsigned int uint;
@@ -35,6 +36,7 @@ typedef float vec4[4];
 #define UNIFORM_ELEMENT_TYPE_X(DECL) \
     DECL(float)                      \
     DECL(int)                        \
+    DECL(ivec2)                      \
     DECL(ivec4)                      \
     DECL(mat2)                       \
     DECL(uint)                       \

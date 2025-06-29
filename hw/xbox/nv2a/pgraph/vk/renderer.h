@@ -85,8 +85,6 @@ enum Buffer {
     BUFFER_STAGING_SRC,
     BUFFER_COMPUTE_DST,
     BUFFER_COMPUTE_SRC,
-    BUFFER_INDEX,
-    BUFFER_INDEX_STAGING,
     BUFFER_VERTEX_RAM,
     BUFFER_VERTEX_INLINE,
     BUFFER_VERTEX_INLINE_STAGING,
@@ -299,7 +297,6 @@ typedef struct PGRAPHVkState {
 
     bool debug_utils_extension_enabled;
     bool custom_border_color_extension_enabled;
-    bool provoking_vertex_extension_enabled;
     bool memory_budget_extension_enabled;
 
     VkPhysicalDevice physical_device;
@@ -468,8 +465,6 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
 void pgraph_vk_bind_vertex_attributes_inline(NV2AState *d);
 void pgraph_vk_update_vertex_ram_buffer(PGRAPHState *pg, hwaddr offset, void *data,
                                     VkDeviceSize size);
-VkDeviceSize pgraph_vk_update_index_buffer(PGRAPHState *pg, void *data,
-                                           VkDeviceSize size);
 VkDeviceSize pgraph_vk_update_vertex_inline_buffer(PGRAPHState *pg, void **data,
                                                    VkDeviceSize *sizes,
                                                    size_t count);

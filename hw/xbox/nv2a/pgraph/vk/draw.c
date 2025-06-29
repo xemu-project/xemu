@@ -54,10 +54,6 @@ static VkPrimitiveTopology get_primitive_topology(PGRAPHState *pg)
     int polygon_mode = r->shader_binding->state.geom.polygon_front_mode;
     int primitive_mode = r->shader_binding->state.geom.primitive_mode;
 
-    if (polygon_mode == POLY_MODE_POINT) {
-        return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
-    }
-
     // FIXME: Replace with LUT
     switch (primitive_mode) {
     case PRIM_TYPE_POINTS:
@@ -790,27 +786,6 @@ static void create_pipeline(PGRAPHState *pg)
 
     void *rasterizer_next_struct = NULL;
 
-    VkPipelineRasterizationProvokingVertexStateCreateInfoEXT provoking_state;
-
-    if (r->provoking_vertex_extension_enabled) {
-        VkProvokingVertexModeEXT provoking_mode =
-            GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
-                     NV_PGRAPH_CONTROL_3_SHADEMODE) ==
-                    NV_PGRAPH_CONTROL_3_SHADEMODE_FLAT ?
-                VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT :
-                VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT;
-
-        provoking_state =
-            (VkPipelineRasterizationProvokingVertexStateCreateInfoEXT){
-                .sType =
-                    VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_PROVOKING_VERTEX_STATE_CREATE_INFO_EXT,
-                .provokingVertexMode = provoking_mode,
-            };
-        rasterizer_next_struct = &provoking_state;
-    } else {
-        // FIXME: Handle in shader?
-    }
-
     VkPipelineRasterizationStateCreateInfo rasterizer = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .depthClampEnable = VK_TRUE,
@@ -965,27 +940,6 @@ static void create_pipeline(PGRAPHState *pg)
         .dynamicStateCount = num_dynamic_states,
         .pDynamicStates = dynamic_states,
     };
-
-    // /* Polygon offset */
-    // /* FIXME: GL implementation-specific, maybe do this in VS? */
-    // if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-    //         NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE)
-    // if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-    //         NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE)
-    // if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-    //         NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)
-    if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-        (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
-         NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
-         NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
-        uint32_t zfactor_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR);
-        float zfactor = *(float *)&zfactor_u32;
-        uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
-        float zbias = *(float *)&zbias_u32;
-        rasterizer.depthBiasEnable = VK_TRUE;
-        rasterizer.depthBiasSlopeFactor = zfactor;
-        rasterizer.depthBiasConstantFactor = zbias;
-    }
 
     // FIXME: Dither
     // if (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
@@ -1148,10 +1102,6 @@ static void sync_staging_buffer(PGRAPHState *pg, VkCommandBuffer cmd,
     VkPipelineStageFlags dst_stage_mask;
 
     switch (index_dst) {
-    case BUFFER_INDEX:
-        dst_access_mask = VK_ACCESS_INDEX_READ_BIT;
-        dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-        break;
     case BUFFER_VERTEX_INLINE:
         dst_access_mask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
         dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
@@ -1273,7 +1223,6 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
         VK_CHECK(vkEndCommandBuffer(r->command_buffer));
 
         VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg); // FIXME: Cleanup
-        sync_staging_buffer(pg, cmd, BUFFER_INDEX_STAGING, BUFFER_INDEX);
         sync_staging_buffer(pg, cmd, BUFFER_VERTEX_INLINE_STAGING,
                                 BUFFER_VERTEX_INLINE);
         sync_staging_buffer(pg, cmd, BUFFER_UNIFORM_STAGING, BUFFER_UNIFORM);
@@ -1951,7 +1900,8 @@ typedef struct VertexBufferRemap {
 } VertexBufferRemap;
 
 static VertexBufferRemap remap_unaligned_attributes(PGRAPHState *pg,
-                                                    uint32_t num_vertices)
+                                                    uint32_t num_vertices,
+                                                    bool remap_all)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
@@ -1977,7 +1927,7 @@ static VertexBufferRemap remap_unaligned_attributes(PGRAPHState *pg,
             (r->vertex_attribute_offsets[attr_id] % element_size == 0);
         bool stride_valid = (desc->stride % element_size == 0);
 
-        if (offset_valid && stride_valid) {
+        if (!remap_all && offset_valid && stride_valid) {
             continue;
         }
 
@@ -2018,7 +1968,8 @@ static VertexBufferRemap remap_unaligned_attributes(PGRAPHState *pg,
 static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
                                                       VertexBufferRemap remap,
                                                       uint32_t start_vertex,
-                                                      uint32_t num_vertices)
+                                                      uint32_t num_vertices,
+                                                      uint32_t *element_indices)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -2049,10 +2000,19 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
         uint8_t *out_ptr = buffer->mapped + attr_buffer_offset;
         uint8_t *in_ptr = d->vram_ptr + r->vertex_attribute_offsets[attr_id];
 
-        for (int vertex_id = 0; vertex_id < num_vertices; vertex_id++) {
-            memcpy(out_ptr, in_ptr, remap.map[attr_id].new_stride);
-            out_ptr += remap.map[attr_id].new_stride;
-            in_ptr += remap.map[attr_id].old_stride;
+        if (element_indices) {
+            for (int vertex_id = 0; vertex_id < num_vertices; vertex_id++) {
+                uint32_t ei = element_indices[vertex_id];
+                memcpy(out_ptr, in_ptr + ei * remap.map[attr_id].old_stride,
+                       remap.map[attr_id].new_stride);
+                out_ptr += remap.map[attr_id].new_stride;
+            }
+        } else {
+            for (int vertex_id = 0; vertex_id < num_vertices; vertex_id++) {
+                memcpy(out_ptr, in_ptr, remap.map[attr_id].new_stride);
+                out_ptr += remap.map[attr_id].new_stride;
+                in_ptr += remap.map[attr_id].old_stride;
+            }
         }
 
         r->vertex_attribute_offsets[attr_id] = attr_buffer_offset;
@@ -2092,10 +2052,10 @@ void pgraph_vk_flush_draw(NV2AState *d)
             max_element = MAX(max_element, pg->draw_arrays_start[i] + pg->draw_arrays_count[i]);
         }
         sync_vertex_ram_buffer(pg);
-        VertexBufferRemap remap = remap_unaligned_attributes(pg, max_element);
+        VertexBufferRemap remap = remap_unaligned_attributes(pg, max_element, false);
 
         begin_pre_draw(pg);
-        copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element);
+        copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element, NULL);
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
                                      "Draw Arrays");
         begin_draw(pg);
@@ -2117,36 +2077,21 @@ void pgraph_vk_flush_draw(NV2AState *d)
 
         nv2a_profile_inc_counter(NV2A_PROF_INLINE_ELEMENTS);
 
-        size_t index_data_size =
-            pg->inline_elements_length * sizeof(pg->inline_elements[0]);
-
-        ensure_buffer_space(pg, BUFFER_INDEX_STAGING, index_data_size);
-
-        uint32_t min_element = (uint32_t)-1;
-        uint32_t max_element = 0;
-        for (int i = 0; i < pg->inline_elements_length; i++) {
-            max_element = MAX(pg->inline_elements[i], max_element);
-            min_element = MIN(pg->inline_elements[i], min_element);
-        }
         pgraph_vk_bind_vertex_attributes(
-            d, min_element, max_element, false, 0,
+            d, 0, pg->inline_elements_length - 1, false, 0,
             pg->inline_elements[pg->inline_elements_length - 1]);
-        sync_vertex_ram_buffer(pg);
-        VertexBufferRemap remap = remap_unaligned_attributes(pg, max_element + 1);
+        // No need to sync vertex RAM buffer. We copy all vertex data below.
+        r->num_vertex_ram_buffer_syncs = 0;
+
+        VertexBufferRemap remap = remap_unaligned_attributes(pg, pg->inline_elements_length, true);
 
         begin_pre_draw(pg);
-        copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element + 1);
-        VkDeviceSize buffer_offset = pgraph_vk_update_index_buffer(
-            pg, pg->inline_elements, index_data_size);
+        copy_remapped_attributes_to_inline_buffer(pg, remap, 0, pg->inline_elements_length, pg->inline_elements);
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
                                      "Inline Elements");
         begin_draw(pg);
         bind_vertex_buffer(pg, remap.attributes, 0);
-        vkCmdBindIndexBuffer(r->command_buffer,
-                             r->storage_buffers[BUFFER_INDEX].buffer,
-                             buffer_offset, VK_INDEX_TYPE_UINT32);
-        vkCmdDrawIndexed(r->command_buffer, pg->inline_elements_length, 1, 0, 0,
-                         0);
+        vkCmdDraw(r->command_buffer, pg->inline_elements_length, 1, 0, 0);
         end_draw(pg);
         pgraph_vk_end_debug_marker(r, r->command_buffer);
 

@@ -102,23 +102,6 @@ typedef struct ShaderBinding {
     } uniform_locs;
 } ShaderBinding;
 
-typedef struct VertexKey {
-    size_t count;
-    size_t stride;
-    hwaddr addr;
-
-    GLboolean gl_normalize;
-    GLuint gl_type;
-} VertexKey;
-
-typedef struct VertexLruNode {
-    LruNode node;
-    VertexKey key;
-    bool initialized;
-
-    GLuint gl_buffer;
-} VertexLruNode;
-
 typedef struct TextureKey {
     TextureShape state;
     hwaddr texture_vram_offset;
@@ -151,8 +134,6 @@ typedef struct PGRAPHGLState {
     GLenum gl_display_buffer_format;
     GLenum gl_display_buffer_type;
 
-    Lru element_cache;
-    VertexLruNode *element_cache_entries;
     GLuint gl_inline_array_buffer;
     GLuint gl_memory_buffer;
     GLuint gl_vertex_array;
@@ -212,6 +193,7 @@ extern GloContext *g_nv2a_context_render;
 extern GloContext *g_nv2a_context_display;
 
 unsigned int pgraph_gl_bind_inline_array(NV2AState *d);
+unsigned int pgraph_gl_bind_elements_array(NV2AState *d);
 void pgraph_gl_bind_shaders(PGRAPHState *pg);
 void pgraph_gl_bind_textures(NV2AState *d);
 void pgraph_gl_bind_vertex_attributes(NV2AState *d, unsigned int min_element, unsigned int max_element, bool inline_data, unsigned int inline_stride, unsigned int provoking_element);

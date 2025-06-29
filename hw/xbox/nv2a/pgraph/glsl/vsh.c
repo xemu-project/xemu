@@ -245,6 +245,11 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
                        "#define vtxT1 v_vtxT1\n"
                        "#define vtxT2 v_vtxT2\n"
                        "#define vtxT3 v_vtxT3\n"
+                       "#define vtxPos0 v_vtxPos0\n"
+                       "#define vtxPos1 v_vtxPos1\n"
+                       "#define vtxPos2 v_vtxPos2\n"
+                       "#define triMZ v_triMZ\n"
+                       "#define vtxInd v_vtxInd\n"
                        );
     }
     mstring_append(header, "\n");
@@ -393,6 +398,10 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
                    "  vtxT1 = oT1;\n"
                    "  vtxT2 = oT2;\n"
                    "  vtxT3 = oT3;\n"
+                   "  vtxPos0 = vtxPos;\n"
+                   "  vtxPos1 = vtxPos;\n"
+                   "  vtxPos2 = vtxPos;\n"
+                   "  triMZ = 0.0;\n"
                    "  gl_PointSize = oPts.x;\n"
     );
 
@@ -423,6 +432,14 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         mstring_append(body,
                    "  gl_Position = vec4(oPos.x, oPos.y, 2.0*oPos.z - oPos.w, oPos.w);\n"
         );
+    }
+
+    if (opts.prefix_outputs) {
+        if (opts.vulkan) {
+            mstring_append(body,  "  vtxInd = gl_VertexIndex;\n");
+        } else {
+            mstring_append(body,  "  vtxInd = gl_VertexID;\n");
+        }
     }
 
     mstring_append(body, "}\n");
