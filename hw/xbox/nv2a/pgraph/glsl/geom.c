@@ -45,6 +45,39 @@ void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *state)
 
     state->z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
                            NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
+
+    if (pg->renderer->ops.get_gpu_properties) {
+        GPUProperties *gpu_props = pg->renderer->ops.get_gpu_properties();
+
+        switch (state->primitive_mode) {
+        case PRIM_TYPE_TRIANGLES:
+            state->tri_rot0 = gpu_props->geom_shader_winding.tri;
+            state->tri_rot1 = state->tri_rot0;
+            break;
+        case PRIM_TYPE_TRIANGLE_STRIP:
+            state->tri_rot0 = gpu_props->geom_shader_winding.tri_strip0;
+            state->tri_rot1 = gpu_props->geom_shader_winding.tri_strip1;
+            break;
+        case PRIM_TYPE_TRIANGLE_FAN:
+        case PRIM_TYPE_POLYGON:
+            state->tri_rot0 = gpu_props->geom_shader_winding.tri_fan;
+            state->tri_rot1 = state->tri_rot0;
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+static const char *get_vertex_order(int rot)
+{
+    if (rot == 0) {
+        return "ivec3(0, 1, 2)";
+    } else if (rot == 1) {
+        return "ivec3(2, 0, 1)";
+    } else {
+        return "ivec3(1, 2, 0)";
+    }
 }
 
 bool pgraph_glsl_need_geom(const GeomState *state)
@@ -115,49 +148,47 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
     case PRIM_TYPE_TRIANGLE_STRIP:
     case PRIM_TYPE_TRIANGLE_FAN:
         if (state->first_vertex_is_provoking) {
-            if (state->primitive_mode == PRIM_TYPE_TRIANGLE_STRIP) {
-                provoking_index = "gl_PrimitiveIDIn & 1";
-            } else if (state->primitive_mode == PRIM_TYPE_TRIANGLE_FAN) {
-                provoking_index = "1";
-            } else {
-                provoking_index = "0";
-            }
+            provoking_index = "v[0]";
+        } else if (state->primitive_mode == PRIM_TYPE_TRIANGLE_STRIP) {
+            provoking_index = "v[2 - (gl_PrimitiveIDIn & 1)]";
+        } else if (state->primitive_mode == PRIM_TYPE_TRIANGLE_FAN) {
+            provoking_index = "v[1]";
         } else {
-            provoking_index = "2";
+            provoking_index = "v[2]";
         }
         need_triz = true;
         layout_in = "layout(triangles) in;\n";
         if (polygon_mode == POLY_MODE_FILL) {
             layout_out = "layout(triangle_strip, max_vertices = 3) out;\n";
-            body = "  mat4 pz = calc_triz(0, 1, 2);\n"
-                   "  emit_vertex(0, pz);\n"
-                   "  emit_vertex(1, pz);\n"
-                   "  emit_vertex(2, pz);\n"
+            body = "  mat4 pz = calc_triz(v[0], v[1], v[2]);\n"
+                   "  emit_vertex(v[0], pz);\n"
+                   "  emit_vertex(v[1], pz);\n"
+                   "  emit_vertex(v[2], pz);\n"
                    "  EndPrimitive();\n";
         } else if (polygon_mode == POLY_MODE_LINE) {
             need_linez = true;
             layout_out = "layout(line_strip, max_vertices = 4) out;\n";
-            body = "  float triMZ = calc_triz(0, 1, 2)[3].x;\n"
-                   "  mat4 pz1 = calc_linez(0, 1);\n"
-                   "  pz1[3].x = triMZ;\n"
-                   "  mat4 pz2 = calc_linez(1, 2);\n"
-                   "  pz2[3].x = triMZ;\n"
-                   "  mat4 pz3 = calc_linez(2, 0);\n"
-                   "  pz3[3].x = triMZ;\n"
-                   "  emit_vertex(0, pz1);\n"
-                   "  emit_vertex(1, pz1);\n"
-                   "  emit_vertex(2, pz2);\n"
-                   "  emit_vertex(0, pz3);\n"
+            body = "  float dz = calc_triz(v[0], v[1], v[2])[3].x;\n"
+                   "  mat4 pz1 = calc_linez(v[0], v[1]);\n"
+                   "  pz1[3].x = dz;\n"
+                   "  mat4 pz2 = calc_linez(v[1], v[2]);\n"
+                   "  pz2[3].x = dz;\n"
+                   "  mat4 pz3 = calc_linez(v[2], v[0]);\n"
+                   "  pz3[3].x = dz;\n"
+                   "  emit_vertex(v[0], pz1);\n"
+                   "  emit_vertex(v[1], pz2);\n"
+                   "  emit_vertex(v[2], pz3);\n"
+                   "  emit_vertex(v[0], pz3);\n"
                    "  EndPrimitive();\n";
         } else {
             assert(polygon_mode == POLY_MODE_POINT);
             layout_out = "layout(points, max_vertices = 3) out;\n";
-            body = "  mat4 pz = calc_triz(0, 1, 2);\n"
-                   "  emit_vertex(0, mat4(pz[0], pz[0], pz[0], pz[3]));\n"
+            body = "  mat4 pz = calc_triz(v[0], v[1], v[2]);\n"
+                   "  emit_vertex(v[0], mat4(pz[0], pz[0], pz[0], pz[3]));\n"
                    "  EndPrimitive();\n"
-                   "  emit_vertex(1, mat4(pz[1], pz[1], pz[1], pz[3]));\n"
+                   "  emit_vertex(v[1], mat4(pz[1], pz[1], pz[1], pz[3]));\n"
                    "  EndPrimitive();\n"
-                   "  emit_vertex(2, mat4(pz[2], pz[2], pz[2], pz[3]));\n"
+                   "  emit_vertex(v[2], mat4(pz[2], pz[2], pz[2], pz[3]));\n"
                    "  EndPrimitive();\n";
         }
         break;
@@ -188,9 +219,9 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                    "  mat4 pz4 = calc_linez(3, 0);\n"
                    "  pz4[3].x = pzs[3].x;\n"
                    "  emit_vertex(0, pz1);\n"
-                   "  emit_vertex(1, pz1);\n"
-                   "  emit_vertex(2, pz2);\n"
-                   "  emit_vertex(3, pz3);\n"
+                   "  emit_vertex(1, pz2);\n"
+                   "  emit_vertex(2, pz3);\n"
+                   "  emit_vertex(3, pz4);\n"
                    "  emit_vertex(0, pz4);\n"
                    "  EndPrimitive();\n";
         } else {
@@ -237,9 +268,9 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                    "  mat4 pz4 = calc_linez(2, 0);\n"
                    "  pz4[3].x = pz[3].x;\n"
                    "  emit_vertex(0, pz1);\n"
-                   "  emit_vertex(1, pz1);\n"
-                   "  emit_vertex(3, pz2);\n"
-                   "  emit_vertex(2, pz3);\n"
+                   "  emit_vertex(1, pz2);\n"
+                   "  emit_vertex(3, pz3);\n"
+                   "  emit_vertex(2, pz4);\n"
                    "  emit_vertex(0, pz4);\n"
                    "  EndPrimitive();\n";
         } else {
@@ -259,17 +290,18 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
         }
         break;
     case PRIM_TYPE_POLYGON:
-        provoking_index = "0";
         if (polygon_mode == POLY_MODE_FILL) {
+            provoking_index = "v[2]";
             need_triz = true;
             layout_in = "layout(triangles) in;\n";
             layout_out = "layout(triangle_strip, max_vertices = 3) out;\n";
-            body = "  mat4 pz = calc_triz(0, 1, 2);\n"
-                   "  emit_vertex(0, pz);\n"
-                   "  emit_vertex(1, pz);\n"
-                   "  emit_vertex(2, pz);\n"
+            body = "  mat4 pz = calc_triz(v[0], v[1], v[2]);\n"
+                   "  emit_vertex(v[0], pz);\n"
+                   "  emit_vertex(v[1], pz);\n"
+                   "  emit_vertex(v[2], pz);\n"
                    "  EndPrimitive();\n";
         } else if (polygon_mode == POLY_MODE_LINE) {
+            provoking_index = "0";
             need_linez = true;
             /* FIXME: input here is lines and not triangles so we cannot
              * calculate triangle plane slope. Also, the first vertex of the
@@ -309,6 +341,30 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                                true, true);
     pgraph_glsl_get_vtx_header(output, opts.vulkan, state->smooth_shading,
                                false, false, false);
+
+    char vertex_order_buf[80];
+    const char *vertex_order_body = "";
+
+    if (need_triz) {
+        /* Input triangle absolute vertex order is not guaranteed by OpenGL
+         * or Vulkan, only winding order is. Reorder vertices here to first
+         * vertex convention which we assumed above when setting
+         * provoking_index. This mostly only matters with flat shading, but
+         * we reorder always to get consistent results across GPU vendors
+         * regarding floating-point rounding when calculating with vtxPos0/1/2.
+         */
+        mstring_append(output, "ivec3 v;\n");
+        if (state->tri_rot0 == state->tri_rot1) {
+            snprintf(vertex_order_buf, sizeof(vertex_order_buf), "  v = %s;\n",
+                     get_vertex_order(state->tri_rot0));
+        } else {
+            snprintf(vertex_order_buf, sizeof(vertex_order_buf),
+                     "  v = (gl_PrimitiveIDIn & 1) == 0 ? %s : %s;\n",
+                     get_vertex_order(state->tri_rot0),
+                     get_vertex_order(state->tri_rot1));
+        }
+        vertex_order_body = vertex_order_buf;
+    }
 
     if (state->smooth_shading) {
         provoking_index = "index";
@@ -422,8 +478,9 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                        "\n"
                        "void main() {\n"
                        "%s"
+                       "%s"
                        "}\n",
-                       body);
+                       vertex_order_body, body);
 
     return output;
 }
