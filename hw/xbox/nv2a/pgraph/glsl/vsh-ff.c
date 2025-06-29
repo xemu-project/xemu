@@ -268,21 +268,30 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             alpha_source = alpha_source_specular;
         }
 
-        if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
-            mstring_append_fmt(body, "oD0 = vec4(sceneAmbientColor, %s);\n", alpha_source);
-        } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
-            mstring_append_fmt(body, "oD0 = vec4(diffuse.rgb, %s);\n", alpha_source);
-        } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
-            mstring_append_fmt(body, "oD0 = vec4(specular.rgb, %s);\n", alpha_source);
-        }
+        // If emission and ambient sources are taken from a vertex color, the
+        // scene ambient color is reconstructed from the vertex colors.
+        bool use_scene_ambient =
+            state->fixed_function.emission_src == MATERIAL_COLOR_SRC_MATERIAL ||
+            state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_MATERIAL;
+        mstring_append_fmt(body, "oD0 = vec4(%s, %s);\n",
+                           use_scene_ambient ?
+                               "sceneAmbientColor" :
+                               (state->fixed_function.emission_src ==
+                                        MATERIAL_COLOR_SRC_DIFFUSE ?
+                                    "diffuse.rgb" :
+                                    "specular.rgb"),
+                           alpha_source);
 
-        mstring_append(body, "oD0.rgb *= materialEmissionColor.rgb;\n");
-        if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_MATERIAL) {
-            mstring_append(body, "oD0.rgb += sceneAmbientColor;\n");
-        } else if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_DIFFUSE) {
-            mstring_append(body, "oD0.rgb += diffuse.rgb;\n");
-        } else if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_SPECULAR) {
-            mstring_append(body, "oD0.rgb += specular.rgb;\n");
+        if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_DIFFUSE ||
+            state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
+            mstring_append(body,
+                           "oD0.rgb += diffuse.rgb * materialEmissionColor;\n");
+        } else if (state->fixed_function.emission_src ==
+                       MATERIAL_COLOR_SRC_SPECULAR ||
+                   state->fixed_function.ambient_src ==
+                       MATERIAL_COLOR_SRC_SPECULAR) {
+            mstring_append(
+                body, "oD0.rgb += specular.rgb * materialEmissionColor;\n");
         }
 
         mstring_append(body, "oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n");
@@ -379,8 +388,19 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 "    vec3 lightSpecular = lightSpecularColor(%d) * attenuation * pf;\n",
                 i, i, i);
 
-            mstring_append(body,
-                "    oD0.xyz += lightAmbient;\n");
+            switch (state->fixed_function.ambient_src) {
+            case MATERIAL_COLOR_SRC_MATERIAL:
+                mstring_append(body, "    oD0.rgb += lightAmbient;\n");
+                break;
+            case MATERIAL_COLOR_SRC_DIFFUSE:
+                mstring_append(body,
+                               "    oD0.rgb += diffuse.rgb * lightAmbient;\n");
+                break;
+            case MATERIAL_COLOR_SRC_SPECULAR:
+                mstring_append(body,
+                               "    oD0.rgb += specular.rgb * lightAmbient;\n");
+                break;
+            }
 
             switch (state->fixed_function.diffuse_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
