@@ -62,6 +62,8 @@ static void pgraph_vk_init(NV2AState *d, Error **errp)
 
     pgraph_vk_update_vertex_ram_buffer(&d->pgraph, 0, d->vram_ptr,
                                    memory_region_size(d->vram));
+
+    pgraph_vk_determine_gpu_properties(d);
 }
 
 static void pgraph_vk_finalize(NV2AState *d)
@@ -227,6 +229,7 @@ static PGRAPHRenderer pgraph_vk_renderer = {
         .set_surface_scale_factor = pgraph_vk_set_surface_scale_factor,
         .get_surface_scale_factor = pgraph_vk_get_surface_scale_factor,
         .get_framebuffer_surface = pgraph_vk_get_framebuffer_surface,
+        .get_gpu_properties = pgraph_vk_get_gpu_properties,
     }
 };
 

@@ -788,23 +788,6 @@ static void create_pipeline(PGRAPHState *pg)
 
     void *rasterizer_next_struct = NULL;
 
-    VkPipelineRasterizationProvokingVertexStateCreateInfoEXT provoking_state;
-
-    if (r->provoking_vertex_extension_enabled) {
-        // Use last provoking vertex convention to match geometry shader
-        // assumption, because Vulkan default is first vertex convention.
-        VkProvokingVertexModeEXT provoking_mode =
-            VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT;
-
-        provoking_state =
-            (VkPipelineRasterizationProvokingVertexStateCreateInfoEXT){
-                .sType =
-                    VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_PROVOKING_VERTEX_STATE_CREATE_INFO_EXT,
-                .provokingVertexMode = provoking_mode,
-            };
-        rasterizer_next_struct = &provoking_state;
-    }
-
     VkPipelineRasterizationStateCreateInfo rasterizer = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .depthClampEnable = VK_TRUE,
