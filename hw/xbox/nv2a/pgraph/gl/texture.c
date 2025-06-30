@@ -24,6 +24,7 @@
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "hw/xbox/nv2a/pgraph/s3tc.h"
 #include "hw/xbox/nv2a/pgraph/texture.h"
+#include "ui/xemu-settings.h"
 #include "debug.h"
 #include "renderer.h"
 
@@ -112,6 +113,7 @@ static void apply_texture_parameters(TextureBinding *binding,
                                      unsigned int dimensionality,
                                      unsigned int filter,
                                      unsigned int address,
+                                     unsigned int anisotropic_filter_level,
                                      bool is_bordered,
                                      uint32_t border_color)
 {
@@ -173,6 +175,8 @@ static void apply_texture_parameters(TextureBinding *binding,
         }
         needs_border_color = needs_border_color || binding->addrp == NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER;
     }
+
+    glTexParameterf(binding->gl_target, GL_TEXTURE_MAX_ANISOTROPY, 1 << anisotropic_filter_level);
 
     if (!is_bordered && needs_border_color) {
         if (!binding->border_color_set || binding->border_color != border_color) {
@@ -260,6 +264,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
                                          state.dimensionality,
                                          filter,
                                          address,
+                                         pg->anisotropic_filter_level,
                                          state.border,
                                          border_color);
                 continue;
@@ -370,6 +375,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
                                  state.dimensionality,
                                  filter,
                                  address,
+                                 pg->anisotropic_filter_level,
                                  state.border,
                                  border_color);
 
@@ -769,6 +775,53 @@ static bool texture_cache_entry_compare(Lru *lru, LruNode *node, void *key)
 {
     TextureLruNode *tnode = container_of(node, TextureLruNode, node);
     return memcmp(&tnode->key, key, sizeof(TextureKey));
+}
+
+void pgraph_gl_set_anisotropic_filter_level(NV2AState *d, unsigned int level_po2)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
+
+    g_config.display.quality.anisotropic_filter_level = level_po2;
+
+    qemu_mutex_lock(&d->pfifo.lock);
+    qatomic_set(&d->pfifo.halt, true);
+    qemu_mutex_unlock(&d->pfifo.lock);
+
+    qemu_mutex_lock(&d->pgraph.lock);
+    qemu_event_reset(&r->dirty_surfaces_download_complete);
+    qatomic_set(&r->download_dirty_surfaces_pending, true);
+    qemu_mutex_unlock(&d->pgraph.lock);
+    qemu_mutex_lock(&d->pfifo.lock);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_event_wait(&r->dirty_surfaces_download_complete);
+
+    qemu_mutex_lock(&d->pgraph.lock);
+    qemu_event_reset(&d->pgraph.flush_complete);
+    qatomic_set(&d->pgraph.flush_pending, true);
+    qemu_mutex_unlock(&d->pgraph.lock);
+    qemu_mutex_lock(&d->pfifo.lock);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_event_wait(&d->pgraph.flush_complete);
+
+    qemu_mutex_lock(&d->pfifo.lock);
+    qatomic_set(&d->pfifo.halt, false);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+
+    pgraph_gl_reload_anisotropic_filter_level(&d->pgraph);
+}
+
+unsigned int pgraph_gl_get_anisotropic_filter_level(NV2AState *d)
+{
+    return d->pgraph.anisotropic_filter_level;
+}
+
+void pgraph_gl_reload_anisotropic_filter_level(PGRAPHState *pg)
+{
+    pg->anisotropic_filter_level = g_config.display.quality.anisotropic_filter_level;
 }
 
 void pgraph_gl_init_textures(NV2AState *d)

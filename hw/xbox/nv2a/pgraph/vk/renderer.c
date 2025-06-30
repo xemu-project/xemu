@@ -164,7 +164,7 @@ static void pgraph_vk_pre_shutdown_trigger(NV2AState *d)
 
 static void pgraph_vk_pre_shutdown_wait(NV2AState *d)
 {
-    // qemu_event_wait(&d->pgraph.vk_renderer_state->shader_cache_writeback_complete);   
+    // qemu_event_wait(&d->pgraph.vk_renderer_state->shader_cache_writeback_complete);
 }
 
 static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
@@ -226,6 +226,8 @@ static PGRAPHRenderer pgraph_vk_renderer = {
         .surface_update = pgraph_vk_surface_update,
         .set_surface_scale_factor = pgraph_vk_set_surface_scale_factor,
         .get_surface_scale_factor = pgraph_vk_get_surface_scale_factor,
+        .set_anisotropic_filter_level = pgraph_vk_set_anisotropic_filter_level,
+        .get_anisotropic_filter_level = pgraph_vk_get_anisotropic_filter_level,
         .get_framebuffer_surface = pgraph_vk_get_framebuffer_surface,
     }
 };
