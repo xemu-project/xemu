@@ -43,10 +43,6 @@ CompatibilityReporter::CompatibilityReporter()
     did_send = send_result = false;
 }
 
-CompatibilityReporter::~CompatibilityReporter()
-{
-}
-
 void CompatibilityReporter::Draw()
 {
     if (!is_open) return;
@@ -89,6 +85,23 @@ void CompatibilityReporter::Draw()
         report.compat_rating = playability_names[playability];
         description[0] = '\x00';
         report.compat_comments = description;
+
+        char render_scale_buffer[8];
+        snprintf(render_scale_buffer, sizeof(render_scale_buffer), "%dx",
+                 nv2a_get_surface_scale_factor());
+        report.rendering_scale = render_scale_buffer;
+
+        switch (g_config.display.renderer) {
+        case CONFIG_DISPLAY_RENDERER_NULL:
+            report.backend = "Null";
+            break;
+        case CONFIG_DISPLAY_RENDERER_OPENGL:
+            report.backend = "OpenGL";
+            break;
+        case CONFIG_DISPLAY_RENDERER_VULKAN:
+            report.backend = "Vulkan";
+            break;
+        }
 
         strncpy(token_buf, g_config.general.user_token, sizeof(token_buf)-1);
         report.token = token_buf;
