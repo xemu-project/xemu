@@ -244,6 +244,13 @@ typedef struct PGRAPHState {
     bool framebuffer_in_use;
     QemuCond framebuffer_released;
 
+    enum {
+        PGRAPH_RENDERER_SWITCH_PHASE_IDLE,
+        PGRAPH_RENDERER_SWITCH_PHASE_STARTED,
+        PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING,
+    } renderer_switch_phase;
+    QemuEvent renderer_switch_complete;
+
     unsigned int surface_scale_factor;
     uint8_t *scale_buf;
 
