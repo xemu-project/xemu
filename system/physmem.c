@@ -19,6 +19,7 @@
 
 #include "qemu/osdep.h"
 #include "exec/page-vary.h"
+#include "hw/core/cpu.h"
 #include "qapi/error.h"
 
 #include "qemu/cutils.h"
@@ -836,33 +837,48 @@ int mem_access_callback_address_matches(CPUState *cpu, hwaddr addr, hwaddr len)
     return ret;
 }
 
-int mem_access_callback_insert(CPUState *cpu, MemoryRegion *mr, hwaddr offset,
-                               hwaddr len, MemAccessCallback **cb,
-                               MemAccessCallbackFunc func, void *opaque)
+static void do_mem_access_callback_insert(CPUState *cpu, run_on_cpu_data data)
+
+{
+    MemAccessCallback *cb = (MemAccessCallback *)data.host_ptr;
+    QTAILQ_INSERT_TAIL(&cpu->mem_access_callbacks, cb, entry);
+}
+
+MemAccessCallback *mem_access_callback_insert(CPUState *cpu, MemoryRegion *mr,
+                                              hwaddr offset, hwaddr len,
+                                              MemAccessCallbackFunc func,
+                                              void *opaque)
 {
     assert(len > 0);
 
-    MemAccessCallback *cb_ = g_malloc(sizeof(*cb_));
-    cb_->mr = mr;
-    cb_->addr = memory_region_get_ram_addr(mr) + offset;
-    cb_->len = len;
-    cb_->func = func;
-    cb_->opaque = opaque;
-    QTAILQ_INSERT_TAIL(&cpu->mem_access_callbacks, cb_, entry);
-    if (cb) {
-        *cb = cb_;
-    }
+    MemAccessCallback *cb = g_malloc(sizeof(*cb));
+    cb->mr = mr;
+    cb->addr = memory_region_get_ram_addr(mr) + offset;
+    cb->len = len;
+    cb->func = func;
+    cb->opaque = opaque;
+
+    async_safe_run_on_cpu(cpu, do_mem_access_callback_insert,
+                          RUN_ON_CPU_HOST_PTR(cb));
 
     // FIXME: flush only applicable pages
     tlb_flush_all_cpus_synced(cpu);
 
-    return 0;
+    return cb;
+}
+
+static void do_mem_access_callback_remove_by_ref(CPUState *cpu,
+                                                 run_on_cpu_data data)
+{
+    MemAccessCallback *cb = (MemAccessCallback *)data.host_ptr;
+    QTAILQ_REMOVE(&cpu->mem_access_callbacks, cb, entry);
+    g_free(cb);
 }
 
 void mem_access_callback_remove_by_ref(CPUState *cpu, MemAccessCallback *cb)
 {
-    QTAILQ_REMOVE(&cpu->mem_access_callbacks, cb, entry);
-    g_free(cb);
+    async_safe_run_on_cpu(cpu, do_mem_access_callback_remove_by_ref,
+                          RUN_ON_CPU_HOST_PTR(cb));
 
     // FIXME: flush only applicable pages
     tlb_flush_all_cpus_synced(cpu);
