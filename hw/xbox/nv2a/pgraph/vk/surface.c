@@ -546,14 +546,18 @@ static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
 
         hwaddr offset = addr - surface->vram_addr;
 
+        if (write) {
+            trace_nv2a_pgraph_surface_cpu_write(surface->vram_addr, offset);
+        } else {
+            trace_nv2a_pgraph_surface_cpu_read(surface->vram_addr, offset);
+        }
+
         if (surface->draw_dirty) {
-            trace_nv2a_pgraph_surface_cpu_access(surface->vram_addr, offset);
             surface->download_pending = true;
             wait_for_downloads = true;
         }
 
-        if (write && !surface->upload_pending) {
-            trace_nv2a_pgraph_surface_cpu_access(surface->vram_addr, offset);
+        if (write) {
             surface->upload_pending = true;
         }
     }
