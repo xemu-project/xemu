@@ -1433,7 +1433,7 @@ void pgraph_vk_bind_textures(NV2AState *d)
     NV2A_VK_DGROUP_END();
 }
 
-static void texture_cache_entry_init(Lru *lru, LruNode *node, void *state)
+static void texture_cache_entry_init(Lru *lru, LruNode *node, const void *state)
 {
     TextureBinding *snode = container_of(node, TextureBinding, node);
 
@@ -1486,7 +1486,8 @@ static void texture_cache_entry_post_evict(Lru *lru, LruNode *node)
     texture_cache_release_node_resources(r, snode);
 }
 
-static bool texture_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+static bool texture_cache_entry_compare(Lru *lru, LruNode *node,
+                                        const void *key)
 {
     TextureBinding *snode = container_of(node, TextureBinding, node);
     return memcmp(&snode->key, key, sizeof(TextureKey));

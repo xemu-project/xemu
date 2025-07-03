@@ -524,7 +524,8 @@ void pgraph_vk_unpack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
     pgraph_vk_end_debug_marker(r, cmd);
 }
 
-static void pipeline_cache_entry_init(Lru *lru, LruNode *node, void *state)
+static void pipeline_cache_entry_init(Lru *lru, LruNode *node,
+                                      const void *state)
 {
     PGRAPHVkState *r = container_of(lru, PGRAPHVkState, compute.pipeline_cache);
     ComputePipeline *snode = container_of(node, ComputePipeline, node);
@@ -556,7 +557,8 @@ static void pipeline_cache_entry_post_evict(Lru *lru, LruNode *node)
     pipeline_cache_release_node_resources(r, snode);
 }
 
-static bool pipeline_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+static bool pipeline_cache_entry_compare(Lru *lru, LruNode *node,
+                                         const void *key)
 {
     ComputePipeline *snode = container_of(node, ComputePipeline, node);
     return memcmp(&snode->key, key, sizeof(ComputePipelineKey));

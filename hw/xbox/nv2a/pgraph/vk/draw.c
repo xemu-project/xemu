@@ -93,7 +93,8 @@ static VkPrimitiveTopology get_primitive_topology(PGRAPHState *pg)
     }
 }
 
-static void pipeline_cache_entry_init(Lru *lru, LruNode *node, void *state)
+static void pipeline_cache_entry_init(Lru *lru, LruNode *node,
+                                      const void *state)
 {
     PipelineBinding *snode = container_of(node, PipelineBinding, node);
     snode->layout = VK_NULL_HANDLE;
@@ -117,7 +118,8 @@ static void pipeline_cache_entry_post_evict(Lru *lru, LruNode *node)
     snode->layout = VK_NULL_HANDLE;
 }
 
-static bool pipeline_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+static bool pipeline_cache_entry_compare(Lru *lru, LruNode *node,
+                                         const void *key)
 {
     PipelineBinding *snode = container_of(node, PipelineBinding, node);
     return memcmp(&snode->key, key, sizeof(PipelineKey));

@@ -232,14 +232,14 @@ unsigned int pgraph_gl_bind_inline_array(NV2AState *d)
     return index_count;
 }
 
-static void vertex_cache_entry_init(Lru *lru, LruNode *node, void *key)
+static void vertex_cache_entry_init(Lru *lru, LruNode *node, const void *key)
 {
     VertexLruNode *vnode = container_of(node, VertexLruNode, node);
     memcpy(&vnode->key, key, sizeof(struct VertexKey));
     vnode->initialized = false;
 }
 
-static bool vertex_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+static bool vertex_cache_entry_compare(Lru *lru, LruNode *node, const void *key)
 {
     VertexLruNode *vnode = container_of(node, VertexLruNode, node);
     return memcmp(&vnode->key, key, sizeof(VertexKey));
