@@ -185,14 +185,17 @@ typedef struct ShaderBinding {
     bool initialized;
 
     ShaderState state;
-    ShaderModuleInfo *geometry;
-    ShaderModuleInfo *vertex;
-    ShaderModuleInfo *fragment;
-
     struct {
-        PshUniformLocs psh;
-        VshUniformLocs vsh;
-    } uniform_locs;
+        ShaderModuleInfo *module_info;
+        VshUniformLocs uniform_locs;
+    } vsh;
+    struct {
+        ShaderModuleInfo *module_info;
+    } geom;
+    struct {
+        ShaderModuleInfo *module_info;
+        PshUniformLocs uniform_locs;
+    } psh;
 } ShaderBinding;
 
 typedef struct TextureKey {

@@ -159,8 +159,8 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
     }
 
     ShaderBinding *binding = r->shader_binding;
-    ShaderUniformLayout *layouts[] = { &binding->vertex->uniforms,
-                                       &binding->fragment->uniforms };
+    ShaderUniformLayout *layouts[] = { &binding->vsh.module_info->uniforms,
+                                       &binding->psh.module_info->uniforms };
     VkDeviceSize ubo_buffer_total_size = 0;
     for (int i = 0; i < ARRAY_SIZE(layouts); i++) {
         ubo_buffer_total_size += layouts[i]->total_size;
@@ -238,14 +238,14 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
 
 static void update_shader_uniform_locs(ShaderBinding *binding)
 {
-    for (int i = 0; i < ARRAY_SIZE(binding->uniform_locs.vsh); i++) {
-        binding->uniform_locs.vsh[i] =
-            uniform_index(&binding->vertex->uniforms, VshUniformInfo[i].name);
+    for (int i = 0; i < ARRAY_SIZE(binding->vsh.uniform_locs); i++) {
+        binding->vsh.uniform_locs[i] = uniform_index(
+            &binding->vsh.module_info->uniforms, VshUniformInfo[i].name);
     }
 
-    for (int i = 0; i < ARRAY_SIZE(binding->uniform_locs.psh); i++) {
-        binding->uniform_locs.psh[i] =
-            uniform_index(&binding->fragment->uniforms, PshUniformInfo[i].name);
+    for (int i = 0; i < ARRAY_SIZE(binding->psh.uniform_locs); i++) {
+        binding->psh.uniform_locs[i] = uniform_index(
+            &binding->psh.module_info->uniforms, PshUniformInfo[i].name);
     }
 }
 
@@ -262,9 +262,9 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
     ShaderBinding *snode = container_of(node, ShaderBinding, node);
 
     ShaderModuleInfo *modules[] = {
-        snode->geometry,
-        snode->vertex,
-        snode->fragment,
+        snode->vsh.module_info,
+        snode->geom.module_info,
+        snode->psh.module_info,
     };
     for (int i = 0; i < ARRAY_SIZE(modules); i++) {
         if (modules[i]) {
@@ -417,9 +417,10 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
             key.kind = VK_SHADER_STAGE_GEOMETRY_BIT;
             key.geom.state = state->geom;
             key.geom.glsl_opts.vulkan = true;
-            snode->geometry = get_and_ref_shader_module_for_key(r, &key);
+            snode->geom.module_info =
+                get_and_ref_shader_module_for_key(r, &key);
         } else {
-            snode->geometry = NULL;
+            snode->geom.module_info = NULL;
         }
 
         memset(&key, 0, sizeof(key));
@@ -430,7 +431,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
         key.vsh.glsl_opts.use_push_constants_for_uniform_attrs =
             r->use_push_constants_for_uniform_attrs;
         key.vsh.glsl_opts.ubo_binding = VSH_UBO_BINDING;
-        snode->vertex = get_and_ref_shader_module_for_key(r, &key);
+        snode->vsh.module_info = get_and_ref_shader_module_for_key(r, &key);
 
         memset(&key, 0, sizeof(key));
         key.kind = VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -438,7 +439,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
         key.psh.glsl_opts.vulkan = true;
         key.psh.glsl_opts.ubo_binding = PSH_UBO_BINDING;
         key.psh.glsl_opts.tex_binding = PSH_TEX_BINDING;
-        snode->fragment = get_and_ref_shader_module_for_key(r, &key);
+        snode->psh.module_info = get_and_ref_shader_module_for_key(r, &key);
 
         if (previous_numeric_locale) {
             setlocale(LC_NUMERIC, previous_numeric_locale);
@@ -475,18 +476,19 @@ static void update_shader_uniforms(PGRAPHState *pg)
 
     assert(r->shader_binding);
     ShaderBinding *binding = r->shader_binding;
-    ShaderUniformLayout *layouts[] = { &binding->vertex->uniforms,
-                                       &binding->fragment->uniforms };
+    ShaderUniformLayout *layouts[] = { &binding->vsh.module_info->uniforms,
+                                       &binding->psh.module_info->uniforms };
 
     VshUniformValues vsh_values;
     pgraph_glsl_set_vsh_uniform_values(pg, &binding->state.vsh,
-                                  binding->uniform_locs.vsh, &vsh_values);
-    apply_uniform_updates(&binding->vertex->uniforms, VshUniformInfo,
-                          binding->uniform_locs.vsh, &vsh_values,
+                                  binding->vsh.uniform_locs, &vsh_values);
+    apply_uniform_updates(&binding->vsh.module_info->uniforms, VshUniformInfo,
+                          binding->vsh.uniform_locs, &vsh_values,
                           VshUniform__COUNT);
 
     PshUniformValues psh_values;
-    pgraph_glsl_set_psh_uniform_values(pg, binding->uniform_locs.psh, &psh_values);
+    pgraph_glsl_set_psh_uniform_values(pg, binding->psh.uniform_locs,
+                                       &psh_values);
     for (int i = 0; i < 4; i++) {
         assert(r->texture_bindings[i] != NULL);
         float scale = r->texture_bindings[i]->key.scale;
@@ -501,8 +503,8 @@ static void update_shader_uniforms(PGRAPHState *pg)
 
         psh_values.texScale[i] = scale;
     }
-    apply_uniform_updates(&binding->fragment->uniforms, PshUniformInfo,
-                          binding->uniform_locs.psh, &psh_values,
+    apply_uniform_updates(&binding->psh.module_info->uniforms, PshUniformInfo,
+                          binding->psh.uniform_locs, &psh_values,
                           PshUniform__COUNT);
 
     for (int i = 0; i < ARRAY_SIZE(layouts); i++) {
