@@ -61,6 +61,7 @@
 #include <locale.h>
 
 #ifdef _WIN32
+#include "nvapi.h"
 // Provide hint to prefer high-performance graphics for hybrid systems
 // https://gpuopen.com/learn/amdpowerxpressrequesthighperformance/
 __declspec(dllexport) DWORD AmdPowerXpressRequestHighPerformance = 1;
@@ -1323,6 +1324,16 @@ int main(int argc, char **argv)
         exit(1);
     }
     atexit(xemu_settings_save);
+
+#ifdef _WIN32
+    if (g_config.display.setup_nvidia_profile) {
+        nvapi_setup_profile((NvApiProfileOpts){
+            .executable_name = L"xemu.exe",
+            .profile_name = L"xemu Nvidia Profile",
+            .threaded_optimizations = false,
+        });
+    }
+#endif
 
     sdl2_display_very_early_init(NULL);
 
