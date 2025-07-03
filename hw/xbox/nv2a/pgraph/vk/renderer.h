@@ -146,6 +146,7 @@ typedef struct SurfaceBinding {
 } SurfaceBinding;
 
 typedef struct ShaderModuleInfo {
+    int refcnt;
     char *glsl;
     GByteArray *spirv;
     VkShaderModule module;
@@ -154,6 +155,30 @@ typedef struct ShaderModuleInfo {
     ShaderUniformLayout uniforms;
     ShaderUniformLayout push_constants;
 } ShaderModuleInfo;
+
+typedef struct ShaderModuleCacheKey {
+    VkShaderStageFlagBits kind;
+    union {
+        struct {
+            VshState state;
+            GenVshGlslOptions glsl_opts;
+        } vsh;
+        struct {
+            GeomState state;
+            GenGeomGlslOptions glsl_opts;
+        } geom;
+        struct {
+            PshState state;
+            GenPshGlslOptions glsl_opts;
+        } psh;
+    };
+} ShaderModuleCacheKey;
+
+typedef struct ShaderModuleCacheEntry {
+    LruNode node;
+    ShaderModuleCacheKey key;
+    ShaderModuleInfo *module_info;
+} ShaderModuleCacheEntry;
 
 typedef struct ShaderBinding {
     LruNode node;
@@ -380,6 +405,9 @@ typedef struct PGRAPHVkState {
     bool shader_bindings_changed;
     bool use_push_constants_for_uniform_attrs;
 
+    Lru shader_module_cache;
+    ShaderModuleCacheEntry *shader_module_cache_entries;
+
     // FIXME: Merge these into a structure
     uint64_t uniform_buffer_hashes[2];
     size_t uniform_buffer_offsets[2];
@@ -435,6 +463,8 @@ VkShaderModule pgraph_vk_create_shader_module_from_spv(PGRAPHVkState *r,
                                                        GByteArray *spv);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
     PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl);
+void pgraph_vk_ref_shader_module(ShaderModuleInfo *info);
+void pgraph_vk_unref_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info);
 void pgraph_vk_destroy_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info);
 
 // buffer.c

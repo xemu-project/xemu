@@ -368,6 +368,7 @@ ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
     PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl)
 {
     ShaderModuleInfo *info = g_malloc0(sizeof(*info));
+    info->refcnt = 0;
     info->glsl = strdup(glsl);
     info->spirv = pgraph_vk_compile_glsl_to_spv(
         vk_shader_stage_to_glslang_stage(stage), glsl);
@@ -386,8 +387,24 @@ static void finalize_uniform_layout(ShaderUniformLayout *layout)
     }
 }
 
+void pgraph_vk_ref_shader_module(ShaderModuleInfo *info)
+{
+    info->refcnt++;
+}
+
+void pgraph_vk_unref_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info)
+{
+    assert(info->refcnt >= 1);
+
+    info->refcnt--;
+    if (info->refcnt == 0) {
+        pgraph_vk_destroy_shader_module(r, info);
+    }
+}
+
 void pgraph_vk_destroy_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info)
 {
+    assert(info->refcnt == 0);
     if (info->glsl) {
         free(info->glsl);
     }
