@@ -38,6 +38,8 @@ typedef struct GenGeomGlslOptions {
 
 void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *geom);
 
+bool pgraph_glsl_need_geom(const GeomState *state);
+
 MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts);
 
 #endif
