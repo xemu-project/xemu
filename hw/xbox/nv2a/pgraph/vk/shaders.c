@@ -268,7 +268,7 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
     };
     for (int i = 0; i < ARRAY_SIZE(modules); i++) {
         if (modules[i]) {
-            pgraph_vk_destroy_shader_module(r, modules[i]);
+            pgraph_vk_unref_shader_module(r, modules[i]);
         }
     }
 
@@ -279,6 +279,56 @@ static bool shader_cache_entry_compare(Lru *lru, LruNode *node, void *key)
 {
     ShaderBinding *snode = container_of(node, ShaderBinding, node);
     return memcmp(&snode->state, key, sizeof(ShaderState));
+}
+
+static void shader_module_cache_entry_init(Lru *lru, LruNode *node, void *key)
+{
+    PGRAPHVkState *r = container_of(lru, PGRAPHVkState, shader_module_cache);
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    memcpy(&module->key, key, sizeof(ShaderModuleCacheKey));
+
+    MString *code;
+
+    switch (module->key.kind) {
+    case VK_SHADER_STAGE_VERTEX_BIT:
+        code = pgraph_glsl_gen_vsh(&module->key.vsh.state,
+                                   module->key.vsh.glsl_opts);
+        break;
+    case VK_SHADER_STAGE_GEOMETRY_BIT:
+        code = pgraph_glsl_gen_geom(&module->key.geom.state,
+                                    module->key.geom.glsl_opts);
+        break;
+    case VK_SHADER_STAGE_FRAGMENT_BIT:
+        code = pgraph_glsl_gen_psh(&module->key.psh.state,
+                                   module->key.psh.glsl_opts);
+        break;
+    default:
+        assert(!"Invalid shader module kind");
+        code = NULL;
+    }
+
+    module->module_info = pgraph_vk_create_shader_module_from_glsl(
+        r, module->key.kind, mstring_get_str(code));
+    pgraph_vk_ref_shader_module(module->module_info);
+    mstring_unref(code);
+}
+
+static void shader_module_cache_entry_post_evict(Lru *lru, LruNode *node)
+{
+    PGRAPHVkState *r = container_of(lru, PGRAPHVkState, shader_module_cache);
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    pgraph_vk_unref_shader_module(r, module->module_info);
+    module->module_info = NULL;
+}
+
+static bool shader_module_cache_entry_compare(Lru *lru, LruNode *node,
+                                              void *key)
+{
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    return memcmp(&module->key, key, sizeof(ShaderModuleCacheKey));
 }
 
 static void shader_cache_init(PGRAPHState *pg)
@@ -295,6 +345,22 @@ static void shader_cache_init(PGRAPHState *pg)
     r->shader_cache.init_node = shader_cache_entry_init;
     r->shader_cache.compare_nodes = shader_cache_entry_compare;
     r->shader_cache.post_node_evict = shader_cache_entry_post_evict;
+
+    /* FIXME: Make this configurable */
+    const size_t shader_module_cache_size = 50 * 1024;
+    lru_init(&r->shader_module_cache);
+    r->shader_module_cache_entries =
+        g_malloc_n(shader_module_cache_size, sizeof(ShaderModuleCacheEntry));
+    assert(r->shader_module_cache_entries != NULL);
+    for (int i = 0; i < shader_module_cache_size; i++) {
+        lru_add_free(&r->shader_module_cache,
+                     &r->shader_module_cache_entries[i].node);
+    }
+
+    r->shader_module_cache.init_node = shader_module_cache_entry_init;
+    r->shader_module_cache.compare_nodes = shader_module_cache_entry_compare;
+    r->shader_module_cache.post_node_evict =
+        shader_module_cache_entry_post_evict;
 }
 
 static void shader_cache_finalize(PGRAPHState *pg)
@@ -304,6 +370,21 @@ static void shader_cache_finalize(PGRAPHState *pg)
     lru_flush(&r->shader_cache);
     g_free(r->shader_cache_entries);
     r->shader_cache_entries = NULL;
+
+    lru_flush(&r->shader_module_cache);
+    g_free(r->shader_module_cache_entries);
+    r->shader_module_cache_entries = NULL;
+}
+
+static ShaderModuleInfo *
+get_and_ref_shader_module_for_key(PGRAPHVkState *r, ShaderModuleCacheKey *key)
+{
+    uint64_t hash = fast_hash((void *)key, sizeof(ShaderModuleCacheKey));
+    LruNode *node = lru_lookup(&r->shader_module_cache, hash, key);
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    pgraph_vk_ref_shader_module(module->module_info);
+    return module->module_info;
 }
 
 static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
@@ -328,46 +409,36 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
         /* Ensure numeric values are printed with '.' radix, no grouping */
         setlocale(LC_NUMERIC, "C");
 
-        MString *geometry_shader_code = pgraph_glsl_gen_geom(
-            &state->geom, (GenGeomGlslOptions){ .vulkan = true });
-        if (geometry_shader_code) {
-            NV2A_VK_DPRINTF("geometry shader: \n%s",
-                            mstring_get_str(geometry_shader_code));
-            snode->geometry = pgraph_vk_create_shader_module_from_glsl(
-                r, VK_SHADER_STAGE_GEOMETRY_BIT,
-                mstring_get_str(geometry_shader_code));
-            mstring_unref(geometry_shader_code);
+        ShaderModuleCacheKey key;
+
+        bool need_geometry_shader = pgraph_glsl_need_geom(&state->geom);
+        if (need_geometry_shader) {
+            memset(&key, 0, sizeof(key));
+            key.kind = VK_SHADER_STAGE_GEOMETRY_BIT;
+            key.geom.state = state->geom;
+            key.geom.glsl_opts.vulkan = true;
+            snode->geometry = get_and_ref_shader_module_for_key(r, &key);
         } else {
             snode->geometry = NULL;
         }
 
-        MString *vertex_shader_code = pgraph_glsl_gen_vsh(
-            &state->vsh, (GenVshGlslOptions){
-                             .vulkan = true,
-                             .prefix_outputs = geometry_shader_code != NULL,
-                             .use_push_constants_for_uniform_attrs =
-                                 r->use_push_constants_for_uniform_attrs,
-                             .ubo_binding = VSH_UBO_BINDING,
-                         });
-        NV2A_VK_DPRINTF("vertex shader: \n%s",
-                        mstring_get_str(vertex_shader_code));
-        snode->vertex = pgraph_vk_create_shader_module_from_glsl(
-            r, VK_SHADER_STAGE_VERTEX_BIT,
-            mstring_get_str(vertex_shader_code));
-        mstring_unref(vertex_shader_code);
+        memset(&key, 0, sizeof(key));
+        key.kind = VK_SHADER_STAGE_VERTEX_BIT;
+        key.vsh.state = state->vsh;
+        key.vsh.glsl_opts.vulkan = true;
+        key.vsh.glsl_opts.prefix_outputs = need_geometry_shader;
+        key.vsh.glsl_opts.use_push_constants_for_uniform_attrs =
+            r->use_push_constants_for_uniform_attrs;
+        key.vsh.glsl_opts.ubo_binding = VSH_UBO_BINDING;
+        snode->vertex = get_and_ref_shader_module_for_key(r, &key);
 
-        MString *fragment_shader_code = pgraph_glsl_gen_psh(
-            &state->psh, (GenPshGlslOptions){
-                .vulkan = true,
-                .ubo_binding = PSH_UBO_BINDING,
-                .tex_binding = PSH_TEX_BINDING,
-            });
-        NV2A_VK_DPRINTF("fragment shader: \n%s",
-                        mstring_get_str(fragment_shader_code));
-        snode->fragment = pgraph_vk_create_shader_module_from_glsl(
-            r, VK_SHADER_STAGE_FRAGMENT_BIT,
-            mstring_get_str(fragment_shader_code));
-        mstring_unref(fragment_shader_code);
+        memset(&key, 0, sizeof(key));
+        key.kind = VK_SHADER_STAGE_FRAGMENT_BIT;
+        key.psh.state = state->psh;
+        key.psh.glsl_opts.vulkan = true;
+        key.psh.glsl_opts.ubo_binding = PSH_UBO_BINDING;
+        key.psh.glsl_opts.tex_binding = PSH_TEX_BINDING;
+        snode->fragment = get_and_ref_shader_module_for_key(r, &key);
 
         if (previous_numeric_locale) {
             setlocale(LC_NUMERIC, previous_numeric_locale);
