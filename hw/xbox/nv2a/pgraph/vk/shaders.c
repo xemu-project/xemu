@@ -18,7 +18,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/xbox/nv2a/pgraph/util.h"
 #include "qemu/fast-hash.h"
 #include "qemu/mstring.h"
 #include "renderer.h"
