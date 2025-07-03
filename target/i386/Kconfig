@@ -1,0 +1,9 @@
+config I386
+    bool
+    select APIC
+    # kvm_arch_fixup_msi_route() needs to access PCIDevice
+    select PCI if KVM
+
+config X86_64
+    bool
+    select I386
