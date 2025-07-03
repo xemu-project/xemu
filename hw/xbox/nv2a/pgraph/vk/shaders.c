@@ -416,7 +416,7 @@ static void shader_cache_finalize(PGRAPHState *pg)
 }
 
 static ShaderBinding *get_shader_binding_for_state(PGRAPHVkState *r,
-                                                   ShaderState *state)
+                                                   const ShaderState *state)
 {
     uint64_t hash = fast_hash((void *)state, sizeof(*state));
     LruNode *node = lru_lookup(&r->shader_cache, hash, state);

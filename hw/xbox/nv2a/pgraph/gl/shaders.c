@@ -184,7 +184,7 @@ static bool shader_module_cache_entry_compare(Lru *lru, LruNode *node,
 }
 
 static GLuint get_shader_module_for_key(PGRAPHGLState *r,
-                                        ShaderModuleCacheKey *key)
+                                        const ShaderModuleCacheKey *key)
 {
     uint64_t hash = fast_hash((void *)key, sizeof(ShaderModuleCacheKey));
     LruNode *node = lru_lookup(&r->shader_module_cache, hash, key);
