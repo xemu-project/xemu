@@ -82,6 +82,30 @@ typedef struct TextureBinding {
     GLuint gl_texture;
 } TextureBinding;
 
+typedef struct ShaderModuleCacheKey {
+    GLenum kind;
+    union {
+        struct {
+            VshState state;
+            GenVshGlslOptions glsl_opts;
+        } vsh;
+        struct {
+            GeomState state;
+            GenGeomGlslOptions glsl_opts;
+        } geom;
+        struct {
+            PshState state;
+            GenPshGlslOptions glsl_opts;
+        } psh;
+    };
+} ShaderModuleCacheKey;
+
+typedef struct ShaderModuleCacheEntry {
+    LruNode node;
+    ShaderModuleCacheKey key;
+    GLuint gl_shader;
+} ShaderModuleCacheEntry;
+
 typedef struct ShaderBinding {
     LruNode node;
     bool initialized;
@@ -174,6 +198,9 @@ typedef struct PGRAPHGLState {
     ShaderBinding *shader_binding;
     QemuMutex shader_cache_lock;
     QemuThread shader_disk_thread;
+
+    Lru shader_module_cache;
+    ShaderModuleCacheEntry *shader_module_cache_entries;
 
     unsigned int zpass_pixel_count_result;
     unsigned int gl_zpass_pixel_count_query_count;

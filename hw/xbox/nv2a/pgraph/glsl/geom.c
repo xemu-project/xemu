@@ -39,6 +39,74 @@ void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *state)
                             NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
 }
 
+bool pgraph_glsl_need_geom(const GeomState *state)
+{
+    /* FIXME: Missing support for 2-sided-poly mode */
+    assert(state->polygon_front_mode == state->polygon_back_mode);
+    enum ShaderPolygonMode polygon_mode = state->polygon_front_mode;
+
+    /* POINT mode shouldn't require any special work */
+    if (polygon_mode == POLY_MODE_POINT) {
+        return false;
+    }
+
+    switch (state->primitive_mode) {
+    case PRIM_TYPE_TRIANGLES:
+        if (polygon_mode == POLY_MODE_FILL) {
+            return false;
+        }
+        return true;
+    case PRIM_TYPE_TRIANGLE_STRIP:
+        if (polygon_mode == POLY_MODE_FILL) {
+            return false;
+        }
+        assert(polygon_mode == POLY_MODE_LINE);
+        return true;
+    case PRIM_TYPE_TRIANGLE_FAN:
+        if (polygon_mode == POLY_MODE_FILL) {
+            return false;
+        }
+        assert(polygon_mode == POLY_MODE_LINE);
+        return true;
+    case PRIM_TYPE_QUADS:
+        if (polygon_mode == POLY_MODE_LINE) {
+            return true;
+        } else if (polygon_mode == POLY_MODE_FILL) {
+            return true;
+        } else {
+            assert(false);
+            return false;
+        }
+        break;
+    case PRIM_TYPE_QUAD_STRIP:
+        if (polygon_mode == POLY_MODE_LINE) {
+            return true;
+        } else if (polygon_mode == POLY_MODE_FILL) {
+            return true;
+        } else {
+            assert(false);
+            return false;
+        }
+        break;
+    case PRIM_TYPE_POLYGON:
+        if (polygon_mode == POLY_MODE_LINE) {
+            return false;
+        }
+        if (polygon_mode == POLY_MODE_FILL) {
+            if (state->smooth_shading) {
+                return false;
+            }
+            return true;
+        } else {
+            assert(false);
+            return false;
+        }
+        break;
+    default:
+        return false;
+    }
+}
+
 MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
 {
     /* FIXME: Missing support for 2-sided-poly mode */
