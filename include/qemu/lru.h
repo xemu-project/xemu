@@ -46,10 +46,10 @@ struct Lru {
 	int num_free;
 
 	/* Initialize a node. */
-	void (*init_node)(Lru *lru, LruNode *node, void *key);
+	void (*init_node)(Lru *lru, LruNode *node, const void *key);
 
 	/* In case of hash collision. Return `true` if nodes differ. */
-	bool (*compare_nodes)(Lru *lru, LruNode *node, void *key);
+	bool (*compare_nodes)(Lru *lru, LruNode *node, const void *key);
 
 	/* Optional. Called before eviction. Return `false` to prevent eviction. */
 	bool (*pre_node_evict)(Lru *lru, LruNode *node);
@@ -172,7 +172,7 @@ bool lru_contains_hash(Lru *lru, uint64_t hash)
 }
 
 static inline
-LruNode *lru_lookup(Lru *lru, uint64_t hash, void *key)
+LruNode *lru_lookup(Lru *lru, uint64_t hash, const void *key)
 {
 	unsigned int bin = lru_hash_to_bin(lru, hash);
 	LruNode *iter, *found = NULL;

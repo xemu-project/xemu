@@ -242,7 +242,8 @@ static void update_shader_uniform_locs(ShaderBinding *binding)
 }
 
 static ShaderModuleInfo *
-get_and_ref_shader_module_for_key(PGRAPHVkState *r, ShaderModuleCacheKey *key)
+get_and_ref_shader_module_for_key(PGRAPHVkState *r,
+                                  const ShaderModuleCacheKey *key)
 {
     uint64_t hash = fast_hash((void *)key, sizeof(ShaderModuleCacheKey));
     LruNode *node = lru_lookup(&r->shader_module_cache, hash, key);
@@ -252,7 +253,7 @@ get_and_ref_shader_module_for_key(PGRAPHVkState *r, ShaderModuleCacheKey *key)
     return module->module_info;
 }
 
-static void shader_cache_entry_init(Lru *lru, LruNode *node, void *state)
+static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
 {
     PGRAPHVkState *r = container_of(lru, PGRAPHVkState, shader_cache);
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
@@ -312,13 +313,14 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
     }
 }
 
-static bool shader_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+static bool shader_cache_entry_compare(Lru *lru, LruNode *node, const void *key)
 {
     ShaderBinding *snode = container_of(node, ShaderBinding, node);
     return memcmp(&snode->state, key, sizeof(ShaderState));
 }
 
-static void shader_module_cache_entry_init(Lru *lru, LruNode *node, void *key)
+static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
+                                           const void *key)
 {
     PGRAPHVkState *r = container_of(lru, PGRAPHVkState, shader_module_cache);
     ShaderModuleCacheEntry *module =
@@ -361,7 +363,7 @@ static void shader_module_cache_entry_post_evict(Lru *lru, LruNode *node)
 }
 
 static bool shader_module_cache_entry_compare(Lru *lru, LruNode *node,
-                                              void *key)
+                                              const void *key)
 {
     ShaderModuleCacheEntry *module =
         container_of(node, ShaderModuleCacheEntry, node);

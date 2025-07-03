@@ -131,7 +131,8 @@ static void update_shader_uniform_locs(ShaderBinding *binding)
     }
 }
 
-static void shader_module_cache_entry_init(Lru *lru, LruNode *node, void *key)
+static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
+                                           const void *key)
 {
     ShaderModuleCacheEntry *module =
         container_of(node, ShaderModuleCacheEntry, node);
@@ -175,7 +176,7 @@ static void shader_module_cache_entry_post_evict(Lru *lru, LruNode *node)
 }
 
 static bool shader_module_cache_entry_compare(Lru *lru, LruNode *node,
-                                              void *key)
+                                              const void *key)
 {
     ShaderModuleCacheEntry *module =
         container_of(node, ShaderModuleCacheEntry, node);
@@ -491,7 +492,7 @@ static void *shader_reload_lru_from_disk(void *arg)
     return NULL;
 }
 
-static void shader_cache_entry_init(Lru *lru, LruNode *node, void *state)
+static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
 {
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
     memcpy(&binding->state, state, sizeof(ShaderState));
@@ -521,7 +522,7 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
     memset(&binding->state, 0, sizeof(ShaderState));
 }
 
-static bool shader_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+static bool shader_cache_entry_compare(Lru *lru, LruNode *node, const void *key)
 {
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
     return memcmp(&binding->state, key, sizeof(ShaderState));
