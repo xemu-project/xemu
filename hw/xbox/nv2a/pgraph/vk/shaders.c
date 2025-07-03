@@ -248,11 +248,58 @@ static void update_shader_uniform_locs(ShaderBinding *binding)
     }
 }
 
+static ShaderModuleInfo *
+get_and_ref_shader_module_for_key(PGRAPHVkState *r, ShaderModuleCacheKey *key)
+{
+    uint64_t hash = fast_hash((void *)key, sizeof(ShaderModuleCacheKey));
+    LruNode *node = lru_lookup(&r->shader_module_cache, hash, key);
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    pgraph_vk_ref_shader_module(module->module_info);
+    return module->module_info;
+}
+
 static void shader_cache_entry_init(Lru *lru, LruNode *node, void *state)
 {
-    ShaderBinding *snode = container_of(node, ShaderBinding, node);
-    memcpy(&snode->state, state, sizeof(ShaderState));
-    snode->initialized = false;
+    PGRAPHVkState *r = container_of(lru, PGRAPHVkState, shader_cache);
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
+    memcpy(&binding->state, state, sizeof(ShaderState));
+
+    NV2A_VK_DPRINTF("cache miss");
+    nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
+
+    ShaderModuleCacheKey key;
+
+    bool need_geometry_shader = pgraph_glsl_need_geom(&binding->state.geom);
+    if (need_geometry_shader) {
+        memset(&key, 0, sizeof(key));
+        key.kind = VK_SHADER_STAGE_GEOMETRY_BIT;
+        key.geom.state = binding->state.geom;
+        key.geom.glsl_opts.vulkan = true;
+        binding->geom.module_info = get_and_ref_shader_module_for_key(r, &key);
+    } else {
+        binding->geom.module_info = NULL;
+    }
+
+    memset(&key, 0, sizeof(key));
+    key.kind = VK_SHADER_STAGE_VERTEX_BIT;
+    key.vsh.state = binding->state.vsh;
+    key.vsh.glsl_opts.vulkan = true;
+    key.vsh.glsl_opts.prefix_outputs = need_geometry_shader;
+    key.vsh.glsl_opts.use_push_constants_for_uniform_attrs =
+        r->use_push_constants_for_uniform_attrs;
+    key.vsh.glsl_opts.ubo_binding = VSH_UBO_BINDING;
+    binding->vsh.module_info = get_and_ref_shader_module_for_key(r, &key);
+
+    memset(&key, 0, sizeof(key));
+    key.kind = VK_SHADER_STAGE_FRAGMENT_BIT;
+    key.psh.state = binding->state.psh;
+    key.psh.glsl_opts.vulkan = true;
+    key.psh.glsl_opts.ubo_binding = PSH_UBO_BINDING;
+    key.psh.glsl_opts.tex_binding = PSH_TEX_BINDING;
+    binding->psh.module_info = get_and_ref_shader_module_for_key(r, &key);
+
+    update_shader_uniform_locs(binding);
 }
 
 static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
@@ -270,8 +317,6 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
             pgraph_vk_unref_shader_module(r, modules[i]);
         }
     }
-
-    snode->initialized = false;
 }
 
 static bool shader_cache_entry_compare(Lru *lru, LruNode *node, void *key)
@@ -375,69 +420,14 @@ static void shader_cache_finalize(PGRAPHState *pg)
     r->shader_module_cache_entries = NULL;
 }
 
-static ShaderModuleInfo *
-get_and_ref_shader_module_for_key(PGRAPHVkState *r, ShaderModuleCacheKey *key)
+static ShaderBinding *get_shader_binding_for_state(PGRAPHVkState *r,
+                                                   ShaderState *state)
 {
-    uint64_t hash = fast_hash((void *)key, sizeof(ShaderModuleCacheKey));
-    LruNode *node = lru_lookup(&r->shader_module_cache, hash, key);
-    ShaderModuleCacheEntry *module =
-        container_of(node, ShaderModuleCacheEntry, node);
-    pgraph_vk_ref_shader_module(module->module_info);
-    return module->module_info;
-}
-
-static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
-{
-    PGRAPHVkState *r = pg->vk_renderer_state;
-
     uint64_t hash = fast_hash((void *)state, sizeof(*state));
     LruNode *node = lru_lookup(&r->shader_cache, hash, state);
-    ShaderBinding *snode = container_of(node, ShaderBinding, node);
-
-    NV2A_VK_DPRINTF("shader state hash: %016" PRIx64 " %p", hash, snode);
-
-    if (!snode->initialized) {
-        NV2A_VK_DPRINTF("cache miss");
-        nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
-
-        ShaderModuleCacheKey key;
-
-        bool need_geometry_shader = pgraph_glsl_need_geom(&state->geom);
-        if (need_geometry_shader) {
-            memset(&key, 0, sizeof(key));
-            key.kind = VK_SHADER_STAGE_GEOMETRY_BIT;
-            key.geom.state = state->geom;
-            key.geom.glsl_opts.vulkan = true;
-            snode->geom.module_info =
-                get_and_ref_shader_module_for_key(r, &key);
-        } else {
-            snode->geom.module_info = NULL;
-        }
-
-        memset(&key, 0, sizeof(key));
-        key.kind = VK_SHADER_STAGE_VERTEX_BIT;
-        key.vsh.state = state->vsh;
-        key.vsh.glsl_opts.vulkan = true;
-        key.vsh.glsl_opts.prefix_outputs = need_geometry_shader;
-        key.vsh.glsl_opts.use_push_constants_for_uniform_attrs =
-            r->use_push_constants_for_uniform_attrs;
-        key.vsh.glsl_opts.ubo_binding = VSH_UBO_BINDING;
-        snode->vsh.module_info = get_and_ref_shader_module_for_key(r, &key);
-
-        memset(&key, 0, sizeof(key));
-        key.kind = VK_SHADER_STAGE_FRAGMENT_BIT;
-        key.psh.state = state->psh;
-        key.psh.glsl_opts.vulkan = true;
-        key.psh.glsl_opts.ubo_binding = PSH_UBO_BINDING;
-        key.psh.glsl_opts.tex_binding = PSH_TEX_BINDING;
-        snode->psh.module_info = get_and_ref_shader_module_for_key(r, &key);
-
-        update_shader_uniform_locs(snode);
-
-        snode->initialized = true;
-    }
-
-    return snode;
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
+    NV2A_VK_DPRINTF("shader state hash: %016" PRIx64 " %p", hash, binding);
+    return binding;
 }
 
 static void apply_uniform_updates(ShaderUniformLayout *layout,
@@ -520,7 +510,7 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
         ShaderState new_state = pgraph_glsl_get_shader_state(pg);
         if (!r->shader_binding || memcmp(&r->shader_binding->state, &new_state,
                                          sizeof(ShaderState))) {
-            r->shader_binding = gen_shaders(pg, &new_state);
+            r->shader_binding = get_shader_binding_for_state(r, &new_state);
             r->shader_bindings_changed = true;
         }
     } else {
