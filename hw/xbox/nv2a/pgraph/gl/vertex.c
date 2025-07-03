@@ -223,9 +223,9 @@ unsigned int pgraph_gl_bind_inline_array(NV2AState *d)
 
     nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_2);
     glBindBuffer(GL_ARRAY_BUFFER, r->gl_inline_array_buffer);
-    glBufferData(GL_ARRAY_BUFFER, NV2A_MAX_BATCH_LENGTH * sizeof(uint32_t),
-                 NULL, GL_STREAM_DRAW);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, index_count * vertex_size, pg->inline_array);
+    GLsizeiptr buffer_size = index_count * vertex_size;
+    glBufferData(GL_ARRAY_BUFFER, buffer_size, NULL, GL_STREAM_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, buffer_size, pg->inline_array);
     pgraph_gl_bind_vertex_attributes(d, 0, index_count-1, true, vertex_size,
                                   index_count-1);
 
