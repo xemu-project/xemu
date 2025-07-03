@@ -746,15 +746,15 @@ static void create_pipeline(PGRAPHState *pg)
         (VkPipelineShaderStageCreateInfo){
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = r->shader_binding->vertex->module,
+            .module = r->shader_binding->vsh.module_info->module,
             .pName = "main",
         };
-    if (r->shader_binding->geometry) {
+    if (r->shader_binding->geom.module_info) {
         shader_stages[num_active_shader_stages++] =
             (VkPipelineShaderStageCreateInfo){
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage = VK_SHADER_STAGE_GEOMETRY_BIT,
-                .module = r->shader_binding->geometry->module,
+                .module = r->shader_binding->geom.module_info->module,
                 .pName = "main",
             };
     }
@@ -762,7 +762,7 @@ static void create_pipeline(PGRAPHState *pg)
         (VkPipelineShaderStageCreateInfo){
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = r->shader_binding->fragment->module,
+            .module = r->shader_binding->psh.module_info->module,
             .pName = "main",
         };
 
