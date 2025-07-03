@@ -25,14 +25,6 @@
 
 #include "renderer.h"
 
-VkDeviceSize pgraph_vk_update_index_buffer(PGRAPHState *pg, void *data,
-                                           VkDeviceSize size)
-{
-    nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_2);
-    return pgraph_vk_append_to_buffer(pg, BUFFER_INDEX_STAGING, &data, &size, 1,
-                                      1);
-}
-
 VkDeviceSize pgraph_vk_update_vertex_inline_buffer(PGRAPHState *pg, void **data,
                                                    VkDeviceSize *sizes,
                                                    size_t count)
