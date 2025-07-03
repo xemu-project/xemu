@@ -28,7 +28,6 @@
 #include "qemu/fast-hash.h"
 #include "qemu/mstring.h"
 #include "renderer.h"
-#include <locale.h>
 
 #define VSH_UBO_BINDING 0
 #define PSH_UBO_BINDING 1
@@ -401,14 +400,6 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
         NV2A_VK_DPRINTF("cache miss");
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
 
-        char *previous_numeric_locale = setlocale(LC_NUMERIC, NULL);
-        if (previous_numeric_locale) {
-            previous_numeric_locale = g_strdup(previous_numeric_locale);
-        }
-
-        /* Ensure numeric values are printed with '.' radix, no grouping */
-        setlocale(LC_NUMERIC, "C");
-
         ShaderModuleCacheKey key;
 
         bool need_geometry_shader = pgraph_glsl_need_geom(&state->geom);
@@ -440,11 +431,6 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
         key.psh.glsl_opts.ubo_binding = PSH_UBO_BINDING;
         key.psh.glsl_opts.tex_binding = PSH_TEX_BINDING;
         snode->psh.module_info = get_and_ref_shader_module_for_key(r, &key);
-
-        if (previous_numeric_locale) {
-            setlocale(LC_NUMERIC, previous_numeric_locale);
-            g_free(previous_numeric_locale);
-        }
 
         update_shader_uniform_locs(snode);
 

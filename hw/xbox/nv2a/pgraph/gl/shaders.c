@@ -22,7 +22,6 @@
 #include "qemu/osdep.h"
 #include "qemu/fast-hash.h"
 #include "qemu/mstring.h"
-#include <locale.h>
 
 #include "xemu-version.h"
 #include "ui/xemu-settings.h"
@@ -195,13 +194,6 @@ static GLuint get_shader_module_for_key(PGRAPHGLState *r,
 
 static void generate_shaders(PGRAPHGLState *r, ShaderBinding *binding)
 {
-    char *previous_numeric_locale = setlocale(LC_NUMERIC, NULL);
-    if (previous_numeric_locale) {
-        previous_numeric_locale = g_strdup(previous_numeric_locale);
-    }
-
-    /* Ensure numeric values are printed with '.' radix, no grouping */
-    setlocale(LC_NUMERIC, "C");
     GLuint program = glCreateProgram();
 
     ShaderState *state = &binding->state;
@@ -260,11 +252,6 @@ static void generate_shaders(PGRAPHGLState *r, ShaderBinding *binding)
     }
 
     update_shader_uniform_locs(binding);
-
-    if (previous_numeric_locale) {
-        setlocale(LC_NUMERIC, previous_numeric_locale);
-        g_free(previous_numeric_locale);
-    }
 }
 
 static const char *shader_gl_vendor = NULL;

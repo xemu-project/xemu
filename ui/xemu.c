@@ -58,6 +58,7 @@
 #include "ui/xemu-notifications.h"
 
 #include <stb_image.h>
+#include <locale.h>
 
 #ifdef _WIN32
 // Provide hint to prefer high-performance graphics for hybrid systems
@@ -1267,6 +1268,8 @@ static void sleep_ns(int64_t ns)
 int main(int argc, char **argv)
 {
     QemuThread thread;
+
+    setlocale(LC_NUMERIC, "C");
 
 #ifdef _WIN32
     if (AttachConsole(ATTACH_PARENT_PROCESS)) {
