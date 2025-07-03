@@ -2,69 +2,83 @@
 #define MSTRING_H
 
 #include "qemu/osdep.h"
-#include <string.h>
+#include "glib.h"
 
 typedef struct {
-   int ref;
-   gchar *string;
+    GString *gstr;
+    int refcnt;
 } MString;
 
-void mstring_append_fmt(MString *mstring, const char *fmt, ...) __attribute__ ((format (printf, 2, 3)));
-MString *mstring_from_fmt(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
-void mstring_append_va(MString *mstring, const char *fmt, va_list va) __attribute__ ((format (printf, 2, 0)));
-
-static inline
-void mstring_ref(MString *mstr)
+static inline void mstring_ref(MString *mstr)
 {
-   mstr->ref++;
+    mstr->refcnt++;
 }
 
-static inline
-void mstring_unref(MString *mstr)
+static inline void mstring_unref(MString *mstr)
 {
-   mstr->ref--;
-   if (!mstr->ref) {
-      g_free(mstr->string);
-      g_free(mstr);
-   }
+    mstr->refcnt--;
+    if (mstr->refcnt == 0) {
+        g_string_free(mstr->gstr, true);
+        g_free(mstr);
+    }
 }
 
-static inline
-void mstring_append(MString *mstr, const char *str)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(MString, mstring_unref)
+
+static inline MString *mstring_new(void)
 {
-   gchar *n = g_strconcat(mstr->string, str, NULL);
-   g_free(mstr->string);
-   mstr->string = n;
+    MString *mstr = g_malloc(sizeof(MString));
+    mstr->refcnt = 1;
+    mstr->gstr = g_string_new("");
+    return mstr;
 }
 
-static inline
-MString *mstring_new(void)
+static inline MString *mstring_from_str(const char *str)
 {
-   MString *mstr = g_malloc(sizeof(MString));
-   mstr->ref = 1;
-   mstr->string = g_strdup("");
-   return mstr;
+    MString *mstr = g_malloc(sizeof(MString));
+    mstr->refcnt = 1;
+    mstr->gstr = g_string_new(str);
+    return mstr;
 }
 
-static inline
-MString *mstring_from_str(const char *str)
+static inline __attribute__((format(printf, 1, 2))) MString *
+mstring_from_fmt(const char *fmt, ...)
 {
-   MString *mstr = g_malloc(sizeof(MString));
-   mstr->ref = 1;
-   mstr->string = g_strdup(str);
-   return mstr;
+    MString *mstr = g_malloc(sizeof(MString));
+    mstr->refcnt = 1;
+
+    va_list args;
+    va_start(args, fmt);
+    // FIXME: Use g_string_new_take (GLib 2.78+)
+    g_autofree gchar *str = g_strdup_vprintf(fmt, args);
+    mstr->gstr = g_string_new(str);
+    va_end(args);
+
+    return mstr;
 }
 
-static inline
-const gchar *mstring_get_str(MString *mstr)
+static inline void mstring_append(MString *mstr, const char *str)
 {
-   return mstr->string;
+    g_string_append(mstr->gstr, str);
 }
 
-static inline
-size_t mstring_get_length(MString *mstr)
+static inline __attribute__((format(printf, 2, 3))) void
+mstring_append_fmt(MString *mstr, const char *fmt, ...)
 {
-   return strlen(mstr->string);
+    va_list args;
+    va_start(args, fmt);
+    g_string_append_vprintf(mstr->gstr, fmt, args);
+    va_end(args);
+}
+
+static inline const gchar *mstring_get_str(MString *mstr)
+{
+    return mstr->gstr->str;
+}
+
+static inline size_t mstring_get_length(MString *mstr)
+{
+    return mstr->gstr->len;
 }
 
 #endif
