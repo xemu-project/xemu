@@ -36,6 +36,10 @@ xemu_ss.add(files(
   'xemu-widescreen.c',
 ))
 
+if host_os == 'windows'
+  xemu_ss.add(nvapi)
+endif
+
 subdir('xui')
 
 if host_os == 'darwin'
