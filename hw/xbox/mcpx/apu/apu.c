@@ -207,6 +207,10 @@ static void monitor_sink_cb(void *opaque, uint8_t *stream, int free_b)
             sleep_ns(1000000);
             qemu_cond_broadcast(&s->cond);
         }
+        if (!runstate_is_running()) {
+            memset(stream, 0, free_b);
+            return;
+        }
     }
 
     int to_copy = MIN(free_b, avail);
