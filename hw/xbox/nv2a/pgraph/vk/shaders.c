@@ -3,12 +3,6 @@
  *
  * Copyright (c) 2024-2025 Matt Borgerson
  *
- * Based on GL implementation:
- *
- * Copyright (c) 2015 espes
- * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2018-2024 Matt Borgerson
- *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
