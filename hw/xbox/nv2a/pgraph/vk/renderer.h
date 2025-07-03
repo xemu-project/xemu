@@ -182,8 +182,6 @@ typedef struct ShaderModuleCacheEntry {
 
 typedef struct ShaderBinding {
     LruNode node;
-    bool initialized;
-
     ShaderState state;
     struct {
         ShaderModuleInfo *module_info;
