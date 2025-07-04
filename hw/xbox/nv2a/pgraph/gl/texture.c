@@ -746,7 +746,7 @@ static void texture_binding_destroy(gpointer data)
 }
 
 /* functions for texture LRU cache */
-static void texture_cache_entry_init(Lru *lru, LruNode *node, void *key)
+static void texture_cache_entry_init(Lru *lru, LruNode *node, const void *key)
 {
     TextureLruNode *tnode = container_of(node, TextureLruNode, node);
     memcpy(&tnode->key, key, sizeof(TextureKey));
@@ -765,7 +765,8 @@ static void texture_cache_entry_post_evict(Lru *lru, LruNode *node)
     }
 }
 
-static bool texture_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+static bool texture_cache_entry_compare(Lru *lru, LruNode *node,
+                                        const void *key)
 {
     TextureLruNode *tnode = container_of(node, TextureLruNode, node);
     return memcmp(&tnode->key, key, sizeof(TextureKey));

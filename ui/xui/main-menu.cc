@@ -174,7 +174,14 @@ void MainMenuInputView::Draw()
         driver = DRIVER_S_DISPLAY_NAME;
     else if (strcmp(driver, DRIVER_STEEL_BATTALION) == 0)
         driver = DRIVER_STEEL_BATTALION_DISPLAY_NAME;
-    
+
+    ImGui::Columns(2, "", false);
+    ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.25);
+
+    ImGui::Text("Emulated Device");
+    ImGui::SameLine(0, 0);
+    ImGui::NextColumn();
+
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("###InputDrivers", driver,
                           ImGuiComboFlags_NoArrowButton)) {
@@ -212,9 +219,15 @@ void MainMenuInputView::Draw()
     }
     DrawComboChevron();
 
+    ImGui::NextColumn();
+
     //
     // Render input device combo
     //
+
+    ImGui::Text("Input Device");
+    ImGui::SameLine(0, 0);
+    ImGui::NextColumn();
 
     // List available input devices
     const char *not_connected = "Not Connected";
