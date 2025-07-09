@@ -68,16 +68,21 @@ static const char *geometry_shader_source =
     "out vec3 fragColor;\n"
     "in vec3 v_fragColor[];\n"
     "\n"
-    "void emit_vertex(int index) {\n"
-    "    gl_Position = gl_in[index].gl_Position;\n"
-    "    fragColor = v_fragColor[0];\n"
-    "    EmitVertex();\n"
-    "}\n"
-    "\n"
     "void main() {\n"
-    "    emit_vertex(0);\n"
-    "    emit_vertex(1);\n"
-    "    emit_vertex(2);\n"
+    "    for (int i = 0; i < 3; i++) {\n"
+             // This should be just:
+             //   gl_Position = gl_in[i].gl_Position;
+             //   fragColor = v_fragColor[0];
+             // but we work around an Nvidia Cg compiler bug which seems to
+             // misdetect above as a passthrough shader and effectively
+             // replaces the last line with "fragColor = v_fragColor[i];".
+             // Doing redundant computation seems to fix it.
+             // TODO: what is the minimal way to avoid the bug?
+    "        gl_Position = gl_in[i].gl_Position + vec4(1.0/16384.0, 1.0/16384.0, 0.0, 0.0);\n"
+    "        precise vec3 color = v_fragColor[0]*(0.999 + gl_in[i].gl_Position.x/16384.0) + v_fragColor[1]*0.00005 + v_fragColor[2]*0.00005;\n"
+    "        fragColor = color;\n"
+    "        EmitVertex();\n"
+    "    }\n"
     "    EndPrimitive();\n"
     "}\n";
 
