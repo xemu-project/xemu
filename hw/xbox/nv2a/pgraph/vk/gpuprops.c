@@ -66,16 +66,19 @@ static const char *geometry_shader_source =
     "layout(location = 0) out vec3 fragColor;\n"
     "layout(location = 0) in vec3 v_fragColor[];\n"
     "\n"
-    "void emit_vertex(int index) {\n"
-    "    gl_Position = gl_in[index].gl_Position;\n"
-    "    fragColor = v_fragColor[0];\n"
-    "    EmitVertex();\n"
-    "}\n"
-    "\n"
     "void main() {\n"
-    "    emit_vertex(0);\n"
-    "    emit_vertex(1);\n"
-    "    emit_vertex(2);\n"
+    "    for (int i = 0; i < 3; i++) {\n"
+             // This should be just:
+             //   gl_Position = gl_in[i].gl_Position;
+             //   fragColor = v_fragColor[0];
+             // but we apply the same Nvidia bug work around from gl/gpuprops.c
+             // to be on the safe side even if the compilers involved with
+             // Vulkan are different.
+    "        gl_Position = gl_in[i].gl_Position + vec4(1.0/16384.0, 1.0/16384.0, 0.0, 0.0);\n"
+    "        precise vec3 color = v_fragColor[0]*(0.999 + gl_in[i].gl_Position.x/16384.0) + v_fragColor[1]*0.00005 + v_fragColor[2]*0.00005;\n"
+    "        fragColor = color;\n"
+    "        EmitVertex();\n"
+    "    }\n"
     "    EndPrimitive();\n"
     "}\n";
 
