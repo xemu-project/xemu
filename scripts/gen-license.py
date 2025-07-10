@@ -337,6 +337,14 @@ LIBS = [
         ships_static=all_platforms,
         submodule=Submodule("subprojects/glslang.wrap"),
     ),
+    Lib(
+        "NVIDIA NVAPI",
+        "https://github.com/NVIDIA/nvapi",
+        mit,
+        license_path="thirdparty/nvapi/nvapi_defs.LICENSE.txt",
+        version="R575",
+        ships_static={windows},
+    ),
     #
     # Data files included with xemu
     #
