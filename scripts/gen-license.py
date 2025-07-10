@@ -44,7 +44,7 @@ def banner(s):
 
 class Lib:
 	def __init__(self, name, url,
-		               license, license_url, license_lines=None,
+		               license, license_url=None, license_path=None, license_lines=None,
 		               submodule=None,
 		               version=None,
 		               ships_static=set(), ships_dynamic=set(),
@@ -54,6 +54,7 @@ class Lib:
 		self.url = url
 		self.license = license
 		self.license_url = license_url
+		self.license_path = license_path or os.path.join('licenses', self.name + '.license.txt')
 		self.license_lines = license_lines
 		self.submodule = submodule
 		self._version = version
@@ -95,10 +96,9 @@ class Lib:
 		assert False, 'Failed to get version info for ' + self.name
 
 	@property
-	def license_text(self):
-		fname = os.path.join('licenses', self.name + '.license.txt')
-		if os.path.exists(fname):
-			with open(fname, 'r', encoding='utf-8') as f:
+	def license_text(self):		
+		if os.path.exists(self.license_path):
+			with open(self.license_path, 'r', encoding='utf-8') as f:
 				return f.read()
 		import requests
 		d = requests.get(self.license_url).content.decode('utf-8')
