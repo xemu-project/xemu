@@ -125,10 +125,6 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
 
     /* TODO: frontface/backface culling for polygon modes POLY_MODE_LINE and
      * POLY_MODE_POINT.
-     * FIXME: OpenGL/Vulkan does not specify absolute vertex order when input
-     * is a triangle list, triangle strip or fan. Only vertex winding order
-     * is specified. Currently we assume input triangle vertex order follows
-     * the last provoking vertex convention.
      */
     switch (state->primitive_mode) {
     case PRIM_TYPE_POINTS: return NULL;
