@@ -227,10 +227,7 @@ void pgraph_gl_draw_begin(NV2AState *d)
 
     glEnable(GL_DEPTH_CLAMP);
 
-    /* Set first vertex convention to match Vulkan default. This is needed
-     * because geometry shader outputs line strips with data for fragment
-     * shader.
-     */
+    /* Set first vertex convention to match Vulkan default */
     glProvokingVertex(GL_FIRST_VERTEX_CONVENTION);
 
     if (stencil_test) {
