@@ -479,11 +479,12 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
     mstring_append(body,
     "  oPos = tPosition * compositeMat;\n"
-    "  oPos.z = oPos.z / clipRange.y;\n"
     "  oPos.w = clampAwayZeroInf(oPos.w);\n"
     "  oPos.xy /= oPos.w;\n"
     "  oPos.xy += c[" stringify(NV_IGRAPH_XF_XFCTX_VPOFF) "].xy;\n"
     "  oPos.xy = roundScreenCoords(oPos.xy);\n"
+    "  vec4 vtxPos = vec4(oPos.xy, oPos.z / oPos.w, oPos.w);\n"
+    "  oPos.z = oPos.z / clipRange.y;\n"
     "  oPos.xy = (2.0f * oPos.xy - surfaceSize) / surfaceSize;\n"
     "  oPos.xy *= oPos.w;\n"
     );
