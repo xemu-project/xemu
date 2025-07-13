@@ -135,10 +135,7 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
         need_linez = true;
         layout_in = "layout(lines) in;\n";
         layout_out = "layout(line_strip, max_vertices = 2) out;\n";
-        body = "  mat4 pz = calc_linez(0, 1);\n"
-               "  emit_vertex(0, pz);\n"
-               "  emit_vertex(1, pz);\n"
-               "  EndPrimitive();\n";
+        body = "  emit_line(0, 1, 0.0);\n";
         break;
     case PRIM_TYPE_TRIANGLES:
     case PRIM_TYPE_TRIANGLE_STRIP:
@@ -163,19 +160,11 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                    "  EndPrimitive();\n";
         } else if (polygon_mode == POLY_MODE_LINE) {
             need_linez = true;
-            layout_out = "layout(line_strip, max_vertices = 4) out;\n";
+            layout_out = "layout(line_strip, max_vertices = 6) out;\n";
             body = "  float dz = calc_triz(v[0], v[1], v[2])[3].x;\n"
-                   "  mat4 pz1 = calc_linez(v[0], v[1]);\n"
-                   "  pz1[3].x = dz;\n"
-                   "  mat4 pz2 = calc_linez(v[1], v[2]);\n"
-                   "  pz2[3].x = dz;\n"
-                   "  mat4 pz3 = calc_linez(v[2], v[0]);\n"
-                   "  pz3[3].x = dz;\n"
-                   "  emit_vertex(v[0], pz1);\n"
-                   "  emit_vertex(v[1], pz2);\n"
-                   "  emit_vertex(v[2], pz3);\n"
-                   "  emit_vertex(v[0], pz3);\n"
-                   "  EndPrimitive();\n";
+                   "  emit_line(v[0], v[1], dz);\n"
+                   "  emit_line(v[1], v[2], dz);\n"
+                   "  emit_line(v[2], v[0], dz);\n";
         } else {
             assert(polygon_mode == POLY_MODE_POINT);
             layout_out = "layout(points, max_vertices = 3) out;\n";
@@ -193,33 +182,26 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
         need_quadz = true;
         layout_in = "layout(lines_adjacency) in;\n";
         if (polygon_mode == POLY_MODE_FILL) {
-            layout_out = "layout(triangle_strip, max_vertices = 4) out;\n";
+            layout_out = "layout(triangle_strip, max_vertices = 6) out;\n";
             body = "  mat4 pz, pz2;\n"
                    "  calc_quadz(0, 1, 2, 3, pz, pz2);\n"
                    "  emit_vertex(1, pz);\n"
-                   "  emit_vertex(2, pz2);\n"
+                   "  emit_vertex(2, pz);\n"
                    "  emit_vertex(0, pz);\n"
+                   "  EndPrimitive();\n"
+                   "  emit_vertex(2, pz2);\n"
                    "  emit_vertex(3, pz2);\n"
+                   "  emit_vertex(0, pz2);\n"
                    "  EndPrimitive();\n";
         } else if (polygon_mode == POLY_MODE_LINE) {
             need_linez = true;
-            layout_out = "layout(line_strip, max_vertices = 5) out;\n";
+            layout_out = "layout(line_strip, max_vertices = 8) out;\n";
             body = "  mat4 pz, pzs;\n"
                    "  calc_quadz(0, 1, 2, 3, pz, pzs);\n"
-                   "  mat4 pz1 = calc_linez(0, 1);\n"
-                   "  pz1[3].x = pz[3].x;\n"
-                   "  mat4 pz2 = calc_linez(1, 2);\n"
-                   "  pz2[3].x = pz[3].x;\n"
-                   "  mat4 pz3 = calc_linez(2, 3);\n"
-                   "  pz3[3].x = pzs[3].x;\n"
-                   "  mat4 pz4 = calc_linez(3, 0);\n"
-                   "  pz4[3].x = pzs[3].x;\n"
-                   "  emit_vertex(0, pz1);\n"
-                   "  emit_vertex(1, pz2);\n"
-                   "  emit_vertex(2, pz3);\n"
-                   "  emit_vertex(3, pz4);\n"
-                   "  emit_vertex(0, pz4);\n"
-                   "  EndPrimitive();\n";
+                   "  emit_line(0, 1, pz[3].x);\n"
+                   "  emit_line(1, 2, pz[3].x);\n"
+                   "  emit_line(2, 3, pzs[3].x);\n"
+                   "  emit_line(3, 0, pzs[3].x);\n";
         } else {
             assert(polygon_mode == POLY_MODE_POINT);
             layout_out = "layout(points, max_vertices = 4) out;\n";
@@ -240,35 +222,28 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
         need_quadz = true;
         layout_in = "layout(lines_adjacency) in;\n";
         if (polygon_mode == POLY_MODE_FILL) {
-            layout_out = "layout(triangle_strip, max_vertices = 4) out;\n";
+            layout_out = "layout(triangle_strip, max_vertices = 6) out;\n";
             body = "  if ((gl_PrimitiveIDIn & 1) != 0) { return; }\n"
                    "  mat4 pz, pz2;\n"
                    "  calc_quadz(2, 0, 1, 3, pz, pz2);\n"
                    "  emit_vertex(0, pz);\n"
-                   "  emit_vertex(1, pz2);\n"
+                   "  emit_vertex(1, pz);\n"
                    "  emit_vertex(2, pz);\n"
+                   "  EndPrimitive();\n"
+                   "  emit_vertex(2, pz2);\n"
+                   "  emit_vertex(1, pz2);\n"
                    "  emit_vertex(3, pz2);\n"
                    "  EndPrimitive();\n";
         } else if (polygon_mode == POLY_MODE_LINE) {
             need_linez = true;
-            layout_out = "layout(line_strip, max_vertices = 5) out;\n";
+            layout_out = "layout(line_strip, max_vertices = 8) out;\n";
             body = "  if ((gl_PrimitiveIDIn & 1) != 0) { return; }\n"
                    "  mat4 pz, pzs;\n"
                    "  calc_quadz(2, 0, 1, 3, pz, pzs);\n"
-                   "  mat4 pz1 = calc_linez(0, 1);\n"
-                   "  pz1[3].x = pz[3].x;\n"
-                   "  mat4 pz2 = calc_linez(1, 3);\n"
-                   "  pz2[3].x = pzs[3].x;\n"
-                   "  mat4 pz3 = calc_linez(3, 2);\n"
-                   "  pz3[3].x = pzs[3].x;\n"
-                   "  mat4 pz4 = calc_linez(2, 0);\n"
-                   "  pz4[3].x = pz[3].x;\n"
-                   "  emit_vertex(0, pz1);\n"
-                   "  emit_vertex(1, pz2);\n"
-                   "  emit_vertex(3, pz3);\n"
-                   "  emit_vertex(2, pz4);\n"
-                   "  emit_vertex(0, pz4);\n"
-                   "  EndPrimitive();\n";
+                   "  emit_line(0, 1, pz[3].x);\n"
+                   "  emit_line(1, 3, pzs[3].x);\n"
+                   "  emit_line(3, 2, pzs[3].x);\n"
+                   "  emit_line(2, 0, pz[3].x);\n";
         } else {
             assert(polygon_mode == POLY_MODE_POINT);
             layout_out = "layout(points, max_vertices = 4) out;\n";
@@ -306,10 +281,7 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
              */
             layout_in = "layout(lines) in;\n";
             layout_out = "layout(line_strip, max_vertices = 2) out;\n";
-            body = "  mat4 pz = calc_linez(0, 1);\n"
-                   "  emit_vertex(0, pz);\n"
-                   "  emit_vertex(1, pz);\n"
-                   "  EndPrimitive();\n";
+            body = "  emit_line(0, 1, 0.0);\n";
         } else {
             assert(false);
             return NULL;
@@ -408,10 +380,8 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
             "  precise float res = fma(a, b, -cd) + err;\n"
             "  return res;\n"
             "}\n");
-    }
 
-    if (state->z_perspective) {
-        if (need_triz || need_quadz) {
+        if (state->z_perspective) {
             mstring_append(
                 output,
                 "mat4 calc_triz(int i0, int i1, int i2) {\n"
@@ -425,12 +395,10 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                 "  float det = kahan_det(m[0].x, m[1].y, m[1].x, m[0].y);\n"
                 "  float dzx = kahan_det(b.x, m[1].y, b.y, m[0].y) / det;\n"
                 "  float dzy = kahan_det(b.y, m[0].x, b.x, m[1].x) / det;\n"
-                "  float triMZ = max(abs(dzx), abs(dzy));\n"
-                "  return mat4(v_vtxPos[i0], v_vtxPos[i1], v_vtxPos[i2], triMZ, vec3(0.0));\n"
+                "  float dz = max(abs(dzx), abs(dzy));\n"
+                "  return mat4(v_vtxPos[i0], v_vtxPos[i1], v_vtxPos[i2], dz, vec3(0.0));\n"
                 "}\n");
-        }
-    } else {
-        if (need_triz || need_quadz) {
+        } else {
             mstring_append(
                 output,
                 "mat4 calc_triz(int i0, int i1, int i2) {\n"
@@ -443,8 +411,8 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                 "  float det = kahan_det(m[0].x, m[1].y, m[1].x, m[0].y);\n"
                 "  float dzx = kahan_det(b.x, m[1].y, b.y, m[0].y) / det;\n"
                 "  float dzy = kahan_det(b.y, m[0].x, b.x, m[1].x) / det;\n"
-                "  float triMZ = max(abs(dzx), abs(dzy));\n"
-                "  return mat4(v_vtxPos[i0], v_vtxPos[i1], v_vtxPos[i2], triMZ, vec3(0.0));\n"
+                "  float dz = max(abs(dzx), abs(dzy));\n"
+                "  return mat4(v_vtxPos[i0], v_vtxPos[i1], v_vtxPos[i2], dz, vec3(0.0));\n"
                 "}\n");
         }
     }
@@ -454,10 +422,13 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
             output,
             // Calculate a third vertex by rotating 90 degrees so that triangle
             // interpolation in fragment shader can be used as is for lines.
-            "mat4 calc_linez(int i0, int i1) {\n"
+            "void emit_line(int i0, int i1, float dz) {\n"
             "  vec2 delta = v_vtxPos[i1].xy - v_vtxPos[i0].xy;\n"
             "  vec2 v2 = vec2(-delta.y, delta.x) + v_vtxPos[i0].xy;\n"
-            "  return mat4(v_vtxPos[i0], v_vtxPos[i1], v2, v_vtxPos[i0].zw, vec4(0.0));\n"
+            "  mat4 pz = mat4(v_vtxPos[i0], v_vtxPos[i1], v2, v_vtxPos[i0].zw, dz, vec3(0.0));\n"
+            "  emit_vertex(i0, pz);\n"
+            "  emit_vertex(i1, pz);\n"
+            "  EndPrimitive();\n"
             "}\n");
     }
 
