@@ -53,13 +53,21 @@ void pgraph_vk_update_vertex_ram_buffer(PGRAPHState *pg, hwaddr offset,
     size_t end_bit = TARGET_PAGE_ALIGN(offset + size) / TARGET_PAGE_SIZE;
     size_t nbits = end_bit - start_bit;
 
-    if (find_next_bit(r->uploaded_bitmap, start_bit + nbits, start_bit) <
-        end_bit) {
+    // Check if vertex data overlaps with already uploaded data
+    bool overlaps_uploaded = find_next_bit(r->uploaded_bitmap, start_bit + nbits, start_bit) < end_bit;
+
+    // Only force flush if there's actual overlap AND we're in an active draw
+    // This reduces unnecessary flushes for sequential vertex uploads
+    if (overlaps_uploaded && r->in_draw) {
         // Vertex data changed while building the draw list. Finish drawing
         // before updating RAM buffer.
         pgraph_vk_finish(pg, VK_FINISH_REASON_VERTEX_BUFFER_DIRTY);
+    } else if (overlaps_uploaded && !r->in_draw) {
+        // If not actively drawing, just clear the conflicting bits instead of flushing
+        // This allows for better batching of vertex updates
+        bitmap_clear(r->uploaded_bitmap, start_bit, nbits);
     }
-
+    
     nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_1);
     memcpy(r->storage_buffers[BUFFER_VERTEX_RAM].mapped + offset, data, size);
 
