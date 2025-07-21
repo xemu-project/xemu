@@ -503,6 +503,7 @@
 #   define NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE              (1 << 9)
 #   define NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE               (1 << 10)
 #   define NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE               (1 << 11)
+#   define NV_PGRAPH_SETUPRASTER_LINEWIDTH                      0x001ff000
 #   define NV_PGRAPH_SETUPRASTER_CULLCTRL                       0x00600000
 #       define NV_PGRAPH_SETUPRASTER_CULLCTRL_FRONT                 1
 #       define NV_PGRAPH_SETUPRASTER_CULLCTRL_BACK                  2
@@ -1009,6 +1010,7 @@
 #   define NV097_SET_SHADE_MODE                               0x0000037C
 #       define NV097_SET_SHADE_MODE_V_FLAT                        0x1D00
 #       define NV097_SET_SHADE_MODE_V_SMOOTH                      0x1D01
+#   define NV097_SET_LINE_WIDTH                               0x00000380
 #   define NV097_SET_POLYGON_OFFSET_SCALE_FACTOR              0x00000384
 #   define NV097_SET_POLYGON_OFFSET_BIAS                      0x00000388
 #   define NV097_SET_FRONT_POLYGON_MODE                       0x0000038C
