@@ -1,0 +1,2 @@
+base-cycle-direct.json: In struct 'Loopy':
+base-cycle-direct.json:2: object Loopy contains itself

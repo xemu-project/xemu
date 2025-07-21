@@ -1,0 +1,96 @@
+# https://clang.llvm.org/docs/ClangFormat.html
+# https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+---
+Language:        Cpp
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false # although we like it, it creates churn
+AlignConsecutiveDeclarations: false
+AlignEscapedNewlinesLeft: true
+AlignOperands:   true
+AlignTrailingComments: false # churn
+AllowAllParametersOfDeclarationOnNextLine: true
+AllowShortBlocksOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakAfterReturnType: None # AlwaysBreakAfterDefinitionReturnType is taken into account
+AlwaysBreakBeforeMultilineStrings: false
+BinPackArguments: true
+BinPackParameters: true
+BraceWrapping:
+  AfterControlStatement: false
+  AfterEnum:       false
+  AfterFunction:   true
+  AfterStruct:     false
+  AfterUnion:      false
+  BeforeElse:      false
+  IndentBraces:    false
+BreakBeforeBinaryOperators: None
+BreakBeforeBraces: Custom
+BreakBeforeTernaryOperators: false
+BreakStringLiterals: true
+ColumnLimit:     80
+# CommentPragmas:  '^ IWYU pragma:'
+ContinuationIndentWidth: 4
+Cpp11BracedListStyle: false
+DerivePointerAlignment: false
+DisableFormat:   false
+ForEachMacros:   [
+  'CPU_FOREACH',
+  'CPU_FOREACH_REVERSE',
+  'CPU_FOREACH_SAFE',
+  'IOMMU_NOTIFIER_FOREACH',
+  'QLIST_FOREACH',
+  'QLIST_FOREACH_ENTRY',
+  'QLIST_FOREACH_RCU',
+  'QLIST_FOREACH_SAFE',
+  'QLIST_FOREACH_SAFE_RCU',
+  'QSIMPLEQ_FOREACH',
+  'QSIMPLEQ_FOREACH_SAFE',
+  'QSLIST_FOREACH',
+  'QSLIST_FOREACH_SAFE',
+  'QTAILQ_FOREACH',
+  'QTAILQ_FOREACH_REVERSE',
+  'QTAILQ_FOREACH_SAFE',
+  'QTAILQ_RAW_FOREACH',
+  'RAMBLOCK_FOREACH'
+]
+IncludeCategories:
+  - Regex:           '^"qemu/osdep.h'
+    Priority:        -3
+  - Regex:           '^"(block|chardev|crypto|disas|exec|fpu|hw|io|libdecnumber|migration|monitor|net|qapi|qemu|qom|standard-headers|sysemu|ui)/'
+    Priority:        -2
+  - Regex:           '^"(elf.h|qemu-common.h|glib-compat.h|qemu-io.h|trace-tcg.h)'
+    Priority:        -1
+  - Regex:           '.*'
+    Priority:        1
+IncludeIsMainRegex: '$'
+IndentCaseLabels: false
+IndentWidth:     4
+AccessModifierOffset: -4
+IndentWrappedFunctionNames: false
+KeepEmptyLinesAtTheStartOfBlocks: false
+#MacroBlockBegin: '.*_BEGIN$' # only PREC_BEGIN ?
+#MacroBlockEnd:   '.*_END$'
+MaxEmptyLinesToKeep: 2
+#PenaltyBreakBeforeFirstCallParameter: 19
+#PenaltyBreakComment: 300
+#PenaltyBreakFirstLessLess: 120
+#PenaltyBreakString: 1000
+#PenaltyExcessCharacter: 1000000
+#PenaltyReturnTypeOnItsOwnLine: 60
+PointerAlignment: Right
+ReflowComments:  true
+SortIncludes:    Never
+SpaceAfterCStyleCast: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 1
+SpacesInContainerLiterals: true
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+Standard:        Auto
+UseTab:          Never
+...

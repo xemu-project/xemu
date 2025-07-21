@@ -1,0 +1,258 @@
+QA output created by 085
+Formatting 'TEST_DIR/t.IMGFMT.1', fmt=IMGFMT size=134217728
+Formatting 'TEST_DIR/t.IMGFMT.2', fmt=IMGFMT size=134217728
+
+=== Running QEMU ===
+
+
+=== Sending capabilities ===
+
+{ 'execute': 'qmp_capabilities' }
+{"return": {}}
+
+=== Create a single snapshot on virtio0 ===
+
+{ 'execute': 'blockdev-snapshot-sync',
+                      'arguments': { 'device': 'virtio0',
+                                     'snapshot-file':'TEST_DIR/1-snapshot-v0.IMGFMT',
+                                     'format': 'IMGFMT' } }
+Formatting 'TEST_DIR/1-snapshot-v0.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/t.qcow2.1 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+{"return": {}}
+
+=== Invalid command - missing device and nodename ===
+
+{ 'execute': 'blockdev-snapshot-sync',
+                         'arguments': { 'snapshot-file':'TEST_DIR/1-snapshot-v0.IMGFMT',
+                                     'format': 'IMGFMT' } }
+{"error": {"class": "GenericError", "desc": "Cannot find device='' nor node-name=''"}}
+
+=== Invalid command - missing snapshot-file ===
+
+{ 'execute': 'blockdev-snapshot-sync',
+                         'arguments': { 'device': 'virtio0',
+                                     'format': 'IMGFMT' } }
+{"error": {"class": "GenericError", "desc": "Parameter 'snapshot-file' is missing"}}
+
+
+=== Create several transactional group snapshots ===
+
+{ 'execute': 'transaction', 'arguments':
+           {'actions': [
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio0',
+                      'snapshot-file': 'TEST_DIR/2-snapshot-v0.IMGFMT' } },
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio1',
+                       'snapshot-file': 'TEST_DIR/2-snapshot-v1.IMGFMT' } } ]
+             } }
+Formatting 'TEST_DIR/2-snapshot-v0.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/1-snapshot-v0.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+Formatting 'TEST_DIR/2-snapshot-v1.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/t.qcow2.2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+{"return": {}}
+{ 'execute': 'transaction', 'arguments':
+           {'actions': [
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio0',
+                      'snapshot-file': 'TEST_DIR/3-snapshot-v0.IMGFMT' } },
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio1',
+                       'snapshot-file': 'TEST_DIR/3-snapshot-v1.IMGFMT' } } ]
+             } }
+Formatting 'TEST_DIR/3-snapshot-v0.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/2-snapshot-v0.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+Formatting 'TEST_DIR/3-snapshot-v1.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/2-snapshot-v1.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+{"return": {}}
+{ 'execute': 'transaction', 'arguments':
+           {'actions': [
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio0',
+                      'snapshot-file': 'TEST_DIR/4-snapshot-v0.IMGFMT' } },
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio1',
+                       'snapshot-file': 'TEST_DIR/4-snapshot-v1.IMGFMT' } } ]
+             } }
+Formatting 'TEST_DIR/4-snapshot-v0.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/3-snapshot-v0.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+Formatting 'TEST_DIR/4-snapshot-v1.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/3-snapshot-v1.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+{"return": {}}
+{ 'execute': 'transaction', 'arguments':
+           {'actions': [
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio0',
+                      'snapshot-file': 'TEST_DIR/5-snapshot-v0.IMGFMT' } },
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio1',
+                       'snapshot-file': 'TEST_DIR/5-snapshot-v1.IMGFMT' } } ]
+             } }
+Formatting 'TEST_DIR/5-snapshot-v0.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/4-snapshot-v0.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+Formatting 'TEST_DIR/5-snapshot-v1.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/4-snapshot-v1.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+{"return": {}}
+{ 'execute': 'transaction', 'arguments':
+           {'actions': [
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio0',
+                      'snapshot-file': 'TEST_DIR/6-snapshot-v0.IMGFMT' } },
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio1',
+                       'snapshot-file': 'TEST_DIR/6-snapshot-v1.IMGFMT' } } ]
+             } }
+Formatting 'TEST_DIR/6-snapshot-v0.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/5-snapshot-v0.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+Formatting 'TEST_DIR/6-snapshot-v1.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/5-snapshot-v1.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+{"return": {}}
+{ 'execute': 'transaction', 'arguments':
+           {'actions': [
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio0',
+                      'snapshot-file': 'TEST_DIR/7-snapshot-v0.IMGFMT' } },
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio1',
+                       'snapshot-file': 'TEST_DIR/7-snapshot-v1.IMGFMT' } } ]
+             } }
+Formatting 'TEST_DIR/7-snapshot-v0.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/6-snapshot-v0.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+Formatting 'TEST_DIR/7-snapshot-v1.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/6-snapshot-v1.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+{"return": {}}
+{ 'execute': 'transaction', 'arguments':
+           {'actions': [
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio0',
+                      'snapshot-file': 'TEST_DIR/8-snapshot-v0.IMGFMT' } },
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio1',
+                       'snapshot-file': 'TEST_DIR/8-snapshot-v1.IMGFMT' } } ]
+             } }
+Formatting 'TEST_DIR/8-snapshot-v0.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/7-snapshot-v0.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+Formatting 'TEST_DIR/8-snapshot-v1.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/7-snapshot-v1.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+{"return": {}}
+{ 'execute': 'transaction', 'arguments':
+           {'actions': [
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio0',
+                      'snapshot-file': 'TEST_DIR/9-snapshot-v0.IMGFMT' } },
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio1',
+                       'snapshot-file': 'TEST_DIR/9-snapshot-v1.IMGFMT' } } ]
+             } }
+Formatting 'TEST_DIR/9-snapshot-v0.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/8-snapshot-v0.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+Formatting 'TEST_DIR/9-snapshot-v1.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/8-snapshot-v1.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+{"return": {}}
+{ 'execute': 'transaction', 'arguments':
+           {'actions': [
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio0',
+                      'snapshot-file': 'TEST_DIR/10-snapshot-v0.IMGFMT' } },
+               { 'type': 'blockdev-snapshot-sync', 'data' :
+                   { 'device': 'virtio1',
+                       'snapshot-file': 'TEST_DIR/10-snapshot-v1.IMGFMT' } } ]
+             } }
+Formatting 'TEST_DIR/10-snapshot-v0.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/9-snapshot-v0.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+Formatting 'TEST_DIR/10-snapshot-v1.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=134217728 backing_file=TEST_DIR/9-snapshot-v1.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+{"return": {}}
+
+=== Create a couple of snapshots using blockdev-snapshot ===
+
+Formatting 'TEST_DIR/11-snapshot-v0.IMGFMT', fmt=IMGFMT size=134217728 backing_file=TEST_DIR/10-snapshot-v0.IMGFMT backing_fmt=IMGFMT
+{ 'execute': 'blockdev-add', 'arguments':
+           { 'driver': 'IMGFMT', 'node-name': 'snap_11', 'backing': null,
+             'file':
+             { 'driver': 'file', 'filename': 'TEST_DIR/11-snapshot-v0.IMGFMT',
+               'node-name': 'file_11' } } }
+{"return": {}}
+{ 'execute': 'blockdev-snapshot',
+                      'arguments': { 'node': 'virtio0',
+                                     'overlay':'snap_11' } }
+{"return": {}}
+Formatting 'TEST_DIR/12-snapshot-v0.IMGFMT', fmt=IMGFMT size=134217728 backing_file=TEST_DIR/11-snapshot-v0.IMGFMT backing_fmt=IMGFMT
+{ 'execute': 'blockdev-add', 'arguments':
+           { 'driver': 'IMGFMT', 'node-name': 'snap_12', 'backing': null,
+             'file':
+             { 'driver': 'file', 'filename': 'TEST_DIR/12-snapshot-v0.IMGFMT',
+               'node-name': 'file_12' } } }
+{"return": {}}
+{ 'execute': 'blockdev-snapshot',
+                      'arguments': { 'node': 'virtio0',
+                                     'overlay':'snap_12' } }
+{"return": {}}
+
+=== Invalid command - cannot create a snapshot using a file BDS ===
+
+{ 'execute': 'blockdev-snapshot',
+                     'arguments': { 'node':'virtio0',
+                                    'overlay':'file_12' }
+                   }
+{"error": {"class": "GenericError", "desc": "The overlay is already in use"}}
+
+=== Invalid command - snapshot node used as active layer ===
+
+{ 'execute': 'blockdev-snapshot',
+                      'arguments': { 'node': 'virtio0',
+                                     'overlay':'snap_12' } }
+{"error": {"class": "GenericError", "desc": "The overlay is already in use"}}
+{ 'execute': 'blockdev-snapshot',
+                     'arguments': { 'node':'virtio0',
+                                    'overlay':'virtio0' }
+                   }
+{"error": {"class": "GenericError", "desc": "The overlay is already in use"}}
+{ 'execute': 'blockdev-snapshot',
+                     'arguments': { 'node':'virtio0',
+                                    'overlay':'virtio1' }
+                   }
+{"error": {"class": "GenericError", "desc": "The overlay is already in use"}}
+
+=== Invalid command - snapshot node used as backing hd ===
+
+{ 'execute': 'blockdev-snapshot',
+                      'arguments': { 'node': 'virtio0',
+                                     'overlay':'snap_11' } }
+{"error": {"class": "GenericError", "desc": "The overlay is already in use"}}
+
+=== Invalid command - snapshot node has a backing image ===
+
+Formatting 'TEST_DIR/t.IMGFMT.base', fmt=IMGFMT size=134217728
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=134217728 backing_file=TEST_DIR/t.IMGFMT.base backing_fmt=IMGFMT
+{ 'execute': 'blockdev-add', 'arguments':
+           { 'driver': 'IMGFMT', 'node-name': 'snap_13',
+             'file':
+             { 'driver': 'file', 'filename': 'TEST_DIR/t.IMGFMT',
+               'node-name': 'file_13' } } }
+{"return": {}}
+{ 'execute': 'blockdev-snapshot',
+                      'arguments': { 'node': 'virtio0',
+                                     'overlay':'snap_13' } }
+{"error": {"class": "GenericError", "desc": "The overlay already has a backing image"}}
+
+=== Invalid command - creating loops ===
+
+Formatting 'TEST_DIR/14-snapshot-v0.IMGFMT', fmt=IMGFMT size=134217728 backing_file=TEST_DIR/13-snapshot-v0.IMGFMT backing_fmt=IMGFMT
+{ 'execute': 'blockdev-add', 'arguments':
+           { 'driver': 'IMGFMT', 'node-name': 'snap_14', 'backing': null,
+             'file':
+             { 'driver': 'file', 'filename': 'TEST_DIR/14-snapshot-v0.IMGFMT',
+               'node-name': 'file_14' } } }
+{"return": {}}
+{ 'execute': 'blockdev-snapshot',
+                     'arguments': { 'node':'snap_14',
+                                    'overlay':'snap_14' }
+                   }
+{"error": {"class": "GenericError", "desc": "Making 'snap_14' a backing child of 'snap_14' would create a cycle"}}
+Formatting 'TEST_DIR/15-snapshot-v0.IMGFMT', fmt=IMGFMT size=134217728 backing_file=TEST_DIR/14-snapshot-v0.IMGFMT backing_fmt=IMGFMT
+{ 'execute': 'blockdev-add', 'arguments':
+           { 'driver': 'IMGFMT', 'node-name': 'snap_15', 'backing': 'snap_14',
+             'file':
+             { 'driver': 'file', 'filename': 'TEST_DIR/15-snapshot-v0.IMGFMT',
+               'node-name': 'file_15' } } }
+{"return": {}}
+{ 'execute': 'blockdev-snapshot',
+                     'arguments': { 'node':'snap_15',
+                                    'overlay':'snap_14' }
+                   }
+{"error": {"class": "GenericError", "desc": "Making 'snap_15' a backing child of 'snap_14' would create a cycle"}}
+
+=== Invalid command - The node does not exist ===
+
+{ 'execute': 'blockdev-snapshot',
+                      'arguments': { 'node': 'virtio0',
+                                     'overlay':'snap_16' } }
+{"error": {"class": "GenericError", "desc": "Cannot find device='snap_16' nor node-name='snap_16'"}}
+{ 'execute': 'blockdev-snapshot',
+                     'arguments': { 'node':'nodevice',
+                                    'overlay':'snap_15' }
+                   }
+{"error": {"class": "GenericError", "desc": "Cannot find device='nodevice' nor node-name='nodevice'"}}
+*** done
