@@ -360,6 +360,9 @@ display:
       advanced_tree_state:
         type: bool
         default: false
+  setup_nvidia_profile:
+    type: bool
+    default: true
 
 audio:
   vp:
