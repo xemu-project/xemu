@@ -26,3 +26,5 @@ vma = declare_dependency(include_directories: vma_subproj.include_directories('V
                          dependencies: vulkan)
 
 endif
+
+subdir('nvapi')
