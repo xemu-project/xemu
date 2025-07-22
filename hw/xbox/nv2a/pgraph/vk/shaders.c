@@ -1,13 +1,7 @@
 /*
  * Geforce NV2A PGRAPH Vulkan Renderer
  *
- * Copyright (c) 2024 Matt Borgerson
- *
- * Based on GL implementation:
- *
- * Copyright (c) 2015 espes
- * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2018-2024 Matt Borgerson
+ * Copyright (c) 2024-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -24,15 +18,13 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
-#include "hw/xbox/nv2a/pgraph/util.h"
-#include "hw/xbox/nv2a/pgraph/glsl/geom.h"
-#include "hw/xbox/nv2a/pgraph/glsl/vsh.h"
-#include "hw/xbox/nv2a/pgraph/glsl/psh.h"
 #include "qemu/fast-hash.h"
 #include "qemu/mstring.h"
 #include "renderer.h"
-#include <locale.h>
+
+#define VSH_UBO_BINDING 0
+#define PSH_UBO_BINDING 1
+#define PSH_TEX_BINDING 2
 
 const size_t MAX_UNIFORM_ATTR_VALUES_SIZE = NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float);
 
@@ -159,8 +151,8 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
     }
 
     ShaderBinding *binding = r->shader_binding;
-    ShaderUniformLayout *layouts[] = { &binding->vertex->uniforms,
-                                       &binding->fragment->uniforms };
+    ShaderUniformLayout *layouts[] = { &binding->vsh.module_info->uniforms,
+                                       &binding->psh.module_info->uniforms };
     VkDeviceSize ubo_buffer_total_size = 0;
     for (int i = 0; i < ARRAY_SIZE(layouts); i++) {
         ubo_buffer_total_size += layouts[i]->total_size;
@@ -236,100 +228,72 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
     r->descriptor_set_index++;
 }
 
-static void update_shader_constant_locations(ShaderBinding *binding)
+static void update_shader_uniform_locs(ShaderBinding *binding)
 {
-    char tmp[64];
-
-    /* lookup fragment shader uniforms */
-    for (int i = 0; i < 9; i++) {
-        for (int j = 0; j < 2; j++) {
-            snprintf(tmp, sizeof(tmp), "c%d_%d", j, i);
-            binding->psh_constant_loc[i][j] =
-                uniform_index(&binding->fragment->uniforms, tmp);
-        }
-    }
-    binding->alpha_ref_loc =
-        uniform_index(&binding->fragment->uniforms, "alphaRef");
-    binding->fog_color_loc =
-        uniform_index(&binding->fragment->uniforms, "fogColor");
-    for (int i = 1; i < NV2A_MAX_TEXTURES; i++) {
-        snprintf(tmp, sizeof(tmp), "bumpMat%d", i);
-        binding->bump_mat_loc[i] =
-            uniform_index(&binding->fragment->uniforms, tmp);
-        snprintf(tmp, sizeof(tmp), "bumpScale%d", i);
-        binding->bump_scale_loc[i] =
-            uniform_index(&binding->fragment->uniforms, tmp);
-        snprintf(tmp, sizeof(tmp), "bumpOffset%d", i);
-        binding->bump_offset_loc[i] =
-            uniform_index(&binding->fragment->uniforms, tmp);
+    for (int i = 0; i < ARRAY_SIZE(binding->vsh.uniform_locs); i++) {
+        binding->vsh.uniform_locs[i] = uniform_index(
+            &binding->vsh.module_info->uniforms, VshUniformInfo[i].name);
     }
 
-    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
-        snprintf(tmp, sizeof(tmp), "texScale%d", i);
-        binding->tex_scale_loc[i] =
-            uniform_index(&binding->fragment->uniforms, tmp);
+    for (int i = 0; i < ARRAY_SIZE(binding->psh.uniform_locs); i++) {
+        binding->psh.uniform_locs[i] = uniform_index(
+            &binding->psh.module_info->uniforms, PshUniformInfo[i].name);
     }
-
-    /* lookup vertex shader uniforms */
-    binding->vsh_constant_loc = uniform_index(&binding->vertex->uniforms, "c");
-    binding->surface_size_loc =
-        uniform_index(&binding->vertex->uniforms, "surfaceSize");
-    binding->clip_range_loc =
-        uniform_index(&binding->vertex->uniforms, "clipRange");
-    binding->clip_range_floc =
-        uniform_index(&binding->fragment->uniforms, "clipRange");
-    binding->depth_offset_loc =
-        uniform_index(&binding->fragment->uniforms, "depthOffset");
-    binding->fog_param_loc =
-        uniform_index(&binding->vertex->uniforms, "fogParam");
-
-    binding->ltctxa_loc = uniform_index(&binding->vertex->uniforms, "ltctxa");
-    binding->ltctxb_loc = uniform_index(&binding->vertex->uniforms, "ltctxb");
-    binding->ltc1_loc = uniform_index(&binding->vertex->uniforms, "ltc1");
-
-    for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
-        snprintf(tmp, sizeof(tmp), "lightInfiniteHalfVector%d", i);
-        binding->light_infinite_half_vector_loc[i] =
-            uniform_index(&binding->vertex->uniforms, tmp);
-        snprintf(tmp, sizeof(tmp), "lightInfiniteDirection%d", i);
-        binding->light_infinite_direction_loc[i] =
-            uniform_index(&binding->vertex->uniforms, tmp);
-
-        snprintf(tmp, sizeof(tmp), "lightLocalPosition%d", i);
-        binding->light_local_position_loc[i] =
-            uniform_index(&binding->vertex->uniforms, tmp);
-        snprintf(tmp, sizeof(tmp), "lightLocalAttenuation%d", i);
-        binding->light_local_attenuation_loc[i] =
-            uniform_index(&binding->vertex->uniforms, tmp);
-    }
-
-    binding->clip_region_loc =
-        uniform_index(&binding->fragment->uniforms, "clipRegion");
-
-    binding->point_params_loc =
-        uniform_index(&binding->vertex->uniforms, "pointParams");
-
-    binding->material_alpha_loc =
-        uniform_index(&binding->vertex->uniforms, "material_alpha");
-
-    binding->color_key_loc =
-        uniform_index(&binding->fragment->uniforms, "colorKey");
-
-    binding->color_key_mask_loc =
-        uniform_index(&binding->fragment->uniforms, "colorKeyMask");
-
-    binding->uniform_attrs_loc =
-        uniform_index(&binding->vertex->uniforms, "inlineValue");
-
-    binding->specular_power_loc =
-        uniform_index(&binding->vertex->uniforms, "specularPower");
 }
 
-static void shader_cache_entry_init(Lru *lru, LruNode *node, void *state)
+static ShaderModuleInfo *
+get_and_ref_shader_module_for_key(PGRAPHVkState *r,
+                                  const ShaderModuleCacheKey *key)
 {
-    ShaderBinding *snode = container_of(node, ShaderBinding, node);
-    memcpy(&snode->state, state, sizeof(ShaderState));
-    snode->initialized = false;
+    uint64_t hash = fast_hash((void *)key, sizeof(ShaderModuleCacheKey));
+    LruNode *node = lru_lookup(&r->shader_module_cache, hash, key);
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    pgraph_vk_ref_shader_module(module->module_info);
+    return module->module_info;
+}
+
+static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
+{
+    PGRAPHVkState *r = container_of(lru, PGRAPHVkState, shader_cache);
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
+    memcpy(&binding->state, state, sizeof(ShaderState));
+
+    NV2A_VK_DPRINTF("cache miss");
+    nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
+
+    ShaderModuleCacheKey key;
+
+    bool need_geometry_shader = pgraph_glsl_need_geom(&binding->state.geom);
+    if (need_geometry_shader) {
+        memset(&key, 0, sizeof(key));
+        key.kind = VK_SHADER_STAGE_GEOMETRY_BIT;
+        key.geom.state = binding->state.geom;
+        key.geom.glsl_opts.vulkan = true;
+        binding->geom.module_info = get_and_ref_shader_module_for_key(r, &key);
+    } else {
+        binding->geom.module_info = NULL;
+    }
+
+    memset(&key, 0, sizeof(key));
+    key.kind = VK_SHADER_STAGE_VERTEX_BIT;
+    key.vsh.state = binding->state.vsh;
+    key.vsh.glsl_opts.vulkan = true;
+    key.vsh.glsl_opts.prefix_outputs = need_geometry_shader;
+    key.vsh.glsl_opts.use_push_constants_for_uniform_attrs =
+        r->use_push_constants_for_uniform_attrs;
+    key.vsh.glsl_opts.ubo_binding = VSH_UBO_BINDING;
+    binding->vsh.module_info = get_and_ref_shader_module_for_key(r, &key);
+
+    memset(&key, 0, sizeof(key));
+    key.kind = VK_SHADER_STAGE_FRAGMENT_BIT;
+    key.psh.state = binding->state.psh;
+    key.psh.glsl_opts.vulkan = true;
+    key.psh.glsl_opts.ubo_binding = PSH_UBO_BINDING;
+    key.psh.glsl_opts.tex_binding = PSH_TEX_BINDING;
+    binding->psh.module_info = get_and_ref_shader_module_for_key(r, &key);
+
+    update_shader_uniform_locs(binding);
 }
 
 static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
@@ -338,23 +302,72 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
     ShaderBinding *snode = container_of(node, ShaderBinding, node);
 
     ShaderModuleInfo *modules[] = {
-        snode->geometry,
-        snode->vertex,
-        snode->fragment,
+        snode->vsh.module_info,
+        snode->geom.module_info,
+        snode->psh.module_info,
     };
     for (int i = 0; i < ARRAY_SIZE(modules); i++) {
         if (modules[i]) {
-            pgraph_vk_destroy_shader_module(r, modules[i]);
+            pgraph_vk_unref_shader_module(r, modules[i]);
         }
     }
-
-    snode->initialized = false;
 }
 
-static bool shader_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+static bool shader_cache_entry_compare(Lru *lru, LruNode *node, const void *key)
 {
     ShaderBinding *snode = container_of(node, ShaderBinding, node);
     return memcmp(&snode->state, key, sizeof(ShaderState));
+}
+
+static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
+                                           const void *key)
+{
+    PGRAPHVkState *r = container_of(lru, PGRAPHVkState, shader_module_cache);
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    memcpy(&module->key, key, sizeof(ShaderModuleCacheKey));
+
+    MString *code;
+
+    switch (module->key.kind) {
+    case VK_SHADER_STAGE_VERTEX_BIT:
+        code = pgraph_glsl_gen_vsh(&module->key.vsh.state,
+                                   module->key.vsh.glsl_opts);
+        break;
+    case VK_SHADER_STAGE_GEOMETRY_BIT:
+        code = pgraph_glsl_gen_geom(&module->key.geom.state,
+                                    module->key.geom.glsl_opts);
+        break;
+    case VK_SHADER_STAGE_FRAGMENT_BIT:
+        code = pgraph_glsl_gen_psh(&module->key.psh.state,
+                                   module->key.psh.glsl_opts);
+        break;
+    default:
+        assert(!"Invalid shader module kind");
+        code = NULL;
+    }
+
+    module->module_info = pgraph_vk_create_shader_module_from_glsl(
+        r, module->key.kind, mstring_get_str(code));
+    pgraph_vk_ref_shader_module(module->module_info);
+    mstring_unref(code);
+}
+
+static void shader_module_cache_entry_post_evict(Lru *lru, LruNode *node)
+{
+    PGRAPHVkState *r = container_of(lru, PGRAPHVkState, shader_module_cache);
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    pgraph_vk_unref_shader_module(r, module->module_info);
+    module->module_info = NULL;
+}
+
+static bool shader_module_cache_entry_compare(Lru *lru, LruNode *node,
+                                              const void *key)
+{
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    return memcmp(&module->key, key, sizeof(ShaderModuleCacheKey));
 }
 
 static void shader_cache_init(PGRAPHState *pg)
@@ -371,6 +384,22 @@ static void shader_cache_init(PGRAPHState *pg)
     r->shader_cache.init_node = shader_cache_entry_init;
     r->shader_cache.compare_nodes = shader_cache_entry_compare;
     r->shader_cache.post_node_evict = shader_cache_entry_post_evict;
+
+    /* FIXME: Make this configurable */
+    const size_t shader_module_cache_size = 50 * 1024;
+    lru_init(&r->shader_module_cache);
+    r->shader_module_cache_entries =
+        g_malloc_n(shader_module_cache_size, sizeof(ShaderModuleCacheEntry));
+    assert(r->shader_module_cache_entries != NULL);
+    for (int i = 0; i < shader_module_cache_size; i++) {
+        lru_add_free(&r->shader_module_cache,
+                     &r->shader_module_cache_entries[i].node);
+    }
+
+    r->shader_module_cache.init_node = shader_module_cache_entry_init;
+    r->shader_module_cache.compare_nodes = shader_module_cache_entry_compare;
+    r->shader_module_cache.post_node_evict =
+        shader_module_cache_entry_post_evict;
 }
 
 static void shader_cache_finalize(PGRAPHState *pg)
@@ -380,477 +409,78 @@ static void shader_cache_finalize(PGRAPHState *pg)
     lru_flush(&r->shader_cache);
     g_free(r->shader_cache_entries);
     r->shader_cache_entries = NULL;
+
+    lru_flush(&r->shader_module_cache);
+    g_free(r->shader_module_cache_entries);
+    r->shader_module_cache_entries = NULL;
 }
 
-static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
+static ShaderBinding *get_shader_binding_for_state(PGRAPHVkState *r,
+                                                   const ShaderState *state)
 {
-    PGRAPHVkState *r = pg->vk_renderer_state;
-
     uint64_t hash = fast_hash((void *)state, sizeof(*state));
     LruNode *node = lru_lookup(&r->shader_cache, hash, state);
-    ShaderBinding *snode = container_of(node, ShaderBinding, node);
-
-    NV2A_VK_DPRINTF("shader state hash: %016" PRIx64 " %p", hash, snode);
-
-    if (!snode->initialized) {
-        NV2A_VK_DPRINTF("cache miss");
-        nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
-
-        char *previous_numeric_locale = setlocale(LC_NUMERIC, NULL);
-        if (previous_numeric_locale) {
-            previous_numeric_locale = g_strdup(previous_numeric_locale);
-        }
-
-        /* Ensure numeric values are printed with '.' radix, no grouping */
-        setlocale(LC_NUMERIC, "C");
-
-        MString *geometry_shader_code = pgraph_gen_geom_glsl(
-            state->polygon_front_mode, state->polygon_back_mode,
-            state->primitive_mode, state->smooth_shading, true);
-        if (geometry_shader_code) {
-            NV2A_VK_DPRINTF("geometry shader: \n%s",
-                            mstring_get_str(geometry_shader_code));
-            snode->geometry = pgraph_vk_create_shader_module_from_glsl(
-                r, VK_SHADER_STAGE_GEOMETRY_BIT,
-                mstring_get_str(geometry_shader_code));
-            mstring_unref(geometry_shader_code);
-        } else {
-            snode->geometry = NULL;
-        }
-
-        MString *vertex_shader_code =
-            pgraph_gen_vsh_glsl(state, geometry_shader_code != NULL);
-        NV2A_VK_DPRINTF("vertex shader: \n%s",
-                        mstring_get_str(vertex_shader_code));
-        snode->vertex = pgraph_vk_create_shader_module_from_glsl(
-            r, VK_SHADER_STAGE_VERTEX_BIT,
-            mstring_get_str(vertex_shader_code));
-        mstring_unref(vertex_shader_code);
-
-        MString *fragment_shader_code = pgraph_gen_psh_glsl(state->psh);
-        NV2A_VK_DPRINTF("fragment shader: \n%s",
-                        mstring_get_str(fragment_shader_code));
-        snode->fragment = pgraph_vk_create_shader_module_from_glsl(
-            r, VK_SHADER_STAGE_FRAGMENT_BIT,
-            mstring_get_str(fragment_shader_code));
-        mstring_unref(fragment_shader_code);
-
-        if (previous_numeric_locale) {
-            setlocale(LC_NUMERIC, previous_numeric_locale);
-            g_free(previous_numeric_locale);
-        }
-
-        update_shader_constant_locations(snode);
-
-        snode->initialized = true;
-    }
-
-    return snode;
+    ShaderBinding *binding = container_of(node, ShaderBinding, node);
+    NV2A_VK_DPRINTF("shader state hash: %016" PRIx64 " %p", hash, binding);
+    return binding;
 }
 
-static void update_uniform_attr_values(PGRAPHState *pg, ShaderBinding *binding)
+static void apply_uniform_updates(ShaderUniformLayout *layout,
+                                  const UniformInfo *info, int *locs,
+                                  void *values, size_t count)
 {
-    float values[NV2A_VERTEXSHADER_ATTRIBUTES][4];
-    int num_uniform_attrs = 0;
-
-    pgraph_get_inline_values(pg, binding->state.uniform_attrs, values,
-                             &num_uniform_attrs);
-
-    if (num_uniform_attrs > 0) {
-        uniform1fv(&binding->vertex->uniforms, binding->uniform_attrs_loc,
-                   num_uniform_attrs * 4, &values[0][0]);
+    for (int i = 0; i < count; i++) {
+        if (locs[i] != -1) {
+            uniform_copy(layout, locs[i], (char*)values + info[i].val_offs,
+                         4, (info[i].size * info[i].count) / 4);
+        }
     }
 }
 
-// FIXME: Move to common
-static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
-                                    bool binding_changed, bool vertex_program,
-                                    bool fixed_function)
-{
-    ShaderState *state = &binding->state;
-
-    /* update combiner constants */
-    for (int i = 0; i < 9; i++) {
-        uint32_t constant[2];
-        if (i == 8) {
-            /* final combiner */
-            constant[0] = pgraph_reg_r(pg, NV_PGRAPH_SPECFOGFACTOR0);
-            constant[1] = pgraph_reg_r(pg, NV_PGRAPH_SPECFOGFACTOR1);
-        } else {
-            constant[0] = pgraph_reg_r(pg, NV_PGRAPH_COMBINEFACTOR0 + i * 4);
-            constant[1] = pgraph_reg_r(pg, NV_PGRAPH_COMBINEFACTOR1 + i * 4);
-        }
-
-        for (int j = 0; j < 2; j++) {
-            GLint loc = binding->psh_constant_loc[i][j];
-            if (loc != -1) {
-                float value[4];
-                pgraph_argb_pack32_to_rgba_float(constant[j], value);
-                uniform1fv(&binding->fragment->uniforms, loc, 4, value);
-            }
-        }
-    }
-    if (binding->alpha_ref_loc != -1) {
-        int alpha_ref = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0),
-                                   NV_PGRAPH_CONTROL_0_ALPHAREF);
-        uniform1i(&binding->fragment->uniforms, binding->alpha_ref_loc,
-                         alpha_ref);
-    }
-    if (binding->color_key_loc != -1) {
-        uint32_t color_key_colors[4] = {
-            pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR0),
-            pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR1),
-            pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR2),
-            pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR3),
-        };
-        uniform1uiv(&binding->fragment->uniforms, binding->color_key_loc, 4,
-                    color_key_colors);
-    }
-    if (binding->color_key_mask_loc != -1) {
-        uniform1uiv(&binding->fragment->uniforms, binding->color_key_mask_loc,
-                    4, state->psh.colorkey_mask);
-    }
-
-    /* For each texture stage */
-    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
-        int loc;
-
-        /* Bump luminance only during stages 1 - 3 */
-        if (i > 0) {
-            loc = binding->bump_mat_loc[i];
-            if (loc != -1) {
-                uint32_t m_u32[4];
-                m_u32[0] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT00 + 4 * (i - 1));
-                m_u32[1] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT01 + 4 * (i - 1));
-                m_u32[2] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT10 + 4 * (i - 1));
-                m_u32[3] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT11 + 4 * (i - 1));
-                float m[4];
-                m[0] = *(float*)&m_u32[0];
-                m[1] = *(float*)&m_u32[1];
-                m[2] = *(float*)&m_u32[2];
-                m[3] = *(float*)&m_u32[3];
-                uniformMatrix2fv(&binding->fragment->uniforms, loc, m);
-            }
-            loc = binding->bump_scale_loc[i];
-            if (loc != -1) {
-                uint32_t v =
-                    pgraph_reg_r(pg, NV_PGRAPH_BUMPSCALE1 + (i - 1) * 4);
-                uniform1f(&binding->fragment->uniforms, loc,
-                                 *(float *)&v);
-            }
-            loc = binding->bump_offset_loc[i];
-            if (loc != -1) {
-                uint32_t v =
-                    pgraph_reg_r(pg, NV_PGRAPH_BUMPOFFSET1 + (i - 1) * 4);
-                uniform1f(&binding->fragment->uniforms, loc,
-                                 *(float *)&v);
-            }
-        }
-
-        loc = binding->tex_scale_loc[i];
-        if (loc != -1) {
-            assert(pg->vk_renderer_state->texture_bindings[i] != NULL);
-            float scale = pg->vk_renderer_state->texture_bindings[i]->key.scale;
-            BasicColorFormatInfo f_basic = kelvin_color_format_info_map[pg->vk_renderer_state->texture_bindings[i]->key.state.color_format];
-            if (!f_basic.linear) {
-                scale = 1.0;
-            }
-            uniform1f(&binding->fragment->uniforms, loc, scale);
-        }
-    }
-
-    if (binding->fog_color_loc != -1) {
-        uint32_t fog_color = pgraph_reg_r(pg, NV_PGRAPH_FOGCOLOR);
-        uniform4f(&binding->fragment->uniforms, binding->fog_color_loc,
-                         GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_RED) / 255.0,
-                         GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_GREEN) / 255.0,
-                         GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_BLUE) / 255.0,
-                         GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_ALPHA) / 255.0);
-    }
-    if (binding->fog_param_loc != -1) {
-        uint32_t v[2];
-        v[0] = pgraph_reg_r(pg, NV_PGRAPH_FOGPARAM0);
-        v[1] = pgraph_reg_r(pg, NV_PGRAPH_FOGPARAM1);
-        uniform2f(&binding->vertex->uniforms,
-                         binding->fog_param_loc, *(float *)&v[0],
-                         *(float *)&v[1]);
-    }
-
-    float zmax;
-    switch (pg->surface_shape.zeta_format) {
-    case NV097_SET_SURFACE_FORMAT_ZETA_Z16:
-        zmax = pg->surface_shape.z_format ? f16_max : (float)0xFFFF;
-        break;
-    case NV097_SET_SURFACE_FORMAT_ZETA_Z24S8:
-        zmax = pg->surface_shape.z_format ? f24_max : (float)0xFFFFFF;
-        break;
-    default:
-        assert(0);
-    }
-
-    if (fixed_function) {
-        /* update lighting constants */
-        struct {
-            uint32_t *v;
-            int locs;
-            size_t len;
-        } lighting_arrays[] = {
-            { &pg->ltctxa[0][0], binding->ltctxa_loc, NV2A_LTCTXA_COUNT },
-            { &pg->ltctxb[0][0], binding->ltctxb_loc, NV2A_LTCTXB_COUNT },
-            { &pg->ltc1[0][0], binding->ltc1_loc, NV2A_LTC1_COUNT },
-        };
-
-        for (int i = 0; i < ARRAY_SIZE(lighting_arrays); i++) {
-            uniform1iv(
-                &binding->vertex->uniforms, lighting_arrays[i].locs,
-                lighting_arrays[i].len * 4, (void *)lighting_arrays[i].v);
-        }
-
-        for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
-            int loc = binding->light_infinite_half_vector_loc[i];
-            if (loc != -1) {
-                uniform1fv(&binding->vertex->uniforms, loc, 3,
-                                 pg->light_infinite_half_vector[i]);
-            }
-            loc = binding->light_infinite_direction_loc[i];
-            if (loc != -1) {
-                uniform1fv(&binding->vertex->uniforms, loc, 3,
-                                 pg->light_infinite_direction[i]);
-            }
-
-            loc = binding->light_local_position_loc[i];
-            if (loc != -1) {
-                uniform1fv(&binding->vertex->uniforms, loc, 3,
-                                 pg->light_local_position[i]);
-            }
-            loc = binding->light_local_attenuation_loc[i];
-            if (loc != -1) {
-                uniform1fv(&binding->vertex->uniforms, loc, 3,
-                                 pg->light_local_attenuation[i]);
-            }
-        }
-
-        if (binding->specular_power_loc != -1) {
-            uniform1f(&binding->vertex->uniforms, binding->specular_power_loc,
-                      pg->specular_power);
-        }
-    }
-
-    /* update vertex program constants */
-    uniform1iv(&binding->vertex->uniforms, binding->vsh_constant_loc,
-               NV2A_VERTEXSHADER_CONSTANTS * 4, (void *)pg->vsh_constants);
-
-    if (binding->surface_size_loc != -1) {
-        unsigned int aa_width = 1, aa_height = 1;
-        pgraph_apply_anti_aliasing_factor(pg, &aa_width, &aa_height);
-        uniform2f(&binding->vertex->uniforms, binding->surface_size_loc,
-                         pg->surface_binding_dim.width / aa_width,
-                         pg->surface_binding_dim.height / aa_height);
-    }
-
-    if (binding->clip_range_loc != -1 || binding->clip_range_floc != -1) {
-        uint32_t v[2];
-        v[0] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
-        v[1] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMAX);
-        float zclip_min = *(float *)&v[0];
-        float zclip_max = *(float *)&v[1];
-
-        if (binding->clip_range_loc != -1) {
-            uniform4f(&binding->vertex->uniforms, binding->clip_range_loc, 0,
-                      zmax, zclip_min, zclip_max);
-        }
-        if (binding->clip_range_floc != -1) {
-            uniform4f(&binding->fragment->uniforms, binding->clip_range_floc, 0,
-                      zmax, zclip_min, zclip_max);
-        }
-    }
-
-    if (binding->depth_offset_loc != -1) {
-        float zbias = 0.0f;
-
-        if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
-            uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
-            zbias = *(float *)&zbias_u32;
-
-            if (pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR) != 0 &&
-                (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
-                 NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE)) {
-                /* TODO: emulate zfactor when z_perspective true, i.e.
-                 * w-buffering. Perhaps calculate an additional offset based on
-                 * triangle orientation in geometry shader and pass the result
-                 * to fragment shader and add it to gl_FragDepth as well.
-                 */
-                NV2A_UNIMPLEMENTED("NV_PGRAPH_ZOFFSETFACTOR for w-buffering");
-            }
-        }
-
-        uniform1f(&binding->fragment->uniforms, binding->depth_offset_loc,
-                  zbias);
-    }
-
-    /* Clipping regions */
-    unsigned int max_gl_width = pg->surface_binding_dim.width;
-    unsigned int max_gl_height = pg->surface_binding_dim.height;
-    pgraph_apply_scaling_factor(pg, &max_gl_width, &max_gl_height);
-
-    uint32_t clip_regions[8][4];
-
-    for (int i = 0; i < 8; i++) {
-        uint32_t x = pgraph_reg_r(pg, NV_PGRAPH_WINDOWCLIPX0 + i * 4);
-        unsigned int x_min = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN);
-        unsigned int x_max = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX) + 1;
-        uint32_t y = pgraph_reg_r(pg, NV_PGRAPH_WINDOWCLIPY0 + i * 4);
-        unsigned int y_min = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMIN);
-        unsigned int y_max = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX) + 1;
-        pgraph_apply_anti_aliasing_factor(pg, &x_min, &y_min);
-        pgraph_apply_anti_aliasing_factor(pg, &x_max, &y_max);
-
-        pgraph_apply_scaling_factor(pg, &x_min, &y_min);
-        pgraph_apply_scaling_factor(pg, &x_max, &y_max);
-
-        clip_regions[i][0] = x_min;
-        clip_regions[i][1] = y_min;
-        clip_regions[i][2] = x_max;
-        clip_regions[i][3] = y_max;
-    }
-    uniform1iv(&binding->fragment->uniforms, binding->clip_region_loc,
-                     8 * 4, (void *)clip_regions);
-
-    if (binding->point_params_loc != -1) {
-        uniform1iv(&binding->vertex->uniforms, binding->point_params_loc,
-                   ARRAY_SIZE(pg->point_params), (void *)pg->point_params);
-    }
-
-    if (binding->material_alpha_loc != -1) {
-        uniform1f(&binding->vertex->uniforms, binding->material_alpha_loc,
-                         pg->material_alpha);
-    }
-
-    if (!state->use_push_constants_for_uniform_attrs && state->uniform_attrs) {
-        update_uniform_attr_values(pg, binding);
-    }
-}
-
-// Quickly check PGRAPH state to see if any registers have changed that
-// necessitate a full shader state inspection.
-static bool check_shaders_dirty(PGRAPHState *pg)
-{
-    PGRAPHVkState *r = pg->vk_renderer_state;
-
-    if (!r->shader_binding) {
-        return true;
-    }
-    if (pg->program_data_dirty) {
-        return true;
-    }
-
-    int num_stages = pgraph_reg_r(pg, NV_PGRAPH_COMBINECTL) & 0xFF;
-    for (int i = 0; i < num_stages; i++) {
-        if (pgraph_is_reg_dirty(pg, NV_PGRAPH_COMBINEALPHAI0 + i * 4) ||
-            pgraph_is_reg_dirty(pg, NV_PGRAPH_COMBINEALPHAO0 + i * 4) ||
-            pgraph_is_reg_dirty(pg, NV_PGRAPH_COMBINECOLORI0 + i * 4) ||
-            pgraph_is_reg_dirty(pg, NV_PGRAPH_COMBINECOLORO0 + i * 4)) {
-            return true;
-        }
-    }
-
-    unsigned int regs[] = {
-        NV_PGRAPH_COMBINECTL,
-        NV_PGRAPH_COMBINESPECFOG0,
-        NV_PGRAPH_COMBINESPECFOG1,
-        NV_PGRAPH_CONTROL_0,
-        NV_PGRAPH_CONTROL_3,
-        NV_PGRAPH_CSV0_C,
-        NV_PGRAPH_CSV0_D,
-        NV_PGRAPH_CSV1_A,
-        NV_PGRAPH_CSV1_B,
-        NV_PGRAPH_POINTSIZE,
-        NV_PGRAPH_SETUPRASTER,
-        NV_PGRAPH_SHADERCLIPMODE,
-        NV_PGRAPH_SHADERCTL,
-        NV_PGRAPH_SHADERPROG,
-        NV_PGRAPH_SHADOWCTL,
-        NV_PGRAPH_ZCOMPRESSOCCLUDE,
-    };
-    for (int i = 0; i < ARRAY_SIZE(regs); i++) {
-        if (pgraph_is_reg_dirty(pg, regs[i])) {
-            return true;
-        }
-    }
-
-    ShaderState *state = &r->shader_binding->state;
-    if (pg->uniform_attrs != state->uniform_attrs ||
-        pg->swizzle_attrs != state->swizzle_attrs ||
-        pg->compressed_attrs != state->compressed_attrs ||
-        pg->primitive_mode != state->primitive_mode ||
-        pg->surface_scale_factor != state->surface_scale_factor) {
-        return true;
-    }
-
-    // Textures
-    for (int i = 0; i < 4; i++) {
-        if (pg->texture_matrix_enable[i] != pg->vk_renderer_state->shader_binding->state.texture_matrix_enable[i] ||
-            pgraph_is_reg_dirty(pg, NV_PGRAPH_TEXCTL0_0 + i * 4) ||
-            pgraph_is_reg_dirty(pg, NV_PGRAPH_TEXFILTER0 + i * 4) ||
-            pgraph_is_reg_dirty(pg, NV_PGRAPH_TEXFMT0 + i * 4)) {
-            return true;
-        }
-    }
-
-    nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND_NOTDIRTY);
-
-    return false;
-}
-
-void pgraph_vk_bind_shaders(PGRAPHState *pg)
+// FIXME: Dirty tracking
+static void update_shader_uniforms(PGRAPHState *pg)
 {
     NV2A_VK_DGROUP_BEGIN("%s", __func__);
 
     PGRAPHVkState *r = pg->vk_renderer_state;
-
-    r->shader_bindings_changed = false;
-
-    if (check_shaders_dirty(pg)) {
-        ShaderState new_state;
-        memset(&new_state, 0, sizeof(ShaderState));
-        new_state = pgraph_get_shader_state(pg);
-        new_state.vulkan = true;
-        new_state.psh.vulkan = true;
-        new_state.use_push_constants_for_uniform_attrs =
-            (r->device_props.limits.maxPushConstantsSize >=
-             MAX_UNIFORM_ATTR_VALUES_SIZE);
-
-        if (!r->shader_binding || memcmp(&r->shader_binding->state, &new_state, sizeof(ShaderState))) {
-            r->shader_binding = gen_shaders(pg, &new_state);
-            r->shader_bindings_changed = true;
-        }
-    }
-
-    // FIXME: Use dirty bits
-    pgraph_vk_update_shader_uniforms(pg);
-
-    NV2A_VK_DGROUP_END();
-}
-
-void pgraph_vk_update_shader_uniforms(PGRAPHState *pg)
-{
-    PGRAPHVkState *r = pg->vk_renderer_state;
-    NV2A_VK_DGROUP_BEGIN("%s", __func__);
     nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND);
 
     assert(r->shader_binding);
     ShaderBinding *binding = r->shader_binding;
-    ShaderUniformLayout *layouts[] = { &binding->vertex->uniforms,
-                                        &binding->fragment->uniforms };
-    shader_update_constants(pg, r->shader_binding, true,
-                            r->shader_binding->state.vertex_program,
-                            r->shader_binding->state.fixed_function);
+    ShaderUniformLayout *layouts[] = { &binding->vsh.module_info->uniforms,
+                                       &binding->psh.module_info->uniforms };
+
+    VshUniformValues vsh_values;
+    pgraph_glsl_set_vsh_uniform_values(pg, &binding->state.vsh,
+                                  binding->vsh.uniform_locs, &vsh_values);
+    apply_uniform_updates(&binding->vsh.module_info->uniforms, VshUniformInfo,
+                          binding->vsh.uniform_locs, &vsh_values,
+                          VshUniform__COUNT);
+
+    PshUniformValues psh_values;
+    pgraph_glsl_set_psh_uniform_values(pg, binding->psh.uniform_locs,
+                                       &psh_values);
+    for (int i = 0; i < 4; i++) {
+        assert(r->texture_bindings[i] != NULL);
+        float scale = r->texture_bindings[i]->key.scale;
+
+        BasicColorFormatInfo f_basic =
+            kelvin_color_format_info_map[pg->vk_renderer_state
+                                             ->texture_bindings[i]
+                                             ->key.state.color_format];
+        if (!f_basic.linear) {
+            scale = 1.0;
+        }
+
+        psh_values.texScale[i] = scale;
+    }
+    apply_uniform_updates(&binding->psh.module_info->uniforms, PshUniformInfo,
+                          binding->psh.uniform_locs, &psh_values,
+                          PshUniform__COUNT);
 
     for (int i = 0; i < ARRAY_SIZE(layouts); i++) {
-        uint64_t hash = fast_hash(layouts[i]->allocation, layouts[i]->total_size);
+        uint64_t hash =
+            fast_hash(layouts[i]->allocation, layouts[i]->total_size);
         r->uniforms_changed |= (hash != r->uniform_buffer_hashes[i]);
         r->uniform_buffer_hashes[i] = hash;
     }
@@ -862,13 +492,44 @@ void pgraph_vk_update_shader_uniforms(PGRAPHState *pg)
     NV2A_VK_DGROUP_END();
 }
 
+void pgraph_vk_bind_shaders(PGRAPHState *pg)
+{
+    NV2A_VK_DGROUP_BEGIN("%s", __func__);
+
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    r->shader_bindings_changed = false;
+
+    if (!r->shader_binding ||
+        pgraph_glsl_check_shader_state_dirty(pg, &r->shader_binding->state)) {
+        ShaderState new_state = pgraph_glsl_get_shader_state(pg);
+        if (!r->shader_binding || memcmp(&r->shader_binding->state, &new_state,
+                                         sizeof(ShaderState))) {
+            r->shader_binding = get_shader_binding_for_state(r, &new_state);
+            r->shader_bindings_changed = true;
+        }
+    } else {
+        nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND_NOTDIRTY);
+    }
+
+    update_shader_uniforms(pg);
+
+    NV2A_VK_DGROUP_END();
+}
+
 void pgraph_vk_init_shaders(PGRAPHState *pg)
 {
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
     pgraph_vk_init_glsl_compiler();
     create_descriptor_pool(pg);
     create_descriptor_set_layout(pg);
     create_descriptor_sets(pg);
     shader_cache_init(pg);
+
+    r->use_push_constants_for_uniform_attrs =
+        (r->device_props.limits.maxPushConstantsSize >=
+         MAX_UNIFORM_ATTR_VALUES_SIZE);
 }
 
 void pgraph_vk_finalize_shaders(PGRAPHState *pg)

@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2013 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2020-2024 Matt Borgerson
+ * Copyright (c) 2020-2025 Matt Borgerson
  *
  * Based on:
  * Cxbx, PixelShader.cpp
@@ -27,162 +27,189 @@
  */
 
 #include "qemu/osdep.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
-#include <stdint.h>
-
-#include "common.h"
 #include "hw/xbox/nv2a/debug.h"
-#include "hw/xbox/nv2a/pgraph/psh.h"
+#include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "psh.h"
 
-/*
- * This implements translation of register combiners into glsl
- * fragment shaders, but all terminology is in terms of Xbox DirectX
- * pixel shaders, since I wanted to be lazy while referencing existing
- * work / stealing code.
- *
- * For some background, see the OpenGL extension:
- * https://www.opengl.org/registry/specs/NV/register_combiners.txt
- */
+DEF_UNIFORM_INFO_ARR(PshUniform, PSH_UNIFORM_DECL_X)
 
-
-enum PS_TEXTUREMODES
-{                                 // valid in stage 0 1 2 3
-    PS_TEXTUREMODES_NONE=                 0x00L, // * * * *
-    PS_TEXTUREMODES_PROJECT2D=            0x01L, // * * * *
-    PS_TEXTUREMODES_PROJECT3D=            0x02L, // * * * *
-    PS_TEXTUREMODES_CUBEMAP=              0x03L, // * * * *
-    PS_TEXTUREMODES_PASSTHRU=             0x04L, // * * * *
-    PS_TEXTUREMODES_CLIPPLANE=            0x05L, // * * * *
-    PS_TEXTUREMODES_BUMPENVMAP=           0x06L, // - * * *
-    PS_TEXTUREMODES_BUMPENVMAP_LUM=       0x07L, // - * * *
-    PS_TEXTUREMODES_BRDF=                 0x08L, // - - * *
-    PS_TEXTUREMODES_DOT_ST=               0x09L, // - - * *
-    PS_TEXTUREMODES_DOT_ZW=               0x0aL, // - - * *
-    PS_TEXTUREMODES_DOT_RFLCT_DIFF=       0x0bL, // - - * -
-    PS_TEXTUREMODES_DOT_RFLCT_SPEC=       0x0cL, // - - - *
-    PS_TEXTUREMODES_DOT_STR_3D=           0x0dL, // - - - *
-    PS_TEXTUREMODES_DOT_STR_CUBE=         0x0eL, // - - - *
-    PS_TEXTUREMODES_DPNDNT_AR=            0x0fL, // - * * *
-    PS_TEXTUREMODES_DPNDNT_GB=            0x10L, // - * * *
-    PS_TEXTUREMODES_DOTPRODUCT=           0x11L, // - * * -
-    PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST= 0x12L, // - - - *
-    // 0x13-0x1f reserved
-};
-
-enum PS_INPUTMAPPING
+// TODO: https://github.com/xemu-project/xemu/issues/2260
+//   Investigate how color keying is handled for components with no alpha or
+//   only alpha.
+static uint32_t get_colorkey_mask(unsigned int color_format)
 {
-    PS_INPUTMAPPING_UNSIGNED_IDENTITY= 0x00L, // max(0,x)         OK for final combiner
-    PS_INPUTMAPPING_UNSIGNED_INVERT=   0x20L, // 1 - max(0,x)     OK for final combiner
-    PS_INPUTMAPPING_EXPAND_NORMAL=     0x40L, // 2*max(0,x) - 1   invalid for final combiner
-    PS_INPUTMAPPING_EXPAND_NEGATE=     0x60L, // 1 - 2*max(0,x)   invalid for final combiner
-    PS_INPUTMAPPING_HALFBIAS_NORMAL=   0x80L, // max(0,x) - 1/2   invalid for final combiner
-    PS_INPUTMAPPING_HALFBIAS_NEGATE=   0xa0L, // 1/2 - max(0,x)   invalid for final combiner
-    PS_INPUTMAPPING_SIGNED_IDENTITY=   0xc0L, // x                invalid for final combiner
-    PS_INPUTMAPPING_SIGNED_NEGATE=     0xe0L, // -x               invalid for final combiner
-};
+    switch (color_format) {
+    case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_X1R5G5B5:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_X8R8G8B8:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X1R5G5B5:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X8R8G8B8:
+        return 0x00FFFFFF;
 
-enum PS_REGISTER
+    default:
+        return 0xFFFFFFFF;
+    }
+}
+
+static uint32_t get_color_key_mask_for_texture(PGRAPHState *pg, int i)
 {
-    PS_REGISTER_ZERO=              0x00L, // r
-    PS_REGISTER_DISCARD=           0x00L, // w
-    PS_REGISTER_C0=                0x01L, // r
-    PS_REGISTER_C1=                0x02L, // r
-    PS_REGISTER_FOG=               0x03L, // r
-    PS_REGISTER_V0=                0x04L, // r/w
-    PS_REGISTER_V1=                0x05L, // r/w
-    PS_REGISTER_T0=                0x08L, // r/w
-    PS_REGISTER_T1=                0x09L, // r/w
-    PS_REGISTER_T2=                0x0aL, // r/w
-    PS_REGISTER_T3=                0x0bL, // r/w
-    PS_REGISTER_R0=                0x0cL, // r/w
-    PS_REGISTER_R1=                0x0dL, // r/w
-    PS_REGISTER_V1R0_SUM=          0x0eL, // r
-    PS_REGISTER_EF_PROD=           0x0fL, // r
+    assert(i < NV2A_MAX_TEXTURES);
+    uint32_t fmt = pgraph_reg_r(pg, NV_PGRAPH_TEXFMT0 + i * 4);
+    unsigned int color_format = GET_MASK(fmt, NV_PGRAPH_TEXFMT0_COLOR);
+    return get_colorkey_mask(color_format);
+}
 
-    PS_REGISTER_ONE=               PS_REGISTER_ZERO | PS_INPUTMAPPING_UNSIGNED_INVERT, // OK for final combiner
-    PS_REGISTER_NEGATIVE_ONE=      PS_REGISTER_ZERO | PS_INPUTMAPPING_EXPAND_NORMAL,   // invalid for final combiner
-    PS_REGISTER_ONE_HALF=          PS_REGISTER_ZERO | PS_INPUTMAPPING_HALFBIAS_NEGATE, // invalid for final combiner
-    PS_REGISTER_NEGATIVE_ONE_HALF= PS_REGISTER_ZERO | PS_INPUTMAPPING_HALFBIAS_NORMAL, // invalid for final combiner
-};
-
-enum PS_COMBINERCOUNTFLAGS
+void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
 {
-    PS_COMBINERCOUNT_MUX_LSB=     0x0000L, // mux on r0.a lsb
-    PS_COMBINERCOUNT_MUX_MSB=     0x0001L, // mux on r0.a msb
+    state->window_clip_exclusive = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+                                   NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE;
+    state->combiner_control = pgraph_reg_r(pg, NV_PGRAPH_COMBINECTL);
+    state->shader_stage_program = pgraph_reg_r(pg, NV_PGRAPH_SHADERPROG);
+    state->other_stage_input = pgraph_reg_r(pg, NV_PGRAPH_SHADERCTL);
+    state->final_inputs_0 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG0);
+    state->final_inputs_1 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG1);
 
-    PS_COMBINERCOUNT_SAME_C0=     0x0000L, // c0 same in each stage
-    PS_COMBINERCOUNT_UNIQUE_C0=   0x0010L, // c0 unique in each stage
+    state->alpha_test = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                        NV_PGRAPH_CONTROL_0_ALPHATESTENABLE;
+    state->alpha_func = (enum PshAlphaFunc)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0), NV_PGRAPH_CONTROL_0_ALPHAFUNC);
 
-    PS_COMBINERCOUNT_SAME_C1=     0x0000L, // c1 same in each stage
-    PS_COMBINERCOUNT_UNIQUE_C1=   0x0100L  // c1 unique in each stage
-};
+    state->point_sprite = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+                          NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE;
 
-enum PS_COMBINEROUTPUT
-{
-    PS_COMBINEROUTPUT_IDENTITY=            0x00L, // y = x
-    PS_COMBINEROUTPUT_BIAS=                0x08L, // y = x - 0.5
-    PS_COMBINEROUTPUT_SHIFTLEFT_1=         0x10L, // y = x*2
-    PS_COMBINEROUTPUT_SHIFTLEFT_1_BIAS=    0x18L, // y = (x - 0.5)*2
-    PS_COMBINEROUTPUT_SHIFTLEFT_2=         0x20L, // y = x*4
-    PS_COMBINEROUTPUT_SHIFTRIGHT_1=        0x30L, // y = x/2
+    state->shadow_depth_func =
+        (enum PshShadowDepthFunc)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_SHADOWCTL),
+                                          NV_PGRAPH_SHADOWCTL_SHADOW_ZFUNC);
+    state->z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                           NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
 
-    PS_COMBINEROUTPUT_AB_BLUE_TO_ALPHA=    0x80L, // RGB only
+    state->smooth_shading = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
+                                     NV_PGRAPH_CONTROL_3_SHADEMODE) ==
+                            NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
 
-    PS_COMBINEROUTPUT_CD_BLUE_TO_ALPHA=    0x40L, // RGB only
+    state->depth_clipping =
+        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_ZCOMPRESSOCCLUDE),
+                 NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
+        NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CULL;
 
-    PS_COMBINEROUTPUT_AB_MULTIPLY=         0x00L,
-    PS_COMBINEROUTPUT_AB_DOT_PRODUCT=      0x02L, // RGB only
+    int num_stages = pgraph_reg_r(pg, NV_PGRAPH_COMBINECTL) & 0xFF;
+    for (int i = 0; i < num_stages; i++) {
+        state->rgb_inputs[i] =
+            pgraph_reg_r(pg, NV_PGRAPH_COMBINECOLORI0 + i * 4);
+        state->rgb_outputs[i] =
+            pgraph_reg_r(pg, NV_PGRAPH_COMBINECOLORO0 + i * 4);
+        state->alpha_inputs[i] =
+            pgraph_reg_r(pg, NV_PGRAPH_COMBINEALPHAI0 + i * 4);
+        state->alpha_outputs[i] =
+            pgraph_reg_r(pg, NV_PGRAPH_COMBINEALPHAO0 + i * 4);
+    }
 
-    PS_COMBINEROUTPUT_CD_MULTIPLY=         0x00L,
-    PS_COMBINEROUTPUT_CD_DOT_PRODUCT=      0x01L, // RGB only
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            state->compare_mode[i][j] =
+                (pgraph_reg_r(pg, NV_PGRAPH_SHADERCLIPMODE) >> (4 * i + j)) & 1;
+        }
 
-    PS_COMBINEROUTPUT_AB_CD_SUM=           0x00L, // 3rd output is AB+CD
-    PS_COMBINEROUTPUT_AB_CD_MUX=           0x04L, // 3rd output is MUX(AB,CD) based on R0.a
-};
+        uint32_t ctl_0 = pgraph_reg_r(pg, NV_PGRAPH_TEXCTL0_0 + i * 4);
+        bool enabled = pgraph_is_texture_stage_active(pg, i) &&
+                       (ctl_0 & NV_PGRAPH_TEXCTL0_0_ENABLE);
+        if (!enabled) {
+            continue;
+        }
 
-enum PS_CHANNEL
-{
-    PS_CHANNEL_RGB=   0x00, // used as RGB source
-    PS_CHANNEL_BLUE=  0x00, // used as ALPHA source
-    PS_CHANNEL_ALPHA= 0x10, // used as RGB or ALPHA source
-};
+        state->alphakill[i] = ctl_0 & NV_PGRAPH_TEXCTL0_0_ALPHAKILLEN;
+        state->colorkey_mode[i] = ctl_0 & NV_PGRAPH_TEXCTL0_0_COLORKEYMODE;
 
+        uint32_t tex_fmt = pgraph_reg_r(pg, NV_PGRAPH_TEXFMT0 + i * 4);
+        state->dim_tex[i] = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_DIMENSIONALITY);
 
-enum PS_FINALCOMBINERSETTING
-{
-    PS_FINALCOMBINERSETTING_CLAMP_SUM=     0x80, // V1+R0 sum clamped to [0,1]
+        unsigned int color_format = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_COLOR);
+        BasicColorFormatInfo f = kelvin_color_format_info_map[color_format];
+        state->rect_tex[i] = f.linear;
+        state->tex_x8y24[i] =
+            color_format ==
+                NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FIXED ||
+            color_format ==
+                NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FLOAT;
 
-    PS_FINALCOMBINERSETTING_COMPLEMENT_V1= 0x40, // unsigned invert mapping
+        uint32_t border_source =
+            GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BORDER_SOURCE);
+        bool cubemap = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_CUBEMAPENABLE);
+        state->border_logical_size[i][0] = 0.0f;
+        state->border_logical_size[i][1] = 0.0f;
+        state->border_logical_size[i][2] = 0.0f;
+        if (border_source != NV_PGRAPH_TEXFMT0_BORDER_SOURCE_COLOR) {
+            if (!f.linear && !cubemap) {
+                // The actual texture will be (at least) double the reported
+                // size and shifted by a 4 texel border but texture coordinates
+                // will still be relative to the reported size.
+                unsigned int reported_width =
+                    1 << GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BASE_SIZE_U);
+                unsigned int reported_height =
+                    1 << GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BASE_SIZE_V);
+                unsigned int reported_depth =
+                    1 << GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BASE_SIZE_P);
 
-    PS_FINALCOMBINERSETTING_COMPLEMENT_R0= 0x20, // unsigned invert mapping
-};
+                state->border_logical_size[i][0] = reported_width;
+                state->border_logical_size[i][1] = reported_height;
+                state->border_logical_size[i][2] = reported_depth;
 
-enum PS_DOTMAPPING
-{                              // valid in stage 0 1 2 3
-    PS_DOTMAPPING_ZERO_TO_ONE=         0x00L, // - * * *
-    PS_DOTMAPPING_MINUS1_TO_1_D3D=     0x01L, // - * * *
-    PS_DOTMAPPING_MINUS1_TO_1_GL=      0x02L, // - * * *
-    PS_DOTMAPPING_MINUS1_TO_1=         0x03L, // - * * *
-    PS_DOTMAPPING_HILO_1=              0x04L, // - * * *
-    PS_DOTMAPPING_HILO_HEMISPHERE_D3D= 0x05L, // - * * *
-    PS_DOTMAPPING_HILO_HEMISPHERE_GL=  0x06L, // - * * *
-    PS_DOTMAPPING_HILO_HEMISPHERE=     0x07L, // - * * *
-};
+                if (reported_width < 8) {
+                    state->border_inv_real_size[i][0] = 0.0625f;
+                } else {
+                    state->border_inv_real_size[i][0] =
+                        1.0f / (reported_width * 2.0f);
+                }
+                if (reported_height < 8) {
+                    state->border_inv_real_size[i][1] = 0.0625f;
+                } else {
+                    state->border_inv_real_size[i][1] =
+                        1.0f / (reported_height * 2.0f);
+                }
+                if (reported_depth < 8) {
+                    state->border_inv_real_size[i][2] = 0.0625f;
+                } else {
+                    state->border_inv_real_size[i][2] =
+                        1.0f / (reported_depth * 2.0f);
+                }
+            } else {
+                NV2A_UNIMPLEMENTED(
+                    "Border source texture with linear %d cubemap %d", f.linear,
+                    cubemap);
+            }
+        }
 
-enum PS_COLORKEYMODE {
-    COLOR_KEY_NONE = 0,
-    COLOR_KEY_KILL_ALPHA = 1,
-    COLOR_KEY_KILL_COLOR_AND_ALPHA = 2,
-    COLOR_KEY_DISCARD = 3,
-};
+        /* Keep track of whether texture data has been loaded as signed
+         * normalized integers or not. This dictates whether or not we will need
+         * to re-map in fragment shader for certain texture modes (e.g.
+         * bumpenvmap).
+         *
+         * FIXME: When signed texture data is loaded as unsigned and remapped in
+         * fragment shader, there may be interpolation artifacts. Fix this to
+         * support signed textures more appropriately.
+         */
+#if 0 // FIXME
+        psh->snorm_tex[i] = (f.gl_internal_format == GL_RGB8_SNORM)
+                                 || (f.gl_internal_format == GL_RG8_SNORM);
+#endif
+        state->shadow_map[i] = f.depth;
 
+        uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i * 4);
+        unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
+        enum ConvolutionFilter kernel = CONVOLUTION_FILTER_DISABLED;
+        /* FIXME: We do not distinguish between min and mag when
+         * performing convolution. Just use it if specified for min (common AA
+         * case).
+         */
+        if (min_filter == NV_PGRAPH_TEXFILTER0_MIN_CONVOLUTION_2D_LOD0) {
+            int k = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL);
+            assert(k == NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_QUINCUNX ||
+                   k == NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_GAUSSIAN_3);
+            kernel = (enum ConvolutionFilter)k;
+        }
 
-// Structures to describe the PS definition
+        state->conv_tex[i] = kernel;
+    }
+}
 
 struct InputInfo {
     int reg, mod, chan;
@@ -209,7 +236,8 @@ struct PSStageInfo {
 };
 
 struct PixelShader {
-    PshState state;
+    GenPshGlslOptions opts;
+    const PshState *state;
 
     int num_stages, flags;
     struct PSStageInfo stage[8];
@@ -244,7 +272,6 @@ static void add_const_ref(struct PixelShader *ps, const char *var)
     strcpy((char*)ps->const_refs[ps->num_const_refs++], var);
 }
 
-// Get the code for a variable used in the program
 static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
 {
     switch (reg) {
@@ -318,7 +345,6 @@ static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
     }
 }
 
-// Get input variable code
 static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool is_alpha)
 {
     MString *reg = get_var(ps, in.reg, false);
@@ -385,7 +411,6 @@ static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
     return res;
 }
 
-// Get code for the output mapping of a stage
 static MString* get_output(MString *reg, int mapping)
 {
     MString *res;
@@ -416,7 +441,6 @@ static MString* get_output(MString *reg, int mapping)
     return res;
 }
 
-// Add the GLSL code for a stage
 static MString* add_stage_code(struct PixelShader *ps,
                                struct InputVarInfo input,
                                struct OutputInfo output,
@@ -541,7 +565,6 @@ static MString* add_stage_code(struct PixelShader *ps,
     return ret;
 }
 
-// Add code for the final combiner stage
 static void add_final_stage_code(struct PixelShader *ps, struct FCInputInfo final)
 {
     ps->varE = get_input_var(ps, final.e, false);
@@ -569,11 +592,12 @@ static void add_final_stage_code(struct PixelShader *ps, struct FCInputInfo fina
     ps->varE = ps->varF = NULL;
 }
 
-static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *state, int i)
+static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES mode, int i)
 {
     const char *sampler2D = "sampler2D";
     const char *sampler3D = "sampler3D";
     const char *samplerCube = "samplerCube";
+    const struct PshState *state = ps->state;
     int dim = state->dim_tex[i];
 
     // FIXME: Cleanup
@@ -584,7 +608,7 @@ static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
 
     case PS_TEXTUREMODES_PROJECT2D:
         if (state->dim_tex[i] == 2) {
-            if (state->tex_x8y24[i] && state->vulkan) {
+            if (state->tex_x8y24[i] && ps->opts.vulkan) {
                 return "usampler2D";
             }
             return sampler2D;
@@ -607,7 +631,7 @@ static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
 
     case PS_TEXTUREMODES_PROJECT3D:
     case PS_TEXTUREMODES_DOT_STR_3D:
-        if (state->tex_x8y24[i] && state->vulkan) {
+        if (state->tex_x8y24[i] && ps->opts.vulkan) {
             return "usampler2D";
         }
         if (state->shadow_map[i]) {
@@ -648,22 +672,22 @@ static const char *shadow_comparison_map[] = {
 
 static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compare_z, MString *vars)
 {
-    if (ps->state.shadow_depth_func == SHADOW_DEPTH_FUNC_NEVER) {
+    if (ps->state->shadow_depth_func == SHADOW_DEPTH_FUNC_NEVER) {
         mstring_append_fmt(vars, "vec4 t%d = vec4(0.0);\n", i);
         return;
     }
 
-    if (ps->state.shadow_depth_func == SHADOW_DEPTH_FUNC_ALWAYS) {
+    if (ps->state->shadow_depth_func == SHADOW_DEPTH_FUNC_ALWAYS) {
         mstring_append_fmt(vars, "vec4 t%d = vec4(1.0);\n", i);
         return;
     }
 
     g_autofree gchar *normalize_tex_coords = g_strdup_printf("norm%d", i);
-    const char *tex_remap = ps->state.rect_tex[i] ? normalize_tex_coords : "";
+    const char *tex_remap = ps->state->rect_tex[i] ? normalize_tex_coords : "";
 
-    const char *comparison = shadow_comparison_map[ps->state.shadow_depth_func];
+    const char *comparison = shadow_comparison_map[ps->state->shadow_depth_func];
 
-    bool extract_msb_24b = ps->state.tex_x8y24[i] && ps->state.vulkan;
+    bool extract_msb_24b = ps->state->tex_x8y24[i] && ps->opts.vulkan;
 
     mstring_append_fmt(
         vars, "%svec4 t%d_depth%s = textureProj(texSamp%d, %s(pT%d.xyw));\n",
@@ -706,7 +730,7 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
 static void apply_border_adjustment(const struct PixelShader *ps, MString *vars, int tex_index, const char *var_template)
 {
     int i = tex_index;
-    if (ps->state.border_logical_size[i][0] == 0.0f) {
+    if (ps->state->border_logical_size[i][0] == 0.0f) {
         return;
     }
 
@@ -717,17 +741,17 @@ static void apply_border_adjustment(const struct PixelShader *ps, MString *vars,
         vars,
         "vec3 t%dLogicalSize = vec3(%f, %f, %f);\n"
         "%s.xyz = (%s.xyz * t%dLogicalSize + vec3(4, 4, 4)) * vec3(%f, %f, %f);\n",
-        i, ps->state.border_logical_size[i][0], ps->state.border_logical_size[i][1], ps->state.border_logical_size[i][2],
-        var_name, var_name, i, ps->state.border_inv_real_size[i][0], ps->state.border_inv_real_size[i][1], ps->state.border_inv_real_size[i][2]);
+        i, ps->state->border_logical_size[i][0], ps->state->border_logical_size[i][1], ps->state->border_logical_size[i][2],
+        var_name, var_name, i, ps->state->border_inv_real_size[i][0], ps->state->border_inv_real_size[i][1], ps->state->border_inv_real_size[i][2]);
 }
 
 static void apply_convolution_filter(const struct PixelShader *ps, MString *vars, int tex)
 {
-    assert(ps->state.dim_tex[tex] == 2);
+    assert(ps->state->dim_tex[tex] == 2);
     // FIXME: Quincunx
 
     g_autofree gchar *normalize_tex_coords = g_strdup_printf("norm%d", tex);
-    const char *tex_remap = ps->state.rect_tex[tex] ? normalize_tex_coords : "";
+    const char *tex_remap = ps->state->rect_tex[tex] ? normalize_tex_coords : "";
 
     mstring_append_fmt(vars,
         "vec4 t%d = vec4(0.0);\n"
@@ -753,44 +777,41 @@ static void define_colorkey_comparator(MString *preflight)
 
 static MString* psh_convert(struct PixelShader *ps)
 {
-    const char *u = ps->state.vulkan ? "" : "uniform "; // FIXME: Remove
-
     MString *preflight = mstring_new();
-    pgraph_get_glsl_vtx_header(preflight, ps->state.vulkan,
-                             ps->state.smooth_shading, true, false, false);
+    pgraph_glsl_get_vtx_header(preflight, ps->opts.vulkan,
+                             ps->state->smooth_shading, true, false, false);
 
-    if (ps->state.vulkan) {
-        mstring_append_fmt(preflight,
-                           "layout(location = 0) out vec4 fragColor;\n"
-                           "layout(binding = %d, std140) uniform PshUniforms {\n", PSH_UBO_BINDING);
+    if (ps->opts.vulkan) {
+        mstring_append_fmt(
+            preflight,
+            "layout(location = 0) out vec4 fragColor;\n"
+            "layout(binding = %d, std140) uniform PshUniforms {\n",
+            ps->opts.ubo_binding);
     } else {
         mstring_append_fmt(preflight,
                            "layout(location = 0) out vec4 fragColor;\n");
     }
 
-    mstring_append_fmt(preflight,
-                       "%sint alphaRef;\n"
-                       "%svec4  fogColor;\n"
-                       "%sivec4 clipRegion[8];\n"
-                       "%svec4  clipRange;\n"
-                       "%sfloat depthOffset;\n"
-                       "%suint colorKey[4];\n"
-                       "%suint colorKeyMask[4];\n",
-                       u, u, u, u, u, u, u);
-    for (int i = 0; i < 4; i++) {
-        mstring_append_fmt(preflight, "%smat2  bumpMat%d;\n"
-                                      "%sfloat bumpScale%d;\n"
-                                      "%sfloat bumpOffset%d;\n"
-                                      "%sfloat texScale%d;\n",
-                                      u, i, u, i, u, i, u, i);
-    }
-    for (int i = 0; i < 9; i++) {
-        for (int j = 0; j < 2; j++) {
-            mstring_append_fmt(preflight, "%svec4 c%d_%d;\n", u, j, i);
+    const char *u = ps->opts.vulkan ? "" : "uniform ";
+    for (int i = 0; i < ARRAY_SIZE(PshUniformInfo); i++) {
+        const UniformInfo *info = &PshUniformInfo[i];
+        const char *type_str = uniform_element_type_to_str[info->type];
+        if (info->count == 1) {
+            mstring_append_fmt(preflight, "%s%s %s;\n", u, type_str,
+                               info->name);
+        } else {
+            mstring_append_fmt(preflight, "%s%s %s[%zd];\n", u, type_str,
+                               info->name, info->count);
         }
     }
 
-    if (ps->state.vulkan) {
+    for (int i = 0; i < 9; i++) {
+        for (int j = 0; j < 2; j++) {
+            mstring_append_fmt(preflight, "#define c%d_%d consts[%d]\n", j, i, i*2+j);
+        }
+    }
+
+    if (ps->opts.vulkan) {
         mstring_append(preflight, "};\n");
     }
 
@@ -864,11 +885,10 @@ static MString* psh_convert(struct PixelShader *ps)
         "    vec2(-1.0, 1.0),vec2(0.0, 1.0),vec2(1.0, 1.0));\n"
         );
 
-    /* Window Clipping */
     MString *clip = mstring_new();
     mstring_append_fmt(clip, "/*  Window-clip (%slusive) */\n",
-                       ps->state.window_clip_exclusive ? "Exc" : "Inc");
-    if (!ps->state.window_clip_exclusive) {
+                       ps->state->window_clip_exclusive ? "Exc" : "Inc");
+    if (!ps->state->window_clip_exclusive) {
         mstring_append(clip, "bool clipContained = false;\n");
     }
     mstring_append(clip, "vec2 coord = gl_FragCoord.xy - 0.5;\n"
@@ -877,7 +897,7 @@ static MString* psh_convert(struct PixelShader *ps)
                          "      lessThan(coord, vec2(clipRegion[i].xy)),\n"
                          "      greaterThanEqual(coord, vec2(clipRegion[i].zw))));\n"
                          "  if (!outside) {\n");
-    if (ps->state.window_clip_exclusive) {
+    if (ps->state->window_clip_exclusive) {
         mstring_append(clip, "    discard;\n");
     } else {
         mstring_append(clip, "    clipContained = true;\n"
@@ -885,15 +905,14 @@ static MString* psh_convert(struct PixelShader *ps)
     }
     mstring_append(clip, "  }\n"
                          "}\n");
-    if (!ps->state.window_clip_exclusive) {
+    if (!ps->state->window_clip_exclusive) {
         mstring_append(clip, "if (!clipContained) {\n"
                              "  discard;\n"
                              "}\n");
     }
 
-    /* Depth clipping */
-    if (ps->state.depth_clipping) {
-        if (ps->state.z_perspective) {
+    if (ps->state->depth_clipping) {
+        if (ps->state->z_perspective) {
             mstring_append(
                 clip, "float zvalue = 1.0/gl_FragCoord.w + depthOffset;\n"
                       "if (zvalue < clipRange.z || clipRange.w < zvalue) {\n"
@@ -917,7 +936,7 @@ static MString* psh_convert(struct PixelShader *ps)
              * glClipControl(), but it requires OpenGL 4.5.
              * Above is based on experiments with Linux and Mesa.
              */
-            if (ps->state.vulkan) {
+            if (ps->opts.vulkan) {
                 mstring_append(
                     clip, "if (gl_FragCoord.z*clipRange.y < clipRange.z ||\n"
                           "    gl_FragCoord.z*clipRange.y > clipRange.w) {\n"
@@ -942,8 +961,8 @@ static MString* psh_convert(struct PixelShader *ps)
     mstring_append(vars, "vec4 pT0 = vtxT0;\n");
     mstring_append(vars, "vec4 pT1 = vtxT1;\n");
     mstring_append(vars, "vec4 pT2 = vtxT2;\n");
-    if (ps->state.point_sprite) {
-        assert(!ps->state.rect_tex[3]);
+    if (ps->state->point_sprite) {
+        assert(!ps->state->rect_tex[3]);
         mstring_append(vars, "vec4 pT3 = vec4(gl_PointCoord, 1.0, 1.0);\n");
     } else {
         mstring_append(vars, "vec4 pT3 = vtxT3;\n");
@@ -961,10 +980,10 @@ static MString* psh_convert(struct PixelShader *ps)
 
     for (int i = 0; i < 4; i++) {
 
-        const char *sampler_type = get_sampler_type(ps->tex_modes[i], &ps->state, i);
+        const char *sampler_type = get_sampler_type(ps, ps->tex_modes[i], i);
 
         g_autofree gchar *normalize_tex_coords = g_strdup_printf("norm%d", i);
-        const char *tex_remap = ps->state.rect_tex[i] ? normalize_tex_coords : "";
+        const char *tex_remap = ps->state->rect_tex[i] ? normalize_tex_coords : "";
 
         assert(ps->dot_map[i] < 8);
         const char *dotmap_func = dotmap_funcs[ps->dot_map[i]];
@@ -978,18 +997,18 @@ static MString* psh_convert(struct PixelShader *ps)
                                i);
             break;
         case PS_TEXTUREMODES_PROJECT2D: {
-            if (ps->state.shadow_map[i]) {
+            if (ps->state->shadow_map[i]) {
                 psh_append_shadowmap(ps, i, false, vars);
             } else {
                 apply_border_adjustment(ps, vars, i, "pT%d");
-                if (((ps->state.conv_tex[i] == CONVOLUTION_FILTER_GAUSSIAN) ||
-                     (ps->state.conv_tex[i] == CONVOLUTION_FILTER_QUINCUNX))) {
+                if (((ps->state->conv_tex[i] == CONVOLUTION_FILTER_GAUSSIAN) ||
+                     (ps->state->conv_tex[i] == CONVOLUTION_FILTER_QUINCUNX))) {
                     apply_convolution_filter(ps, vars, i);
                 } else {
-                    if (ps->state.dim_tex[i] == 2) {
+                    if (ps->state->dim_tex[i] == 2) {
                         mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, %s(pT%d.xyw));\n",
                                            i, i, tex_remap, i);
-                    } else if (ps->state.dim_tex[i] == 3) {
+                    } else if (ps->state->dim_tex[i] == 3) {
                         mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, vec4(pT%d.xy, 0.0, pT%d.w));\n",
                                            i, i, i, i);
                     } else {
@@ -1000,7 +1019,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         }
         case PS_TEXTUREMODES_PROJECT3D:
-            if (ps->state.shadow_map[i]) {
+            if (ps->state->shadow_map[i]) {
                 psh_append_shadowmap(ps, i, true, vars);
             } else {
                 apply_border_adjustment(ps, vars, i, "pT%d");
@@ -1013,7 +1032,7 @@ static MString* psh_convert(struct PixelShader *ps)
                                i, i, i);
             break;
         case PS_TEXTUREMODES_PASSTHRU:
-            assert(ps->state.border_logical_size[i][0] == 0.0f && "Unexpected border texture on passthru");
+            assert(ps->state->border_logical_size[i][0] == 0.0f && "Unexpected border texture on passthru");
             mstring_append_fmt(vars, "vec4 t%d = pT%d;\n", i, i);
             break;
         case PS_TEXTUREMODES_CLIPPLANE: {
@@ -1023,14 +1042,14 @@ static MString* psh_convert(struct PixelShader *ps)
             for (j = 0; j < 4; j++) {
                 mstring_append_fmt(vars, "  if(pT%d.%c %s 0.0) { discard; };\n",
                                    i, "xyzw"[j],
-                                   ps->state.compare_mode[i][j] ? ">=" : "<");
+                                   ps->state->compare_mode[i][j] ? ">=" : "<");
             }
             break;
         }
         case PS_TEXTUREMODES_BUMPENVMAP:
             assert(i >= 1);
 
-            if (ps->state.snorm_tex[ps->input_tex[i]]) {
+            if (ps->state->snorm_tex[ps->input_tex[i]]) {
                 /* Input color channels already signed (FIXME: May not always want signed textures in this case) */
                 mstring_append_fmt(vars, "vec2 dsdt%d = t%d.bg;\n",
                                    i, ps->input_tex[i]);
@@ -1040,12 +1059,12 @@ static MString* psh_convert(struct PixelShader *ps)
                                    i, ps->input_tex[i], ps->input_tex[i]);
             }
 
-            mstring_append_fmt(vars, "dsdt%d = bumpMat%d * dsdt%d;\n", i, i, i);
+            mstring_append_fmt(vars, "dsdt%d = bumpMat[%d] * dsdt%d;\n", i, i, i);
 
-            if (ps->state.dim_tex[i] == 2) {
+            if (ps->state->dim_tex[i] == 2) {
                 mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdt%d));\n",
                     i, i, tex_remap, i, i);
-            } else if (ps->state.dim_tex[i] == 3) {
+            } else if (ps->state->dim_tex[i] == 3) {
                 // FIXME: Does hardware pass through the r/z coordinate or is it 0?
                 mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(pT%d.xy + dsdt%d, pT%d.z));\n",
                     i, i, i, i, i);
@@ -1056,7 +1075,7 @@ static MString* psh_convert(struct PixelShader *ps)
         case PS_TEXTUREMODES_BUMPENVMAP_LUM:
             assert(i >= 1);
 
-            if (ps->state.snorm_tex[ps->input_tex[i]]) {
+            if (ps->state->snorm_tex[ps->input_tex[i]]) {
                 /* Input color channels already signed (FIXME: May not always want signed textures in this case) */
                 mstring_append_fmt(vars, "vec3 dsdtl%d = vec3(t%d.bg, sign3_to_0_to_1(t%d.r));\n",
                                    i, ps->input_tex[i], ps->input_tex[i]);
@@ -1066,13 +1085,13 @@ static MString* psh_convert(struct PixelShader *ps)
                                    i, ps->input_tex[i], ps->input_tex[i], ps->input_tex[i]);
             }
 
-            mstring_append_fmt(vars, "dsdtl%d.st = bumpMat%d * dsdtl%d.st;\n",
+            mstring_append_fmt(vars, "dsdtl%d.st = bumpMat[%d] * dsdtl%d.st;\n",
                                i, i, i);
 
-            if (ps->state.dim_tex[i] == 2) {
+            if (ps->state->dim_tex[i] == 2) {
                 mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdtl%d.st));\n",
                     i, i, tex_remap, i, i);
-            } else if (ps->state.dim_tex[i] == 3) {
+            } else if (ps->state->dim_tex[i] == 3) {
                 // FIXME: Does hardware pass through the r/z coordinate or is it 0?
                 mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(pT%d.xy + dsdtl%d.st, pT%d.z));\n",
                     i, i, i, i, i);
@@ -1080,7 +1099,7 @@ static MString* psh_convert(struct PixelShader *ps)
                 assert(!"Unhandled texture dimensions");
             }
 
-            mstring_append_fmt(vars, "t%d = t%d * (bumpScale%d * dsdtl%d.p + bumpOffset%d);\n",
+            mstring_append_fmt(vars, "t%d = t%d * (bumpScale[%d] * dsdtl%d.p + bumpOffset[%d]);\n",
                 i, i, i, i, i);
             break;
         case PS_TEXTUREMODES_BRDF:
@@ -1149,7 +1168,7 @@ static MString* psh_convert(struct PixelShader *ps)
 
             apply_border_adjustment(ps, vars, i, "dotSTR%d");
             mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(dotSTR%d%s));\n",
-                i, i, tex_remap, i, ps->state.dim_tex[i] == 2 ? ".xy" : "");
+                i, i, tex_remap, i, ps->state->dim_tex[i] == 2 ? ".xy" : "");
             break;
         case PS_TEXTUREMODES_DOT_STR_CUBE:
             assert(i == 3);
@@ -1164,7 +1183,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DPNDNT_AR:
             assert(i >= 1);
-            assert(!ps->state.rect_tex[i]);
+            assert(!ps->state->rect_tex[i]);
             mstring_append_fmt(vars, "vec2 t%dAR = t%d.ar;\n", i, ps->input_tex[i]);
             apply_border_adjustment(ps, vars, i, "t%dAR");
             mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(t%dAR));\n",
@@ -1172,7 +1191,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DPNDNT_GB:
             assert(i >= 1);
-            assert(!ps->state.rect_tex[i]);
+            assert(!ps->state->rect_tex[i]);
             mstring_append_fmt(vars, "vec2 t%dGB = t%d.gb;\n", i, ps->input_tex[i]);
             apply_border_adjustment(ps, vars, i, "t%dGB");
             mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(t%dGB));\n",
@@ -1198,18 +1217,18 @@ static MString* psh_convert(struct PixelShader *ps)
         }
 
         if (sampler_type != NULL) {
-            if (ps->state.vulkan) {
-                mstring_append_fmt(preflight, "layout(binding = %d) ", PSH_TEX_BINDING + i);
+            if (ps->opts.vulkan) {
+                mstring_append_fmt(preflight, "layout(binding = %d) ", ps->opts.tex_binding + i);
             }
             mstring_append_fmt(preflight, "uniform %s texSamp%d;\n", sampler_type, i);
 
             /* As this means a texture fetch does happen, do alphakill */
-            if (ps->state.alphakill[i]) {
+            if (ps->state->alphakill[i]) {
                 mstring_append_fmt(vars, "if (t%d.a == 0.0) { discard; };\n",
                                    i);
             }
 
-            enum PS_COLORKEYMODE color_key_mode = ps->state.colorkey_mode[i];
+            enum PS_COLORKEYMODE color_key_mode = ps->state->colorkey_mode[i];
             if (color_key_mode != COLOR_KEY_NONE) {
                 if (!color_key_comparator_defined) {
                     define_colorkey_comparator(preflight);
@@ -1243,10 +1262,10 @@ static MString* psh_convert(struct PixelShader *ps)
                 mstring_append(vars, "}\n");
             }
 
-            if (ps->state.rect_tex[i]) {
+            if (ps->state->rect_tex[i]) {
                 mstring_append_fmt(preflight,
                 "vec2 norm%d(vec2 coord) {\n"
-                "    return coord / (textureSize(texSamp%d, 0) / texScale%d);\n"
+                "    return coord / (textureSize(texSamp%d, 0) / texScale[%d]);\n"
                 "}\n",
                 i, i, i);
                 mstring_append_fmt(preflight,
@@ -1281,12 +1300,12 @@ static MString* psh_convert(struct PixelShader *ps)
         add_final_stage_code(ps, ps->final_input);
     }
 
-    if (ps->state.alpha_test && ps->state.alpha_func != ALPHA_FUNC_ALWAYS) {
-        if (ps->state.alpha_func == ALPHA_FUNC_NEVER) {
+    if (ps->state->alpha_test && ps->state->alpha_func != ALPHA_FUNC_ALWAYS) {
+        if (ps->state->alpha_func == ALPHA_FUNC_NEVER) {
             mstring_append(ps->code, "discard;\n");
         } else {
             const char* alpha_op;
-            switch (ps->state.alpha_func) {
+            switch (ps->state->alpha_func) {
             case ALPHA_FUNC_LESS: alpha_op = "<"; break;
             case ALPHA_FUNC_EQUAL: alpha_op = "=="; break;
             case ALPHA_FUNC_LEQUAL: alpha_op = "<="; break;
@@ -1315,8 +1334,8 @@ static MString* psh_convert(struct PixelShader *ps)
         }
     }
 
-    if (ps->state.z_perspective) {
-        if (!ps->state.depth_clipping) {
+    if (ps->state->z_perspective) {
+        if (!ps->state->depth_clipping) {
             mstring_append(ps->code,
                            "float zvalue = 1.0/gl_FragCoord.w + depthOffset;\n");
         }
@@ -1327,13 +1346,13 @@ static MString* psh_convert(struct PixelShader *ps)
          */
         mstring_append(ps->code,
                        "gl_FragDepth = clamp(zvalue, clipRange.z, clipRange.w)/clipRange.y;\n");
-    } else if (!ps->state.depth_clipping) {
+    } else if (!ps->state->depth_clipping) {
         mstring_append(ps->code,
                        "gl_FragDepth = clamp(gl_FragCoord.z, clipRange.z/clipRange.y, clipRange.w/clipRange.y);\n");
     }
 
     MString *final = mstring_new();
-    mstring_append_fmt(final, "#version %d\n\n", ps->state.vulkan ? 450 : 400);
+    mstring_append_fmt(final, "#version %d\n\n", ps->opts.vulkan ? 450 : 400);
     mstring_append(final, mstring_get_str(preflight));
     mstring_append(final, "void main() {\n");
     mstring_append(final, mstring_get_str(clip));
@@ -1380,55 +1399,196 @@ static void parse_combiner_output(uint32_t value, struct OutputInfo *out)
     out->cd_alphablue = flags & 0x40;
 }
 
-MString *pgraph_gen_psh_glsl(const PshState state)
+MString *pgraph_glsl_gen_psh(const PshState *state, GenPshGlslOptions opts)
 {
     int i;
     struct PixelShader ps;
     memset(&ps, 0, sizeof(ps));
 
+    ps.opts = opts;
     ps.state = state;
 
-    ps.num_stages = state.combiner_control & 0xFF;
-    ps.flags = state.combiner_control >> 8;
+    ps.num_stages = state->combiner_control & 0xFF;
+    ps.flags = state->combiner_control >> 8;
     for (i = 0; i < 4; i++) {
-        ps.tex_modes[i] = (state.shader_stage_program >> (i * 5)) & 0x1F;
+        ps.tex_modes[i] = (state->shader_stage_program >> (i * 5)) & 0x1F;
     }
 
     ps.dot_map[0] = 0;
-    ps.dot_map[1] = (state.other_stage_input >> 0) & 0xf;
-    ps.dot_map[2] = (state.other_stage_input >> 4) & 0xf;
-    ps.dot_map[3] = (state.other_stage_input >> 8) & 0xf;
+    ps.dot_map[1] = (state->other_stage_input >> 0) & 0xf;
+    ps.dot_map[2] = (state->other_stage_input >> 4) & 0xf;
+    ps.dot_map[3] = (state->other_stage_input >> 8) & 0xf;
 
     ps.input_tex[0] = -1;
     ps.input_tex[1] = 0;
-    ps.input_tex[2] = (state.other_stage_input >> 16) & 0xF;
-    ps.input_tex[3] = (state.other_stage_input >> 20) & 0xF;
+    ps.input_tex[2] = (state->other_stage_input >> 16) & 0xF;
+    ps.input_tex[3] = (state->other_stage_input >> 20) & 0xF;
     for (i = 0; i < ps.num_stages; i++) {
-        parse_combiner_inputs(state.rgb_inputs[i],
+        parse_combiner_inputs(state->rgb_inputs[i],
             &ps.stage[i].rgb_input.a, &ps.stage[i].rgb_input.b,
             &ps.stage[i].rgb_input.c, &ps.stage[i].rgb_input.d);
-        parse_combiner_inputs(state.alpha_inputs[i],
+        parse_combiner_inputs(state->alpha_inputs[i],
             &ps.stage[i].alpha_input.a, &ps.stage[i].alpha_input.b,
             &ps.stage[i].alpha_input.c, &ps.stage[i].alpha_input.d);
 
-        parse_combiner_output(state.rgb_outputs[i], &ps.stage[i].rgb_output);
-        parse_combiner_output(state.alpha_outputs[i], &ps.stage[i].alpha_output);
+        parse_combiner_output(state->rgb_outputs[i], &ps.stage[i].rgb_output);
+        parse_combiner_output(state->alpha_outputs[i], &ps.stage[i].alpha_output);
     }
 
     struct InputInfo blank;
-    ps.final_input.enabled = state.final_inputs_0 || state.final_inputs_1;
+    ps.final_input.enabled = state->final_inputs_0 || state->final_inputs_1;
     if (ps.final_input.enabled) {
-        parse_combiner_inputs(state.final_inputs_0,
+        parse_combiner_inputs(state->final_inputs_0,
                               &ps.final_input.a, &ps.final_input.b,
                               &ps.final_input.c, &ps.final_input.d);
-        parse_combiner_inputs(state.final_inputs_1,
+        parse_combiner_inputs(state->final_inputs_1,
                               &ps.final_input.e, &ps.final_input.f,
                               &ps.final_input.g, &blank);
-        int flags = state.final_inputs_1 & 0xFF;
+        int flags = state->final_inputs_1 & 0xFF;
         ps.final_input.clamp_sum = flags & PS_FINALCOMBINERSETTING_CLAMP_SUM;
         ps.final_input.inv_v1 = flags & PS_FINALCOMBINERSETTING_COMPLEMENT_V1;
         ps.final_input.inv_r0 = flags & PS_FINALCOMBINERSETTING_COMPLEMENT_R0;
     }
 
     return psh_convert(&ps);
+}
+
+void pgraph_glsl_set_psh_uniform_values(PGRAPHState *pg,
+                                        const PshUniformLocs locs,
+                                        PshUniformValues *values)
+{
+    if (locs[PshUniform_consts] != -1) {
+        for (int i = 0; i < 9; i++) {
+            uint32_t constant[2];
+            if (i == 8) {
+                /* final combiner */
+                constant[0] = pgraph_reg_r(pg, NV_PGRAPH_SPECFOGFACTOR0);
+                constant[1] = pgraph_reg_r(pg, NV_PGRAPH_SPECFOGFACTOR1);
+            } else {
+                constant[0] =
+                    pgraph_reg_r(pg, NV_PGRAPH_COMBINEFACTOR0 + i * 4);
+                constant[1] =
+                    pgraph_reg_r(pg, NV_PGRAPH_COMBINEFACTOR1 + i * 4);
+            }
+
+            for (int j = 0; j < 2; j++) {
+                int idx = i * 2 + j;
+                pgraph_argb_pack32_to_rgba_float(constant[j],
+                                                 values->consts[idx]);
+            }
+        }
+    }
+    if (locs[PshUniform_alphaRef] != -1) {
+        int alpha_ref = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0),
+                                 NV_PGRAPH_CONTROL_0_ALPHAREF);
+        values->alphaRef[0] = alpha_ref;
+    }
+    if (locs[PshUniform_colorKey] != -1) {
+        values->colorKey[0] = pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR0);
+        values->colorKey[1] = pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR1);
+        values->colorKey[2] = pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR2);
+        values->colorKey[3] = pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR3);
+    }
+    if (locs[PshUniform_colorKeyMask] != -1) {
+       for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+            values->colorKeyMask[i] =
+                get_color_key_mask_for_texture(pg, i);
+        }
+    }
+
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        /* Bump luminance only during stages 1 - 3 */
+        if (i > 0) {
+            if (locs[PshUniform_bumpMat] != -1) {
+                uint32_t m_u32[4];
+                m_u32[0] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT00 + 4 * (i - 1));
+                m_u32[1] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT01 + 4 * (i - 1));
+                m_u32[2] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT10 + 4 * (i - 1));
+                m_u32[3] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT11 + 4 * (i - 1));
+                values->bumpMat[i][0] = *(float *)&m_u32[0];
+                values->bumpMat[i][1] = *(float *)&m_u32[1];
+                values->bumpMat[i][2] = *(float *)&m_u32[2];
+                values->bumpMat[i][3] = *(float *)&m_u32[3];
+            }
+            if (locs[PshUniform_bumpScale] != -1) {
+                uint32_t v =
+                    pgraph_reg_r(pg, NV_PGRAPH_BUMPSCALE1 + (i - 1) * 4);
+                values->bumpScale[i] = *(float *)&v;
+            }
+            if (locs[PshUniform_bumpOffset] != -1) {
+                uint32_t v =
+                    pgraph_reg_r(pg, NV_PGRAPH_BUMPOFFSET1 + (i - 1) * 4);
+                values->bumpOffset[i] = *(float *)&v;
+            }
+        }
+        if (locs[PshUniform_texScale] != -1) {
+            values->texScale[0] = 1.0; /* Renderer will override this */
+        }
+    }
+
+    if (locs[PshUniform_fogColor] != -1) {
+        uint32_t fog_color = pgraph_reg_r(pg, NV_PGRAPH_FOGCOLOR);
+        values->fogColor[0][0] =
+            GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_RED) / 255.0;
+        values->fogColor[0][1] =
+            GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_GREEN) / 255.0;
+        values->fogColor[0][2] =
+            GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_BLUE) / 255.0;
+        values->fogColor[0][3] =
+            GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_ALPHA) / 255.0;
+    }
+
+    if (locs[PshUniform_clipRange] != -1) {
+        pgraph_glsl_set_clip_range_uniform_value(pg, values->clipRange[0]);
+    }
+
+    if (locs[PshUniform_depthOffset] != -1) {
+        float zbias = 0.0f;
+
+        if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
+             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
+            uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
+            zbias = *(float *)&zbias_u32;
+
+            if (pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR) != 0 &&
+                (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                 NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE)) {
+                /* TODO: emulate zfactor when z_perspective true, i.e.
+                 * w-buffering. Perhaps calculate an additional offset based on
+                 * triangle orientation in geometry shader and pass the result
+                 * to fragment shader and add it to gl_FragDepth as well.
+                 */
+                NV2A_UNIMPLEMENTED("NV_PGRAPH_ZOFFSETFACTOR for w-buffering");
+            }
+        }
+
+        values->depthOffset[0] = zbias;
+    }
+
+    unsigned int max_gl_width = pg->surface_binding_dim.width;
+    unsigned int max_gl_height = pg->surface_binding_dim.height;
+    pgraph_apply_scaling_factor(pg, &max_gl_width, &max_gl_height);
+
+    for (int i = 0; i < 8; i++) {
+        uint32_t x = pgraph_reg_r(pg, NV_PGRAPH_WINDOWCLIPX0 + i * 4);
+        unsigned int x_min = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN);
+        unsigned int x_max = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX) + 1;
+
+        uint32_t y = pgraph_reg_r(pg, NV_PGRAPH_WINDOWCLIPY0 + i * 4);
+        unsigned int y_min = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMIN);
+        unsigned int y_max = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX) + 1;
+
+        pgraph_apply_anti_aliasing_factor(pg, &x_min, &y_min);
+        pgraph_apply_anti_aliasing_factor(pg, &x_max, &y_max);
+
+        pgraph_apply_scaling_factor(pg, &x_min, &y_min);
+        pgraph_apply_scaling_factor(pg, &x_max, &y_max);
+
+        values->clipRegion[i][0] = x_min;
+        values->clipRegion[i][1] = y_min;
+        values->clipRegion[i][2] = x_max;
+        values->clipRegion[i][3] = y_max;
+    }
 }

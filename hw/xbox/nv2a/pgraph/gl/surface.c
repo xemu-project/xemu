@@ -413,16 +413,52 @@ bool pgraph_gl_check_surface_to_texture_compatibility(
     return false;
 }
 
-static void wait_for_surface_download(SurfaceBinding *e)
+static bool check_surface_overlaps_range(const SurfaceBinding *surface,
+                                         hwaddr range_start, hwaddr range_len)
 {
-    NV2AState *d = g_nv2a;
-    PGRAPHState *pg = &d->pgraph;
-    PGRAPHGLState *r = pg->gl_renderer_state;
+    hwaddr surface_end = surface->vram_addr + surface->size;
+    hwaddr range_end = range_start + range_len;
+    return !(surface->vram_addr >= range_end || range_start >= surface_end);
+}
 
-    if (qatomic_read(&e->draw_dirty)) {
+static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
+                                    hwaddr len, bool write)
+{
+    NV2AState *d = (NV2AState *)opaque;
+    qemu_mutex_lock(&d->pgraph.lock);
+
+    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
+    bool wait_for_downloads = false;
+
+    SurfaceBinding *surface;
+    QTAILQ_FOREACH(surface, &r->surfaces, entry) {
+        if (!check_surface_overlaps_range(surface, addr, len)) {
+            continue;
+        }
+
+        hwaddr offset = addr - surface->vram_addr;
+
+        if (write) {
+            trace_nv2a_pgraph_surface_cpu_write(surface->vram_addr, offset);
+        } else {
+            trace_nv2a_pgraph_surface_cpu_read(surface->vram_addr, offset);
+        }
+
+        if (surface->draw_dirty) {
+            surface->download_pending = true;
+            wait_for_downloads = true;
+        }
+
+        if (write) {
+            surface->upload_pending = true;
+        }
+    }
+
+    qemu_mutex_unlock(&d->pgraph.lock);
+
+    if (wait_for_downloads) {
         qemu_mutex_lock(&d->pfifo.lock);
         qemu_event_reset(&r->downloads_complete);
-        qatomic_set(&e->download_pending, true);
         qatomic_set(&r->downloads_pending, true);
         pfifo_kick(d);
         qemu_mutex_unlock(&d->pfifo.lock);
@@ -430,22 +466,44 @@ static void wait_for_surface_download(SurfaceBinding *e)
     }
 }
 
-static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
-                                    hwaddr len, bool write)
+static void register_cpu_access_callback(NV2AState *d, SurfaceBinding *surface)
 {
-    SurfaceBinding *e = opaque;
-    assert(addr >= e->vram_addr);
-    hwaddr offset = addr - e->vram_addr;
-    assert(offset < e->size);
-
-    if (qatomic_read(&e->draw_dirty)) {
-        trace_nv2a_pgraph_surface_cpu_access(e->vram_addr, offset);
-        wait_for_surface_download(e);
+    if (tcg_enabled()) {
+        surface->access_cb = mem_access_callback_insert(
+            qemu_get_cpu(0), d->vram, surface->vram_addr, surface->size,
+            &surface_access_callback, d);
     }
+}
 
-    if (write && !qatomic_read(&e->upload_pending)) {
-        trace_nv2a_pgraph_surface_cpu_access(e->vram_addr, offset);
-        qatomic_set(&e->upload_pending, true);
+static void unregister_cpu_access_callback(NV2AState *d,
+                                           SurfaceBinding const *surface)
+{
+    if (tcg_enabled()) {
+        mem_access_callback_remove_by_ref(qemu_get_cpu(0), surface->access_cb);
+    }
+}
+
+static bool check_surfaces_overlap(const SurfaceBinding *surface,
+                                   const SurfaceBinding *other_surface)
+{
+    return check_surface_overlaps_range(surface, other_surface->vram_addr,
+                                        other_surface->size);
+}
+
+static void invalidate_overlapping_surfaces(NV2AState *d, SurfaceBinding *surface)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
+
+    SurfaceBinding *other_surface, *next_surface;
+    QTAILQ_FOREACH_SAFE(other_surface, &r->surfaces, entry, next_surface) {
+        if (check_surfaces_overlap(surface, other_surface)) {
+            trace_nv2a_pgraph_surface_evict_overlapping(
+                other_surface->vram_addr, other_surface->width, other_surface->height,
+                other_surface->pitch);
+            pgraph_gl_surface_download_if_dirty(d, other_surface);
+            pgraph_gl_surface_invalidate(d, other_surface);
+        }
     }
 }
 
@@ -457,35 +515,13 @@ static SurfaceBinding *surface_put(NV2AState *d, hwaddr addr,
 
     assert(pgraph_gl_surface_get(d, addr) == NULL);
 
-    SurfaceBinding *surface, *next;
-    uintptr_t e_end = surface_in->vram_addr + surface_in->size - 1;
-    QTAILQ_FOREACH_SAFE(surface, &r->surfaces, entry, next) {
-        uintptr_t s_end = surface->vram_addr + surface->size - 1;
-        bool overlapping = !(surface->vram_addr > e_end
-                             || surface_in->vram_addr > s_end);
-        if (overlapping) {
-            trace_nv2a_pgraph_surface_evict_overlapping(
-                surface->vram_addr, surface->width, surface->height,
-                surface->pitch);
-            pgraph_gl_surface_download_if_dirty(d, surface);
-            pgraph_gl_surface_invalidate(d, surface);
-        }
-    }
+    invalidate_overlapping_surfaces(d, surface_in);
 
     SurfaceBinding *surface_out = g_malloc(sizeof(SurfaceBinding));
     assert(surface_out != NULL);
     *surface_out = *surface_in;
 
-    if (tcg_enabled()) {
-        qemu_mutex_unlock(&d->pgraph.lock);
-        bql_lock();
-        mem_access_callback_insert(qemu_get_cpu(0),
-            d->vram, surface_out->vram_addr, surface_out->size,
-            &surface_out->access_cb, &surface_access_callback,
-            surface_out);
-        bql_unlock();
-        qemu_mutex_lock(&d->pgraph.lock);
-    }
+    register_cpu_access_callback(d, surface_out);
 
     QTAILQ_INSERT_TAIL(&r->surfaces, surface_out, entry);
 
@@ -539,13 +575,7 @@ void pgraph_gl_surface_invalidate(NV2AState *d, SurfaceBinding *surface)
         pgraph_gl_unbind_surface(d, false);
     }
 
-    if (tcg_enabled()) {
-        qemu_mutex_unlock(&d->pgraph.lock);
-        bql_lock();
-        mem_access_callback_remove_by_ref(qemu_get_cpu(0), surface->access_cb);
-        bql_unlock();
-        qemu_mutex_lock(&d->pgraph.lock);
-    }
+    unregister_cpu_access_callback(d, surface);
 
     glDeleteTextures(1, &surface->gl_buffer);
 

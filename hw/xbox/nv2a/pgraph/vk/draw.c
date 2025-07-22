@@ -1,7 +1,7 @@
 /*
  * Geforce NV2A PGRAPH Vulkan Renderer
  *
- * Copyright (c) 2024 Matt Borgerson
+ * Copyright (c) 2024-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -51,8 +51,8 @@ static VkPrimitiveTopology get_primitive_topology(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    int polygon_mode = r->shader_binding->state.polygon_front_mode;
-    int primitive_mode = r->shader_binding->state.primitive_mode;
+    int polygon_mode = r->shader_binding->state.geom.polygon_front_mode;
+    int primitive_mode = r->shader_binding->state.geom.primitive_mode;
 
     if (polygon_mode == POLY_MODE_POINT) {
         return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
@@ -93,7 +93,8 @@ static VkPrimitiveTopology get_primitive_topology(PGRAPHState *pg)
     }
 }
 
-static void pipeline_cache_entry_init(Lru *lru, LruNode *node, void *state)
+static void pipeline_cache_entry_init(Lru *lru, LruNode *node,
+                                      const void *state)
 {
     PipelineBinding *snode = container_of(node, PipelineBinding, node);
     snode->layout = VK_NULL_HANDLE;
@@ -117,7 +118,8 @@ static void pipeline_cache_entry_post_evict(Lru *lru, LruNode *node)
     snode->layout = VK_NULL_HANDLE;
 }
 
-static bool pipeline_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+static bool pipeline_cache_entry_compare(Lru *lru, LruNode *node,
+                                         const void *key)
 {
     PipelineBinding *snode = container_of(node, PipelineBinding, node);
     return memcmp(&snode->key, key, sizeof(PipelineKey));
@@ -746,15 +748,15 @@ static void create_pipeline(PGRAPHState *pg)
         (VkPipelineShaderStageCreateInfo){
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = r->shader_binding->vertex->module,
+            .module = r->shader_binding->vsh.module_info->module,
             .pName = "main",
         };
-    if (r->shader_binding->geometry) {
+    if (r->shader_binding->geom.module_info) {
         shader_stages[num_active_shader_stages++] =
             (VkPipelineShaderStageCreateInfo){
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage = VK_SHADER_STAGE_GEOMETRY_BIT,
-                .module = r->shader_binding->geometry->module,
+                .module = r->shader_binding->geom.module_info->module,
                 .pName = "main",
             };
     }
@@ -762,7 +764,7 @@ static void create_pipeline(PGRAPHState *pg)
         (VkPipelineShaderStageCreateInfo){
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = r->shader_binding->fragment->module,
+            .module = r->shader_binding->psh.module_info->module,
             .pName = "main",
         };
 
@@ -816,7 +818,7 @@ static void create_pipeline(PGRAPHState *pg)
         .depthClampEnable = VK_TRUE,
         .rasterizerDiscardEnable = VK_FALSE,
         .polygonMode = pgraph_polygon_mode_vk_map[r->shader_binding->state
-                                                      .polygon_front_mode],
+                                                      .geom.polygon_front_mode],
         .lineWidth = 1.0f,
         .frontFace = (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                       NV_PGRAPH_SETUPRASTER_FRONTFACE) ?
@@ -951,11 +953,11 @@ static void create_pipeline(PGRAPHState *pg)
     int num_dynamic_states = 2;
 
     snode->has_dynamic_line_width =
-        (r->enabled_physical_device_features.wideLines == VK_TRUE)
-        && (r->shader_binding->state.polygon_front_mode == POLY_MODE_LINE ||
-            r->shader_binding->state.primitive_mode == PRIM_TYPE_LINES ||
-            r->shader_binding->state.primitive_mode == PRIM_TYPE_LINE_LOOP ||
-            r->shader_binding->state.primitive_mode == PRIM_TYPE_LINE_STRIP);
+        (r->enabled_physical_device_features.wideLines == VK_TRUE) &&
+        (r->shader_binding->state.geom.polygon_front_mode == POLY_MODE_LINE ||
+         r->shader_binding->state.geom.primitive_mode == PRIM_TYPE_LINES ||
+         r->shader_binding->state.geom.primitive_mode == PRIM_TYPE_LINE_LOOP ||
+         r->shader_binding->state.geom.primitive_mode == PRIM_TYPE_LINE_STRIP);
     if (snode->has_dynamic_line_width) {
         dynamic_states[num_dynamic_states++] = VK_DYNAMIC_STATE_LINE_WIDTH;
     }
@@ -1012,9 +1014,9 @@ static void create_pipeline(PGRAPHState *pg)
     };
 
     VkPushConstantRange push_constant_range;
-    if (r->shader_binding->state.use_push_constants_for_uniform_attrs) {
+    if (r->use_push_constants_for_uniform_attrs) {
         int num_uniform_attributes =
-            __builtin_popcount(r->shader_binding->state.uniform_attrs);
+            __builtin_popcount(r->shader_binding->state.vsh.uniform_attrs);
         if (num_uniform_attributes) {
             push_constant_range = (VkPushConstantRange){
                 .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
@@ -1067,7 +1069,7 @@ static void push_vertex_attr_values(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    if (!r->shader_binding->state.use_push_constants_for_uniform_attrs) {
+    if (!r->use_push_constants_for_uniform_attrs) {
         return;
     }
 
@@ -1076,8 +1078,8 @@ static void push_vertex_attr_values(PGRAPHState *pg)
     float values[NV2A_VERTEXSHADER_ATTRIBUTES][4];
     int num_uniform_attrs = 0;
 
-    pgraph_get_inline_values(pg, r->shader_binding->state.uniform_attrs, values,
-                             &num_uniform_attrs);
+    pgraph_get_inline_values(pg, r->shader_binding->state.vsh.uniform_attrs,
+                             values, &num_uniform_attrs);
 
     if (num_uniform_attrs > 0) {
         vkCmdPushConstants(r->command_buffer, r->pipeline_binding->layout,

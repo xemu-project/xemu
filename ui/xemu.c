@@ -58,8 +58,10 @@
 #include "ui/xemu-notifications.h"
 
 #include <stb_image.h>
+#include <locale.h>
 
 #ifdef _WIN32
+#include "nvapi.h"
 // Provide hint to prefer high-performance graphics for hybrid systems
 // https://gpuopen.com/learn/amdpowerxpressrequesthighperformance/
 __declspec(dllexport) DWORD AmdPowerXpressRequestHighPerformance = 1;
@@ -1264,9 +1266,56 @@ static void sleep_ns(int64_t ns)
 #endif
 }
 
+#ifdef _WIN32
+static const wchar_t *get_executable_name(void)
+{
+    static wchar_t exe_name[MAX_PATH] = { 0 };
+    static bool initialized = false;
+
+    if (!initialized) {
+        wchar_t full_path[MAX_PATH];
+        DWORD length = GetModuleFileNameW(NULL, full_path, MAX_PATH);
+        if (length == 0 || length == MAX_PATH) {
+            return NULL;
+        }
+
+        wchar_t *last_slash = wcsrchr(full_path, L'\\');
+        if (last_slash) {
+            wcsncpy_s(exe_name, MAX_PATH, last_slash + 1, _TRUNCATE);
+        } else {
+            wcsncpy_s(exe_name, MAX_PATH, full_path, _TRUNCATE);
+        }
+
+        initialized = true;
+    }
+
+    return exe_name;
+}
+
+static void setup_nvidia_profile(void)
+{
+    const wchar_t *exe_name = get_executable_name();
+    if (exe_name == NULL) {
+        fprintf(stderr, "Failed to get current executable name\n");
+        return;
+    }
+
+    if (nvapi_init()) {
+        nvapi_setup_profile((NvApiProfileOpts){
+            .profile_name = L"xemu",
+            .executable_name = exe_name,
+            .threaded_optimization = false,
+        });
+        nvapi_finalize();
+    }
+}
+#endif
+
 int main(int argc, char **argv)
 {
     QemuThread thread;
+
+    setlocale(LC_NUMERIC, "C");
 
 #ifdef _WIN32
     if (AttachConsole(ATTACH_PARENT_PROCESS)) {
@@ -1320,6 +1369,12 @@ int main(int argc, char **argv)
         exit(1);
     }
     atexit(xemu_settings_save);
+
+#ifdef _WIN32
+    if (g_config.display.setup_nvidia_profile) {
+        setup_nvidia_profile();
+    }
+#endif
 
     sdl2_display_very_early_init(NULL);
 

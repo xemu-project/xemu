@@ -174,25 +174,25 @@ jobs:
           build_param: --debug
           artifact_name: xemu-ubuntu-x86_64-debug
           artifact_filename: xemu-ubuntu-x86_64-debug.tgz
-          runs-on: ubuntu-24.04
+          runs-on: ubuntu-22.04
         - arch: x86_64
           configuration: Release
           build_param:
           artifact_name: xemu-ubuntu-x86_64-release
           artifact_filename: xemu-ubuntu-x86_64-release.tgz
-          runs-on: ubuntu-24.04
+          runs-on: ubuntu-22.04
         - arch: aarch64
           configuration: Debug
           build_param: --debug
           artifact_name: xemu-ubuntu-aarch64-debug
           artifact_filename: xemu-ubuntu-aarch64-debug.tgz
-          runs-on: ubuntu-24.04-arm
+          runs-on: ubuntu-22.04-arm
         - arch: aarch64
           configuration: Release
           build_param:
           artifact_name: xemu-ubuntu-aarch64-release
           artifact_filename: xemu-ubuntu-aarch64-release.tgz
-          runs-on: ubuntu-24.04-arm
+          runs-on: ubuntu-22.04-arm
     steps:
     - name: Initialize compiler cache
       id: cache

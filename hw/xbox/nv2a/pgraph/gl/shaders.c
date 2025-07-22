@@ -22,14 +22,9 @@
 #include "qemu/osdep.h"
 #include "qemu/fast-hash.h"
 #include "qemu/mstring.h"
-#include <locale.h>
 
 #include "xemu-version.h"
 #include "ui/xemu-settings.h"
-#include "hw/xbox/nv2a/pgraph/glsl/geom.h"
-#include "hw/xbox/nv2a/pgraph/glsl/vsh.h"
-#include "hw/xbox/nv2a/pgraph/glsl/psh.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
 #include "hw/xbox/nv2a/pgraph/util.h"
 #include "debug.h"
 #include "renderer.h"
@@ -100,172 +95,131 @@ static GLuint create_gl_shader(GLenum gl_shader_type,
     return shader;
 }
 
-static void update_shader_constant_locations(ShaderBinding *binding)
+static void set_texture_sampler_uniforms(ShaderBinding *binding)
 {
-    char tmp[64];
-
-    /* set texture samplers */
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
         char samplerName[16];
         snprintf(samplerName, sizeof(samplerName), "texSamp%d", i);
-        GLint texSampLoc = glGetUniformLocation(binding->gl_program, samplerName);
+        GLint texSampLoc =
+            glGetUniformLocation(binding->gl_program, samplerName);
         if (texSampLoc >= 0) {
             glUniform1i(texSampLoc, i);
         }
     }
+}
 
-    /* validate the program */
-    glValidateProgram(binding->gl_program);
-    GLint valid = 0;
-    glGetProgramiv(binding->gl_program, GL_VALIDATE_STATUS, &valid);
-    if (!valid) {
-        GLchar log[1024];
-        glGetProgramInfoLog(binding->gl_program, 1024, NULL, log);
-        fprintf(stderr, "nv2a: shader validation failed: %s\n", log);
-        abort();
-    }
+static void update_shader_uniform_locs(ShaderBinding *binding)
+{
+    char tmp[64];
 
-    /* lookup fragment shader uniforms */
-    for (int i = 0; i < 9; i++) {
-        for (int j = 0; j < 2; j++) {
-            snprintf(tmp, sizeof(tmp), "c%d_%d", j, i);
-            binding->psh_constant_loc[i][j] = glGetUniformLocation(binding->gl_program, tmp);
+    for (int i = 0; i < ARRAY_SIZE(binding->uniform_locs.vsh); i++) {
+        const char *name = VshUniformInfo[i].name;
+        if (VshUniformInfo[i].count > 1) {
+            snprintf(tmp, sizeof(tmp), "%s[0]", name);
+            name = tmp;
         }
-    }
-    binding->alpha_ref_loc = glGetUniformLocation(binding->gl_program, "alphaRef");
-
-    for (int i = 1; i < NV2A_MAX_TEXTURES; i++) {
-        snprintf(tmp, sizeof(tmp), "bumpMat%d", i);
-        binding->bump_mat_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
-        snprintf(tmp, sizeof(tmp), "bumpScale%d", i);
-        binding->bump_scale_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
-        snprintf(tmp, sizeof(tmp), "bumpOffset%d", i);
-        binding->bump_offset_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        binding->uniform_locs.vsh[i] = glGetUniformLocation(binding->gl_program, name);
     }
 
-    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
-        snprintf(tmp, sizeof(tmp), "texScale%d", i);
-        binding->tex_scale_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
-    }
-
-    /* lookup vertex shader uniforms */
-    for (int i = 0; i < NV2A_VERTEXSHADER_CONSTANTS; i++) {
-        snprintf(tmp, sizeof(tmp), "c[%d]", i);
-        binding->vsh_constant_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
-    }
-    binding->surface_size_loc = glGetUniformLocation(binding->gl_program, "surfaceSize");
-    binding->clip_range_loc = glGetUniformLocation(binding->gl_program, "clipRange");
-    binding->depth_offset_loc = glGetUniformLocation(binding->gl_program, "depthOffset");
-    binding->fog_color_loc = glGetUniformLocation(binding->gl_program, "fogColor");
-    binding->fog_param_loc = glGetUniformLocation(binding->gl_program, "fogParam");
-
-    for (int i = 0; i < NV2A_LTCTXA_COUNT; i++) {
-        snprintf(tmp, sizeof(tmp), "ltctxa[%d]", i);
-        binding->ltctxa_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
-    }
-    for (int i = 0; i < NV2A_LTCTXB_COUNT; i++) {
-        snprintf(tmp, sizeof(tmp), "ltctxb[%d]", i);
-        binding->ltctxb_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
-    }
-    for (int i = 0; i < NV2A_LTC1_COUNT; i++) {
-        snprintf(tmp, sizeof(tmp), "ltc1[%d]", i);
-        binding->ltc1_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
-    }
-    for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
-        snprintf(tmp, sizeof(tmp), "lightInfiniteHalfVector%d", i);
-        binding->light_infinite_half_vector_loc[i] =
-            glGetUniformLocation(binding->gl_program, tmp);
-        snprintf(tmp, sizeof(tmp), "lightInfiniteDirection%d", i);
-        binding->light_infinite_direction_loc[i] =
-            glGetUniformLocation(binding->gl_program, tmp);
-
-        snprintf(tmp, sizeof(tmp), "lightLocalPosition%d", i);
-        binding->light_local_position_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
-        snprintf(tmp, sizeof(tmp), "lightLocalAttenuation%d", i);
-        binding->light_local_attenuation_loc[i] =
-            glGetUniformLocation(binding->gl_program, tmp);
-    }
-    for (int i = 0; i < 8; i++) {
-        snprintf(tmp, sizeof(tmp), "clipRegion[%d]", i);
-        binding->clip_region_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
-    }
-
-    for (int i = 0; i < 8; ++i) {
-        snprintf(tmp, sizeof(tmp), "pointParams[%d]", i);
-        binding->point_params_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
-    }
-
-    if (binding->state.fixed_function) {
-        binding->material_alpha_loc =
-            glGetUniformLocation(binding->gl_program, "material_alpha");
-        binding->specular_power_loc =
-            glGetUniformLocation(binding->gl_program, "specularPower");
-    } else {
-        binding->material_alpha_loc = -1;
-        binding->specular_power_loc = -1;
-    }
-
-    for (int i = 0; i < 4; ++i) {
-        snprintf(tmp, sizeof(tmp), "colorKey[%d]", i);
-        binding->color_key_loc[i] =
-            glGetUniformLocation(binding->gl_program, tmp);
-
-        snprintf(tmp, sizeof(tmp), "colorKeyMask[%d]", i);
-        binding->color_key_mask_loc[i] =
-            glGetUniformLocation(binding->gl_program, tmp);
+    for (int i = 0; i < ARRAY_SIZE(binding->uniform_locs.psh); i++) {
+        const char *name = PshUniformInfo[i].name;
+        if (PshUniformInfo[i].count > 1) {
+            snprintf(tmp, sizeof(tmp), "%s[0]", name);
+            name = tmp;
+        }
+        binding->uniform_locs.psh[i] = glGetUniformLocation(binding->gl_program, name);
     }
 }
 
-static void generate_shaders(ShaderBinding *binding)
+static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
+                                           const void *key)
 {
-    char *previous_numeric_locale = setlocale(LC_NUMERIC, NULL);
-    if (previous_numeric_locale) {
-        previous_numeric_locale = g_strdup(previous_numeric_locale);
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    memcpy(&module->key, key, sizeof(ShaderModuleCacheKey));
+
+    const char *kind_str;
+    MString *code;
+
+    switch (module->key.kind) {
+    case GL_VERTEX_SHADER:
+        kind_str = "vertex shader";
+        code = pgraph_glsl_gen_vsh(&module->key.vsh.state,
+                                   module->key.vsh.glsl_opts);
+        break;
+    case GL_GEOMETRY_SHADER:
+        kind_str = "geometry shader";
+        code = pgraph_glsl_gen_geom(&module->key.geom.state,
+                                    module->key.geom.glsl_opts);
+        break;
+    case GL_FRAGMENT_SHADER:
+        kind_str = "fragment shader";
+        code = pgraph_glsl_gen_psh(&module->key.psh.state,
+                                   module->key.psh.glsl_opts);
+        break;
+    default:
+        assert(!"Invalid shader module kind");
+        kind_str = "unknown";
+        code = NULL;
     }
 
-    /* Ensure numeric values are printed with '.' radix, no grouping */
-    setlocale(LC_NUMERIC, "C");
+    module->gl_shader =
+        create_gl_shader(module->key.kind, mstring_get_str(code), kind_str);
+    mstring_unref(code);
+}
+
+static void shader_module_cache_entry_post_evict(Lru *lru, LruNode *node)
+{
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    glDeleteShader(module->gl_shader);
+}
+
+static bool shader_module_cache_entry_compare(Lru *lru, LruNode *node,
+                                              const void *key)
+{
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    return memcmp(&module->key, key, sizeof(ShaderModuleCacheKey));
+}
+
+static GLuint get_shader_module_for_key(PGRAPHGLState *r,
+                                        const ShaderModuleCacheKey *key)
+{
+    uint64_t hash = fast_hash((void *)key, sizeof(ShaderModuleCacheKey));
+    LruNode *node = lru_lookup(&r->shader_module_cache, hash, key);
+    ShaderModuleCacheEntry *module =
+        container_of(node, ShaderModuleCacheEntry, node);
+    return module->gl_shader;
+}
+
+static void generate_shaders(PGRAPHGLState *r, ShaderBinding *binding)
+{
     GLuint program = glCreateProgram();
 
     ShaderState *state = &binding->state;
+    ShaderModuleCacheKey key;
 
-    /* Create an optional geometry shader and find primitive type */
-    GLenum gl_primitive_mode =
-        get_gl_primitive_mode(state->polygon_front_mode, state->primitive_mode);
-    MString* geometry_shader_code =
-        pgraph_gen_geom_glsl(state->polygon_front_mode,
-                                 state->polygon_back_mode,
-                                 state->primitive_mode,
-                                 state->smooth_shading,
-                                 false);
-    if (geometry_shader_code) {
-        const char* geometry_shader_code_str =
-             mstring_get_str(geometry_shader_code);
-        GLuint geometry_shader = create_gl_shader(GL_GEOMETRY_SHADER,
-                                                  geometry_shader_code_str,
-                                                  "geometry shader");
-        glAttachShader(program, geometry_shader);
-        mstring_unref(geometry_shader_code);
+    bool need_geometry_shader = pgraph_glsl_need_geom(&state->geom);
+    if (need_geometry_shader) {
+        memset(&key, 0, sizeof(key));
+        key.kind = GL_GEOMETRY_SHADER;
+        key.geom.state = state->geom;
+        glAttachShader(program, get_shader_module_for_key(r, &key));
     }
 
     /* create the vertex shader */
-    MString *vertex_shader_code =
-        pgraph_gen_vsh_glsl(state, geometry_shader_code != NULL);
-    GLuint vertex_shader = create_gl_shader(GL_VERTEX_SHADER,
-                                            mstring_get_str(vertex_shader_code),
-                                            "vertex shader");
-    glAttachShader(program, vertex_shader);
-    mstring_unref(vertex_shader_code);
+    memset(&key, 0, sizeof(key));
+    key.kind = GL_VERTEX_SHADER;
+    key.vsh.state = state->vsh;
+    key.vsh.glsl_opts.prefix_outputs = need_geometry_shader;
+    glAttachShader(program, get_shader_module_for_key(r, &key));
 
     /* generate a fragment shader from register combiners */
-    MString *fragment_shader_code = pgraph_gen_psh_glsl(state->psh);
-    const char *fragment_shader_code_str =
-        mstring_get_str(fragment_shader_code);
-    GLuint fragment_shader = create_gl_shader(GL_FRAGMENT_SHADER,
-                                              fragment_shader_code_str,
-                                              "fragment shader");
-    glAttachShader(program, fragment_shader);
-    mstring_unref(fragment_shader_code);
+    memset(&key, 0, sizeof(key));
+    key.kind = GL_FRAGMENT_SHADER;
+    key.psh.state = state->psh;
+    glAttachShader(program, get_shader_module_for_key(r, &key));
 
     /* link the program */
     glLinkProgram(program);
@@ -280,15 +234,25 @@ static void generate_shaders(ShaderBinding *binding)
 
     glUseProgram(program);
 
-    binding->initialized = true;
     binding->gl_program = program;
-    binding->gl_primitive_mode = gl_primitive_mode;
-    update_shader_constant_locations(binding);
+    binding->gl_primitive_mode = get_gl_primitive_mode(
+        state->geom.polygon_front_mode, state->geom.primitive_mode);
+    binding->initialized = true;
 
-    if (previous_numeric_locale) {
-        setlocale(LC_NUMERIC, previous_numeric_locale);
-        g_free(previous_numeric_locale);
+    set_texture_sampler_uniforms(binding);
+
+    /* validate the program */
+    GLint valid = 0;
+    glValidateProgram(program);
+    glGetProgramiv(program, GL_VALIDATE_STATUS, &valid);
+    if (!valid) {
+        GLchar log[1024];
+        glGetProgramInfoLog(program, 1024, NULL, log);
+        fprintf(stderr, "nv2a: shader validation failed: %s\n", log);
+        abort();
     }
+
+    update_shader_uniform_locs(binding);
 }
 
 static const char *shader_gl_vendor = NULL;
@@ -364,6 +328,19 @@ bool pgraph_gl_shader_load_from_memory(ShaderBinding *binding)
         return false;
     }
 
+    glUseProgram(gl_program);
+
+    g_free(binding->program);
+
+    binding->program = NULL;
+    binding->gl_program = gl_program;
+    binding->gl_primitive_mode =
+        get_gl_primitive_mode(binding->state.geom.polygon_front_mode,
+                              binding->state.geom.primitive_mode);
+    binding->initialized = true;
+
+    set_texture_sampler_uniforms(binding);
+
     glValidateProgram(gl_program);
     GLint valid = 0;
     glGetProgramiv(gl_program, GL_VALIDATE_STATUS, &valid);
@@ -375,17 +352,7 @@ bool pgraph_gl_shader_load_from_memory(ShaderBinding *binding)
         return false;
     }
 
-    glUseProgram(gl_program);
-
-    binding->gl_program = gl_program;
-    binding->gl_primitive_mode = get_gl_primitive_mode(
-        binding->state.polygon_front_mode, binding->state.primitive_mode);
-    binding->initialized = true;
-
-    g_free(binding->program);
-    binding->program = NULL;
-
-    update_shader_constant_locations(binding);
+    update_shader_uniform_locs(binding);
 
     return true;
 }
@@ -525,7 +492,7 @@ static void *shader_reload_lru_from_disk(void *arg)
     return NULL;
 }
 
-static void shader_cache_entry_init(Lru *lru, LruNode *node, void *state)
+static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
 {
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
     memcpy(&binding->state, state, sizeof(ShaderState));
@@ -555,7 +522,7 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
     memset(&binding->state, 0, sizeof(ShaderState));
 }
 
-static bool shader_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+static bool shader_cache_entry_compare(Lru *lru, LruNode *node, const void *key)
 {
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
     return memcmp(&binding->state, key, sizeof(ShaderState));
@@ -589,6 +556,20 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
 
     qemu_thread_create(&r->shader_disk_thread, "pgraph.renderer_state->shader_cache",
                        shader_reload_lru_from_disk, pg, QEMU_THREAD_JOINABLE);
+
+    /* FIXME: Make this configurable */
+    const size_t shader_module_cache_size = 50*1024;
+    lru_init(&r->shader_module_cache);
+    r->shader_module_cache_entries =
+        g_malloc_n(shader_module_cache_size, sizeof(ShaderModuleCacheEntry));
+    assert(r->shader_module_cache_entries != NULL);
+    for (int i = 0; i < shader_module_cache_size; i++) {
+        lru_add_free(&r->shader_module_cache, &r->shader_module_cache_entries[i].node);
+    }
+
+    r->shader_module_cache.init_node = shader_module_cache_entry_init;
+    r->shader_module_cache.compare_nodes = shader_module_cache_entry_compare;
+    r->shader_module_cache.post_node_evict = shader_module_cache_entry_post_evict;
 }
 
 void pgraph_gl_finalize_shaders(PGRAPHState *pg)
@@ -599,6 +580,10 @@ void pgraph_gl_finalize_shaders(PGRAPHState *pg)
     pgraph_gl_shader_write_cache_reload_list(pg); // FIXME: also flushes, rename for clarity
     free(r->shader_cache_entries);
     r->shader_cache_entries = NULL;
+
+    lru_flush(&r->shader_module_cache);
+    g_free(r->shader_module_cache_entries);
+    r->shader_module_cache_entries = NULL;
 
     qemu_mutex_destroy(&r->shader_cache_lock);
 }
@@ -703,336 +688,72 @@ void pgraph_gl_shader_cache_to_disk(ShaderBinding *binding)
     qemu_thread_create(binding->save_thread, name, shader_write_to_disk, binding, QEMU_THREAD_JOINABLE);
 }
 
-static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
-                                    bool binding_changed)
+static void apply_uniform_updates(const UniformInfo *info, int *locs,
+                                  void *values, size_t count)
 {
-    PGRAPHGLState *r = pg->gl_renderer_state;
-    ShaderState *state = &binding->state;
-    int i, j;
-
-    /* update combiner constants */
-    for (i = 0; i < 9; i++) {
-        uint32_t constant[2];
-        if (i == 8) {
-            /* final combiner */
-            constant[0] = pgraph_reg_r(pg, NV_PGRAPH_SPECFOGFACTOR0);
-            constant[1] = pgraph_reg_r(pg, NV_PGRAPH_SPECFOGFACTOR1);
-        } else {
-            constant[0] = pgraph_reg_r(pg, NV_PGRAPH_COMBINEFACTOR0 + i * 4);
-            constant[1] = pgraph_reg_r(pg, NV_PGRAPH_COMBINEFACTOR1 + i * 4);
+    for (int i = 0; i < count; i++) {
+        if (locs[i] == -1) {
+            continue;
         }
 
-        for (j = 0; j < 2; j++) {
-            GLint loc = binding->psh_constant_loc[i][j];
-            if (loc != -1) {
-                float value[4];
-                pgraph_argb_pack32_to_rgba_float(constant[j], value);
-                glUniform4fv(loc, 1, value);
-            }
-        }
-    }
-    if (binding->alpha_ref_loc != -1) {
-        int alpha_ref = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0),
-                                   NV_PGRAPH_CONTROL_0_ALPHAREF);
-        glUniform1i(binding->alpha_ref_loc, alpha_ref);
-    }
+        void *value = (char*)values + info[i].val_offs;
 
-    /* For each texture stage */
-    for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
-        GLint loc;
-
-        /* Bump luminance only during stages 1 - 3 */
-        if (i > 0) {
-            loc = binding->bump_mat_loc[i];
-            if (loc != -1) {
-                uint32_t m_u32[4];
-                m_u32[0] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT00 + 4 * (i - 1));
-                m_u32[1] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT01 + 4 * (i - 1));
-                m_u32[2] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT10 + 4 * (i - 1));
-                m_u32[3] = pgraph_reg_r(pg, NV_PGRAPH_BUMPMAT11 + 4 * (i - 1));
-                float m[4];
-                m[0] = *(float*)&m_u32[0];
-                m[1] = *(float*)&m_u32[1];
-                m[2] = *(float*)&m_u32[2];
-                m[3] = *(float*)&m_u32[3];
-                glUniformMatrix2fv(loc, 1, GL_FALSE, m);
-            }
-            loc = binding->bump_scale_loc[i];
-            if (loc != -1) {
-                uint32_t v =
-                    pgraph_reg_r(pg, NV_PGRAPH_BUMPSCALE1 + (i - 1) * 4);
-                glUniform1f(loc, *(float*)&v);
-            }
-            loc = binding->bump_offset_loc[i];
-            if (loc != -1) {
-                uint32_t v =
-                    pgraph_reg_r(pg, NV_PGRAPH_BUMPOFFSET1 + (i - 1) * 4);
-                glUniform1f(loc, *(float*)&v);
-            }
-        }
-
-        loc = r->shader_binding->tex_scale_loc[i];
-        if (loc != -1) {
-            assert(r->texture_binding[i] != NULL);
-            glUniform1f(loc, (float)r->texture_binding[i]->scale);
-        }
-
-        if (binding->color_key_loc[i] != -1) {
-            glUniform1ui(binding->color_key_loc[i],
-                         pgraph_reg_r(pg, NV_PGRAPH_COLORKEYCOLOR0 + i * 4));
-        }
-        if (binding->color_key_mask_loc[i] != -1) {
-            glUniform1ui(binding->color_key_mask_loc[i],
-                         state->psh.colorkey_mask[i]);
+        switch (info[i].type) {
+        case UniformElementType_uint:
+            glUniform1uiv(locs[i], info[i].count, value);
+            break;
+        case UniformElementType_int:
+            glUniform1iv(locs[i], info[i].count, value);
+            break;
+        case UniformElementType_ivec4:
+            glUniform4iv(locs[i], info[i].count, value);
+            break;
+        case UniformElementType_float:
+            glUniform1fv(locs[i], info[i].count, value);
+            break;
+        case UniformElementType_vec2:
+            glUniform2fv(locs[i], info[i].count, value);
+            break;
+        case UniformElementType_vec3:
+            glUniform3fv(locs[i], info[i].count, value);
+            break;
+        case UniformElementType_vec4:
+            glUniform4fv(locs[i], info[i].count, value);
+            break;
+        case UniformElementType_mat2:
+            glUniformMatrix2fv(locs[i], info[i].count, GL_FALSE, value);
+            break;
+        default:
+            g_assert_not_reached();
         }
     }
 
-    if (binding->fog_color_loc != -1) {
-        uint32_t fog_color = pgraph_reg_r(pg, NV_PGRAPH_FOGCOLOR);
-        glUniform4f(binding->fog_color_loc,
-                    GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_RED) / 255.0,
-                    GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_GREEN) / 255.0,
-                    GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_BLUE) / 255.0,
-                    GET_MASK(fog_color, NV_PGRAPH_FOGCOLOR_ALPHA) / 255.0);
-    }
-    if (binding->fog_param_loc != -1) {
-        uint32_t v[2];
-        v[0] = pgraph_reg_r(pg, NV_PGRAPH_FOGPARAM0);
-        v[1] = pgraph_reg_r(pg, NV_PGRAPH_FOGPARAM1);
-        glUniform2f(binding->fog_param_loc, *(float *)&v[0], *(float *)&v[1]);
-    }
-
-    float zmax;
-    switch (pg->surface_shape.zeta_format) {
-    case NV097_SET_SURFACE_FORMAT_ZETA_Z16:
-        zmax = pg->surface_shape.z_format ? f16_max : (float)0xFFFF;
-        break;
-    case NV097_SET_SURFACE_FORMAT_ZETA_Z24S8:
-        zmax = pg->surface_shape.z_format ? f24_max : (float)0xFFFFFF;
-        break;
-    default:
-        assert(0);
-    }
-
-    if (state->fixed_function) {
-        /* update lighting constants */
-        struct {
-            uint32_t* v;
-            bool* dirty;
-            GLint* locs;
-            size_t len;
-        } lighting_arrays[] = {
-            {&pg->ltctxa[0][0], &pg->ltctxa_dirty[0], binding->ltctxa_loc, NV2A_LTCTXA_COUNT},
-            {&pg->ltctxb[0][0], &pg->ltctxb_dirty[0], binding->ltctxb_loc, NV2A_LTCTXB_COUNT},
-            {&pg->ltc1[0][0], &pg->ltc1_dirty[0], binding->ltc1_loc, NV2A_LTC1_COUNT},
-        };
-
-        for (i=0; i<ARRAY_SIZE(lighting_arrays); i++) {
-            uint32_t *lighting_v = lighting_arrays[i].v;
-            bool *lighting_dirty = lighting_arrays[i].dirty;
-            GLint *lighting_locs = lighting_arrays[i].locs;
-            size_t lighting_len = lighting_arrays[i].len;
-            for (j=0; j<lighting_len; j++) {
-                if (!lighting_dirty[j] && !binding_changed) continue;
-                GLint loc = lighting_locs[j];
-                if (loc != -1) {
-                    glUniform4fv(loc, 1, (const GLfloat*)&lighting_v[j*4]);
-                }
-                lighting_dirty[j] = false;
-            }
-        }
-
-        for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
-            GLint loc;
-            loc = binding->light_infinite_half_vector_loc[i];
-            if (loc != -1) {
-                glUniform3fv(loc, 1, pg->light_infinite_half_vector[i]);
-            }
-            loc = binding->light_infinite_direction_loc[i];
-            if (loc != -1) {
-                glUniform3fv(loc, 1, pg->light_infinite_direction[i]);
-            }
-
-            loc = binding->light_local_position_loc[i];
-            if (loc != -1) {
-                glUniform3fv(loc, 1, pg->light_local_position[i]);
-            }
-            loc = binding->light_local_attenuation_loc[i];
-            if (loc != -1) {
-                glUniform3fv(loc, 1, pg->light_local_attenuation[i]);
-            }
-        }
-
-        if (binding->specular_power_loc != -1) {
-    	    glUniform1f(binding->specular_power_loc, pg->specular_power);
-	    }
-    }
-
-    /* update vertex program constants */
-    for (i=0; i<NV2A_VERTEXSHADER_CONSTANTS; i++) {
-        if (!pg->vsh_constants_dirty[i] && !binding_changed) continue;
-
-        GLint loc = binding->vsh_constant_loc[i];
-        if ((loc != -1) &&
-            memcmp(binding->vsh_constants[i], pg->vsh_constants[i],
-                   sizeof(pg->vsh_constants[1]))) {
-            glUniform4fv(loc, 1, (const GLfloat *)pg->vsh_constants[i]);
-            memcpy(binding->vsh_constants[i], pg->vsh_constants[i],
-                   sizeof(pg->vsh_constants[i]));
-        }
-
-        pg->vsh_constants_dirty[i] = false;
-    }
-
-    if (binding->surface_size_loc != -1) {
-        unsigned int aa_width = 1, aa_height = 1;
-        pgraph_apply_anti_aliasing_factor(pg, &aa_width, &aa_height);
-        glUniform2f(binding->surface_size_loc,
-                    pg->surface_binding_dim.width / aa_width,
-                    pg->surface_binding_dim.height / aa_height);
-    }
-
-    if (binding->clip_range_loc != -1) {
-        uint32_t v[2];
-        v[0] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
-        v[1] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMAX);
-        float zclip_min = *(float *)&v[0];
-        float zclip_max = *(float *)&v[1];
-        glUniform4f(binding->clip_range_loc, 0, zmax, zclip_min, zclip_max);
-    }
-
-    if (binding->depth_offset_loc != -1) {
-        float zbias = 0.0f;
-
-        if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
-            uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
-            zbias = *(float *)&zbias_u32;
-
-            if (pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR) != 0 &&
-                (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
-                 NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE)) {
-                /* TODO: emulate zfactor when z_perspective true, i.e.
-                 * w-buffering. Perhaps calculate an additional offset based on
-                 * triangle orientation in geometry shader and pass the result
-                 * to fragment shader and add it to gl_FragDepth as well.
-                 */
-                NV2A_UNIMPLEMENTED("NV_PGRAPH_ZOFFSETFACTOR for w-buffering");
-            }
-        }
-
-        glUniform1f(binding->depth_offset_loc, zbias);
-    }
-
-    /* Clipping regions */
-    unsigned int max_gl_width = pg->surface_binding_dim.width;
-    unsigned int max_gl_height = pg->surface_binding_dim.height;
-    pgraph_apply_scaling_factor(pg, &max_gl_width, &max_gl_height);
-
-    for (i = 0; i < 8; i++) {
-        uint32_t x = pgraph_reg_r(pg, NV_PGRAPH_WINDOWCLIPX0 + i * 4);
-        unsigned int x_min = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN);
-        unsigned int x_max = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX) + 1;
-        uint32_t y = pgraph_reg_r(pg, NV_PGRAPH_WINDOWCLIPY0 + i * 4);
-        unsigned int y_min = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMIN);
-        unsigned int y_max = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX) + 1;
-        pgraph_apply_anti_aliasing_factor(pg, &x_min, &y_min);
-        pgraph_apply_anti_aliasing_factor(pg, &x_max, &y_max);
-
-        pgraph_apply_scaling_factor(pg, &x_min, &y_min);
-        pgraph_apply_scaling_factor(pg, &x_max, &y_max);
-
-        glUniform4i(r->shader_binding->clip_region_loc[i],
-                    x_min, y_min, x_max, y_max);
-    }
-
-    for (i = 0; i < 8; ++i) {
-        GLint loc = binding->point_params_loc[i];
-        if (loc != -1) {
-            glUniform1f(loc, pg->point_params[i]);
-        }
-    }
-
-    if (binding->material_alpha_loc != -1) {
-        glUniform1f(binding->material_alpha_loc, pg->material_alpha);
-    }
+    assert(glGetError() == GL_NO_ERROR);
 }
 
-static bool test_shaders_dirty(PGRAPHState *pg)
+// FIXME: Dirty tracking
+// FIXME: Consider UBO to align with VK renderer
+static void update_shader_uniforms(PGRAPHState *pg, ShaderBinding *binding)
 {
-    #define CR_1(reg) CR_x(reg, 1)
-    #define CR_4(reg) CR_x(reg, 4)
-    #define CR_8(reg) CR_x(reg, 8)
-    #define CF(src, name)  CF_x(typeof(src), (&src), name, 1)
-    #define CFA(src, name) CF_x(typeof(src[0]), src, name, ARRAY_SIZE(src))
-    #define CNAME(name) reg_check__ ## name
-    #define CX_x__define(type, name, x) static type CNAME(name)[x];
-    #define CR_x__define(reg, x) CX_x__define(uint32_t, reg, x)
-    #define CF_x__define(type, src, name, x) CX_x__define(type, name, x)
-    #define CR_x__check(reg, x) \
-        for (int i = 0; i < x; i++) { if (pgraph_reg_r(pg, reg+i*4) != CNAME(reg)[i]) goto dirty; }
-    #define CF_x__check(type, src, name, x) \
-        for (int i = 0; i < x; i++) { if (src[i] != CNAME(name)[i]) goto dirty; }
-    #define CR_x__update(reg, x) \
-        for (int i = 0; i < x; i++) { CNAME(reg)[i] = pgraph_reg_r(pg, reg+i*4); }
-    #define CF_x__update(type, src, name, x) \
-        for (int i = 0; i < x; i++) { CNAME(name)[i] = src[i]; }
+    PGRAPHGLState *r = pg->gl_renderer_state;
 
-    #define DIRTY_REGS \
-        CR_1(NV_PGRAPH_COMBINECTL) \
-        CR_1(NV_PGRAPH_SHADERCTL) \
-        CR_1(NV_PGRAPH_SHADOWCTL) \
-        CR_1(NV_PGRAPH_COMBINESPECFOG0) \
-        CR_1(NV_PGRAPH_COMBINESPECFOG1) \
-        CR_1(NV_PGRAPH_CONTROL_0) \
-        CR_1(NV_PGRAPH_CONTROL_3) \
-        CR_1(NV_PGRAPH_CSV0_C) \
-        CR_1(NV_PGRAPH_CSV0_D) \
-        CR_1(NV_PGRAPH_CSV1_A) \
-        CR_1(NV_PGRAPH_CSV1_B) \
-        CR_1(NV_PGRAPH_SETUPRASTER) \
-        CR_1(NV_PGRAPH_SHADERPROG) \
-        CR_1(NV_PGRAPH_ZCOMPRESSOCCLUDE) \
-        CR_8(NV_PGRAPH_COMBINECOLORI0) \
-        CR_8(NV_PGRAPH_COMBINECOLORO0) \
-        CR_8(NV_PGRAPH_COMBINEALPHAI0) \
-        CR_8(NV_PGRAPH_COMBINEALPHAO0) \
-        CR_8(NV_PGRAPH_COMBINEFACTOR0) \
-        CR_8(NV_PGRAPH_COMBINEFACTOR1) \
-        CR_1(NV_PGRAPH_SHADERCLIPMODE) \
-        CR_4(NV_PGRAPH_TEXCTL0_0) \
-        CR_4(NV_PGRAPH_TEXFMT0) \
-        CR_4(NV_PGRAPH_TEXFILTER0) \
-        CR_8(NV_PGRAPH_WINDOWCLIPX0) \
-        CR_8(NV_PGRAPH_WINDOWCLIPY0) \
-        CF(pg->primitive_mode, primitive_mode) \
-        CF(pg->surface_scale_factor, surface_scale_factor) \
-        CF(pg->compressed_attrs, compressed_attrs) \
-        CFA(pg->texture_matrix_enable, texture_matrix_enable) \
-        CR_4(NV_PGRAPH_COLORKEYCOLOR0)
+    VshUniformValues vsh_values;
+    pgraph_glsl_set_vsh_uniform_values(pg, &binding->state.vsh,
+                                  binding->uniform_locs.vsh, &vsh_values);
+    apply_uniform_updates(VshUniformInfo, binding->uniform_locs.vsh,
+                          &vsh_values, VshUniform__COUNT);
 
-    #define CR_x(reg, x) CR_x__define(reg, x)
-    #define CF_x(type, src, name, x) CF_x__define(type, src, name, x)
-    DIRTY_REGS
-    #undef CR_x
-    #undef CF_x
+    PshUniformValues psh_values;
+    pgraph_glsl_set_psh_uniform_values(pg, binding->uniform_locs.psh, &psh_values);
 
-    #define CR_x(reg, x) CR_x__check(reg, x)
-    #define CF_x(type, src, name, x) CF_x__check(type, src, name, x)
-    DIRTY_REGS
-    #undef CR_x
-    #undef CF_x
-    return false;
-
-dirty:
-    #define CR_x(reg, x) CR_x__update(reg, x)
-    #define CF_x(type, src, name, x) CF_x__update(type, src, name, x)
-    DIRTY_REGS
-    #undef CR_x
-    #undef CF_x
-    return true;
+    for (int i = 0; i < 4; i++) {
+        if (r->texture_binding[i] != NULL) {
+            float scale = r->texture_binding[i]->scale;
+            psh_values.texScale[i] = scale;
+        }
+    }
+    apply_uniform_updates(PshUniformInfo, binding->uniform_locs.psh,
+                          &psh_values, PshUniform__COUNT);
 }
 
 void pgraph_gl_bind_shaders(PGRAPHState *pg)
@@ -1040,18 +761,17 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     bool binding_changed = false;
-    if (r->shader_binding && !test_shaders_dirty(pg) && !pg->program_data_dirty) {
+    if (r->shader_binding &&
+        !pgraph_glsl_check_shader_state_dirty(pg, &r->shader_binding->state)) {
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND_NOTDIRTY);
-        goto update_constants;
+        goto update_uniforms;
     }
 
     ShaderBinding *old_binding = r->shader_binding;
-    ShaderState state = pgraph_get_shader_state(pg);
-    assert(!state.vulkan);
+    ShaderState state = pgraph_glsl_get_shader_state(pg);
 
-    NV2A_GL_DGROUP_BEGIN("%s (VP: %s FFP: %s)", __func__,
-                         state.vertex_program ? "yes" : "no",
-                         state.fixed_function ? "yes" : "no");
+    NV2A_GL_DGROUP_BEGIN("%s (%s)", __func__,
+                         state.vsh.is_fixed_function ? "FF" : "PROG");
 
     qemu_mutex_lock(&r->shader_cache_lock);
 
@@ -1063,7 +783,7 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
 
     if (!binding->initialized && !pgraph_gl_shader_load_from_memory(binding)) {
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
-        generate_shaders(binding);
+        generate_shaders(r, binding);
         if (g_config.perf.cache_shaders) {
             pgraph_gl_shader_cache_to_disk(binding);
         }
@@ -1082,10 +802,10 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
 
     NV2A_GL_DGROUP_END();
 
-update_constants:
+update_uniforms:
     assert(r->shader_binding);
     assert(r->shader_binding->initialized);
-    shader_update_constants(pg, r->shader_binding, binding_changed);
+    update_shader_uniforms(pg, r->shader_binding);
 }
 
 GLuint pgraph_gl_compile_shader(const char *vs_src, const char *fs_src)
