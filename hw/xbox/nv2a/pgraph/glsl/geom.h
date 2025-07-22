@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2015 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2020-2024 Matt Borgerson
+ * Copyright (c) 2020-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -22,13 +22,24 @@
 #ifndef HW_XBOX_NV2A_PGRAPH_GLSL_GEOM_H
 #define HW_XBOX_NV2A_PGRAPH_GLSL_GEOM_H
 
-#include "qemu/mstring.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
+#include "common.h"
+#include "hw/xbox/nv2a/pgraph/vsh_regs.h"
 
-MString *pgraph_gen_geom_glsl(enum ShaderPolygonMode polygon_front_mode,
-                              enum ShaderPolygonMode polygon_back_mode,
-                              enum ShaderPrimitiveMode primitive_mode,
-                              bool smooth_shading,
-                              bool vulkan);
+typedef struct {
+    enum ShaderPrimitiveMode primitive_mode;
+    enum ShaderPolygonMode polygon_front_mode;
+    enum ShaderPolygonMode polygon_back_mode;
+    bool smooth_shading;
+} GeomState;
+
+typedef struct GenGeomGlslOptions {
+    bool vulkan;
+} GenGeomGlslOptions;
+
+void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *geom);
+
+bool pgraph_glsl_need_geom(const GeomState *state);
+
+MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts);
 
 #endif

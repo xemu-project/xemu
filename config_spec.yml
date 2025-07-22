@@ -264,8 +264,15 @@ display:
       advanced_tree_state:
         type: bool
         default: false
+  setup_nvidia_profile:
+    type: bool
+    default: true
 
 audio:
+  vp:
+    num_workers:
+      type: integer
+      default: 0  # 0 = auto
   use_dsp: bool
   hrtf:
     type: bool

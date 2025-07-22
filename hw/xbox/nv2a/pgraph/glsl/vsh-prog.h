@@ -3,13 +3,7 @@
  *
  * Copyright (c) 2014 Jannik Vogel
  * Copyright (c) 2012 espes
- *
- * Based on:
- * Cxbx, VertexShader.cpp
- * Copyright (c) 2004 Aaron Robinson <caustik@caustik.com>
- *                    Kingofc <kingofc@freenet.de>
- * Dxbx, uPushBuffer.pas
- * Copyright (c) 2007 Shadow_tj, PatrickvL
+ * Copyright (c) 2025 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -28,8 +22,10 @@
 #ifndef HW_XBOX_NV2A_PGRAPH_GLSL_VSH_PROG_H
 #define HW_XBOX_NV2A_PGRAPH_GLSL_VSH_PROG_H
 
-void pgraph_gen_vsh_prog_glsl(uint16_t version, const uint32_t *tokens,
-                              unsigned int length,
-                              bool vulkan, MString *header, MString *body);
+#include "qemu/mstring.h"
+
+void pgraph_glsl_gen_vsh_prog(uint16_t version, const uint32_t *tokens,
+                              unsigned int length, MString *header,
+                              MString *body);
 
 #endif
