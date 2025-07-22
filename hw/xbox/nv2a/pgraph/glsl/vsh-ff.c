@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2015 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2020-2024 Matt Borgerson
+ * Copyright (c) 2020-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -20,22 +20,55 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
 #include "common.h"
 #include "vsh-ff.h"
 
-static void append_skinning_code(MString* str, bool mix,
-                                 unsigned int count, const char* type,
-                                 const char* output, const char* input,
-                                 const char* matrix, const char* swizzle);
+static void append_skinning_code(MString *str, bool mix, unsigned int count,
+                                 const char *type, const char *output,
+                                 const char *input, const char *matrix,
+                                 const char *swizzle)
+{
+    if (count == 0) {
+        mstring_append_fmt(str, "%s %s = (%s * %s0).%s;\n",
+                           type, output, input, matrix, swizzle);
+    } else {
+        mstring_append_fmt(str, "%s %s = %s(0.0);\n", type, output, type);
+        if (mix) {
+            /* Generated final weight (like GL_WEIGHT_SUM_UNITY_ARB) */
+            mstring_append(str, "{\n"
+                                "  float weight_i;\n"
+                                "  float weight_n = 1.0;\n");
+            int i;
+            for (i = 0; i < count; i++) {
+                if (i < (count - 1)) {
+                    char c = "xyzw"[i];
+                    mstring_append_fmt(str, "  weight_i = weight.%c;\n"
+                                            "  weight_n -= weight_i;\n",
+                                       c);
+                } else {
+                    mstring_append(str, "  weight_i = weight_n;\n");
+                }
+                mstring_append_fmt(str, "  %s += (%s * %s%d).%s * weight_i;\n",
+                                   output, input, matrix, i, swizzle);
+            }
+            mstring_append(str, "}\n");
+        } else {
+            /* Individual weights */
+            int i;
+            for (i = 0; i < count; i++) {
+                char c = "xyzw"[i];
+                mstring_append_fmt(str, "%s += (%s * %s%d).%s * weight.%c;\n",
+                                   output, input, matrix, i, swizzle, c);
+            }
+        }
+    }
+}
 
-void pgraph_gen_vsh_ff_glsl(const ShaderState *state, MString *header,
-                             MString *body, MString *uniforms)
+void pgraph_glsl_gen_vsh_ff(const VshState *state, MString *header,
+                            MString *body)
 {
     int i, j;
-    const char *u = state->vulkan ? "" : "uniform "; // FIXME: Remove
 
-    /* generate vertex shader mimicking fixed function */
     mstring_append(header,
 "#define position      v0\n"
 "#define weight        v1\n"
@@ -54,11 +87,6 @@ void pgraph_gen_vsh_ff_glsl(const ShaderState *state, MString *header,
 "#define reserved2     v14\n"
 "#define reserved3     v15\n"
 "\n");
-    mstring_append_fmt(uniforms,
-"%svec4 ltctxa[" stringify(NV2A_LTCTXA_COUNT) "];\n"
-"%svec4 ltctxb[" stringify(NV2A_LTCTXB_COUNT) "];\n"
-"%svec4 ltc1[" stringify(NV2A_LTC1_COUNT) "];\n", u, u, u
-);
     mstring_append(header,
 "\n"
 GLSL_DEFINE(projectionMat, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_PMAT0))
@@ -116,10 +144,9 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 "\n"
 );
 
-    /* Skinning */
     unsigned int count;
     bool mix;
-    switch (state->skinning) {
+    switch (state->fixed_function.skinning) {
     case SKINNING_OFF:
         mix = false; count = 0; break;
     case SKINNING_1WEIGHTS:
@@ -139,7 +166,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         break;
     }
     mstring_append_fmt(body, "/* Skinning mode %d */\n",
-                       state->skinning);
+                       state->fixed_function.skinning);
 
     append_skinning_code(body, mix, count, "vec4",
                          "tPosition", "position",
@@ -148,12 +175,10 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                          "tNormal", "vec4(normal, 0.0)",
                          "invModelViewMat", "xyz");
 
-    /* Normalization */
-    if (state->normalization) {
+    if (state->fixed_function.normalization) {
         mstring_append(body, "tNormal = normalize(tNormal);\n");
     }
 
-    /* Texgen */
     for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
         mstring_append_fmt(body, "/* Texgen for stage %d */\n",
                            i);
@@ -163,7 +188,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             /* TODO: TexGen View Model missing! */
             char c = "xyzw"[j];
             char cSuffix = "STRQ"[j];
-            switch (state->texgen[i][j]) {
+            switch (state->fixed_function.texgen[i][j]) {
             case TEXGEN_DISABLE:
                 mstring_append_fmt(body, "oT%d.%c = texture%d.%c;\n",
                                    i, c, i, c);
@@ -218,115 +243,101 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         }
     }
 
-    /* Apply texture matrices */
     for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
-        if (state->texture_matrix_enable[i]) {
+        if (state->fixed_function.texture_matrix_enable[i]) {
             mstring_append_fmt(body,
                                "oT%d = oT%d * texMat%d;\n",
                                i, i, i);
         }
     }
 
-    /* Lighting */
-    if (!state->lighting) {
+    if (!state->fixed_function.lighting) {
         mstring_append(body, "  oD0 = diffuse;\n");
         mstring_append(body, "  oD1 = specular;\n");
         mstring_append(body, "  oB0 = backDiffuse;\n");
         mstring_append(body, "  oB1 = backSpecular;\n");
     } else {
         //FIXME: Do 2 passes if we want 2 sided-lighting?
-
-        mstring_append_fmt(uniforms, "%sfloat specularPower;\n", u);
-
         static char alpha_source_diffuse[] = "diffuse.a";
         static char alpha_source_specular[] = "specular.a";
         static char alpha_source_material[] = "material_alpha";
         const char *alpha_source = alpha_source_diffuse;
-        if (state->diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) {
-            mstring_append_fmt(uniforms, "%sfloat material_alpha;\n", u);
+        if (state->fixed_function.diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) {
             alpha_source = alpha_source_material;
-        } else if (state->diffuse_src == MATERIAL_COLOR_SRC_SPECULAR) {
+        } else if (state->fixed_function.diffuse_src == MATERIAL_COLOR_SRC_SPECULAR) {
             alpha_source = alpha_source_specular;
         }
 
-        if (state->ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
+        if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
             mstring_append_fmt(body, "oD0 = vec4(sceneAmbientColor, %s);\n", alpha_source);
-        } else if (state->ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
+        } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
             mstring_append_fmt(body, "oD0 = vec4(diffuse.rgb, %s);\n", alpha_source);
-        } else if (state->ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
+        } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
             mstring_append_fmt(body, "oD0 = vec4(specular.rgb, %s);\n", alpha_source);
         }
 
         mstring_append(body, "oD0.rgb *= materialEmissionColor.rgb;\n");
-        if (state->emission_src == MATERIAL_COLOR_SRC_MATERIAL) {
+        if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_MATERIAL) {
             mstring_append(body, "oD0.rgb += sceneAmbientColor;\n");
-        } else if (state->emission_src == MATERIAL_COLOR_SRC_DIFFUSE) {
+        } else if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_DIFFUSE) {
             mstring_append(body, "oD0.rgb += diffuse.rgb;\n");
-        } else if (state->emission_src == MATERIAL_COLOR_SRC_SPECULAR) {
+        } else if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_SPECULAR) {
             mstring_append(body, "oD0.rgb += specular.rgb;\n");
         }
 
         mstring_append(body, "oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n");
 
-        if (state->local_eye) {
+        if (state->fixed_function.local_eye) {
             mstring_append(body,
                 "vec3 VPeye = normalize(eyePosition.xyz / eyePosition.w - tPosition.xyz / tPosition.w);\n"
             );
         }
 
         for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
-            if (state->light[i] == LIGHT_OFF) {
+            if (state->fixed_function.light[i] == LIGHT_OFF) {
                 continue;
             }
 
             mstring_append_fmt(body, "/* Light %d */ {\n", i);
 
-            if (state->light[i] == LIGHT_LOCAL
-                    || state->light[i] == LIGHT_SPOT) {
+            if (state->fixed_function.light[i] == LIGHT_LOCAL
+                    || state->fixed_function.light[i] == LIGHT_SPOT) {
 
-                mstring_append_fmt(uniforms,
-                    "%svec3 lightLocalPosition%d;\n"
-                    "%svec3 lightLocalAttenuation%d;\n",
-                    u, i, u, i);
                 mstring_append_fmt(body,
                     "  vec3 tPos = tPosition.xyz/tPosition.w;\n"
-                    "  vec3 VP = lightLocalPosition%d - tPos;\n"
+                    "  vec3 VP = lightLocalPosition[%d] - tPos;\n"
                     "  float d = length(VP);\n"
                     "  if (d <= lightLocalRange(%d)) {\n"  /* FIXME: Double check that range is inclusive */
                     "    VP = normalize(VP);\n"
-                    "    float attenuation = 1.0 / (lightLocalAttenuation%d.x\n"
-                    "                                 + lightLocalAttenuation%d.y * d\n"
-                    "                                 + lightLocalAttenuation%d.z * d * d);\n"
+                    "    float attenuation = 1.0 / (lightLocalAttenuation[%d].x\n"
+                    "                                 + lightLocalAttenuation[%d].y * d\n"
+                    "                                 + lightLocalAttenuation[%d].z * d * d);\n"
                     "    vec3 halfVector = normalize(VP + %s);\n"
                     "    float nDotVP = max(0.0, dot(tNormal, VP));\n"
                     "    float nDotHV = max(0.0, dot(tNormal, halfVector));\n",
                     i, i, i, i, i,
-                    state->local_eye ? "VPeye" : "vec3(0.0, 0.0, 0.0)"
+                    state->fixed_function.local_eye ? "VPeye" : "vec3(0.0, 0.0, 0.0)"
                 );
             }
 
-            switch(state->light[i]) {
+            switch(state->fixed_function.light[i]) {
             case LIGHT_INFINITE:
 
                 /* lightLocalRange will be 1e+30 here */
 
-                mstring_append_fmt(uniforms,
-                    "%svec3 lightInfiniteHalfVector%d;\n"
-                    "%svec3 lightInfiniteDirection%d;\n",
-                    u, i, u, i);
                 mstring_append_fmt(body,
                     "  {\n"
                     "    float attenuation = 1.0;\n"
-                    "    vec3 lightDirection = normalize(lightInfiniteDirection%d);\n"
+                    "    vec3 lightDirection = normalize(lightInfiniteDirection[%d]);\n"
                     "    float nDotVP = max(0.0, dot(tNormal, lightDirection));\n",
                     i);
-                if (state->local_eye) {
+                if (state->fixed_function.local_eye) {
                     mstring_append(body,
                         "    float nDotHV = max(0.0, dot(tNormal, normalize(lightDirection + VPeye)));\n"
                     );
                 } else {
                     mstring_append_fmt(body,
-                        "    float nDotHV = max(0.0, dot(tNormal, lightInfiniteHalfVector%d));\n",
+                        "    float nDotHV = max(0.0, dot(tNormal, lightInfiniteHalfVector[%d]));\n",
                         i
                     );
                 }
@@ -371,7 +382,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             mstring_append(body,
                 "    oD0.xyz += lightAmbient;\n");
 
-            switch (state->diffuse_src) {
+            switch (state->fixed_function.diffuse_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
                 mstring_append(body,
                                "    oD0.xyz += lightDiffuse;\n");
@@ -386,7 +397,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 break;
             }
 
-            switch (state->specular_src) {
+            switch (state->fixed_function.specular_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
                 mstring_append(body,
                                "    oD1.xyz += lightSpecular;\n");
@@ -415,7 +426,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         mstring_append(body, "  oB1 = vec4(0.0, 0.0, 0.0, 1.0);\n");
     } else {
         if (!state->separate_specular) {
-            if (state->lighting) {
+            if (state->fixed_function.lighting) {
 				mstring_append(body,
 				               "  oD0.xyz += oD1.xyz;\n"
 				               "  oB0.xyz += oB1.xyz;\n"
@@ -434,11 +445,9 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         }
     }
 
-    /* Fog */
     if (state->fog_enable) {
-
         /* From: https://www.opengl.org/registry/specs/NV/fog_distance.txt */
-        switch(state->foggen) {
+        switch(state->fixed_function.foggen) {
         case FOGGEN_SPEC_ALPHA:
             /* FIXME: Do we have to clamp here? */
             mstring_append(body, "  float fogDistance = clamp(specular.a, 0.0, 1.0);\n");
@@ -449,7 +458,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         case FOGGEN_PLANAR:
         case FOGGEN_ABS_PLANAR:
             mstring_append(body, "  float fogDistance = dot(fogPlane.xyz, tPosition.xyz) + fogPlane.w;\n");
-            if (state->foggen == FOGGEN_ABS_PLANAR) {
+            if (state->fixed_function.foggen == FOGGEN_ABS_PLANAR) {
                 mstring_append(body, "  fogDistance = abs(fogDistance);\n");
             }
             break;
@@ -464,7 +473,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     }
 
     /* If skinning is off the composite matrix already includes the MV matrix */
-    if (state->skinning == SKINNING_OFF) {
+    if (state->fixed_function.skinning == SKINNING_OFF) {
         mstring_append(body, "  tPosition = position;\n");
     }
 
@@ -481,7 +490,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
     /* FIXME: Testing */
     if (state->point_params_enable) {
-        mstring_append_fmt(uniforms, "%sfloat pointParams[8];\n", u);
         mstring_append(
             body,
             "  float d_e = length(position * modelViewMat0);\n"
@@ -491,46 +499,5 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     } else {
         mstring_append_fmt(body, "  oPts.x = %f * %d;\n", state->point_size,
                            state->surface_scale_factor);
-    }
-}
-
-static void append_skinning_code(MString* str, bool mix,
-                                 unsigned int count, const char* type,
-                                 const char* output, const char* input,
-                                 const char* matrix, const char* swizzle)
-{
-    if (count == 0) {
-        mstring_append_fmt(str, "%s %s = (%s * %s0).%s;\n",
-                           type, output, input, matrix, swizzle);
-    } else {
-        mstring_append_fmt(str, "%s %s = %s(0.0);\n", type, output, type);
-        if (mix) {
-            /* Generated final weight (like GL_WEIGHT_SUM_UNITY_ARB) */
-            mstring_append(str, "{\n"
-                                "  float weight_i;\n"
-                                "  float weight_n = 1.0;\n");
-            int i;
-            for (i = 0; i < count; i++) {
-                if (i < (count - 1)) {
-                    char c = "xyzw"[i];
-                    mstring_append_fmt(str, "  weight_i = weight.%c;\n"
-                                            "  weight_n -= weight_i;\n",
-                                       c);
-                } else {
-                    mstring_append(str, "  weight_i = weight_n;\n");
-                }
-                mstring_append_fmt(str, "  %s += (%s * %s%d).%s * weight_i;\n",
-                                   output, input, matrix, i, swizzle);
-            }
-            mstring_append(str, "}\n");
-        } else {
-            /* Individual weights */
-            int i;
-            for (i = 0; i < count; i++) {
-                char c = "xyzw"[i];
-                mstring_append_fmt(str, "%s += (%s * %s%d).%s * weight.%c;\n",
-                                   output, input, matrix, i, swizzle, c);
-            }
-        }
     }
 }

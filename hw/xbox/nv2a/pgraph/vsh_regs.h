@@ -20,8 +20,8 @@
 #ifndef HW_NV2A_VSH_H
 #define HW_NV2A_VSH_H
 
-#include <stdbool.h>
-#include "qemu/mstring.h"
+#include "qemu/osdep.h"
+#include "hw/xbox/nv2a/nv2a_regs.h"
 
 enum VshLight {
     LIGHT_OFF,
@@ -82,6 +82,60 @@ enum VshSkinning {
 
 #define VSH_TOKEN_SIZE 4
 
+#define VSH_D3DSCM_CORRECTION 96
+
+typedef enum {
+    PARAM_UNKNOWN = 0,
+    PARAM_R,
+    PARAM_V,
+    PARAM_C
+} VshParameterType;
+
+typedef enum {
+    OUTPUT_C = 0,
+    OUTPUT_O
+} VshOutputType;
+
+typedef enum {
+    OMUX_MAC = 0,
+    OMUX_ILU
+} VshOutputMux;
+
+typedef enum {
+    ILU_NOP = 0,
+    ILU_MOV,
+    ILU_RCP,
+    ILU_RCC,
+    ILU_RSQ,
+    ILU_EXP,
+    ILU_LOG,
+    ILU_LIT
+} VshILU;
+
+typedef enum {
+    MAC_NOP,
+    MAC_MOV,
+    MAC_MUL,
+    MAC_ADD,
+    MAC_MAD,
+    MAC_DP3,
+    MAC_DPH,
+    MAC_DP4,
+    MAC_DST,
+    MAC_MIN,
+    MAC_MAX,
+    MAC_SLT,
+    MAC_SGE,
+    MAC_ARL
+} VshMAC;
+
+typedef enum {
+    SWIZZLE_X = 0,
+    SWIZZLE_Y,
+    SWIZZLE_Z,
+    SWIZZLE_W
+} VshSwizzle;
+
 typedef enum {
     FLD_ILU = 0,
     FLD_MAC,
@@ -127,5 +181,31 @@ typedef enum {
 } VshFieldName;
 
 uint8_t vsh_get_field(const uint32_t *shader_token, VshFieldName field_name);
+
+enum ShaderPrimitiveMode {
+    PRIM_TYPE_INVALID,
+    PRIM_TYPE_POINTS,
+    PRIM_TYPE_LINES,
+    PRIM_TYPE_LINE_LOOP,
+    PRIM_TYPE_LINE_STRIP,
+    PRIM_TYPE_TRIANGLES,
+    PRIM_TYPE_TRIANGLE_STRIP,
+    PRIM_TYPE_TRIANGLE_FAN,
+    PRIM_TYPE_QUADS,
+    PRIM_TYPE_QUAD_STRIP,
+    PRIM_TYPE_POLYGON,
+};
+
+enum ShaderPolygonMode {
+    POLY_MODE_FILL,
+    POLY_MODE_POINT,
+    POLY_MODE_LINE,
+};
+
+enum MaterialColorSource {
+    MATERIAL_COLOR_SRC_MATERIAL,
+    MATERIAL_COLOR_SRC_DIFFUSE,
+    MATERIAL_COLOR_SRC_SPECULAR,
+};
 
 #endif

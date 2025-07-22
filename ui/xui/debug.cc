@@ -233,7 +233,7 @@ void DebugApuWindow::Draw()
         ImGui::Text(" W: #  us");
         ImGui::SameLine();
         ImGui::Text(" W: #  us");
-        for (int i = 0; i < 16; i++) {
+        for (int i = 0; i < dbg->vp.num_workers; i++) {
             if (i % 2) ImGui::SameLine();
             ImGui::Text("%2d:%2d %3d", i, dbg->vp.workers[i].num_voices,
                         dbg->vp.workers[i].time_us);

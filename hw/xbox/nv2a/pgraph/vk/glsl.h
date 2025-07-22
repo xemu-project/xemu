@@ -1,7 +1,7 @@
 /*
  * Geforce NV2A PGRAPH Vulkan Renderer
  *
- * Copyright (c) 2024 Matt Borgerson
+ * Copyright (c) 2024-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -63,7 +63,7 @@ static inline void uniform_std140(ShaderUniformLayout *layout)
 			align = size;
 			stride = 0;
 		}
-		
+
 		offset = ROUND_UP(offset, align);
 
 		u->align = align;
@@ -87,7 +87,7 @@ static inline void uniform_std430(ShaderUniformLayout *layout)
 		size *= u->dim_v;
 		size_t align = size;
 		size *= u->dim_a;
-		
+
 		offset = ROUND_UP(offset, align);
 
 		u->align = align;
@@ -120,10 +120,10 @@ void *uniform_ptr(ShaderUniformLayout *layout, int idx)
     return (char *)layout->allocation + layout->uniforms[idx - 1].offset;
 }
 
-static inline
-void uniform_copy(ShaderUniformLayout *layout, int idx, void *values, size_t value_size, size_t count)
+static inline void uniform_copy(ShaderUniformLayout *layout, int idx,
+                                void *values, size_t value_size, size_t count)
 {
-	assert(idx > 0 && "invalid uniform index");
+    assert(idx > 0 && "invalid uniform index");
 
     ShaderUniform *u = &layout->uniforms[idx - 1];
     const size_t element_size = value_size * u->dim_v;
@@ -135,14 +135,14 @@ void uniform_copy(ShaderUniformLayout *layout, int idx, void *values, size_t val
 
     int index = 0;
     while (bytes_remaining) {
-    	assert(p_out < p_max);
-    	assert(index < u->dim_a);
+        assert((p_out + element_size) <= p_max);
+        assert(index < u->dim_a);
         memcpy(p_out, p_in, element_size);
         bytes_remaining -= element_size;
         p_out += u->stride;
         p_in += element_size;
         index += 1;
-	}
+    }
 }
 
 static inline
@@ -200,6 +200,12 @@ void uniform4i(ShaderUniformLayout *layout, int idx, int v0, int v1, int v2, int
 {
 	int values[] = { v0, v1, v2, v3 };
 	uniform1iv(layout, idx, 4, values);
+}
+
+static inline void uniform1uiv(ShaderUniformLayout *layout, int idx,
+                               size_t count, uint32_t *values)
+{
+    uniform_copy(layout, idx, values, sizeof(uint32_t), count);
 }
 
 #endif

@@ -1173,10 +1173,10 @@ void cpu_watchpoint_remove_all(CPUState *cpu, int mask);
  * to a surface will be slower.
  */
 
-int mem_access_callback_insert(CPUState *cpu, MemoryRegion *mr,
-                               hwaddr offset, hwaddr len,
-                               MemAccessCallback **cb,
-                               MemAccessCallbackFunc func, void *opaque);
+MemAccessCallback *mem_access_callback_insert(CPUState *cpu, MemoryRegion *mr,
+                                              hwaddr offset, hwaddr len,
+                                              MemAccessCallbackFunc func,
+                                              void *opaque);
 void mem_access_callback_remove_by_ref(CPUState *cpu, MemAccessCallback *cb);
 int mem_access_callback_address_matches(CPUState *cpu, hwaddr addr, hwaddr len);
 void mem_check_access_callback_ramaddr(CPUState *cpu,

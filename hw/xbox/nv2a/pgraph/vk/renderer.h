@@ -1,7 +1,7 @@
 /*
  * Geforce NV2A PGRAPH Vulkan Renderer
  *
- * Copyright (c) 2024 Matt Borgerson
+ * Copyright (c) 2024-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -29,7 +29,7 @@
 #include "hw/xbox/nv2a/nv2a_regs.h"
 #include "hw/xbox/nv2a/pgraph/surface.h"
 #include "hw/xbox/nv2a/pgraph/texture.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
+#include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
 
 #include <vulkan/vulkan.h>
 #include <glslang/Include/glslang_c_interface.h>
@@ -77,6 +77,7 @@ typedef struct PipelineBinding {
     VkPipeline pipeline;
     VkRenderPass render_pass;
     unsigned int draw_time;
+    bool has_dynamic_line_width;
 } PipelineBinding;
 
 enum Buffer {
@@ -145,6 +146,7 @@ typedef struct SurfaceBinding {
 } SurfaceBinding;
 
 typedef struct ShaderModuleInfo {
+    int refcnt;
     char *glsl;
     GByteArray *spirv;
     VkShaderModule module;
@@ -154,48 +156,44 @@ typedef struct ShaderModuleInfo {
     ShaderUniformLayout push_constants;
 } ShaderModuleInfo;
 
+typedef struct ShaderModuleCacheKey {
+    VkShaderStageFlagBits kind;
+    union {
+        struct {
+            VshState state;
+            GenVshGlslOptions glsl_opts;
+        } vsh;
+        struct {
+            GeomState state;
+            GenGeomGlslOptions glsl_opts;
+        } geom;
+        struct {
+            PshState state;
+            GenPshGlslOptions glsl_opts;
+        } psh;
+    };
+} ShaderModuleCacheKey;
+
+typedef struct ShaderModuleCacheEntry {
+    LruNode node;
+    ShaderModuleCacheKey key;
+    ShaderModuleInfo *module_info;
+} ShaderModuleCacheEntry;
+
 typedef struct ShaderBinding {
     LruNode node;
-    bool initialized;
-
     ShaderState state;
-    ShaderModuleInfo *geometry;
-    ShaderModuleInfo *vertex;
-    ShaderModuleInfo *fragment;
-
-    int psh_constant_loc[9][2];
-    int alpha_ref_loc;
-
-    int bump_mat_loc[NV2A_MAX_TEXTURES];
-    int bump_scale_loc[NV2A_MAX_TEXTURES];
-    int bump_offset_loc[NV2A_MAX_TEXTURES];
-    int tex_scale_loc[NV2A_MAX_TEXTURES];
-
-    int surface_size_loc;
-    int clip_range_loc;
-    int clip_range_floc;
-    int depth_offset_loc;
-
-    int vsh_constant_loc;
-    uint32_t vsh_constants[NV2A_VERTEXSHADER_CONSTANTS][4];
-
-    int ltctxa_loc;
-    int ltctxb_loc;
-    int ltc1_loc;
-
-    int fog_color_loc;
-    int fog_param_loc;
-    int light_infinite_half_vector_loc[NV2A_MAX_LIGHTS];
-    int light_infinite_direction_loc[NV2A_MAX_LIGHTS];
-    int light_local_position_loc[NV2A_MAX_LIGHTS];
-    int light_local_attenuation_loc[NV2A_MAX_LIGHTS];
-    int specular_power_loc;
-    int point_params_loc;
-
-    int clip_region_loc;
-    int material_alpha_loc;
-
-    int uniform_attrs_loc;
+    struct {
+        ShaderModuleInfo *module_info;
+        VshUniformLocs uniform_locs;
+    } vsh;
+    struct {
+        ShaderModuleInfo *module_info;
+    } geom;
+    struct {
+        ShaderModuleInfo *module_info;
+        PshUniformLocs uniform_locs;
+    } psh;
 } ShaderBinding;
 
 typedef struct TextureKey {
@@ -331,6 +329,7 @@ typedef struct PGRAPHVkState {
     bool memory_budget_extension_enabled;
 
     VkPhysicalDevice physical_device;
+    VkPhysicalDeviceFeatures enabled_physical_device_features;
     VkPhysicalDeviceProperties device_props;
     VkDevice device;
     VmaAllocator allocator;
@@ -405,6 +404,10 @@ typedef struct PGRAPHVkState {
     ShaderBinding *shader_binding;
     ShaderModuleInfo *quad_vert_module, *solid_frag_module;
     bool shader_bindings_changed;
+    bool use_push_constants_for_uniform_attrs;
+
+    Lru shader_module_cache;
+    ShaderModuleCacheEntry *shader_module_cache_entries;
 
     // FIXME: Merge these into a structure
     uint64_t uniform_buffer_hashes[2];
@@ -461,6 +464,8 @@ VkShaderModule pgraph_vk_create_shader_module_from_spv(PGRAPHVkState *r,
                                                        GByteArray *spv);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
     PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl);
+void pgraph_vk_ref_shader_module(ShaderModuleInfo *info);
+void pgraph_vk_unref_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info);
 void pgraph_vk_destroy_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info);
 
 // buffer.c
@@ -550,7 +555,6 @@ void pgraph_vk_init_shaders(PGRAPHState *pg);
 void pgraph_vk_finalize_shaders(PGRAPHState *pg);
 void pgraph_vk_update_descriptor_sets(PGRAPHState *pg);
 void pgraph_vk_bind_shaders(PGRAPHState *pg);
-void pgraph_vk_update_shader_uniforms(PGRAPHState *pg);
 
 // reports.c
 void pgraph_vk_init_reports(PGRAPHState *pg);
