@@ -23,6 +23,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define MAX_VOICE_WORKERS 16
+
 typedef enum McpxApuDebugMonitorPoint {
     MCPX_APU_DEBUG_MON_AC97,
     MCPX_APU_DEBUG_MON_VP,
@@ -55,10 +57,11 @@ struct McpxApuDebugVoice
 struct McpxApuDebugVp
 {
     struct McpxApuDebugVoice v[256];
+    int num_workers;
     struct {
         int num_voices;
         int time_us;
-    } workers[16];
+    } workers[MAX_VOICE_WORKERS];
     int total_worker_time_us;
 };
 

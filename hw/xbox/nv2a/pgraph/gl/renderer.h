@@ -33,7 +33,7 @@
 #include "hw/xbox/nv2a/nv2a_regs.h"
 #include "hw/xbox/nv2a/pgraph/surface.h"
 #include "hw/xbox/nv2a/pgraph/texture.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
+#include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
 
 #include "gloffscreen.h"
 #include "constants.h"
@@ -82,6 +82,30 @@ typedef struct TextureBinding {
     GLuint gl_texture;
 } TextureBinding;
 
+typedef struct ShaderModuleCacheKey {
+    GLenum kind;
+    union {
+        struct {
+            VshState state;
+            GenVshGlslOptions glsl_opts;
+        } vsh;
+        struct {
+            GeomState state;
+            GenGeomGlslOptions glsl_opts;
+        } geom;
+        struct {
+            PshState state;
+            GenPshGlslOptions glsl_opts;
+        } psh;
+    };
+} ShaderModuleCacheKey;
+
+typedef struct ShaderModuleCacheEntry {
+    LruNode node;
+    ShaderModuleCacheKey key;
+    GLuint gl_shader;
+} ShaderModuleCacheEntry;
+
 typedef struct ShaderBinding {
     LruNode node;
     bool initialized;
@@ -96,37 +120,10 @@ typedef struct ShaderBinding {
     GLuint gl_program;
     GLenum gl_primitive_mode;
 
-    GLint psh_constant_loc[9][2];
-    GLint alpha_ref_loc;
-
-    GLint bump_mat_loc[NV2A_MAX_TEXTURES];
-    GLint bump_scale_loc[NV2A_MAX_TEXTURES];
-    GLint bump_offset_loc[NV2A_MAX_TEXTURES];
-    GLint tex_scale_loc[NV2A_MAX_TEXTURES];
-
-    GLint surface_size_loc;
-    GLint clip_range_loc;
-    GLint depth_offset_loc;
-
-    GLint vsh_constant_loc[NV2A_VERTEXSHADER_CONSTANTS];
-    uint32_t vsh_constants[NV2A_VERTEXSHADER_CONSTANTS][4];
-
-    GLint ltctxa_loc[NV2A_LTCTXA_COUNT];
-    GLint ltctxb_loc[NV2A_LTCTXB_COUNT];
-    GLint ltc1_loc[NV2A_LTC1_COUNT];
-
-    GLint fog_color_loc;
-    GLint fog_param_loc;
-    GLint light_infinite_half_vector_loc[NV2A_MAX_LIGHTS];
-    GLint light_infinite_direction_loc[NV2A_MAX_LIGHTS];
-    GLint light_local_position_loc[NV2A_MAX_LIGHTS];
-    GLint light_local_attenuation_loc[NV2A_MAX_LIGHTS];
-    int specular_power_loc;
-
-    GLint clip_region_loc[8];
-
-    GLint point_params_loc[8];
-    GLint material_alpha_loc;
+    struct {
+        PshUniformLocs psh;
+        VshUniformLocs vsh;
+    } uniform_locs;
 } ShaderBinding;
 
 typedef struct VertexKey {
@@ -201,6 +198,9 @@ typedef struct PGRAPHGLState {
     ShaderBinding *shader_binding;
     QemuMutex shader_cache_lock;
     QemuThread shader_disk_thread;
+
+    Lru shader_module_cache;
+    ShaderModuleCacheEntry *shader_module_cache_entries;
 
     unsigned int zpass_pixel_count_result;
     unsigned int gl_zpass_pixel_count_query_count;

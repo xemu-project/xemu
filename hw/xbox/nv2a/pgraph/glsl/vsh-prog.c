@@ -3,6 +3,7 @@
  *
  * Copyright (c) 2014 Jannik Vogel
  * Copyright (c) 2012 espes
+ * Copyright (c) 2025 Matt Borgerson
  *
  * Based on:
  * Cxbx, VertexShader.cpp
@@ -32,65 +33,9 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "hw/xbox/nv2a/pgraph/vsh.h"
 #include "common.h"
+#include "vsh.h"
 #include "vsh-prog.h"
-
-#define VSH_D3DSCM_CORRECTION 96
-
-
-typedef enum {
-    PARAM_UNKNOWN = 0,
-    PARAM_R,
-    PARAM_V,
-    PARAM_C
-} VshParameterType;
-
-typedef enum {
-    OUTPUT_C = 0,
-    OUTPUT_O
-} VshOutputType;
-
-typedef enum {
-    OMUX_MAC = 0,
-    OMUX_ILU
-} VshOutputMux;
-
-typedef enum {
-    ILU_NOP = 0,
-    ILU_MOV,
-    ILU_RCP,
-    ILU_RCC,
-    ILU_RSQ,
-    ILU_EXP,
-    ILU_LOG,
-    ILU_LIT
-} VshILU;
-
-typedef enum {
-    MAC_NOP,
-    MAC_MOV,
-    MAC_MUL,
-    MAC_ADD,
-    MAC_MAD,
-    MAC_DP3,
-    MAC_DPH,
-    MAC_DP4,
-    MAC_DST,
-    MAC_MIN,
-    MAC_MAX,
-    MAC_SLT,
-    MAC_SGE,
-    MAC_ARL
-} VshMAC;
-
-typedef enum {
-    SWIZZLE_X = 0,
-    SWIZZLE_Y,
-    SWIZZLE_Z,
-    SWIZZLE_W
-} VshSwizzle;
-
 
 typedef struct VshFieldMapping {
     VshFieldName field_name;
@@ -142,7 +87,6 @@ static const VshFieldMapping field_mapping[] = {
     {  FLD_A0X,              3,    1,     1 },
     {  FLD_FINAL,            3,    0,     1 }
 };
-
 
 typedef struct VshOpcodeParams {
     bool A;
@@ -286,8 +230,6 @@ static const char* out_reg_name[] = {
     "A0.x",
 };
 
-
-
 // Retrieves a number of bits in the instruction token
 static int vsh_get_from_token(const uint32_t *shader_token,
                               uint8_t subtoken,
@@ -306,7 +248,6 @@ uint8_t vsh_get_field(const uint32_t *shader_token, VshFieldName field_name)
                                         field_mapping[field_name].bit_length));
 }
 
-
 // Converts the C register address to disassembly format
 static int16_t convert_c_register(const int16_t c_reg)
 {
@@ -315,9 +256,7 @@ static int16_t convert_c_register(const int16_t c_reg)
     return r; //FIXME: = c_reg?!
 }
 
-
-
-static MString* decode_swizzle(const uint32_t *shader_token,
+static MString *decode_swizzle(const uint32_t *shader_token,
                                VshFieldName swizzle_field)
 {
     const char* swizzle_str = "xyzw";
@@ -355,10 +294,9 @@ static MString* decode_swizzle(const uint32_t *shader_token,
     }
 }
 
-static MString* decode_opcode_input(const uint32_t *shader_token,
+static MString *decode_opcode_input(const uint32_t *shader_token,
                                     VshParameterType param,
-                                    VshFieldName neg_field,
-                                    int reg_num)
+                                    VshFieldName neg_field, int reg_num)
 {
     /* This function decodes a vertex shader opcode parameter into a string.
      * Input A, B or C is controlled via the Param and NEG fieldnames,
@@ -408,13 +346,10 @@ static MString* decode_opcode_input(const uint32_t *shader_token,
     return ret_str;
 }
 
-
-static MString* decode_opcode(const uint32_t *shader_token,
-                              VshOutputMux out_mux,
-                              uint32_t mask,
-                              const char *opcode,
-                              const char *inputs,
-                              MString** suffix)
+static MString *decode_opcode(const uint32_t *shader_token,
+                              VshOutputMux out_mux, uint32_t mask,
+                              const char *opcode, const char *inputs,
+                              MString **suffix)
 {
     MString *ret = mstring_new();
     int reg_num = vsh_get_field(shader_token, FLD_OUT_R);
@@ -496,8 +431,7 @@ static MString* decode_opcode(const uint32_t *shader_token,
     return ret;
 }
 
-
-static MString* decode_token(const uint32_t *shader_token)
+static MString *decode_token(const uint32_t *shader_token)
 {
     MString *ret;
 
@@ -789,11 +723,9 @@ static const char* vsh_header =
     "  return t;\n"
     "}\n";
 
-void pgraph_gen_vsh_prog_glsl(uint16_t version,
-                   const uint32_t *tokens,
-                   unsigned int length,
-                   bool vulkan,
-                   MString *header, MString *body)
+void pgraph_glsl_gen_vsh_prog(uint16_t version, const uint32_t *tokens,
+                              unsigned int length, MString *header,
+                              MString *body)
 {
 
     mstring_append(header, vsh_header);
@@ -805,12 +737,10 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
         const uint32_t* cur_token = &tokens[slot * VSH_TOKEN_SIZE];
         MString *token_str = decode_token(cur_token);
         mstring_append_fmt(body,
-                           "  /* Slot %d: 0x%08X 0x%08X 0x%08X 0x%08X */",
-                           slot,
-                           cur_token[0],cur_token[1],cur_token[2],cur_token[3]);
-        mstring_append(body, "\n");
-        mstring_append(body, mstring_get_str(token_str));
-        mstring_append(body, "\n");
+                           "  /* Slot %d: 0x%08X 0x%08X 0x%08X 0x%08X */\n"
+                           "  %s\n",
+                           slot, cur_token[0], cur_token[1], cur_token[2],
+                           cur_token[3], mstring_get_str(token_str));
         mstring_unref(token_str);
 
         if (vsh_get_field(cur_token, FLD_FINAL)) {

@@ -1,7 +1,7 @@
 /*
  * Geforce NV2A PGRAPH Vulkan Renderer
  *
- * Copyright (c) 2024 Matt Borgerson
+ * Copyright (c) 2024-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -269,12 +269,24 @@ static void block_to_uniforms(const SpvReflectBlockVariable *block, ShaderUnifor
 
         assert(member->array.dims_count < 2);
 
+        int dim = 1;
+        for (int i = 0; i < member->array.dims_count; i++) {
+            dim *= member->array.dims[i];
+        }
+        int stride = MAX(member->array.stride, member->numeric.matrix.stride);
+        if (member->numeric.matrix.column_count) {
+            dim *= member->numeric.matrix.column_count;
+            if (member->array.stride) {
+                stride =
+                    member->array.stride / member->numeric.matrix.column_count;
+            }
+        }
         layout->uniforms[k] = (ShaderUniform){
             .name = strdup(member->name),
             .offset = member->offset,
             .dim_v = MAX(1, member->numeric.vector.component_count),
-            .dim_a = MAX(member->array.dims_count ? member->array.dims[0] : 1, member->numeric.matrix.column_count),
-            .stride = MAX(member->array.stride, member->numeric.matrix.stride),
+            .dim_a = dim,
+            .stride = stride,
         };
 
         // fprintf(stderr, "<%s offset=%zd dim_v=%zd dim_a=%zd stride=%zd>\n",
@@ -356,6 +368,7 @@ ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
     PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl)
 {
     ShaderModuleInfo *info = g_malloc0(sizeof(*info));
+    info->refcnt = 0;
     info->glsl = strdup(glsl);
     info->spirv = pgraph_vk_compile_glsl_to_spv(
         vk_shader_stage_to_glslang_stage(stage), glsl);
@@ -374,8 +387,24 @@ static void finalize_uniform_layout(ShaderUniformLayout *layout)
     }
 }
 
+void pgraph_vk_ref_shader_module(ShaderModuleInfo *info)
+{
+    info->refcnt++;
+}
+
+void pgraph_vk_unref_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info)
+{
+    assert(info->refcnt >= 1);
+
+    info->refcnt--;
+    if (info->refcnt == 0) {
+        pgraph_vk_destroy_shader_module(r, info);
+    }
+}
+
 void pgraph_vk_destroy_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info)
 {
+    assert(info->refcnt == 0);
     if (info->glsl) {
         free(info->glsl);
     }
