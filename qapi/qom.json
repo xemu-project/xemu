@@ -1,0 +1,1255 @@
+# -*- Mode: Python -*-
+# vim: filetype=python
+#
+# This work is licensed under the terms of the GNU GPL, version 2 or later.
+# See the COPYING file in the top-level directory.
+
+{ 'include': 'authz.json' }
+{ 'include': 'block-core.json' }
+{ 'include': 'common.json' }
+{ 'include': 'crypto.json' }
+
+##
+# = QEMU Object Model (QOM)
+##
+
+##
+# @ObjectPropertyInfo:
+#
+# @name: the name of the property
+#
+# @type: the type of the property.  This will typically come in one of
+#     four forms:
+#
+#     1) A primitive type such as 'u8', 'u16', 'bool', 'str', or
+#        'double'.  These types are mapped to the appropriate JSON
+#        type.
+#
+#     2) A child type in the form 'child<subtype>' where subtype is a
+#        qdev device type name.  Child properties create the
+#        composition tree.
+#
+#     3) A link type in the form 'link<subtype>' where subtype is a
+#        qdev device type name.  Link properties form the device model
+#        graph.
+#
+# @description: if specified, the description of the property.
+#
+# @default-value: the default value, if any (since 5.0)
+#
+# Since: 1.2
+##
+{ 'struct': 'ObjectPropertyInfo',
+  'data': { 'name': 'str',
+            'type': 'str',
+            '*description': 'str',
+            '*default-value': 'any' } }
+
+##
+# @qom-list:
+#
+# This command will list any properties of a object given a path in
+# the object model.
+#
+# @path: the path within the object model.  See @qom-get for a
+#     description of this parameter.
+#
+# Returns: a list of @ObjectPropertyInfo that describe the properties
+#     of the object.
+#
+# Since: 1.2
+#
+# .. qmp-example::
+#
+#     -> { "execute": "qom-list",
+#          "arguments": { "path": "/chardevs" } }
+#     <- { "return": [ { "name": "type", "type": "string" },
+#                      { "name": "parallel0", "type": "child<chardev-vc>" },
+#                      { "name": "serial0", "type": "child<chardev-vc>" },
+#                      { "name": "mon0", "type": "child<chardev-stdio>" } ] }
+##
+{ 'command': 'qom-list',
+  'data': { 'path': 'str' },
+  'returns': [ 'ObjectPropertyInfo' ],
+  'allow-preconfig': true }
+
+##
+# @qom-get:
+#
+# This command will get a property from a object model path and return
+# the value.
+#
+# @path: The path within the object model.  There are two forms of
+#     supported paths--absolute and partial paths.
+#
+#     Absolute paths are derived from the root object and can follow
+#     child<> or link<> properties.  Since they can follow link<>
+#     properties, they can be arbitrarily long.  Absolute paths look
+#     like absolute filenames and are prefixed  with a leading slash.
+#
+#     Partial paths look like relative filenames.  They do not begin
+#     with a prefix.  The matching rules for partial paths are subtle
+#     but designed to make specifying objects easy.  At each level of
+#     the composition tree, the partial path is matched as an absolute
+#     path.  The first match is not returned.  At least two matches
+#     are searched for.  A successful result is only returned if only
+#     one match is found.  If more than one match is found, a flag is
+#     return to indicate that the match was ambiguous.
+#
+# @property: The property name to read
+#
+# Returns: The property value.  The type depends on the property type.
+#     child<> and link<> properties are returned as #str pathnames.
+#     All integer property types (u8, u16, etc) are returned as #int.
+#
+# Since: 1.2
+#
+# .. qmp-example::
+#    :title: Use absolute path
+#
+#     -> { "execute": "qom-get",
+#          "arguments": { "path": "/machine/unattached/device[0]",
+#                         "property": "hotplugged" } }
+#     <- { "return": false }
+#
+# .. qmp-example::
+#    :title: Use partial path
+#
+#     -> { "execute": "qom-get",
+#          "arguments": { "path": "unattached/sysbus",
+#                         "property": "type" } }
+#     <- { "return": "System" }
+##
+{ 'command': 'qom-get',
+  'data': { 'path': 'str', 'property': 'str' },
+  'returns': 'any',
+  'allow-preconfig': true }
+
+##
+# @qom-set:
+#
+# This command will set a property from a object model path.
+#
+# @path: see @qom-get for a description of this parameter
+#
+# @property: the property name to set
+#
+# @value: a value who's type is appropriate for the property type.
+#     See @qom-get for a description of type mapping.
+#
+# Since: 1.2
+#
+# .. qmp-example::
+#
+#     -> { "execute": "qom-set",
+#          "arguments": { "path": "/machine",
+#                         "property": "graphics",
+#                         "value": false } }
+#     <- { "return": {} }
+##
+{ 'command': 'qom-set',
+  'data': { 'path': 'str', 'property': 'str', 'value': 'any' },
+  'allow-preconfig': true }
+
+##
+# @ObjectTypeInfo:
+#
+# This structure describes a search result from @qom-list-types
+#
+# @name: the type name found in the search
+#
+# @abstract: the type is abstract and can't be directly instantiated.
+#     Omitted if false.  (since 2.10)
+#
+# @parent: Name of parent type, if any (since 2.10)
+#
+# Since: 1.1
+##
+{ 'struct': 'ObjectTypeInfo',
+  'data': { 'name': 'str', '*abstract': 'bool', '*parent': 'str' } }
+
+##
+# @qom-list-types:
+#
+# This command will return a list of types given search parameters
+#
+# @implements: if specified, only return types that implement this
+#     type name
+#
+# @abstract: if true, include abstract types in the results
+#
+# Returns: a list of @ObjectTypeInfo or an empty list if no results
+#     are found
+#
+# Since: 1.1
+##
+{ 'command': 'qom-list-types',
+  'data': { '*implements': 'str', '*abstract': 'bool' },
+  'returns': [ 'ObjectTypeInfo' ],
+  'allow-preconfig': true }
+
+##
+# @qom-list-properties:
+#
+# List properties associated with a QOM object.
+#
+# @typename: the type name of an object
+#
+# .. note:: Objects can create properties at runtime, for example to
+#    describe links between different devices and/or objects.  These
+#    properties are not included in the output of this command.
+#
+# Returns: a list of ObjectPropertyInfo describing object properties
+#
+# Since: 2.12
+##
+{ 'command': 'qom-list-properties',
+  'data': { 'typename': 'str'},
+  'returns': [ 'ObjectPropertyInfo' ],
+  'allow-preconfig': true }
+
+##
+# @CanHostSocketcanProperties:
+#
+# Properties for can-host-socketcan objects.
+#
+# @if: interface name of the host system CAN bus to connect to
+#
+# @canbus: object ID of the can-bus object to connect to the host
+#     interface
+#
+# Since: 2.12
+##
+{ 'struct': 'CanHostSocketcanProperties',
+  'data': { 'if': 'str',
+            'canbus': 'str' },
+  'if': 'CONFIG_LINUX' }
+
+##
+# @ColoCompareProperties:
+#
+# Properties for colo-compare objects.
+#
+# @primary_in: name of the character device backend to use for the
+#     primary input (incoming packets are redirected to @outdev)
+#
+# @secondary_in: name of the character device backend to use for
+#     secondary input (incoming packets are only compared to the input
+#     on @primary_in and then dropped)
+#
+# @outdev: name of the character device backend to use for output
+#
+# @iothread: name of the iothread to run in
+#
+# @notify_dev: name of the character device backend to be used to
+#     communicate with the remote colo-frame (only for Xen COLO)
+#
+# @compare_timeout: the maximum time to hold a packet from @primary_in
+#     for comparison with an incoming packet on @secondary_in in
+#     milliseconds (default: 3000)
+#
+# @expired_scan_cycle: the interval at which colo-compare checks
+#     whether packets from @primary have timed out, in milliseconds
+#     (default: 3000)
+#
+# @max_queue_size: the maximum number of packets to keep in the queue
+#     for comparing with incoming packets from @secondary_in.  If the
+#     queue is full and additional packets are received, the
+#     additional packets are dropped.  (default: 1024)
+#
+# @vnet_hdr_support: if true, vnet header support is enabled
+#     (default: false)
+#
+# Since: 2.8
+##
+{ 'struct': 'ColoCompareProperties',
+  'data': { 'primary_in': 'str',
+            'secondary_in': 'str',
+            'outdev': 'str',
+            'iothread': 'str',
+            '*notify_dev': 'str',
+            '*compare_timeout': 'uint64',
+            '*expired_scan_cycle': 'uint32',
+            '*max_queue_size': 'uint32',
+            '*vnet_hdr_support': 'bool' } }
+
+##
+# @CryptodevBackendProperties:
+#
+# Properties for cryptodev-backend and cryptodev-backend-builtin
+# objects.
+#
+# @queues: the number of queues for the cryptodev backend.  Ignored
+#     for cryptodev-backend and must be 1 for
+#     cryptodev-backend-builtin.  (default: 1)
+#
+# @throttle-bps: limit total bytes per second (Since 8.0)
+#
+# @throttle-ops: limit total operations per second (Since 8.0)
+#
+# Since: 2.8
+##
+{ 'struct': 'CryptodevBackendProperties',
+  'data': { '*queues': 'uint32',
+            '*throttle-bps': 'uint64',
+            '*throttle-ops': 'uint64' } }
+
+##
+# @CryptodevVhostUserProperties:
+#
+# Properties for cryptodev-vhost-user objects.
+#
+# @chardev: the name of a Unix domain socket character device that
+#     connects to the vhost-user server
+#
+# Since: 2.12
+##
+{ 'struct': 'CryptodevVhostUserProperties',
+  'base': 'CryptodevBackendProperties',
+  'data': { 'chardev': 'str' },
+  'if': 'CONFIG_VHOST_CRYPTO' }
+
+##
+# @DBusVMStateProperties:
+#
+# Properties for dbus-vmstate objects.
+#
+# @addr: the name of the DBus bus to connect to
+#
+# @id-list: a comma separated list of DBus IDs of helpers whose data
+#     should be included in the VM state on migration
+#
+# Since: 5.0
+##
+{ 'struct': 'DBusVMStateProperties',
+  'data': { 'addr': 'str' ,
+            '*id-list': 'str' } }
+
+##
+# @NetfilterInsert:
+#
+# Indicates where to insert a netfilter relative to a given other
+# filter.
+#
+# @before: insert before the specified filter
+#
+# @behind: insert behind the specified filter
+#
+# Since: 5.0
+##
+{ 'enum': 'NetfilterInsert',
+  'data': [ 'before', 'behind' ] }
+
+##
+# @NetfilterProperties:
+#
+# Properties for objects of classes derived from netfilter.
+#
+# @netdev: id of the network device backend to filter
+#
+# @queue: indicates which queue(s) to filter (default: all)
+#
+# @status: indicates whether the filter is enabled ("on") or disabled
+#     ("off") (default: "on")
+#
+# @position: specifies where the filter should be inserted in the
+#     filter list.  "head" means the filter is inserted at the head of
+#     the filter list, before any existing filters.  "tail" means the
+#     filter is inserted at the tail of the filter list, behind any
+#     existing filters (default).  "id=<id>" means the filter is
+#     inserted before or behind the filter specified by <id>,
+#     depending on the @insert property.  (default: "tail")
+#
+# @insert: where to insert the filter relative to the filter given in
+#     @position.  Ignored if @position is "head" or "tail".
+#     (default: behind)
+#
+# Since: 2.5
+##
+{ 'struct': 'NetfilterProperties',
+  'data': { 'netdev': 'str',
+            '*queue': 'NetFilterDirection',
+            '*status': 'str',
+            '*position': 'str',
+            '*insert': 'NetfilterInsert' } }
+
+##
+# @FilterBufferProperties:
+#
+# Properties for filter-buffer objects.
+#
+# @interval: a non-zero interval in microseconds.  All packets
+#     arriving in the given interval are delayed until the end of the
+#     interval.
+#
+# Since: 2.5
+##
+{ 'struct': 'FilterBufferProperties',
+  'base': 'NetfilterProperties',
+  'data': { 'interval': 'uint32' } }
+
+##
+# @FilterDumpProperties:
+#
+# Properties for filter-dump objects.
+#
+# @file: the filename where the dumped packets should be stored
+#
+# @maxlen: maximum number of bytes in a packet that are stored
+#     (default: 65536)
+#
+# Since: 2.5
+##
+{ 'struct': 'FilterDumpProperties',
+  'base': 'NetfilterProperties',
+  'data': { 'file': 'str',
+            '*maxlen': 'uint32' } }
+
+##
+# @FilterMirrorProperties:
+#
+# Properties for filter-mirror objects.
+#
+# @outdev: the name of a character device backend to which all
+#     incoming packets are mirrored
+#
+# @vnet_hdr_support: if true, vnet header support is enabled
+#     (default: false)
+#
+# Since: 2.6
+##
+{ 'struct': 'FilterMirrorProperties',
+  'base': 'NetfilterProperties',
+  'data': { 'outdev': 'str',
+            '*vnet_hdr_support': 'bool' } }
+
+##
+# @FilterRedirectorProperties:
+#
+# Properties for filter-redirector objects.
+#
+# At least one of @indev or @outdev must be present.  If both are
+# present, they must not refer to the same character device backend.
+#
+# @indev: the name of a character device backend from which packets
+#     are received and redirected to the filtered network device
+#
+# @outdev: the name of a character device backend to which all
+#     incoming packets are redirected
+#
+# @vnet_hdr_support: if true, vnet header support is enabled
+#     (default: false)
+#
+# Since: 2.6
+##
+{ 'struct': 'FilterRedirectorProperties',
+  'base': 'NetfilterProperties',
+  'data': { '*indev': 'str',
+            '*outdev': 'str',
+            '*vnet_hdr_support': 'bool' } }
+
+##
+# @FilterRewriterProperties:
+#
+# Properties for filter-rewriter objects.
+#
+# @vnet_hdr_support: if true, vnet header support is enabled
+#     (default: false)
+#
+# Since: 2.8
+##
+{ 'struct': 'FilterRewriterProperties',
+  'base': 'NetfilterProperties',
+  'data': { '*vnet_hdr_support': 'bool' } }
+
+##
+# @InputBarrierProperties:
+#
+# Properties for input-barrier objects.
+#
+# @name: the screen name as declared in the screens section of
+#     barrier.conf
+#
+# @server: hostname of the Barrier server (default: "localhost")
+#
+# @port: TCP port of the Barrier server (default: "24800")
+#
+# @x-origin: x coordinate of the leftmost pixel on the guest screen
+#     (default: "0")
+#
+# @y-origin: y coordinate of the topmost pixel on the guest screen
+#     (default: "0")
+#
+# @width: the width of secondary screen in pixels (default: "1920")
+#
+# @height: the height of secondary screen in pixels (default: "1080")
+#
+# Since: 4.2
+##
+{ 'struct': 'InputBarrierProperties',
+  'data': { 'name': 'str',
+            '*server': 'str',
+            '*port': 'str',
+            '*x-origin': 'str',
+            '*y-origin': 'str',
+            '*width': 'str',
+            '*height': 'str' } }
+
+##
+# @InputLinuxProperties:
+#
+# Properties for input-linux objects.
+#
+# @evdev: the path of the host evdev device to use
+#
+# @grab_all: if true, grab is toggled for all devices (e.g. both
+#     keyboard and mouse) instead of just one device (default: false)
+#
+# @repeat: enables auto-repeat events (default: false)
+#
+# @grab-toggle: the key or key combination that toggles device grab
+#     (default: ctrl-ctrl)
+#
+# Since: 2.6
+##
+{ 'struct': 'InputLinuxProperties',
+  'data': { 'evdev': 'str',
+            '*grab_all': 'bool',
+            '*repeat': 'bool',
+            '*grab-toggle': 'GrabToggleKeys' },
+  'if': 'CONFIG_LINUX' }
+
+##
+# @EventLoopBaseProperties:
+#
+# Common properties for event loops
+#
+# @aio-max-batch: maximum number of requests in a batch for the AIO
+#     engine, 0 means that the engine will use its default.
+#     (default: 0)
+#
+# @thread-pool-min: minimum number of threads reserved in the thread
+#     pool (default:0)
+#
+# @thread-pool-max: maximum number of threads the thread pool can
+#     contain (default:64)
+#
+# Since: 7.1
+##
+{ 'struct': 'EventLoopBaseProperties',
+  'data': { '*aio-max-batch': 'int',
+            '*thread-pool-min': 'int',
+            '*thread-pool-max': 'int' } }
+
+##
+# @IothreadProperties:
+#
+# Properties for iothread objects.
+#
+# @poll-max-ns: the maximum number of nanoseconds to busy wait for
+#     events.  0 means polling is disabled (default: 32768 on POSIX
+#     hosts, 0 otherwise)
+#
+# @poll-grow: the multiplier used to increase the polling time when
+#     the algorithm detects it is missing events due to not polling
+#     long enough.  0 selects a default behaviour (default: 0)
+#
+# @poll-shrink: the divisor used to decrease the polling time when the
+#     algorithm detects it is spending too long polling without
+#     encountering events.  0 selects a default behaviour (default: 0)
+#
+# The @aio-max-batch option is available since 6.1.
+#
+# Since: 2.0
+##
+{ 'struct': 'IothreadProperties',
+  'base': 'EventLoopBaseProperties',
+  'data': { '*poll-max-ns': 'int',
+            '*poll-grow': 'int',
+            '*poll-shrink': 'int' } }
+
+##
+# @MainLoopProperties:
+#
+# Properties for the main-loop object.
+#
+# Since: 7.1
+##
+{ 'struct': 'MainLoopProperties',
+  'base': 'EventLoopBaseProperties',
+  'data': {} }
+
+##
+# @MemoryBackendProperties:
+#
+# Properties for objects of classes derived from memory-backend.
+#
+# @merge: if true, mark the memory as mergeable (default depends on
+#     the machine type)
+#
+# @dump: if true, include the memory in core dumps (default depends on
+#     the machine type)
+#
+# @host-nodes: the list of NUMA host nodes to bind the memory to
+#
+# @policy: the NUMA policy (default: 'default')
+#
+# @prealloc: if true, preallocate memory (default: false)
+#
+# @prealloc-threads: number of CPU threads to use for prealloc
+#     (default: 1)
+#
+# @prealloc-context: thread context to use for creation of
+#     preallocation threads (default: none) (since 7.2)
+#
+# @share: if false, the memory is private to QEMU; if true, it is
+#     shared (default false for backends memory-backend-file and
+#     memory-backend-ram, true for backends memory-backend-epc,
+#     memory-backend-memfd, and memory-backend-shm)
+#
+# @reserve: if true, reserve swap space (or huge pages) if applicable
+#     (default: true) (since 6.1)
+#
+# @size: size of the memory region in bytes
+#
+# @x-use-canonical-path-for-ramblock-id: if true, the canonical path
+#     is used for ramblock-id.  Disable this for 4.0 machine types or
+#     older to allow migration with newer QEMU versions.
+#     (default: false generally, but true for machine types <= 4.0)
+#
+# .. note:: prealloc=true and reserve=false cannot be set at the same
+#    time.  With reserve=true, the behavior depends on the operating
+#    system: for example, Linux will not reserve swap space for shared
+#    file mappings -- "not applicable".  In contrast, reserve=false
+#    will bail out if it cannot be configured accordingly.
+#
+# Since: 2.1
+##
+{ 'struct': 'MemoryBackendProperties',
+  'data': { '*dump': 'bool',
+            '*host-nodes': ['uint16'],
+            '*merge': 'bool',
+            '*policy': 'HostMemPolicy',
+            '*prealloc': 'bool',
+            '*prealloc-threads': 'uint32',
+            '*prealloc-context': 'str',
+            '*share': 'bool',
+            '*reserve': 'bool',
+            'size': 'size',
+            '*x-use-canonical-path-for-ramblock-id': 'bool' } }
+
+##
+# @MemoryBackendFileProperties:
+#
+# Properties for memory-backend-file objects.
+#
+# @align: the base address alignment when QEMU mmap(2)s @mem-path.
+#     Some backend stores specified by @mem-path require an alignment
+#     different than the default one used by QEMU, e.g. the device DAX
+#     /dev/dax0.0 requires 2M alignment rather than 4K.  In such
+#     cases, users can specify the required alignment via this option.
+#     0 selects a default alignment (currently the page size).
+#     (default: 0)
+#
+# @offset: the offset into the target file that the region starts at.
+#     You can use this option to back multiple regions with a single
+#     file.  Must be a multiple of the page size.
+#     (default: 0) (since 8.1)
+#
+# @discard-data: if true, the file contents can be destroyed when QEMU
+#     exits, to avoid unnecessarily flushing data to the backing file.
+#     Note that @discard-data is only an optimization, and QEMU might
+#     not discard file contents if it aborts unexpectedly or is
+#     terminated using SIGKILL.  (default: false)
+#
+# @mem-path: the path to either a shared memory or huge page
+#     filesystem mount
+#
+# @pmem: specifies whether the backing file specified by @mem-path is
+#     in host persistent memory that can be accessed using the SNIA
+#     NVM programming model (e.g. Intel NVDIMM).
+#
+# @readonly: if true, the backing file is opened read-only; if false,
+#     it is opened read-write.  (default: false)
+#
+# @rom: whether to create Read Only Memory (ROM) that cannot be
+#     modified by the VM.  Any write attempts to such ROM will be
+#     denied.  Most use cases want writable RAM instead of ROM.
+#     However, selected use cases, like R/O NVDIMMs, can benefit from
+#     ROM.  If set to 'on', create ROM; if set to 'off', create
+#     writable RAM; if set to 'auto', the value of the @readonly
+#     property is used.  This property is primarily helpful when we
+#     want to have proper RAM in configurations that would
+#     traditionally create ROM before this property was introduced: VM
+#     templating, where we want to open a file readonly (@readonly set
+#     to true) and mark the memory to be private for QEMU (@share set
+#     to false).  For this use case, we need writable RAM instead of
+#     ROM, and want to set this property to 'off'.  (default: auto,
+#     since 8.2)
+#
+# Since: 2.1
+##
+{ 'struct': 'MemoryBackendFileProperties',
+  'base': 'MemoryBackendProperties',
+  'data': { '*align': 'size',
+            '*offset': 'size',
+            '*discard-data': 'bool',
+            'mem-path': 'str',
+            '*pmem': { 'type': 'bool', 'if': 'CONFIG_LIBPMEM' },
+            '*readonly': 'bool',
+            '*rom': 'OnOffAuto' } }
+
+##
+# @MemoryBackendMemfdProperties:
+#
+# Properties for memory-backend-memfd objects.
+#
+# @hugetlb: if true, the file to be created resides in the hugetlbfs
+#     filesystem (default: false)
+#
+# @hugetlbsize: the hugetlb page size on systems that support multiple
+#     hugetlb page sizes (it must be a power of 2 value supported by
+#     the system).  0 selects a default page size.  This option is
+#     ignored if @hugetlb is false.  (default: 0)
+#
+# @seal: if true, create a sealed-file, which will block further
+#     resizing of the memory (default: true)
+#
+# Since: 2.12
+##
+{ 'struct': 'MemoryBackendMemfdProperties',
+  'base': 'MemoryBackendProperties',
+  'data': { '*hugetlb': 'bool',
+            '*hugetlbsize': 'size',
+            '*seal': 'bool' },
+  'if': 'CONFIG_LINUX' }
+
+##
+# @MemoryBackendShmProperties:
+#
+# Properties for memory-backend-shm objects.
+#
+# This memory backend supports only shared memory, which is the
+# default.
+#
+# Since: 9.1
+##
+{ 'struct': 'MemoryBackendShmProperties',
+  'base': 'MemoryBackendProperties',
+  'data': { },
+  'if': 'CONFIG_POSIX' }
+
+##
+# @MemoryBackendEpcProperties:
+#
+# Properties for memory-backend-epc objects.
+#
+# The @merge boolean option is false by default with epc
+#
+# The @dump boolean option is false by default with epc
+#
+# Since: 6.2
+##
+{ 'struct': 'MemoryBackendEpcProperties',
+  'base': 'MemoryBackendProperties',
+  'data': {},
+  'if': 'CONFIG_LINUX' }
+
+##
+# @PrManagerHelperProperties:
+#
+# Properties for pr-manager-helper objects.
+#
+# @path: the path to a Unix domain socket for connecting to the
+#     external helper
+#
+# Since: 2.11
+##
+{ 'struct': 'PrManagerHelperProperties',
+  'data': { 'path': 'str' },
+  'if': 'CONFIG_LINUX' }
+
+##
+# @QtestProperties:
+#
+# Properties for qtest objects.
+#
+# @chardev: the chardev to be used to receive qtest commands on.
+#
+# @log: the path to a log file
+#
+# Since: 6.0
+##
+{ 'struct': 'QtestProperties',
+        'data': { 'chardev': 'str',
+                  '*log': 'str' } }
+
+##
+# @RemoteObjectProperties:
+#
+# Properties for x-remote-object objects.
+#
+# @fd: file descriptor name previously passed via 'getfd' command
+#
+# @devid: the id of the device to be associated with the file
+#     descriptor
+#
+# Since: 6.0
+##
+{ 'struct': 'RemoteObjectProperties',
+  'data': { 'fd': 'str', 'devid': 'str' } }
+
+##
+# @VfioUserServerProperties:
+#
+# Properties for x-vfio-user-server objects.
+#
+# @socket: socket to be used by the libvfio-user library
+#
+# @device: the ID of the device to be emulated at the server
+#
+# Since: 7.1
+##
+{ 'struct': 'VfioUserServerProperties',
+  'data': { 'socket': 'SocketAddress', 'device': 'str' } }
+
+##
+# @IOMMUFDProperties:
+#
+# Properties for iommufd objects.
+#
+# @fd: file descriptor name previously passed via 'getfd' command,
+#     which represents a pre-opened /dev/iommu.  This allows the
+#     iommufd object to be shared across several subsystems (VFIO,
+#     VDPA, ...), and the file descriptor to be shared with other
+#     process, e.g. DPDK.  (default: QEMU opens /dev/iommu by itself)
+#
+# Since: 9.0
+##
+{ 'struct': 'IOMMUFDProperties',
+  'data': { '*fd': 'str' } }
+
+##
+# @AcpiGenericInitiatorProperties:
+#
+# Properties for acpi-generic-initiator objects.
+#
+# @pci-dev: PCI device ID to be associated with the node
+#
+# @node: NUMA node associated with the PCI device
+#
+# Since: 9.0
+##
+{ 'struct': 'AcpiGenericInitiatorProperties',
+  'data': { 'pci-dev': 'str',
+            'node': 'uint32' } }
+
+##
+# @AcpiGenericPortProperties:
+#
+# Properties for acpi-generic-port objects.
+#
+# @pci-bus: QOM path of the PCI bus of the hostbridge associated with
+#     this SRAT Generic Port Affinity Structure.  This is the same as
+#     the bus parameter for the root ports attached to this host
+#     bridge.  The resulting SRAT Generic Port Affinity Structure will
+#     refer to the ACPI object in DSDT that represents the host bridge
+#     (e.g.  ACPI0016 for CXL host bridges).  See ACPI 6.5 Section
+#     5.2.16.7 for more information.
+#
+# @node: Similar to a NUMA node ID, but instead of providing a
+#     reference point used for defining NUMA distances and access
+#     characteristics to memory or from an initiator (e.g. CPU), this
+#     node defines the boundary point between non-discoverable system
+#     buses which must be described by firmware, and a discoverable
+#     bus.  NUMA distances and access characteristics are defined to
+#     and from that point.  For system software to establish full
+#     initiator to target characteristics this information must be
+#     combined with information retrieved from the discoverable part
+#     of the path.  An example would use CDAT (see UEFI.org)
+#     information read from devices and switches in conjunction with
+#     link characteristics read from PCIe Configuration space.
+#     To get the full path latency from CPU to CXL attached DRAM
+#     CXL device:  Add the latency from CPU to Generic Port (from
+#     HMAT indexed via the the node ID in this SRAT structure) to
+#     that for CXL bus links, the latency across intermediate switches
+#     and from the EP port to the actual memory.  Bandwidth is more
+#     complex as there may be interleaving across multiple devices
+#     and shared links in the path.
+#
+# Since: 9.2
+##
+{ 'struct': 'AcpiGenericPortProperties',
+  'data': { 'pci-bus': 'str',
+            'node': 'uint32' } }
+
+##
+# @RngProperties:
+#
+# Properties for objects of classes derived from rng.
+#
+# @opened: if true, the device is opened immediately when applying
+#     this option and will probably fail when processing the next
+#     option.  Don't use; only provided for compatibility.
+#     (default: false)
+#
+# Features:
+#
+# @deprecated: Member @opened is deprecated.  Setting true doesn't
+#     make sense, and false is already the default.
+#
+# Since: 1.3
+##
+{ 'struct': 'RngProperties',
+  'data': { '*opened': { 'type': 'bool', 'features': ['deprecated'] } } }
+
+##
+# @RngEgdProperties:
+#
+# Properties for rng-egd objects.
+#
+# @chardev: the name of a character device backend that provides the
+#     connection to the RNG daemon
+#
+# Since: 1.3
+##
+{ 'struct': 'RngEgdProperties',
+  'base': 'RngProperties',
+  'data': { 'chardev': 'str' } }
+
+##
+# @RngRandomProperties:
+#
+# Properties for rng-random objects.
+#
+# @filename: the filename of the device on the host to obtain entropy
+#     from (default: "/dev/urandom")
+#
+# Since: 1.3
+##
+{ 'struct': 'RngRandomProperties',
+  'base': 'RngProperties',
+  'data': { '*filename': 'str' },
+  'if': 'CONFIG_POSIX' }
+
+##
+# @SevCommonProperties:
+#
+# Properties common to objects that are derivatives of sev-common.
+#
+# @sev-device: SEV device to use (default: "/dev/sev")
+#
+# @cbitpos: C-bit location in page table entry (default: 0)
+#
+# @reduced-phys-bits: number of bits in physical addresses that become
+#     unavailable when SEV is enabled
+#
+# @kernel-hashes: if true, add hashes of kernel/initrd/cmdline to a
+#     designated guest firmware page for measured boot with -kernel
+#     (default: false) (since 6.2)
+#
+# Since: 9.1
+##
+{ 'struct': 'SevCommonProperties',
+  'data': { '*sev-device': 'str',
+            '*cbitpos': 'uint32',
+            'reduced-phys-bits': 'uint32',
+            '*kernel-hashes': 'bool' } }
+
+##
+# @SevGuestProperties:
+#
+# Properties for sev-guest objects.
+#
+# @dh-cert-file: guest owners DH certificate (encoded with base64)
+#
+# @session-file: guest owners session parameters (encoded with base64)
+#
+# @policy: SEV policy value (default: 0x1)
+#
+# @handle: SEV firmware handle (default: 0)
+#
+# @legacy-vm-type: Use legacy KVM_SEV_INIT KVM interface for creating
+#    the VM.  The newer KVM_SEV_INIT2 interface, from Linux >= 6.10,
+#    syncs additional vCPU state when initializing the VMSA
+#    structures, which will result in a different guest measurement.
+#    Set this to 'on' to force compatibility with older QEMU or kernel
+#    versions that rely on legacy KVM_SEV_INIT behavior.  'auto' will
+#    behave identically to 'on', but will automatically switch to
+#    using KVM_SEV_INIT2 if the user specifies any additional options
+#    that require it.  If set to 'off', QEMU will require
+#    KVM_SEV_INIT2 unconditionally.
+#    (default: off) (since 9.1)
+#
+# Since: 2.12
+##
+{ 'struct': 'SevGuestProperties',
+  'base': 'SevCommonProperties',
+  'data': { '*dh-cert-file': 'str',
+            '*session-file': 'str',
+            '*policy': 'uint32',
+            '*handle': 'uint32',
+            '*legacy-vm-type': 'OnOffAuto' } }
+
+##
+# @SevSnpGuestProperties:
+#
+# Properties for sev-snp-guest objects.  Most of these are direct
+# arguments for the KVM_SNP_* interfaces documented in the Linux
+# kernel source under
+# Documentation/arch/x86/amd-memory-encryption.rst, which are in turn
+# closely coupled with the SNP_INIT/SNP_LAUNCH_* firmware commands
+# documented in the SEV-SNP Firmware ABI Specification (Rev 0.9).
+#
+# More usage information is also available in the QEMU source tree
+# under docs/amd-memory-encryption.
+#
+# @policy: the 'POLICY' parameter to the SNP_LAUNCH_START command, as
+#     defined in the SEV-SNP firmware ABI (default: 0x30000)
+#
+# @guest-visible-workarounds: 16-byte, base64-encoded blob to report
+#     hypervisor-defined workarounds, corresponding to the 'GOSVW'
+#     parameter of the SNP_LAUNCH_START command defined in the SEV-SNP
+#     firmware ABI (default: all-zero)
+#
+# @id-block: 96-byte, base64-encoded blob to provide the 'ID Block'
+#     structure for the SNP_LAUNCH_FINISH command defined in the
+#     SEV-SNP firmware ABI (default: all-zero)
+#
+# @id-auth: 4096-byte, base64-encoded blob to provide the 'ID
+#     Authentication Information Structure' for the SNP_LAUNCH_FINISH
+#     command defined in the SEV-SNP firmware ABI (default: all-zero)
+#
+# @author-key-enabled: true if 'id-auth' blob contains the 'AUTHOR_KEY'
+#     field defined SEV-SNP firmware ABI (default: false)
+#
+# @host-data: 32-byte, base64-encoded, user-defined blob to provide to
+#     the guest, as documented for the 'HOST_DATA' parameter of the
+#     SNP_LAUNCH_FINISH command in the SEV-SNP firmware ABI (default:
+#     all-zero)
+#
+# @vcek-disabled: Guests are by default allowed to choose between VLEK
+#     (Versioned Loaded Endorsement Key) or VCEK (Versioned Chip
+#     Endorsement Key) when requesting attestation reports from
+#     firmware.  Set this to true to disable the use of VCEK.
+#     (default: false) (since: 9.1)
+#
+# Since: 9.1
+##
+{ 'struct': 'SevSnpGuestProperties',
+  'base': 'SevCommonProperties',
+  'data': {
+            '*policy': 'uint64',
+            '*guest-visible-workarounds': 'str',
+            '*id-block': 'str',
+            '*id-auth': 'str',
+            '*author-key-enabled': 'bool',
+            '*host-data': 'str',
+            '*vcek-disabled': 'bool' } }
+
+##
+# @ThreadContextProperties:
+#
+# Properties for thread context objects.
+#
+# @cpu-affinity: the list of host CPU numbers used as CPU affinity for
+#     all threads created in the thread context (default: QEMU main
+#     thread CPU affinity)
+#
+# @node-affinity: the list of host node numbers that will be resolved
+#     to a list of host CPU numbers used as CPU affinity.  This is a
+#     shortcut for specifying the list of host CPU numbers belonging
+#     to the host nodes manually by setting @cpu-affinity.
+#     (default: QEMU main thread affinity)
+#
+# Since: 7.2
+##
+{ 'struct': 'ThreadContextProperties',
+  'data': { '*cpu-affinity': ['uint16'],
+            '*node-affinity': ['uint16'] } }
+
+
+##
+# @ObjectType:
+#
+# Features:
+#
+# @unstable: Members @x-remote-object and @x-vfio-user-server are
+#     experimental.
+#
+# Since: 6.0
+##
+{ 'enum': 'ObjectType',
+  'data': [
+    'acpi-generic-initiator',
+    'acpi-generic-port',
+    'authz-list',
+    'authz-listfile',
+    'authz-pam',
+    'authz-simple',
+    'can-bus',
+    { 'name': 'can-host-socketcan',
+      'if': 'CONFIG_LINUX' },
+    'colo-compare',
+    'cryptodev-backend',
+    'cryptodev-backend-builtin',
+    'cryptodev-backend-lkcf',
+    { 'name': 'cryptodev-vhost-user',
+      'if': 'CONFIG_VHOST_CRYPTO' },
+    'dbus-vmstate',
+    'filter-buffer',
+    'filter-dump',
+    'filter-mirror',
+    'filter-redirector',
+    'filter-replay',
+    'filter-rewriter',
+    'input-barrier',
+    { 'name': 'input-linux',
+      'if': 'CONFIG_LINUX' },
+    'iommufd',
+    'iothread',
+    'main-loop',
+    { 'name': 'memory-backend-epc',
+      'if': 'CONFIG_LINUX' },
+    'memory-backend-file',
+    { 'name': 'memory-backend-memfd',
+      'if': 'CONFIG_LINUX' },
+    'memory-backend-ram',
+    { 'name': 'memory-backend-shm',
+      'if': 'CONFIG_POSIX' },
+    'pef-guest',
+    { 'name': 'pr-manager-helper',
+      'if': 'CONFIG_LINUX' },
+    'qtest',
+    'rng-builtin',
+    'rng-egd',
+    { 'name': 'rng-random',
+      'if': 'CONFIG_POSIX' },
+    'secret',
+    { 'name': 'secret_keyring',
+      'if': 'CONFIG_SECRET_KEYRING' },
+    'sev-guest',
+    'sev-snp-guest',
+    'thread-context',
+    's390-pv-guest',
+    'throttle-group',
+    'tls-creds-anon',
+    'tls-creds-psk',
+    'tls-creds-x509',
+    'tls-cipher-suites',
+    { 'name': 'x-remote-object', 'features': [ 'unstable' ] },
+    { 'name': 'x-vfio-user-server', 'features': [ 'unstable' ] }
+  ] }
+
+##
+# @ObjectOptions:
+#
+# Describes the options of a user creatable QOM object.
+#
+# @qom-type: the class name for the object to be created
+#
+# @id: the name of the new object
+#
+# Since: 6.0
+##
+{ 'union': 'ObjectOptions',
+  'base': { 'qom-type': 'ObjectType',
+            'id': 'str' },
+  'discriminator': 'qom-type',
+  'data': {
+      'acpi-generic-initiator':     'AcpiGenericInitiatorProperties',
+      'acpi-generic-port':          'AcpiGenericPortProperties',
+      'authz-list':                 'AuthZListProperties',
+      'authz-listfile':             'AuthZListFileProperties',
+      'authz-pam':                  'AuthZPAMProperties',
+      'authz-simple':               'AuthZSimpleProperties',
+      'can-host-socketcan':         { 'type': 'CanHostSocketcanProperties',
+                                      'if': 'CONFIG_LINUX' },
+      'colo-compare':               'ColoCompareProperties',
+      'cryptodev-backend':          'CryptodevBackendProperties',
+      'cryptodev-backend-builtin':  'CryptodevBackendProperties',
+      'cryptodev-backend-lkcf':     'CryptodevBackendProperties',
+      'cryptodev-vhost-user':       { 'type': 'CryptodevVhostUserProperties',
+                                      'if': 'CONFIG_VHOST_CRYPTO' },
+      'dbus-vmstate':               'DBusVMStateProperties',
+      'filter-buffer':              'FilterBufferProperties',
+      'filter-dump':                'FilterDumpProperties',
+      'filter-mirror':              'FilterMirrorProperties',
+      'filter-redirector':          'FilterRedirectorProperties',
+      'filter-replay':              'NetfilterProperties',
+      'filter-rewriter':            'FilterRewriterProperties',
+      'input-barrier':              'InputBarrierProperties',
+      'input-linux':                { 'type': 'InputLinuxProperties',
+                                      'if': 'CONFIG_LINUX' },
+      'iommufd':                    'IOMMUFDProperties',
+      'iothread':                   'IothreadProperties',
+      'main-loop':                  'MainLoopProperties',
+      'memory-backend-epc':         { 'type': 'MemoryBackendEpcProperties',
+                                      'if': 'CONFIG_LINUX' },
+      'memory-backend-file':        'MemoryBackendFileProperties',
+      'memory-backend-memfd':       { 'type': 'MemoryBackendMemfdProperties',
+                                      'if': 'CONFIG_LINUX' },
+      'memory-backend-ram':         'MemoryBackendProperties',
+      'memory-backend-shm':         { 'type': 'MemoryBackendShmProperties',
+                                      'if': 'CONFIG_POSIX' },
+      'pr-manager-helper':          { 'type': 'PrManagerHelperProperties',
+                                      'if': 'CONFIG_LINUX' },
+      'qtest':                      'QtestProperties',
+      'rng-builtin':                'RngProperties',
+      'rng-egd':                    'RngEgdProperties',
+      'rng-random':                 { 'type': 'RngRandomProperties',
+                                      'if': 'CONFIG_POSIX' },
+      'secret':                     'SecretProperties',
+      'secret_keyring':             { 'type': 'SecretKeyringProperties',
+                                      'if': 'CONFIG_SECRET_KEYRING' },
+      'sev-guest':                  'SevGuestProperties',
+      'sev-snp-guest':              'SevSnpGuestProperties',
+      'thread-context':             'ThreadContextProperties',
+      'throttle-group':             'ThrottleGroupProperties',
+      'tls-creds-anon':             'TlsCredsAnonProperties',
+      'tls-creds-psk':              'TlsCredsPskProperties',
+      'tls-creds-x509':             'TlsCredsX509Properties',
+      'tls-cipher-suites':          'TlsCredsProperties',
+      'x-remote-object':            'RemoteObjectProperties',
+      'x-vfio-user-server':         'VfioUserServerProperties'
+  } }
+
+##
+# @object-add:
+#
+# Create a QOM object.
+#
+# Errors:
+#     - Error if @qom-type is not a valid class name
+#
+# Since: 2.0
+#
+# .. qmp-example::
+#
+#     -> { "execute": "object-add",
+#          "arguments": { "qom-type": "rng-random", "id": "rng1",
+#                         "filename": "/dev/hwrng" } }
+#     <- { "return": {} }
+##
+{ 'command': 'object-add', 'data': 'ObjectOptions', 'boxed': true,
+  'allow-preconfig': true }
+
+##
+# @object-del:
+#
+# Remove a QOM object.
+#
+# @id: the name of the QOM object to remove
+#
+# Errors:
+#     - Error if @id is not a valid id for a QOM object
+#
+# Since: 2.0
+#
+# .. qmp-example::
+#
+#     -> { "execute": "object-del", "arguments": { "id": "rng1" } }
+#     <- { "return": {} }
+##
+{ 'command': 'object-del', 'data': {'id': 'str'},
+  'allow-preconfig': true }
