@@ -187,7 +187,8 @@ def main():
 		'libpixman',
 		'libepoxy',
 		'libpcap',
-		'libslirp'])
+		'libslirp',
+		'libusb'])
 
 if __name__ == '__main__':
 	main()
