@@ -66,6 +66,8 @@ static void pgraph_gl_init(NV2AState *d, Error **errp)
 
     pg->uniform_attrs = 0;
     pg->swizzle_attrs = 0;
+
+    pgraph_gl_determine_gpu_properties(d);
 }
 
 static void pgraph_gl_finalize(NV2AState *d)
@@ -195,6 +197,7 @@ static PGRAPHRenderer pgraph_gl_renderer = {
         .set_surface_scale_factor = pgraph_gl_set_surface_scale_factor,
         .get_surface_scale_factor = pgraph_gl_get_surface_scale_factor,
         .get_framebuffer_surface = pgraph_gl_get_framebuffer_surface,
+        .get_gpu_properties = pgraph_gl_get_gpu_properties,
     }
 };
 
