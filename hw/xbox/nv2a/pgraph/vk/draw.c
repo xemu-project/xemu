@@ -1523,7 +1523,8 @@ static void begin_draw(PGRAPHState *pg)
 
         if (r->pipeline_binding->has_dynamic_line_width) {
             float line_width =
-                clamp_line_width_to_device_limits(pg, pg->surface_scale_factor);
+                pgraph_get_line_width(pg) * pg->surface_scale_factor;
+            line_width = clamp_line_width_to_device_limits(pg, line_width);
             vkCmdSetLineWidth(r->command_buffer, line_width);
         }
     }
