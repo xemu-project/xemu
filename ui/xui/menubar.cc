@@ -194,6 +194,17 @@ void ShowMainMenu()
                 nv2a_set_surface_scale_factor(rendering_scale + 1);
             }
 
+            int max_fps = xemu_get_frame_rate_cap();
+            if(ImGui::Combo("Frame Rate Cap", &max_fps,
+                "none\0"
+                "15fps\0"
+                "30fps\0"
+                "60fps\0"
+                "120fps\0"
+                "144fps\0")) {
+                    xemu_set_frame_rate_cap(max_fps);
+                }
+
             ImGui::Combo("Display Mode", &g_config.display.ui.fit,
                          "Center\0Scale\0Stretch\0");
             ImGui::SameLine();
