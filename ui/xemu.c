@@ -106,6 +106,8 @@ static bool alt_grab;
 static bool ctrl_grab;
 static int gui_saved_grab;
 static int gui_fullscreen;
+static int fps_selection = 3;
+static float frame_deadline = (NANOSECONDS_PER_SECOND / 60);
 static int gui_grab_code = KMOD_LALT | KMOD_LCTRL;
 static SDL_Cursor *sdl_cursor_normal;
 static SDL_Cursor *sdl_cursor_hidden;
@@ -130,6 +132,26 @@ int xemu_is_fullscreen(void)
 void xemu_toggle_fullscreen(void)
 {
     toggle_full_screen(&sdl2_console[0]);
+}
+
+int xemu_get_frame_rate_cap(void)
+{
+    return fps_selection;
+}
+
+void xemu_set_frame_rate_cap(int selection)
+{
+    // FIXME: Remove redundent selection
+    fps_selection = selection;
+
+    // No framerate cap
+    if (!selection) {
+        frame_deadline = 0;
+    }
+
+    const int framerates[6] = { 60, 15, 30, 60, 120, 144 }; 
+    int frame_rate = framerates[selection];
+    frame_deadline = (float)NANOSECONDS_PER_SECOND / frame_rate;
 }
 
 #define SDL2_REFRESH_INTERVAL_BUSY 16
@@ -1084,7 +1106,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
      * Throttle to make sure swaps happen at 60Hz
      */
     static int64_t last_update = 0;
-    int64_t deadline = last_update + 16666666;
+    int64_t deadline = last_update + frame_deadline;
 
 #ifdef DEBUG_XEMU_C
     int64_t sleep_acc = 0;
