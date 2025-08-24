@@ -106,7 +106,6 @@ static bool alt_grab;
 static bool ctrl_grab;
 static int gui_saved_grab;
 static int gui_fullscreen;
-static int fps_selection = 3;
 static float frame_deadline = (NANOSECONDS_PER_SECOND / 60);
 static int gui_grab_code = KMOD_LALT | KMOD_LCTRL;
 static SDL_Cursor *sdl_cursor_normal;
@@ -134,23 +133,29 @@ void xemu_toggle_fullscreen(void)
     toggle_full_screen(&sdl2_console[0]);
 }
 
-int xemu_get_frame_rate_cap(void)
-{
-    return fps_selection;
-}
 
-void xemu_set_frame_rate_cap(int selection)
+void xemu_update_frame_rate_cap(void)
 {
-    // FIXME: Remove redundent selection
-    fps_selection = selection;
+    int selection = g_config.display.window.fps_cap;
 
     // No framerate cap
     if (!selection) {
         frame_deadline = 0;
+        return;
     }
 
-    const int framerates[6] = { 60, 15, 30, 60, 120, 144 }; 
-    int frame_rate = framerates[selection];
+    // NOTE: Should we log in someway if the selection escaped its valid range?
+    // For now we default to custom.
+    float frame_rate;
+    const float frame_rates[5] = { 15, 30, 60, 120, 144 }; 
+    if (selection < CONFIG_DISPLAY_WINDOW_FPS_CAP_CUSTOM){
+        frame_rate = frame_rates[selection - 1];
+    } else {
+        frame_rate = g_config.display.window.custom_fps_cap;
+    }
+
+    // Calculate the minimum time allowed between frames based on
+    // the desired frame rate
     frame_deadline = (float)NANOSECONDS_PER_SECOND / frame_rate;
 }
 
@@ -1412,6 +1417,9 @@ int main(int argc, char **argv)
         sdl_grab_start(0);
         set_full_screen(&sdl2_console[0], gui_fullscreen);
     }
+
+    // Check settings and update the frame rate cap
+    xemu_update_frame_rate_cap();
 
     /*
      * FIXME: May want to create a callback mechanism for main QEMU thread
