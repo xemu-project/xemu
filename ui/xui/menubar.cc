@@ -203,7 +203,7 @@ void ShowMainMenu()
             // We need to both allocate a string beginning with the base options
             // and track the substring size, so just use a macro. 
             #ifndef FPS_BASE_OPTIONS_STR 
-            #define FPS_BASE_OPTIONS_STR "none\0""15fps\0""30fps\0""60fps\0""120fps\0""144fps"
+            #define FPS_BASE_OPTIONS_STR "None\0""15fps\0""30fps\0""60fps\0""120fps\0""144fps"
             #endif
 
             // Allocate the fps options buffer

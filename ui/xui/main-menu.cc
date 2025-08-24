@@ -558,7 +558,7 @@ void MainMenuDisplayView::Draw()
     Toggle("Vertical refresh sync", &g_config.display.window.vsync,
            "Sync to screen vertical refresh to reduce tearing artifacts");
 
-    if (ChevronCombo("Frame Rate Cap", &g_config.display.window.fps_cap,
+    if (ChevronCombo("Frame rate cap", &g_config.display.window.fps_cap,
         "None\0"
         "15fps\0"
         "30fps\0"
@@ -572,7 +572,7 @@ void MainMenuDisplayView::Draw()
 
     char custom_refresh_rate[32];
     snprintf(custom_refresh_rate, sizeof(custom_refresh_rate),
-            "Cap Refresh Rate at %dfps\0", (int)g_config.display.window.custom_fps_cap);
+            "Limit refresh rate to %dfps\0", (int)g_config.display.window.custom_fps_cap);
     if (g_config.display.window.fps_cap == CONFIG_DISPLAY_WINDOW_FPS_CAP_CUSTOM) {
         if(Slider("Custom FPS Limit", &g_config.display.window.custom_fps_cap, 10, 300, custom_refresh_rate)) {
             xemu_update_frame_rate_cap();
