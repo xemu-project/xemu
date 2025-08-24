@@ -106,6 +106,7 @@ static bool alt_grab;
 static bool ctrl_grab;
 static int gui_saved_grab;
 static int gui_fullscreen;
+static float frame_deadline = (NANOSECONDS_PER_SECOND / 60);
 static int gui_grab_code = KMOD_LALT | KMOD_LCTRL;
 static SDL_Cursor *sdl_cursor_normal;
 static SDL_Cursor *sdl_cursor_hidden;
@@ -130,6 +131,32 @@ int xemu_is_fullscreen(void)
 void xemu_toggle_fullscreen(void)
 {
     toggle_full_screen(&sdl2_console[0]);
+}
+
+
+void xemu_update_frame_rate_cap(void)
+{
+    int selection = g_config.display.window.fps_cap;
+
+    // No framerate cap
+    if (!selection) {
+        frame_deadline = 0;
+        return;
+    }
+
+    // NOTE: Should we log in someway if the selection escaped its valid range?
+    // For now we default to custom.
+    float frame_rate;
+    const float frame_rates[5] = { 15, 30, 60, 120, 144 }; 
+    if (selection < CONFIG_DISPLAY_WINDOW_FPS_CAP_CUSTOM){
+        frame_rate = frame_rates[selection - 1];
+    } else {
+        frame_rate = g_config.display.window.custom_fps_cap;
+    }
+
+    // Calculate the minimum time allowed between frames based on
+    // the desired frame rate
+    frame_deadline = (float)NANOSECONDS_PER_SECOND / frame_rate;
 }
 
 #define SDL2_REFRESH_INTERVAL_BUSY 16
@@ -1084,7 +1111,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
      * Throttle to make sure swaps happen at 60Hz
      */
     static int64_t last_update = 0;
-    int64_t deadline = last_update + 16666666;
+    int64_t deadline = last_update + frame_deadline;
 
 #ifdef DEBUG_XEMU_C
     int64_t sleep_acc = 0;
@@ -1390,6 +1417,9 @@ int main(int argc, char **argv)
         sdl_grab_start(0);
         set_full_screen(&sdl2_console[0], gui_fullscreen);
     }
+
+    // Check settings and update the frame rate cap
+    xemu_update_frame_rate_cap();
 
     /*
      * FIXME: May want to create a callback mechanism for main QEMU thread
