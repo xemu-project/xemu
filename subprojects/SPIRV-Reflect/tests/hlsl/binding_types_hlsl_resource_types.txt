@@ -1,0 +1,361 @@
+generator       : Google spiregg
+entry point     : main
+source lang     : HLSL
+source lang ver : 600
+source file     : hlsl/binding_types.hlsl
+shader stage    : PS
+
+
+  Input variables: 1
+
+    0:
+      spirv id  : 99
+      location  : (built-in) FragCoord
+      type      : float4
+      semantic  : SV_POSITION
+      name      : 
+      qualifier : 
+
+
+  Output variables: 1
+
+    0:
+      spirv id  : 103
+      location  : 0
+      type      : float4
+      semantic  : SV_TARGET
+      name      : out.var.SV_TARGET
+      qualifier : 
+
+
+  Descriptor bindings: 29
+
+    Binding 0.0
+      spirv id : 5
+      set      : 0
+      binding  : 0
+      type     : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER (CBV)
+      count    : 1
+      accessed : false
+      name     : MyCBuffer (type.MyCBuffer)
+          // size = 16, padded size = 16
+          struct type.MyCBuffer {
+              float x; // abs offset = 0, rel offset = 0, size = 4, padded size = 16
+          } MyCBuffer;
+
+
+    Binding 0.1
+      spirv id : 8
+      set      : 0
+      binding  : 1
+      type     : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER (CBV)
+      count    : 1
+      accessed : false
+      name     : MyConstantBuffer (type.ConstantBuffer.Data)
+          // size = 16, padded size = 16
+          struct type.ConstantBuffer.Data {
+              float x; // abs offset = 0, rel offset = 0, size = 4, padded size = 16
+          } MyConstantBuffer;
+
+
+    Binding 0.2
+      spirv id : 11
+      set      : 0
+      binding  : 2
+      type     : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE (SRV)
+      count    : 1
+      accessed : false
+      name     : MyTexture1D (type.1d.image)
+
+    Binding 0.3
+      spirv id : 14
+      set      : 0
+      binding  : 3
+      type     : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE (SRV)
+      count    : 1
+      accessed : false
+      name     : MyTexture2D (type.2d.image)
+
+    Binding 0.4
+      spirv id : 17
+      set      : 0
+      binding  : 4
+      type     : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE (SRV)
+      count    : 1
+      accessed : false
+      name     : MyTexture3D (type.3d.image)
+
+    Binding 0.5
+      spirv id : 20
+      set      : 0
+      binding  : 5
+      type     : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE (SRV)
+      count    : 1
+      accessed : false
+      name     : MyTexture1DArray (type.1d.image.array)
+
+    Binding 0.6
+      spirv id : 23
+      set      : 0
+      binding  : 6
+      type     : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE (SRV)
+      count    : 1
+      accessed : false
+      name     : MyTexture2DArray (type.2d.image.array)
+
+    Binding 0.7
+      spirv id : 26
+      set      : 0
+      binding  : 7
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE (UAV)
+      count    : 1
+      accessed : false
+      name     : MyRWTexture1D (type.1d.image)
+
+    Binding 0.8
+      spirv id : 29
+      set      : 0
+      binding  : 8
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE (UAV)
+      count    : 1
+      accessed : false
+      name     : MyRWTexture2D (type.2d.image)
+
+    Binding 0.9
+      spirv id : 32
+      set      : 0
+      binding  : 9
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE (UAV)
+      count    : 1
+      accessed : false
+      name     : MyRWTexture3D (type.3d.image)
+
+    Binding 0.10
+      spirv id : 35
+      set      : 0
+      binding  : 10
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE (UAV)
+      count    : 1
+      accessed : false
+      name     : MyRWTexture1DArray (type.1d.image.array)
+
+    Binding 0.11
+      spirv id : 38
+      set      : 0
+      binding  : 11
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE (UAV)
+      count    : 1
+      accessed : false
+      name     : MyRWTexture2DArray (type.2d.image.array)
+
+    Binding 0.12
+      spirv id : 41
+      set      : 0
+      binding  : 12
+      type     : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE (SRV)
+      count    : 1
+      accessed : false
+      name     : MyTexture2DMS (type.2d.image)
+
+    Binding 0.13
+      spirv id : 44
+      set      : 0
+      binding  : 13
+      type     : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE (SRV)
+      count    : 1
+      accessed : false
+      name     : MyTexture2DMSArray (type.2d.image.array)
+
+    Binding 0.14
+      spirv id : 47
+      set      : 0
+      binding  : 14
+      type     : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE (SRV)
+      count    : 1
+      accessed : false
+      name     : MyTextureCube (type.cube.image)
+
+    Binding 0.15
+      spirv id : 50
+      set      : 0
+      binding  : 15
+      type     : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE (SRV)
+      count    : 1
+      accessed : false
+      name     : MyTextureCubeArray (type.cube.image.array)
+
+    Binding 0.16
+      spirv id : 53
+      set      : 0
+      binding  : 16
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (SRV)
+      count    : 1
+      accessed : false
+      name     : MyTBuffer (type.MyTBuffer)
+          // size = 0, padded size = 0
+          struct type.MyTBuffer {
+              float q; // abs offset = 0, rel offset = 0, size = 4, padded size = 4
+          } MyTBuffer;
+
+
+    Binding 0.17
+      spirv id : 57
+      set      : 0
+      binding  : 17
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (SRV)
+      count    : 1
+      accessed : false
+      name     : MyTextureBuffer (type.TextureBuffer.Data2)
+          // size = 0, padded size = 0
+          struct type.TextureBuffer.Data2 {
+              float4 x; // abs offset = 0, rel offset = 0, size = 16, padded size = 16
+          } MyTextureBuffer;
+
+
+    Binding 0.18
+      spirv id : 60
+      set      : 0
+      binding  : 18
+      type     : VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER (SRV)
+      count    : 1
+      accessed : false
+      name     : MyBuffer (type.buffer.image)
+
+    Binding 0.19
+      spirv id : 63
+      set      : 0
+      binding  : 19
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER (UAV)
+      count    : 1
+      accessed : false
+      name     : MyRWBuffer (type.buffer.image)
+
+    Binding 0.20
+      spirv id : 67
+      set      : 0
+      binding  : 20
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (SRV)
+      count    : 1
+      accessed : false
+      name     : MyStructuredBuffer (type.StructuredBuffer.float)
+          // size = 0, padded size = 0
+          struct type.StructuredBuffer.float {
+              float ; // abs offset = 0, rel offset = 0, size = 0, padded size = 0
+          } MyStructuredBuffer;
+
+
+    Binding 0.21
+      spirv id : 70
+      set      : 0
+      binding  : 21
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (UAV)
+      count    : 1
+      counter  : (set=0, binding=22, name=counter.var.MyRWStructuredBuffer);
+      accessed : false
+      name     : MyRWStructuredBuffer (type.RWStructuredBuffer.float)
+          // size = 0, padded size = 0
+          struct type.RWStructuredBuffer.float {
+              float ; // abs offset = 0, rel offset = 0, size = 0, padded size = 0
+          } MyRWStructuredBuffer;
+
+
+    Binding 0.22
+      spirv id : 74
+      set      : 0
+      binding  : 22
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (UAV)
+      count    : 1
+      accessed : false
+      name     : counter.var.MyRWStructuredBuffer (type.ACSBuffer.counter)
+          // size = 0, padded size = 0
+          struct type.ACSBuffer.counter {
+              int ; // abs offset = 0, rel offset = 0, size = 4, padded size = 4
+          } counter.var.MyRWStructuredBuffer;
+
+
+    Binding 0.23
+      spirv id : 77
+      set      : 0
+      binding  : 23
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (UAV)
+      count    : 1
+      counter  : (set=0, binding=24, name=counter.var.MyAppendStructuredBuffer);
+      accessed : false
+      name     : MyAppendStructuredBuffer (type.AppendStructuredBuffer.float)
+          // size = 0, padded size = 0
+          struct type.AppendStructuredBuffer.float {
+              float ; // abs offset = 0, rel offset = 0, size = 0, padded size = 0
+          } MyAppendStructuredBuffer;
+
+
+    Binding 0.24
+      spirv id : 78
+      set      : 0
+      binding  : 24
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (UAV)
+      count    : 1
+      accessed : false
+      name     : counter.var.MyAppendStructuredBuffer (type.ACSBuffer.counter)
+          // size = 0, padded size = 0
+          struct type.ACSBuffer.counter {
+              int ; // abs offset = 0, rel offset = 0, size = 4, padded size = 4
+          } counter.var.MyAppendStructuredBuffer;
+
+
+    Binding 0.25
+      spirv id : 81
+      set      : 0
+      binding  : 25
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (UAV)
+      count    : 1
+      counter  : (set=0, binding=26, name=counter.var.MyConsumeStructuredBuffer);
+      accessed : false
+      name     : MyConsumeStructuredBuffer (type.ConsumeStructuredBuffer.float)
+          // size = 0, padded size = 0
+          struct type.ConsumeStructuredBuffer.float {
+              float ; // abs offset = 0, rel offset = 0, size = 0, padded size = 0
+          } MyConsumeStructuredBuffer;
+
+
+    Binding 0.26
+      spirv id : 82
+      set      : 0
+      binding  : 26
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (UAV)
+      count    : 1
+      accessed : false
+      name     : counter.var.MyConsumeStructuredBuffer (type.ACSBuffer.counter)
+          // size = 0, padded size = 0
+          struct type.ACSBuffer.counter {
+              int ; // abs offset = 0, rel offset = 0, size = 4, padded size = 4
+          } counter.var.MyConsumeStructuredBuffer;
+
+
+    Binding 0.27
+      spirv id : 87
+      set      : 0
+      binding  : 27
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (SRV)
+      count    : 1
+      accessed : false
+      name     : MyByteAddressBuffer (type.ByteAddressBuffer)
+          // size = 0, padded size = 0
+          struct type.ByteAddressBuffer {
+              uint ; // abs offset = 0, rel offset = 0, size = 0, padded size = 0
+          } MyByteAddressBuffer;
+
+
+    Binding 0.28
+      spirv id : 90
+      set      : 0
+      binding  : 28
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (UAV)
+      count    : 1
+      accessed : false
+      name     : MyRWByteAddressBuffer (type.RWByteAddressBuffer)
+          // size = 0, padded size = 0
+          struct type.RWByteAddressBuffer {
+              uint ; // abs offset = 0, rel offset = 0, size = 0, padded size = 0
+          } MyRWByteAddressBuffer;
+
+

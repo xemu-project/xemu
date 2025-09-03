@@ -1,0 +1,15 @@
+config ARM
+    bool
+    select ARM_COMPATIBLE_SEMIHOSTING if TCG
+
+    # We need to select this until we move m_helper.c and the
+    # translate.c v7m helpers under ARM_V7M.
+    select ARM_V7M if TCG
+
+    select DEVICE_TREE # needed by boot.c
+
+config AARCH64
+    bool
+    select ARM
+    # kvm_arch_fixup_msi_route() needs to access PCIDevice
+    select PCI if KVM
