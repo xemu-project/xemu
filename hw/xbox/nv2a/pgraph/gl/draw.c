@@ -23,6 +23,7 @@
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "debug.h"
 #include "renderer.h"
+#include <math.h>
 
 void pgraph_gl_clear_surface(NV2AState *d, uint32_t parameter)
 {
@@ -129,6 +130,32 @@ void pgraph_gl_clear_surface(NV2AState *d, uint32_t parameter)
     }
     
     pg->clearing = false;
+}
+
+static float clamp_line_width_to_device_limits(PGRAPHState *pg, float width,
+                                               bool smooth)
+{
+    PGRAPHGLState *r = pg->gl_renderer_state;
+    float min_width;
+    float max_width;
+    float granularity;
+
+    if (smooth) {
+        min_width = r->limits.smooth_line_width.range[0];
+        max_width = r->limits.smooth_line_width.range[1];
+        granularity = r->limits.smooth_line_width.granularity;
+    } else {
+        min_width = r->limits.aliased_line_width.range[0];
+        max_width = r->limits.aliased_line_width.range[1];
+        granularity = r->limits.aliased_line_width.granularity;
+    }
+
+    if (granularity != 0.0f) {
+        float steps = roundf((width - min_width) / granularity);
+        width = min_width + steps * granularity;
+    }
+
+    return fminf(fmaxf(min_width, width), max_width);
 }
 
 void pgraph_gl_draw_begin(NV2AState *d)
@@ -310,13 +337,14 @@ void pgraph_gl_draw_begin(NV2AState *d)
     bool anti_aliasing = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_ANTIALIASING), NV_PGRAPH_ANTIALIASING_ENABLE);
 
     /* Edge Antialiasing */
+    float line_width = pgraph_get_line_width(pg) * pg->surface_scale_factor;
     if (!anti_aliasing && pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                               NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE) {
         glEnable(GL_LINE_SMOOTH);
-        glLineWidth(MIN(r->supported_smooth_line_width_range[1], pg->surface_scale_factor));
+        glLineWidth(clamp_line_width_to_device_limits(pg, line_width, true));
     } else {
         glDisable(GL_LINE_SMOOTH);
-        glLineWidth(MIN(r->supported_aliased_line_width_range[1], pg->surface_scale_factor));
+        glLineWidth(clamp_line_width_to_device_limits(pg, line_width, false));
     }
     if (!anti_aliasing && pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                               NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE) {
