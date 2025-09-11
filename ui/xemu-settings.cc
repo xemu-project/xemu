@@ -31,6 +31,7 @@
 #include <iostream>
 #include <locale.h>
 
+#include "xemu-controllers.h"
 #include "xemu-settings.h"
 
 #define DEFINE_CONFIG_TREE
@@ -253,4 +254,25 @@ void remove_net_nat_forward_ports(unsigned int index)
     cnode->children.erase(cnode->children.begin()+index);
     cnode->free_allocations(&g_config);
     cnode->store_to_struct(&g_config);
+}
+
+GamepadMappings *xemu_settings_load_gamepad_mapping(const char *guid)
+{
+    for (unsigned int i = 0; i < g_config.input.gamepad_mappings_count; ++i) {
+        auto *mapping = &g_config.input.gamepad_mappings[i];
+        if (strcmp(mapping->gamepad_id, guid) == 0) {
+            return mapping;
+        }
+    }
+
+    auto cnode = config_tree.child("input")->child("gamepad_mappings");
+    cnode->update_from_struct(&g_config);
+    cnode->free_allocations(&g_config);
+    cnode->children.push_back(*cnode->array_item_type);
+    auto &e = cnode->children.back();
+    e.child("gamepad_id")->set_string(std::string(guid));
+    cnode->store_to_struct(&g_config);
+
+    return &g_config.input
+                .gamepad_mappings[g_config.input.gamepad_mappings_count - 1];
 }

@@ -17,14 +17,16 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #pragma once
+#include "ui/xemu-input.h"
+#include "../xemu-controllers.h"
+#include "../xemu-snapshots.h"
+#include "common.hh"
+#include "scene-components.hh"
+#include "scene.hh"
+#include "widgets.hh"
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
-#include "common.hh"
-#include "widgets.hh"
-#include "scene.hh"
-#include "scene-components.hh"
-#include "../xemu-snapshots.h"
 
 extern "C" {
 #include "net/pcap.h"
@@ -36,6 +38,7 @@ class MainMenuTabView
 public:
     virtual ~MainMenuTabView();
     virtual void Draw();
+    virtual void Hide();
 };
 
 class MainMenuGeneralView : public virtual MainMenuTabView
@@ -47,7 +50,15 @@ public:
 class MainMenuInputView : public virtual MainMenuTabView
 {
 public:
+    std::unique_ptr<RebindingMap> rebinding;
+    MainMenuInputView() : rebinding{ nullptr }
+    {
+    }
+    bool ConsumeRebindEvent(SDL_Event *event);
+    bool IsInputRebinding();
     void Draw() override;
+    void Hide() override;
+    void PopulateTableController(ControllerState *state);
 };
 
 class MainMenuDisplayView : public virtual MainMenuTabView
@@ -193,6 +204,8 @@ public:
     void SetNextViewIndex(int i);
     void HandleInput();
     void UpdateAboutViewConfigInfo();
+    bool ConsumeRebindEvent(SDL_Event *event);
+    bool IsInputRebinding();
     bool Draw() override;
 };
 
