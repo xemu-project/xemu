@@ -1,7 +1,7 @@
 /*
  * xemu Settings Management
  *
- * Copyright (C) 2020-2023 Matt Borgerson
+ * Copyright (C) 2025 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,35 +21,35 @@
 #define XEMU_CONTROLLERS_H
 
 #include "xemu-input.h"
-#include "xemu-settings.h"
 #include <SDL.h>
 
 #ifdef __cplusplus
 
+enum class RebindEventResult {
+    Ignore,
+    Complete,
+};
+
 struct RebindingMap {
-    // Returns [consume, cancel]:
-    // consume: Whether the SDL_Event should not propagate to the UI
-    // cancel: Whether this rebinding map should be cancelled
-    virtual std::pair<bool, bool> ConsumeRebindEvent(SDL_Event *event) = 0;
+protected:
+    int m_table_row;
+    RebindingMap(int table_row) : m_table_row{ table_row }
+    {
+    }
+
+public:
+    virtual RebindEventResult ConsumeRebindEvent(SDL_Event *event) = 0;
 
     int GetTableRow() const
     {
-        return table_row;
+        return m_table_row;
     }
 
-    virtual ~RebindingMap()
-    {
-    }
-
-protected:
-    int table_row;
-    RebindingMap(int table_row) : table_row{ table_row }
-    {
-    }
+    virtual ~RebindingMap() = default;
 };
 
 struct ControllerKeyboardRebindingMap : public virtual RebindingMap {
-    std::pair<bool, bool> ConsumeRebindEvent(SDL_Event *event) override;
+    RebindEventResult ConsumeRebindEvent(SDL_Event *event) override;
 
     ControllerKeyboardRebindingMap(int table_row) : RebindingMap(table_row)
     {
@@ -57,19 +57,22 @@ struct ControllerKeyboardRebindingMap : public virtual RebindingMap {
 };
 
 class ControllerGamepadRebindingMap : public virtual RebindingMap {
-    ControllerState *state;
-    bool seen_key_down;
+    ControllerState *m_state;
+    bool m_seen_key_down;
+
+    RebindEventResult HandleButtonEvent(SDL_ControllerButtonEvent *event);
+    RebindEventResult HandleAxisEvent(SDL_ControllerAxisEvent *event);
 
 public:
-    std::pair<bool, bool> ConsumeRebindEvent(SDL_Event *event) override;
+    RebindEventResult ConsumeRebindEvent(SDL_Event *event) override;
     ControllerGamepadRebindingMap(int table_row, ControllerState *state)
-        : RebindingMap(table_row), state{ state }, seen_key_down{ false }
+        : RebindingMap(table_row), m_state{ state }, m_seen_key_down{ false }
     {
     }
 };
 
 extern "C" {
-#endif
+#endif // __cplusplus
 
 extern int *g_keyboard_scancode_map[25];
 
@@ -79,4 +82,4 @@ GamepadMappings *xemu_settings_load_gamepad_mapping(const char *guid);
 }
 #endif
 
-#endif
+#endif // XEMU_CONTROLLERS_H

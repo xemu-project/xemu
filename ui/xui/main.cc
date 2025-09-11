@@ -170,6 +170,7 @@ void xemu_hud_cleanup(void)
 
 void xemu_hud_process_sdl_events(SDL_Event *event)
 {
+    // Ignore inputs that are consumed by rebinding
     if (g_main_menu.ConsumeRebindEvent(event)) {
         return;
     }

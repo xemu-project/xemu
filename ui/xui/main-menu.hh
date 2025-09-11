@@ -17,16 +17,16 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #pragma once
-#include "ui/xemu-input.h"
-#include "../xemu-controllers.h"
-#include "../xemu-snapshots.h"
-#include "common.hh"
-#include "scene-components.hh"
-#include "scene.hh"
-#include "widgets.hh"
-#include <memory>
 #include <string>
 #include <vector>
+#include <memory>
+#include "common.hh"
+#include "widgets.hh"
+#include "scene.hh"
+#include "scene-components.hh"
+#include "../xemu-snapshots.h"
+#include "../xemu-controllers.h"
+#include "ui/xemu-input.h"
 
 extern "C" {
 #include "net/pcap.h"
@@ -50,8 +50,9 @@ public:
 class MainMenuInputView : public virtual MainMenuTabView
 {
 public:
-    std::unique_ptr<RebindingMap> rebinding;
-    MainMenuInputView() : rebinding{ nullptr }
+    std::unique_ptr<RebindingMap> m_rebinding;
+
+    MainMenuInputView() : m_rebinding{ nullptr }
     {
     }
     bool ConsumeRebindEvent(SDL_Event *event);
