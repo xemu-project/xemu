@@ -170,6 +170,10 @@ void xemu_hud_cleanup(void)
 
 void xemu_hud_process_sdl_events(SDL_Event *event)
 {
+    if (g_main_menu.ConsumeRebindEvent(event)) {
+        return;
+    }
+
     ImGui_ImplSDL2_ProcessEvent(event);
 }
 
