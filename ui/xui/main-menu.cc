@@ -81,20 +81,21 @@ void MainMenuGeneralView::Draw()
 
 bool MainMenuInputView::ConsumeRebindEvent(SDL_Event *event)
 {
-    if (!rebinding)
+    if (!m_rebinding) {
         return false;
-
-    auto [consume, cancel] = rebinding->ConsumeRebindEvent(event);
-    if (cancel) {
-        rebinding = nullptr;
     }
 
-    return consume;
+    RebindEventResult rebind_result = m_rebinding->ConsumeRebindEvent(event);
+    if (rebind_result == RebindEventResult::Complete) {
+        m_rebinding = nullptr;
+    }
+
+    return rebind_result == RebindEventResult::Ignore;
 }
 
 bool MainMenuInputView::IsInputRebinding()
 {
-    return rebinding != nullptr;
+    return m_rebinding != nullptr;
 }
 
 void MainMenuInputView::Draw()
@@ -165,7 +166,7 @@ void MainMenuInputView::Draw()
 
         if (activated) {
             active = i;
-            rebinding = nullptr;
+            m_rebinding = nullptr;
         }
 
         uint32_t port_color = 0xafafafff;
@@ -567,7 +568,7 @@ void MainMenuInputView::Draw()
 
 void MainMenuInputView::Hide()
 {
-    rebinding = nullptr;
+    m_rebinding = nullptr;
 }
 
 void MainMenuInputView::PopulateTableController(ControllerState *state)
@@ -628,7 +629,7 @@ void MainMenuInputView::PopulateTableController(ControllerState *state)
     };
 
     bool is_keyboard = state->type == INPUT_DEVICE_SDL_KEYBOARD;
-    int table_rows = is_keyboard ? 25 : 21;
+    int table_rows = is_keyboard ? std::size(kbd_map) : std::size(gamepad_map);
     const char **table_row_entries = is_keyboard ? kbd_map : gamepad_map;
     for (int i = 0; i < table_rows; ++i) {
         ImGui::TableNextRow();
@@ -688,7 +689,7 @@ void MainMenuInputView::PopulateTableController(ControllerState *state)
         }
 
         ImGui::TableSetColumnIndex(1);
-        if (rebinding && rebinding->GetTableRow() == i) {
+        if (m_rebinding && m_rebinding->GetTableRow() == i) {
             ImGui::Text("Press a key to rebind");
         } else {
             ImGui::PushID(i);
@@ -702,10 +703,10 @@ void MainMenuInputView::PopulateTableController(ControllerState *state)
 
             if (ImGui::Button(remap_button_text, ImVec2(button_width, 0))) {
                 if (is_keyboard) {
-                    rebinding =
+                    m_rebinding =
                         std::make_unique<ControllerKeyboardRebindingMap>(i);
                 } else {
-                    rebinding = std::make_unique<ControllerGamepadRebindingMap>(
+                    m_rebinding = std::make_unique<ControllerGamepadRebindingMap>(
                         i, state);
                 }
             }
