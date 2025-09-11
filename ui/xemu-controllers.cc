@@ -20,6 +20,7 @@
 #include "xemu-controllers.h"
 #include "xemu-settings.h"
 #include <assert.h>
+#include <cmath>
 #include <limits>
 
 constexpr int controller_button_count = 15;
