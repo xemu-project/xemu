@@ -208,10 +208,8 @@ void MainMenuInputView::Draw()
     if (ImGui::BeginCombo("###InputDrivers", driver,
                           ImGuiComboFlags_NoArrowButton)) {
         const char *available_drivers[] = { DRIVER_DUKE, DRIVER_S };
-        const char *driver_display_names[] = {
-            DRIVER_DUKE_DISPLAY_NAME,
-            DRIVER_S_DISPLAY_NAME
-            };
+        const char *driver_display_names[] = { DRIVER_DUKE_DISPLAY_NAME,
+                                               DRIVER_S_DISPLAY_NAME };
         bool is_selected = false;
         int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);
         for (int i = 0; i < num_drivers; i++) {
@@ -528,7 +526,8 @@ void MainMenuInputView::Draw()
         float p = ImGui::GetFrameHeight() * 0.3;
         ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(p, p));
         if (ImGui::BeginTable("input_remap_tbl", 2,
-                              ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
+                              ImGuiTableFlags_RowBg |
+                                  ImGuiTableFlags_Borders)) {
             ImGui::TableSetupColumn("Emulated Input");
             ImGui::TableSetupColumn("Host Input");
             ImGui::TableHeadersRow();
@@ -541,19 +540,19 @@ void MainMenuInputView::Draw()
     }
 
     if (bound_state && bound_state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
-      Toggle("Enable Rumble", &bound_state->controller_map->enable_rumble);
-      Toggle("Invert Left X Axis",
-          &bound_state->controller_map->controller_mapping
-          .invert_axis_left_x);
-      Toggle("Invert Left Y Axis",
-          &bound_state->controller_map->controller_mapping
-          .invert_axis_left_y);
-      Toggle("Invert Right X Axis",
-          &bound_state->controller_map->controller_mapping
-          .invert_axis_right_x);
-      Toggle("Invert Right Y Axis",
-          &bound_state->controller_map->controller_mapping
-          .invert_axis_right_y);
+        Toggle("Enable Rumble", &bound_state->controller_map->enable_rumble);
+        Toggle("Invert Left X Axis",
+               &bound_state->controller_map->controller_mapping
+                    .invert_axis_left_x);
+        Toggle("Invert Left Y Axis",
+               &bound_state->controller_map->controller_mapping
+                    .invert_axis_left_y);
+        Toggle("Invert Right X Axis",
+               &bound_state->controller_map->controller_mapping
+                    .invert_axis_right_x);
+        Toggle("Invert Right Y Axis",
+               &bound_state->controller_map->controller_mapping
+                    .invert_axis_right_y);
     }
 
     ImGui::PopStyleColor();
@@ -708,8 +707,9 @@ void MainMenuInputView::PopulateTableController(ControllerState *state)
                     m_rebinding =
                         std::make_unique<ControllerKeyboardRebindingMap>(i);
                 } else {
-                    m_rebinding = std::make_unique<ControllerGamepadRebindingMap>(
-                        i, state);
+                    m_rebinding =
+                        std::make_unique<ControllerGamepadRebindingMap>(i,
+                                                                        state);
                 }
             }
             ImGui::PopID();

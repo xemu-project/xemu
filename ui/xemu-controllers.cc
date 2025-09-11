@@ -39,35 +39,35 @@ ControllerKeyboardRebindingMap::ConsumeRebindEvent(SDL_Event *event)
     return RebindEventResult::Ignore;
 }
 
-RebindEventResult
-ControllerGamepadRebindingMap::HandleButtonEvent(SDL_ControllerButtonEvent *event)
+RebindEventResult ControllerGamepadRebindingMap::HandleButtonEvent(
+    SDL_ControllerButtonEvent *event)
 {
-  if (m_state->sdl_joystick_id != event->which) {
-    return RebindEventResult::Ignore;
-  }
+    if (m_state->sdl_joystick_id != event->which) {
+        return RebindEventResult::Ignore;
+    }
 
-  int *button_map[controller_button_count] = {
-    &m_state->controller_map->controller_mapping.a,
-    &m_state->controller_map->controller_mapping.b,
-    &m_state->controller_map->controller_mapping.x,
-    &m_state->controller_map->controller_mapping.y,
-    &m_state->controller_map->controller_mapping.back,
-    &m_state->controller_map->controller_mapping.guide,
-    &m_state->controller_map->controller_mapping.start,
-    &m_state->controller_map->controller_mapping.lstick_btn,
-    &m_state->controller_map->controller_mapping.rstick_btn,
-    &m_state->controller_map->controller_mapping.lshoulder,
-    &m_state->controller_map->controller_mapping.rshoulder,
-    &m_state->controller_map->controller_mapping.dpad_up,
-    &m_state->controller_map->controller_mapping.dpad_down,
-    &m_state->controller_map->controller_mapping.dpad_left,
-    &m_state->controller_map->controller_mapping.dpad_right,
-  };
+    int *button_map[controller_button_count] = {
+        &m_state->controller_map->controller_mapping.a,
+        &m_state->controller_map->controller_mapping.b,
+        &m_state->controller_map->controller_mapping.x,
+        &m_state->controller_map->controller_mapping.y,
+        &m_state->controller_map->controller_mapping.back,
+        &m_state->controller_map->controller_mapping.guide,
+        &m_state->controller_map->controller_mapping.start,
+        &m_state->controller_map->controller_mapping.lstick_btn,
+        &m_state->controller_map->controller_mapping.rstick_btn,
+        &m_state->controller_map->controller_mapping.lshoulder,
+        &m_state->controller_map->controller_mapping.rshoulder,
+        &m_state->controller_map->controller_mapping.dpad_up,
+        &m_state->controller_map->controller_mapping.dpad_down,
+        &m_state->controller_map->controller_mapping.dpad_left,
+        &m_state->controller_map->controller_mapping.dpad_right,
+    };
 
-  // FIXME: Allow face buttons to map to axes
-  if (m_table_row >= controller_button_count) {
-    return RebindEventResult::Ignore;
-  }
+    // FIXME: Allow face buttons to map to axes
+    if (m_table_row >= controller_button_count) {
+        return RebindEventResult::Ignore;
+    }
 
     // If we only track up events, then we might rebind to a button
     // that was already held down when the rebinding event began
@@ -76,62 +76,65 @@ ControllerGamepadRebindingMap::HandleButtonEvent(SDL_ControllerButtonEvent *even
         return RebindEventResult::Ignore;
     }
 
-  // Bind on controller button up
-  // This ensures the UI does not immediately respond once the new binding is applied
-  if (event->type != SDL_CONTROLLERBUTTONUP || !m_seen_key_down) {
-    return RebindEventResult::Ignore;
-  }
+    // Bind on controller button up
+    // This ensures the UI does not immediately respond once the new binding is
+    // applied
+    if (event->type != SDL_CONTROLLERBUTTONUP || !m_seen_key_down) {
+        return RebindEventResult::Ignore;
+    }
 
-  *(button_map[m_table_row]) = event->button;
+    *(button_map[m_table_row]) = event->button;
 
-  return RebindEventResult::Complete;
+    return RebindEventResult::Complete;
 }
 
 RebindEventResult
 ControllerGamepadRebindingMap::HandleAxisEvent(SDL_ControllerAxisEvent *event)
 {
-  if (m_state->sdl_joystick_id != event->which) {
-    return RebindEventResult::Ignore;
-  }
+    if (m_state->sdl_joystick_id != event->which) {
+        return RebindEventResult::Ignore;
+    }
 
-  // Axis inputs cannot be bound to controller buttons
-  if (m_table_row < controller_button_count) {
-    return RebindEventResult::Ignore;
-  }
+    // Axis inputs cannot be bound to controller buttons
+    if (m_table_row < controller_button_count) {
+        return RebindEventResult::Ignore;
+    }
 
-  // Requre that the input be sufficiently outside of any deadzone range
-  // before using it for rebinding
-  if (std::abs(event->value >> 1) <= (std::numeric_limits<Sint16>::max() >> 2)) {
-    return RebindEventResult::Ignore;
-  }
+    // Requre that the input be sufficiently outside of any deadzone range
+    // before using it for rebinding
+    if (std::abs(event->value >> 1) <=
+        (std::numeric_limits<Sint16>::max() >> 2)) {
+        return RebindEventResult::Ignore;
+    }
 
-  int *axis_map[controller_axes_count] = {
-    &m_state->controller_map->controller_mapping.axis_left_x,
-    &m_state->controller_map->controller_mapping.axis_left_y,
-    &m_state->controller_map->controller_mapping.axis_right_x,
-    &m_state->controller_map->controller_mapping.axis_right_y,
-    &m_state->controller_map->controller_mapping.axis_trigger_left,
-    &m_state->controller_map->controller_mapping.axis_trigger_right,
-  };
+    int *axis_map[controller_axes_count] = {
+        &m_state->controller_map->controller_mapping.axis_left_x,
+        &m_state->controller_map->controller_mapping.axis_left_y,
+        &m_state->controller_map->controller_mapping.axis_right_x,
+        &m_state->controller_map->controller_mapping.axis_right_y,
+        &m_state->controller_map->controller_mapping.axis_trigger_left,
+        &m_state->controller_map->controller_mapping.axis_trigger_right,
+    };
 
-  *(axis_map[m_table_row - controller_button_count]) = event->axis;
+    *(axis_map[m_table_row - controller_button_count]) = event->axis;
 
-  return RebindEventResult::Complete;
+    return RebindEventResult::Complete;
 }
 
 RebindEventResult
 ControllerGamepadRebindingMap::ConsumeRebindEvent(SDL_Event *event)
 {
-  switch (event->type) {
+    switch (event->type) {
     case SDL_CONTROLLERDEVICEREMOVED:
-      return (m_state->sdl_joystick_id == event->cdevice.which) ?
-        RebindEventResult::Complete : RebindEventResult::Ignore;
+        return (m_state->sdl_joystick_id == event->cdevice.which) ?
+                   RebindEventResult::Complete :
+                   RebindEventResult::Ignore;
     case SDL_CONTROLLERBUTTONUP:
     case SDL_CONTROLLERBUTTONDOWN:
-      return HandleButtonEvent(&event->cbutton);
+        return HandleButtonEvent(&event->cbutton);
     case SDL_CONTROLLERAXISMOTION:
-      return HandleAxisEvent(&event->caxis);
+        return HandleAxisEvent(&event->caxis);
     default:
-      return RebindEventResult::Ignore;
-  }
+        return RebindEventResult::Ignore;
+    }
 }
