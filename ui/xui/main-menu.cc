@@ -523,6 +523,7 @@ void MainMenuInputView::Draw()
     ImVec4 tc = ImGui::GetStyle().Colors[ImGuiCol_Header];
     tc.w = 0.0f;
     ImGui::PushStyleColor(ImGuiCol_Header, tc);
+
     if (ImGui::CollapsingHeader("Button Mapping")) {
         float p = ImGui::GetFrameHeight() * 0.3;
         ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(p, p));
@@ -537,23 +538,24 @@ void MainMenuInputView::Draw()
             ImGui::EndTable();
         }
         ImGui::PopStyleVar();
-
-        if (bound_state && bound_state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
-            Toggle("Enable Rumble", &bound_state->controller_map->enable_rumble);
-            Toggle("Invert Left X Axis",
-                   &bound_state->controller_map->controller_mapping
-                        .invert_axis_left_x);
-            Toggle("Invert Left Y Axis",
-                   &bound_state->controller_map->controller_mapping
-                        .invert_axis_left_y);
-            Toggle("Invert Right X Axis",
-                   &bound_state->controller_map->controller_mapping
-                        .invert_axis_right_x);
-            Toggle("Invert Right Y Axis",
-                   &bound_state->controller_map->controller_mapping
-                        .invert_axis_right_y);
-        }
     }
+
+    if (bound_state && bound_state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
+      Toggle("Enable Rumble", &bound_state->controller_map->enable_rumble);
+      Toggle("Invert Left X Axis",
+          &bound_state->controller_map->controller_mapping
+          .invert_axis_left_x);
+      Toggle("Invert Left Y Axis",
+          &bound_state->controller_map->controller_mapping
+          .invert_axis_left_y);
+      Toggle("Invert Right X Axis",
+          &bound_state->controller_map->controller_mapping
+          .invert_axis_right_x);
+      Toggle("Invert Right Y Axis",
+          &bound_state->controller_map->controller_mapping
+          .invert_axis_right_y);
+    }
+
     ImGui::PopStyleColor();
 
     SectionTitle("Options");
