@@ -886,8 +886,8 @@ static void update_uniforms(PGRAPHState *pg, SurfaceBinding *surface)
             GET_MASK(pvideo->color_key, NV_PVIDEO_COLOR_KEY_RED) / 255.0,
             GET_MASK(pvideo->color_key, NV_PVIDEO_COLOR_KEY_GREEN) / 255.0,
             GET_MASK(pvideo->color_key, NV_PVIDEO_COLOR_KEY_BLUE) / 255.0);
-        uniform2f(l, uniform_index(l, "pvideo_in_pos"), pvideo->in_s,
-                  pvideo->in_t);
+        uniform2f(l, uniform_index(l, "pvideo_in_pos"), pvideo->in_s / 16.f,
+                  pvideo->in_t / 8.f);
         uniform4f(l, uniform_index(l, "pvideo_pos"), pvideo->out_x,
                   pvideo->out_y, pvideo->out_width, pvideo->out_height);
         uniform4f(l, uniform_index(l, "pvideo_scale"), pvideo->scale_x,
