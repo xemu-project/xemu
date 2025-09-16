@@ -60,7 +60,7 @@ void pgraph_gl_init_display(NV2AState *d)
         "uniform vec4 pvideo_pos;\n"
         "uniform vec3 pvideo_scale;\n"
         "uniform bool pvideo_color_key_enable;\n"
-        "uniform vec4 pvideo_color_key;\n"
+        "uniform vec3 pvideo_color_key;\n"
         "uniform vec2 display_size;\n"
         "uniform float line_offset;\n"
         "layout(location = 0) out vec4 out_Color;\n"
@@ -68,14 +68,14 @@ void pgraph_gl_init_display(NV2AState *d)
         "{\n"
         "    vec2 texCoord = gl_FragCoord.xy/display_size;\n"
         "    float rel = display_size.y/textureSize(tex, 0).y/line_offset;\n"
-        "    texCoord.y = rel*(1.0f - texCoord.y);"
+        "    texCoord.y = rel*(1.0f - texCoord.y);\n"
         "    out_Color.rgba = texture(tex, texCoord);\n"
         "    if (pvideo_enable) {\n"
         "        vec2 screenCoord = gl_FragCoord.xy - 0.5;\n"
         "        vec4 output_region = vec4(pvideo_pos.xy, pvideo_pos.xy + pvideo_pos.zw);\n"
         "        bvec4 clip = bvec4(lessThan(screenCoord, output_region.xy),\n"
         "                           greaterThan(screenCoord, output_region.zw));\n"
-        "        if (!any(clip) && (!pvideo_color_key_enable || out_Color.rgba == pvideo_color_key)) {\n"
+        "        if (!any(clip) && (!pvideo_color_key_enable || out_Color.rgb == pvideo_color_key)) {\n"
         "            vec2 out_xy = (screenCoord - pvideo_pos.xy) * pvideo_scale.z;\n"
         "            vec2 in_st = (pvideo_in_pos + out_xy * pvideo_scale.xy) / textureSize(pvideo_tex, 0);\n"
         "            in_st.y *= -1.0;\n"
@@ -242,15 +242,11 @@ static void render_display_pvideo_overlay(NV2AState *d)
     glUniform1ui(r->disp_rndr.pvideo_color_key_enable_loc,
                  color_key_enabled);
 
-    // TODO: Verify that masking off the top byte is correct.
-    // SeaBlade sets a color key of 0x80000000 but the texture passed into the
-    // shader is cleared to 0 alpha.
-    unsigned int color_key = d->pvideo.regs[NV_PVIDEO_COLOR_KEY] & 0xFFFFFF;
-    glUniform4f(r->disp_rndr.pvideo_color_key_loc,
+    unsigned int color_key = d->pvideo.regs[NV_PVIDEO_COLOR_KEY] & 0xFFFFF;
+    glUniform3f(r->disp_rndr.pvideo_color_key_loc,
                 GET_MASK(color_key, NV_PVIDEO_COLOR_KEY_RED) / 255.0,
                 GET_MASK(color_key, NV_PVIDEO_COLOR_KEY_GREEN) / 255.0,
-                GET_MASK(color_key, NV_PVIDEO_COLOR_KEY_BLUE) / 255.0,
-                GET_MASK(color_key, NV_PVIDEO_COLOR_KEY_ALPHA) / 255.0);
+                GET_MASK(color_key, NV_PVIDEO_COLOR_KEY_BLUE) / 255.0);
 
     assert(offset + in_pitch * in_height <= limit);
     hwaddr end = base + offset + in_pitch * in_height;
