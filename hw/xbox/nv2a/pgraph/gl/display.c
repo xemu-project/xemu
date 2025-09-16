@@ -242,7 +242,7 @@ static void render_display_pvideo_overlay(NV2AState *d)
     glUniform1ui(r->disp_rndr.pvideo_color_key_enable_loc,
                  color_key_enabled);
 
-    unsigned int color_key = d->pvideo.regs[NV_PVIDEO_COLOR_KEY] & 0xFFFFF;
+    unsigned int color_key = d->pvideo.regs[NV_PVIDEO_COLOR_KEY] & 0xFFFFFF;
     glUniform3f(r->disp_rndr.pvideo_color_key_loc,
                 GET_MASK(color_key, NV_PVIDEO_COLOR_KEY_RED) / 255.0,
                 GET_MASK(color_key, NV_PVIDEO_COLOR_KEY_GREEN) / 255.0,
