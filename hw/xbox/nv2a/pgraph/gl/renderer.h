@@ -80,6 +80,7 @@ typedef struct TextureBinding {
     bool border_color_set;
     GLenum gl_target;
     GLuint gl_texture;
+    uint32_t lod_bias;
 } TextureBinding;
 
 typedef struct ShaderModuleCacheKey {

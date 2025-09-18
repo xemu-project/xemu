@@ -107,6 +107,15 @@ static bool check_texture_possibly_dirty(NV2AState *d,
     return possibly_dirty;
 }
 
+static inline float convert_lod_bias(uint32_t lod_bias)
+{
+    int sign_extended_bias = lod_bias;
+    if (lod_bias & (1 << 12)) {
+        sign_extended_bias |= ~NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS;
+    }
+    return (float)sign_extended_bias / 256.f;
+}
+
 static void apply_texture_parameters(TextureBinding *binding,
                                      const BasicColorFormatInfo *f,
                                      unsigned int dimensionality,
@@ -120,6 +129,8 @@ static void apply_texture_parameters(TextureBinding *binding,
     unsigned int addru = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU);
     unsigned int addrv = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV);
     unsigned int addrp = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP);
+    unsigned int lod_bias =
+        GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS);
 
     if (f->linear) {
         /* somtimes games try to set mipmap min filters on linear textures.
@@ -145,6 +156,10 @@ static void apply_texture_parameters(TextureBinding *binding,
         glTexParameteri(binding->gl_target, GL_TEXTURE_MAG_FILTER,
                         pgraph_texture_mag_filter_gl_map[mag_filter]);
         binding->mag_filter = mag_filter;
+    }
+    if (lod_bias != binding->lod_bias) {
+        binding->lod_bias = lod_bias;
+        glTexParameterf(binding->gl_target, GL_TEXTURE_LOD_BIAS, convert_lod_bias(lod_bias));
     }
 
     /* Texture wrapping */
