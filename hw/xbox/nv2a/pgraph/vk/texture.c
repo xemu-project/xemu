@@ -1344,8 +1344,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
             GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU)),
         .addressModeV = lookup_texture_address_mode(
             GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV)),
-        .addressModeW = lookup_texture_address_mode(
-            GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP)),
+        .addressModeW = (state.dimensionality > 2) ? lookup_texture_address_mode(
+            GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP)) : 0,
         .anisotropyEnable = VK_FALSE,
         // .anisotropyEnable = VK_TRUE,
         // .maxAnisotropy = properties.limits.maxSamplerAnisotropy,

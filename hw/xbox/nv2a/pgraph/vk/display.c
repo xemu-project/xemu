@@ -213,14 +213,14 @@ static const char *display_frag_glsl =
     "    vec4 pvideo_pos;\n"
     "    vec4 pvideo_scale;\n"
     "    bool pvideo_color_key_enable;\n"
-    "    vec4 pvideo_color_key;\n"
+    "    vec3 pvideo_color_key;\n"
     "};\n"
     "layout(location = 0) out vec4 out_Color;\n"
     "void main()\n"
     "{\n"
     "    vec2 tex_coord = gl_FragCoord.xy/display_size;\n"
     "    float rel = display_size.y/textureSize(tex, 0).y/line_offset;\n"
-    "    tex_coord.y = 1 + rel*(tex_coord.y - 1);"
+    "    tex_coord.y = 1 + rel*(tex_coord.y - 1);\n"
     "    tex_coord.y = 1 - tex_coord.y;\n" // GL compat
     "    out_Color.rgba = texture(tex, tex_coord);\n"
     "    if (pvideo_enable) {\n"
@@ -228,7 +228,7 @@ static const char *display_frag_glsl =
     "        vec4 output_region = vec4(pvideo_pos.xy, pvideo_pos.xy + pvideo_pos.zw);\n"
     "        bvec4 clip = bvec4(lessThan(screen_coord, output_region.xy),\n"
     "                           greaterThan(screen_coord, output_region.zw));\n"
-    "        if (!any(clip) && (!pvideo_color_key_enable || out_Color.rgba == pvideo_color_key)) {\n"
+    "        if (!any(clip) && (!pvideo_color_key_enable || out_Color.rgb == pvideo_color_key)) {\n"
     "            vec2 out_xy = screen_coord - pvideo_pos.xy;\n"
     "            vec2 in_st = (pvideo_in_pos + out_xy * pvideo_scale.xy) / textureSize(pvideo_tex, 0);\n"
     "            out_Color.rgba = texture(pvideo_tex, in_st);\n"
@@ -849,9 +849,7 @@ static PvideoState get_pvideo_state(PGRAPHState *pg)
     state.color_key_enabled =
         GET_MASK(d->pvideo.regs[NV_PVIDEO_FORMAT], NV_PVIDEO_FORMAT_DISPLAY);
 
-    // TODO: Verify that masking off the top byte is correct.
-    // SeaBlade sets a color key of 0x80000000 but the texture passed into the
-    // shader is cleared to 0 alpha.
+    // Note: PVIDEO color keying ignores alpha.
     state.color_key = d->pvideo.regs[NV_PVIDEO_COLOR_KEY] & 0xFFFFFF;
 
     assert(state.offset + state.pitch * state.in_height <= state.limit);
@@ -883,14 +881,13 @@ static void update_uniforms(PGRAPHState *pg, SurfaceBinding *surface)
     if (pvideo->enabled) {
         uniform1i(l, uniform_index(l, "pvideo_color_key_enable"),
                   pvideo->color_key_enabled);
-        uniform4f(
+        uniform3f(
             l, uniform_index(l, "pvideo_color_key"),
             GET_MASK(pvideo->color_key, NV_PVIDEO_COLOR_KEY_RED) / 255.0,
             GET_MASK(pvideo->color_key, NV_PVIDEO_COLOR_KEY_GREEN) / 255.0,
-            GET_MASK(pvideo->color_key, NV_PVIDEO_COLOR_KEY_BLUE) / 255.0,
-            GET_MASK(pvideo->color_key, NV_PVIDEO_COLOR_KEY_ALPHA) / 255.0);
-        uniform2f(l, uniform_index(l, "pvideo_in_pos"), pvideo->in_s,
-                  pvideo->in_t);
+            GET_MASK(pvideo->color_key, NV_PVIDEO_COLOR_KEY_BLUE) / 255.0);
+        uniform2f(l, uniform_index(l, "pvideo_in_pos"), pvideo->in_s / 16.f,
+                  pvideo->in_t / 8.f);
         uniform4f(l, uniform_index(l, "pvideo_pos"), pvideo->out_x,
                   pvideo->out_y, pvideo->out_width, pvideo->out_height);
         uniform4f(l, uniform_index(l, "pvideo_scale"), pvideo->scale_x,

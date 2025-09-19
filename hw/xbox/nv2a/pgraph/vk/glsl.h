@@ -165,10 +165,17 @@ void uniform2f(ShaderUniformLayout *layout, int idx, float v0, float v1)
 }
 
 static inline
+void uniform3f(ShaderUniformLayout *layout, int idx, float v0, float v1, float v2)
+{
+    float values[] = { v0, v1, v2 };
+    uniform1fv(layout, idx, 3, values);
+}
+
+static inline
 void uniform4f(ShaderUniformLayout *layout, int idx, float v0, float v1, float v2, float v3)
 {
-	float values[] = { v0, v1, v2, v3 };
-	uniform1fv(layout, idx, 4, values);
+    float values[] = { v0, v1, v2, v3 };
+    uniform1fv(layout, idx, 4, values);
 }
 
 static inline
