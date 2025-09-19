@@ -1336,7 +1336,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD ||
         min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_NEARESTLOD;
 
-    float lod_bias = convert_lod_bias(
+    float lod_bias = pgraph_convert_lod_bias_to_float(
         GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS));
     if (lod_bias > r->device_props.limits.maxSamplerLodBias) {
         lod_bias = r->device_props.limits.maxSamplerLodBias;

@@ -150,7 +150,8 @@ static void apply_texture_parameters(TextureBinding *binding,
     }
     if (lod_bias != binding->lod_bias) {
         binding->lod_bias = lod_bias;
-        glTexParameterf(binding->gl_target, GL_TEXTURE_LOD_BIAS, convert_lod_bias(lod_bias));
+        glTexParameterf(binding->gl_target, GL_TEXTURE_LOD_BIAS,
+                        pgraph_convert_lod_bias_to_float(lod_bias));
     }
 
     /* Texture wrapping */
