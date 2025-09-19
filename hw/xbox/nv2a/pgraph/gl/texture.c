@@ -113,7 +113,8 @@ static void apply_texture_parameters(TextureBinding *binding,
                                      unsigned int filter,
                                      unsigned int address,
                                      bool is_bordered,
-                                     uint32_t border_color)
+                                     uint32_t border_color,
+                                     uint32_t max_anisotropy)
 {
     unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
     unsigned int mag_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
@@ -181,6 +182,8 @@ static void apply_texture_parameters(TextureBinding *binding,
         needs_border_color = needs_border_color || binding->addrp == NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER;
     }
 
+    glTexParameterf(binding->gl_target, GL_TEXTURE_MAX_ANISOTROPY, max_anisotropy);
+
     if (!is_bordered && needs_border_color) {
         if (!binding->border_color_set || binding->border_color != border_color) {
             /* FIXME: Color channels might be wrong order */
@@ -219,6 +222,9 @@ void pgraph_gl_bind_textures(NV2AState *d)
         uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i*4);
         uint32_t address = pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + i*4);
         uint32_t border_color = pgraph_reg_r(pg, NV_PGRAPH_BORDERCOLOR0 + i*4);
+        uint32_t max_anisotropy =
+            1 << (GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_TEXCTL0_0 + i*4),
+                           NV_PGRAPH_TEXCTL0_0_MAX_ANISOTROPY));
 
         /* Check for unsupported features */
         if (filter & NV_PGRAPH_TEXFILTER0_ASIGNED) NV2A_UNIMPLEMENTED("NV_PGRAPH_TEXFILTER0_ASIGNED");
@@ -268,7 +274,8 @@ void pgraph_gl_bind_textures(NV2AState *d)
                                          filter,
                                          address,
                                          state.border,
-                                         border_color);
+                                         border_color,
+                                         max_anisotropy);
                 continue;
             }
         }
@@ -378,7 +385,8 @@ void pgraph_gl_bind_textures(NV2AState *d)
                                  filter,
                                  address,
                                  state.border,
-                                 border_color);
+                                 border_color,
+                                 max_anisotropy);
 
         if (r->texture_binding[i]) {
             if (r->texture_binding[i]->gl_target != binding->gl_target) {
