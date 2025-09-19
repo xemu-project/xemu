@@ -107,15 +107,6 @@ static bool check_texture_possibly_dirty(NV2AState *d,
     return possibly_dirty;
 }
 
-static inline float convert_lod_bias(uint32_t lod_bias)
-{
-    int sign_extended_bias = lod_bias;
-    if (lod_bias & (1 << 12)) {
-        sign_extended_bias |= ~NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS;
-    }
-    return (float)sign_extended_bias / 256.f;
-}
-
 static void apply_texture_parameters(TextureBinding *binding,
                                      const BasicColorFormatInfo *f,
                                      unsigned int dimensionality,
@@ -126,11 +117,11 @@ static void apply_texture_parameters(TextureBinding *binding,
 {
     unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
     unsigned int mag_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
+    unsigned int lod_bias =
+        GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS);
     unsigned int addru = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU);
     unsigned int addrv = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV);
     unsigned int addrp = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP);
-    unsigned int lod_bias =
-        GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS);
 
     if (f->linear) {
         /* somtimes games try to set mipmap min filters on linear textures.
@@ -742,6 +733,7 @@ static TextureBinding* generate_texture(const TextureShape s,
     ret->data_hash = 0;
     ret->min_filter = 0xFFFFFFFF;
     ret->mag_filter = 0xFFFFFFFF;
+    ret->lod_bias = 0xFFFFFFFF;
     ret->addru = 0xFFFFFFFF;
     ret->addrv = 0xFFFFFFFF;
     ret->addrp = 0xFFFFFFFF;

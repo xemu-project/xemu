@@ -51,15 +51,6 @@ static VkSamplerAddressMode lookup_texture_address_mode(int idx)
     return pgraph_texture_addr_vk_map[idx];
 }
 
-static inline float convert_lod_bias(uint32_t lod_bias)
-{
-    int sign_extended_bias = lod_bias;
-    if (lod_bias & (1 << 12)) {
-        sign_extended_bias |= ~NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS;
-    }
-    return (float)sign_extended_bias / 256.f;
-}
-
 // FIXME: Move to common
 // FIXME: We can shrink the size of this structure
 // FIXME: Use simple allocator
@@ -1345,6 +1336,12 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD ||
         min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_NEARESTLOD;
 
+    float lod_bias = convert_lod_bias(
+        GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS));
+    if (lod_bias > r->device_props.limits.maxSamplerLodBias) {
+        lod_bias = r->device_props.limits.maxSamplerLodBias;
+    }
+
     VkSamplerCreateInfo sampler_create_info = {
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .magFilter = vk_mag_filter,
@@ -1365,8 +1362,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
                                        VK_SAMPLER_MIPMAP_MODE_LINEAR,
         .minLod = mipmap_en ? MIN(state.min_mipmap_level, state.levels - 1) : 0.0,
         .maxLod = mipmap_en ? MIN(state.max_mipmap_level, state.levels - 1) : 0.0,
-        .mipLodBias = convert_lod_bias(
-            GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS)),
+        .mipLodBias = lod_bias,
         .pNext = sampler_next_struct,
     };
 

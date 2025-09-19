@@ -73,6 +73,7 @@ typedef struct TextureBinding {
     unsigned int scale;
     unsigned int min_filter;
     unsigned int mag_filter;
+    uint32_t lod_bias;
     unsigned int addru;
     unsigned int addrv;
     unsigned int addrp;
@@ -80,7 +81,6 @@ typedef struct TextureBinding {
     bool border_color_set;
     GLenum gl_target;
     GLuint gl_texture;
-    uint32_t lod_bias;
 } TextureBinding;
 
 typedef struct ShaderModuleCacheKey {
