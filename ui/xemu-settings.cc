@@ -270,7 +270,7 @@ GamepadMappings *xemu_settings_load_gamepad_mapping(const char *guid)
     cnode->free_allocations(&g_config);
     cnode->children.push_back(*cnode->array_item_type);
     auto &e = cnode->children.back();
-    e.child("gamepad_id")->set_string(std::string(guid));
+    e.child("gamepad_id")->set_string(guid);
     cnode->store_to_struct(&g_config);
 
     return &g_config.input
