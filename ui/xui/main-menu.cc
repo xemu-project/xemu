@@ -47,8 +47,7 @@
 MainMenuScene g_main_menu;
 
 MainMenuTabView::~MainMenuTabView() {}
-void MainMenuTabView::Draw() {}
-void MainMenuTabView::Hide()
+void MainMenuTabView::Draw()
 {
 }
 
