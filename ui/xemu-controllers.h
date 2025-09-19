@@ -79,7 +79,7 @@ extern int *g_keyboard_scancode_map[25];
 GamepadMappings *xemu_settings_load_gamepad_mapping(const char *guid);
 
 #ifdef __cplusplus
-}
+} // extern "C"
 #endif
 
 #endif // XEMU_CONTROLLERS_H

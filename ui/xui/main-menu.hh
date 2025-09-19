@@ -38,7 +38,9 @@ class MainMenuTabView
 public:
     virtual ~MainMenuTabView();
     virtual void Draw();
-    virtual void Hide();
+    virtual void Hide()
+    {
+    }
 };
 
 class MainMenuGeneralView : public virtual MainMenuTabView
