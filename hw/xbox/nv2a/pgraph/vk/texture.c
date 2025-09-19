@@ -1340,6 +1340,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS));
     if (lod_bias > r->device_props.limits.maxSamplerLodBias) {
         lod_bias = r->device_props.limits.maxSamplerLodBias;
+    } else if (lod_bias < -r->device_props.limits.maxSamplerLodBias) {
+        lod_bias = -r->device_props.limits.maxSamplerLodBias;
     }
 
     VkSamplerCreateInfo sampler_create_info = {
