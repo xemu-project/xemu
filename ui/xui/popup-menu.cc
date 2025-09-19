@@ -390,9 +390,10 @@ public:
                  std::filesystem::directory_iterator(directory)) {
                 const auto &file_path = file.path();
                 if (std::filesystem::is_regular_file(file_path) &&
-                    file_path.extension() == ".iso") {
+                    (file_path.extension() == ".iso" ||
+                     file_path.extension() == ".xiso")) {
                     sorted_file_names.insert(
-                        { file_path.stem().string(), file_path });
+                        { file_path.stem().string(), file_path.string() });
                 }
             }
         }
