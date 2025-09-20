@@ -73,30 +73,13 @@ void pgraph_vk_image_blit(NV2AState *d)
     hwaddr source_addr = source - d->vram_ptr;
     hwaddr dest_addr = dest - d->vram_ptr;
 
-    SurfaceBinding *surf_src = pgraph_vk_surface_get(d, source_addr);
-    if (surf_src) {
-        pgraph_vk_surface_download_if_dirty(d, surf_src);
-    }
-
-    SurfaceBinding *surf_dest = pgraph_vk_surface_get(d, dest_addr);
-    if (surf_dest) {
-        if (image_blit->height < surf_dest->height ||
-            image_blit->width < surf_dest->width) {
-            pgraph_vk_surface_download_if_dirty(d, surf_dest);
-        } else {
-            // The blit will completely replace the surface so any pending
-            // download should be discarded.
-            surf_dest->download_pending = false;
-            surf_dest->draw_dirty = false;
-        }
-        surf_dest->upload_pending = true;
-        pg->draw_time++;
-    }
-
     hwaddr source_offset = image_blit->in_y * context_surfaces->source_pitch +
                            image_blit->in_x * bytes_per_pixel;
     hwaddr dest_offset = image_blit->out_y * context_surfaces->dest_pitch +
                          image_blit->out_x * bytes_per_pixel;
+
+    source_addr += source_offset;
+    dest_addr += dest_offset;
 
     hwaddr source_size =
         (image_blit->height - 1) * context_surfaces->source_pitch +
@@ -105,12 +88,16 @@ void pgraph_vk_image_blit(NV2AState *d)
                        image_blit->width * bytes_per_pixel;
 
     /* FIXME: What does hardware do in this case? */
-    assert(source_addr + source_offset + source_size <=
-           memory_region_size(d->vram));
-    assert(dest_addr + dest_offset + dest_size <= memory_region_size(d->vram));
+    assert(source_addr + source_size <= memory_region_size(d->vram));
+    assert(dest_addr + dest_size <= memory_region_size(d->vram));
 
     uint8_t *source_row = source + source_offset;
     uint8_t *dest_row = dest + dest_offset;
+
+    pgraph_vk_download_surfaces_in_range_if_dirty(pg, source_addr, source_size);
+
+    // TODO: just clear dirty_draw flag on surfaces that are fully overlapped.
+    pgraph_vk_download_surfaces_in_range_if_dirty(pg, dest_addr, dest_size);
 
     if (image_blit->operation == NV09F_SET_OPERATION_SRCCOPY) {
         // NV2A_GL_DPRINTF(false, "NV09F_SET_OPERATION_SRCCOPY");
@@ -141,8 +128,6 @@ void pgraph_vk_image_blit(NV2AState *d)
         assert(false && "Unknown blit operation");
     }
 
-    NV2A_DPRINTF("  - 0x%tx -> 0x%tx\n", source_addr, dest_addr);
-
     bool needs_alpha_patching;
     uint8_t alpha_override;
     switch (context_surfaces->color_format) {
@@ -169,9 +154,11 @@ void pgraph_vk_image_blit(NV2AState *d)
         }
     }
 
-    dest_addr += dest_offset;
     memory_region_set_client_dirty(d->vram, dest_addr, dest_size,
                                    DIRTY_MEMORY_VGA);
     memory_region_set_client_dirty(d->vram, dest_addr, dest_size,
                                    DIRTY_MEMORY_NV2A_TEX);
+    if (pgraph_vk_mark_surfaces_in_range_for_upload(d, dest_addr, dest_size)) {
+        ++pg->draw_time;
+    }
 }
