@@ -208,38 +208,10 @@ void pgraph_gl_draw_begin(NV2AState *d)
                     & NV_PGRAPH_SETUPRASTER_FRONTFACE
                         ? GL_CW : GL_CCW);
 
-    /* Polygon offset */
-    /* FIXME: GL implementation-specific, maybe do this in VS? */
-    if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-            NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE) {
-        glEnable(GL_POLYGON_OFFSET_FILL);
-    } else {
-        glDisable(GL_POLYGON_OFFSET_FILL);
-    }
-    if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-            NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE) {
-        glEnable(GL_POLYGON_OFFSET_LINE);
-    } else {
-        glDisable(GL_POLYGON_OFFSET_LINE);
-    }
-    if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-            NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE) {
-        glEnable(GL_POLYGON_OFFSET_POINT);
-    } else {
-        glDisable(GL_POLYGON_OFFSET_POINT);
-    }
-    if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
-        uint32_t zfactor_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR);
-        GLfloat zfactor = *(float*)&zfactor_u32;
-        uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
-        GLfloat zbias = *(float*)&zbias_u32;
-        // FIXME: with Linux and Mesa, zbias must be multiplied by 0.5 in
-        // order to have the same depth value offset as Xbox.
-        glPolygonOffset(zfactor, zbias);
-    }
+    /* Polygon offset is handled in geometry and fragment shaders explicitly */
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glDisable(GL_POLYGON_OFFSET_LINE);
+    glDisable(GL_POLYGON_OFFSET_POINT);
 
     /* Depth testing */
     if (depth_test) {
@@ -255,11 +227,8 @@ void pgraph_gl_draw_begin(NV2AState *d)
 
     glEnable(GL_DEPTH_CLAMP);
 
-    if (GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
-                 NV_PGRAPH_CONTROL_3_SHADEMODE) ==
-        NV_PGRAPH_CONTROL_3_SHADEMODE_FLAT) {
-        glProvokingVertex(GL_FIRST_VERTEX_CONVENTION);
-    }
+    /* Set first vertex convention to match Vulkan default */
+    glProvokingVertex(GL_FIRST_VERTEX_CONVENTION);
 
     if (stencil_test) {
         glEnable(GL_STENCIL_TEST);
