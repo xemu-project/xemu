@@ -1,0 +1,30 @@
+name: Windows build
+
+on:
+  pull_request:
+
+# Cancel previous runs if a more recent commit is pushed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+permissions: read-all
+
+jobs:
+  windows-build:
+    name: Build and run tests on Windows using CMake
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: '0'
+      - name: Clone submodules
+        run: git submodule update --init --recursive
+      - name: Build
+        run: |
+          mkdir build
+          cd build
+          cmake -DSPIRV_REFLECT_BUILD_TESTS=ON ..
+
+          cmake --build . --config Release -- /nologo /verbosity:minimal /maxcpucount
