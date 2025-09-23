@@ -547,6 +547,7 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
         F(occlusionQueryPrecise, true),
         F(fillModeNonSolid, true),
         F(wideLines, false),
+        F(samplerAnisotropy, false),
         #undef F
         // clang-format on
     };
