@@ -20,6 +20,7 @@
  */
 
 #include "hw/xbox/nv2a/nv2a_regs.h"
+#include "hw/xbox/nv2a/debug_gl.h"
 #include <hw/xbox/nv2a/nv2a_int.h>
 #include "debug.h"
 #include "renderer.h"
@@ -280,7 +281,7 @@ void pgraph_gl_init_buffers(NV2AState *d)
     glGenVertexArrays(1, &r->gl_vertex_array);
     glBindVertexArray(r->gl_vertex_array);
 
-    assert(glGetError() == GL_NO_ERROR);
+    ASSERT_NO_GL_ERROR();
 }
 
 void pgraph_gl_finalize_buffers(PGRAPHState *pg)
