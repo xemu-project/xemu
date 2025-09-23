@@ -19,6 +19,7 @@ body:
         If you have questions about how to provide the information below, join the Discord server to get help from the community.
   - type: textarea
     attributes:
+      id: game-title
       label: Title
       description: Affected title URL and version information. You can find the title URL by searching for the title by name on [the compatibility tracking system](https://xemu.app/#compatibility).
       placeholder: |
@@ -29,6 +30,7 @@ body:
       required: true
   - type: textarea
     attributes:
+      id: bug-description
       label: Bug Description
       description: |
         A brief description of the problem, including steps to reproduce the issue and any relevant screenshots of the problem.
@@ -47,6 +49,7 @@ body:
       required: true
   - type: textarea
     attributes:
+      id: expected-behavior
       label: Expected Behavior
       description: A brief description of the expected behavior.
       placeholder: |
@@ -57,6 +60,7 @@ body:
       required: true
   - type: textarea
     attributes:
+      id: xemu-version
       label: xemu Version
       description: Affected xemu version. You can find the xemu version within xemu by navigating to <kbd>Help</kbd>&rarr;<kbd>About</kbd>. If known, include the last known-working version of xemu.
       placeholder: |
@@ -67,6 +71,7 @@ body:
       required: true
   - type: textarea
     attributes:
+      id: system-information
       label: System Information
       description: Basic information about your system.
       placeholder: |
@@ -76,5 +81,6 @@ body:
         GPU Driver: 3.3.0 NVIDIA 450.119.03
   - type: textarea
     attributes:
+      id: additional-context
       label: Additional Context
       description: Any additional information or log output.
