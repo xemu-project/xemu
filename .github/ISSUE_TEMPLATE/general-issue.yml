@@ -18,8 +18,8 @@ body:
 
         If you have questions about how to provide the information below, join the Discord server to get help from the community.
   - type: textarea
+    id: bug-description
     attributes:
-      id: bug-description
       label: Bug Description
       description: |
         A brief description of the problem, including steps to reproduce the issue and any relevant screenshots of the problem.
@@ -42,8 +42,8 @@ body:
     validations:
       required: true
   - type: textarea
+    id: expected-behavior
     attributes:
-      id: expected-behavior
       label: Expected Behavior
       description: A brief description of the expected behavior.
       placeholder: |
@@ -51,8 +51,8 @@ body:
     validations:
       required: true
   - type: textarea
+    id: xemu-version
     attributes:
-      id: xemu-version
       label: xemu Version
       description: Affected xemu version. You can find the xemu version within xemu by navigating to <kbd>Help</kbd>&rarr;<kbd>About</kbd>. If known, include the last known-working version of xemu.
       placeholder: |
@@ -62,8 +62,8 @@ body:
     validations:
       required: true
   - type: textarea
+    id: system-information
     attributes:
-      id: system-information
       label: System Information
       description: Basic information about your system.
       placeholder: |
@@ -72,7 +72,7 @@ body:
         GPU: NVIDIA Quadro P2000
         GPU Driver: 3.3.0 NVIDIA 450.119.03
   - type: textarea
+    id: additional-context
     attributes:
-      id: additional-context
       label: Additional Context
       description: Any additional information or log output.
