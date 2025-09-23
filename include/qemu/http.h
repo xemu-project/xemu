@@ -35,6 +35,8 @@ typedef struct http_progress_cb_info {
     size_t ultotal;
 } http_progress_cb_info;
 
+bool ensure_libcurl_initialized(Error **errp);
+
 int http_get(const char *url, GByteArray *response_body,
              http_progress_cb_info *progress_info, Error **errp);
 int http_post_json(const char *url, const char *json_data, Error **errp);
