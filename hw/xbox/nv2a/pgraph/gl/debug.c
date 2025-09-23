@@ -35,13 +35,7 @@
 #include "thirdparty/renderdoc_app.h"
 #endif
 
-#define CHECK_GL_ERROR() do { \
-  GLenum error = glGetError(); \
-  if (error != GL_NO_ERROR) {  \
-      fprintf(stderr, "OpenGL error: 0x%X (%d) at %s:%d\n", error, error, __FILE__, __LINE__); \
-      assert(!"OpenGL error detected");                                                        \
-  } \
-} while(0)
+#include "hw/xbox/nv2a/debug_gl.h"
 
 static bool has_GL_GREMEDY_frame_terminator = false;
 static bool has_GL_KHR_debug = false;
@@ -65,7 +59,7 @@ void gl_debug_initialize(void)
          */
 #else
        glEnable(GL_DEBUG_OUTPUT);
-       assert(glGetError() == GL_NO_ERROR);
+       ASSERT_NO_GL_ERROR();
 #endif
     }
 
@@ -112,13 +106,13 @@ void gl_debug_group_begin(const char *fmt, ...)
     }
 
     /* Check for errors before starting real commands in group */
-    assert(glGetError() == GL_NO_ERROR);
+    ASSERT_NO_GL_ERROR();
 }
 
 void gl_debug_group_end(void)
 {
     /* Check for errors when leaving group */
-    assert(glGetError() == GL_NO_ERROR);
+    ASSERT_NO_GL_ERROR();
 
     /* Debug group end */
     if (has_GL_KHR_debug) {
@@ -142,13 +136,12 @@ void gl_debug_label(GLenum target, GLuint name, const char *fmt, ...)
 
     glObjectLabel(target, name, n, buffer);
 
-    GLenum err = glGetError();
-    assert(err == GL_NO_ERROR);
+    ASSERT_NO_GL_ERROR();
 }
 
 void gl_debug_frame_terminator(void)
 {
-    CHECK_GL_ERROR();
+    ASSERT_NO_GL_ERROR();
 
 #ifdef CONFIG_RENDERDOC
     if (nv2a_dbg_renderdoc_available()) {
@@ -190,7 +183,7 @@ void gl_debug_frame_terminator(void)
 #endif
     if (has_GL_GREMEDY_frame_terminator) {
         glFrameTerminatorGREMEDY();
-        CHECK_GL_ERROR();
+        ASSERT_NO_GL_ERROR();
     }
 }
 
