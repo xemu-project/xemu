@@ -28,6 +28,8 @@
 #include <stdarg.h>
 #include <assert.h>
 
+#include <SDL3/SDL.h>
+
 #ifdef CONFIG_RENDERDOC
 #include "trace/control.h"
 
@@ -35,15 +37,8 @@
 #include "thirdparty/renderdoc_app.h"
 #endif
 
-#include <SDL3/SDL.h>
+#include "hw/xbox/nv2a/debug_gl.h"
 
-#define CHECK_GL_ERROR() do { \
-  GLenum error = glGetError(); \
-  if (error != GL_NO_ERROR) {  \
-      fprintf(stderr, "OpenGL error: 0x%X (%d) at %s:%d\n", error, error, __FILE__, __LINE__); \
-      assert(!"OpenGL error detected");                                                        \
-  } \
-} while(0)
 
 static PFNGLPUSHDEBUGGROUPPROC _glPushDebugGroup = NULL;
 static PFNGLPOPDEBUGGROUPPROC _glPopDebugGroup = NULL;
@@ -85,10 +80,10 @@ void gl_debug_initialize(void)
         _glPopDebugGroup = glPopDebugGroup;
         _glDebugMessageInsert = glDebugMessageInsert;
         _glObjectLabel = glObjectLabel;
-        glEnable(GL_DEBUG_OUTPUT);
-       CHECK_GL_ERROR();
 #endif // defined(__APPLE__)
 
+       glEnable(GL_DEBUG_OUTPUT);
+       ASSERT_NO_GL_ERROR();
     }
 
     bool has_GL_GREMEDY_frame_terminator =
@@ -146,13 +141,13 @@ void gl_debug_group_begin(const char *fmt, ...)
     }
 
     /* Check for errors before starting real commands in group */
-    CHECK_GL_ERROR();
+    ASSERT_NO_GL_ERROR();
 }
 
 void gl_debug_group_end(void)
 {
     /* Check for errors when leaving group */
-    CHECK_GL_ERROR();
+    ASSERT_NO_GL_ERROR();
 
     /* Debug group end */
     if (_glPopDebugGroup) {
@@ -176,12 +171,12 @@ void gl_debug_label(GLenum target, GLuint name, const char *fmt, ...)
 
     _glObjectLabel(target, name, n, buffer);
 
-    CHECK_GL_ERROR();
+    ASSERT_NO_GL_ERROR();
 }
 
 void gl_debug_frame_terminator(void)
 {
-    CHECK_GL_ERROR();
+    ASSERT_NO_GL_ERROR();
 
 #ifdef CONFIG_RENDERDOC
     if (nv2a_dbg_renderdoc_available()) {
@@ -223,7 +218,7 @@ void gl_debug_frame_terminator(void)
 #endif
     if (_glFrameTerminatorGREMEDY) {
         _glFrameTerminatorGREMEDY();
-        CHECK_GL_ERROR();
+        ASSERT_NO_GL_ERROR();
     }
 }
 
