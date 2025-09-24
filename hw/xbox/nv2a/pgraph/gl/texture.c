@@ -107,7 +107,8 @@ static bool check_texture_possibly_dirty(NV2AState *d,
     return possibly_dirty;
 }
 
-static void apply_texture_parameters(TextureBinding *binding,
+static void apply_texture_parameters(PGRAPHGLState *r,
+                                     TextureBinding *binding,
                                      const BasicColorFormatInfo *f,
                                      unsigned int dimensionality,
                                      unsigned int filter,
@@ -182,7 +183,10 @@ static void apply_texture_parameters(TextureBinding *binding,
         needs_border_color = needs_border_color || binding->addrp == NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER;
     }
 
-    glTexParameterf(binding->gl_target, GL_TEXTURE_MAX_ANISOTROPY, max_anisotropy);
+    if (r->supported_extensions.texture_filter_anisotropic) {
+        glTexParameterf(binding->gl_target, GL_TEXTURE_MAX_ANISOTROPY_EXT,
+                        max_anisotropy);
+    }
 
     if (!is_bordered && needs_border_color) {
         if (!binding->border_color_set || binding->border_color != border_color) {
@@ -268,7 +272,8 @@ void pgraph_gl_bind_textures(NV2AState *d)
             if (reusable) {
                 glBindTexture(r->texture_binding[i]->gl_target,
                               r->texture_binding[i]->gl_texture);
-                apply_texture_parameters(r->texture_binding[i],
+                apply_texture_parameters(r,
+                                         r->texture_binding[i],
                                          &kelvin_color_format_info_map[state.color_format],
                                          state.dimensionality,
                                          filter,
@@ -379,7 +384,8 @@ void pgraph_gl_bind_textures(NV2AState *d)
             binding->scale = pg->surface_scale_factor;
         }
 
-        apply_texture_parameters(binding,
+        apply_texture_parameters(r,
+                                 binding,
                                  &kelvin_color_format_info_map[state.color_format],
                                  state.dimensionality,
                                  filter,

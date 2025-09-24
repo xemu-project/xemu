@@ -1360,8 +1360,9 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
             GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV)),
         .addressModeW = (state.dimensionality > 2) ? lookup_texture_address_mode(
             GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP)) : 0,
-        .anisotropyEnable = r->enabled_physical_device_features.wideLines &&
-                            sampler_max_anisotropy > 1,
+        .anisotropyEnable =
+            r->enabled_physical_device_features.samplerAnisotropy &&
+            sampler_max_anisotropy > 1,
         .maxAnisotropy = sampler_max_anisotropy,
         .borderColor = vk_border_color,
         .compareEnable = VK_FALSE,
