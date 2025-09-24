@@ -2498,6 +2498,7 @@ DEF_METHOD(NV097, SET_BEGIN_END)
     } else {
         if (pg->primitive_mode != PRIM_TYPE_INVALID) {
             NV2A_DPRINTF("Begin without End!\n");
+            return;
         }
         assert(parameter <= NV097_SET_BEGIN_END_OP_POLYGON);
         pg->primitive_mode = parameter;
@@ -3062,7 +3063,7 @@ void pgraph_get_clear_color(PGRAPHState *pg, float rgba[4])
         *b = 1.0f;
         fprintf(stderr, "CLEAR_SURFACE for color_format 0x%x unsupported",
                 pg->surface_shape.color_format);
-        assert(false);
+        assert(!"CLEAR_SURFACE not supported for selected surface format");
         break;
     }
 
@@ -3076,7 +3077,7 @@ void pgraph_get_clear_color(PGRAPHState *pg, float rgba[4])
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_Z1A7R8G8B8:
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_O1A7R8G8B8:
         *a = ((clear_color >> 24) & 0x7F) / 127.0f;
-        assert(false); /* Untested */
+        assert(!"CLEAR_SURFACE handling for LE_X1A7R8G8B8_Z1A7R8G8B8 and LE_X1A7R8G8B8_O1A7R8G8B8 is untested"); /* Untested */
         break;
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8:
         *a = ((clear_color >> 24) & 0xFF) / 255.0f;

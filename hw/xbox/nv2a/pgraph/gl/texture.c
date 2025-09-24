@@ -117,6 +117,8 @@ static void apply_texture_parameters(TextureBinding *binding,
 {
     unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
     unsigned int mag_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
+    unsigned int lod_bias =
+        GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS);
     unsigned int addru = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU);
     unsigned int addrv = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV);
     unsigned int addrp = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP);
@@ -145,6 +147,11 @@ static void apply_texture_parameters(TextureBinding *binding,
         glTexParameteri(binding->gl_target, GL_TEXTURE_MAG_FILTER,
                         pgraph_texture_mag_filter_gl_map[mag_filter]);
         binding->mag_filter = mag_filter;
+    }
+    if (lod_bias != binding->lod_bias) {
+        binding->lod_bias = lod_bias;
+        glTexParameterf(binding->gl_target, GL_TEXTURE_LOD_BIAS,
+                        pgraph_convert_lod_bias_to_float(lod_bias));
     }
 
     /* Texture wrapping */
@@ -727,6 +734,7 @@ static TextureBinding* generate_texture(const TextureShape s,
     ret->data_hash = 0;
     ret->min_filter = 0xFFFFFFFF;
     ret->mag_filter = 0xFFFFFFFF;
+    ret->lod_bias = 0xFFFFFFFF;
     ret->addru = 0xFFFFFFFF;
     ret->addrv = 0xFFFFFFFF;
     ret->addrp = 0xFFFFFFFF;
