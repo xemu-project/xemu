@@ -73,6 +73,7 @@ typedef struct TextureBinding {
     unsigned int scale;
     unsigned int min_filter;
     unsigned int mag_filter;
+    uint32_t lod_bias;
     unsigned int addru;
     unsigned int addrv;
     unsigned int addrp;

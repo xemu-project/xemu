@@ -696,7 +696,6 @@
 #   define NV_PVIDEO_COLOR_KEY_RED                            0x00FF0000
 #   define NV_PVIDEO_COLOR_KEY_GREEN                          0x0000FF00
 #   define NV_PVIDEO_COLOR_KEY_BLUE                           0x000000FF
-#   define NV_PVIDEO_COLOR_KEY_ALPHA                          0xFF000000
 
 
 #define NV_PTIMER_INTR_0                                 0x00000100
