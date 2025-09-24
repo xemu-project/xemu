@@ -1336,6 +1336,14 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD ||
         min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_NEARESTLOD;
 
+    float lod_bias = pgraph_convert_lod_bias_to_float(
+        GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS));
+    if (lod_bias > r->device_props.limits.maxSamplerLodBias) {
+        lod_bias = r->device_props.limits.maxSamplerLodBias;
+    } else if (lod_bias < -r->device_props.limits.maxSamplerLodBias) {
+        lod_bias = -r->device_props.limits.maxSamplerLodBias;
+    }
+
     VkSamplerCreateInfo sampler_create_info = {
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .magFilter = vk_mag_filter,
@@ -1344,8 +1352,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
             GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU)),
         .addressModeV = lookup_texture_address_mode(
             GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV)),
-        .addressModeW = lookup_texture_address_mode(
-            GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP)),
+        .addressModeW = (state.dimensionality > 2) ? lookup_texture_address_mode(
+            GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP)) : 0,
         .anisotropyEnable = VK_FALSE,
         // .anisotropyEnable = VK_TRUE,
         // .maxAnisotropy = properties.limits.maxSamplerAnisotropy,
@@ -1356,7 +1364,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
                                        VK_SAMPLER_MIPMAP_MODE_LINEAR,
         .minLod = mipmap_en ? MIN(state.min_mipmap_level, state.levels - 1) : 0.0,
         .maxLod = mipmap_en ? MIN(state.max_mipmap_level, state.levels - 1) : 0.0,
-        .mipLodBias = 0.0,
+        .mipLodBias = lod_bias,
         .pNext = sampler_next_struct,
     };
 
