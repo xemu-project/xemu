@@ -385,6 +385,7 @@ void pgraph_gl_draw_end(NV2AState *d)
         // off. This check only seems to trigger during the fragment
         // processing, it is legal to attempt a draw that is entirely
         // clipped regardless of 0x880. See xemu#635 for context.
+        NV2A_GL_DGROUP_END();
         return;
     }
 
