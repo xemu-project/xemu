@@ -28,15 +28,6 @@
 #include "swizzle.h"
 #include "nv2a_vsh_emulator.h"
 
-#define PG_GET_MASK(reg, mask) GET_MASK(pgraph_reg_r(pg, reg), mask)
-#define PG_SET_MASK(reg, mask, value)        \
-    do {                                     \
-        uint32_t rv = pgraph_reg_r(pg, reg); \
-        SET_MASK(rv, mask, value);           \
-        pgraph_reg_w(pg, reg, rv);           \
-    } while (0)
-
-
 NV2AState *g_nv2a;
 
 uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
@@ -1531,6 +1522,14 @@ DEF_METHOD(NV097, SET_SHADE_MODE)
     default:
         /* Discard */
         break;
+    }
+}
+
+DEF_METHOD(NV097, SET_LINE_WIDTH)
+{
+    if (parameter < 0x200) {
+        PG_SET_MASK(NV_PGRAPH_SETUPRASTER, NV_PGRAPH_SETUPRASTER_LINEWIDTH,
+                    parameter);
     }
 }
 
