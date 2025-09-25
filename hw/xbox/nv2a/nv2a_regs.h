@@ -539,6 +539,7 @@
 #define NV_PGRAPH_TEXCTL0_0                              0x000019CC
 #   define NV_PGRAPH_TEXCTL0_0_COLORKEYMODE                     0x03
 #   define NV_PGRAPH_TEXCTL0_0_ALPHAKILLEN                      (1 << 2)
+#   define NV_PGRAPH_TEXCTL0_0_MAX_ANISOTROPY                   0x30
 #   define NV_PGRAPH_TEXCTL0_0_MAX_LOD_CLAMP                    0x0003FFC0
 #   define NV_PGRAPH_TEXCTL0_0_MIN_LOD_CLAMP                    0x3FFC0000
 #   define NV_PGRAPH_TEXCTL0_0_ENABLE                           (1 << 30)
