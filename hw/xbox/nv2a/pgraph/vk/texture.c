@@ -1089,12 +1089,9 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     BasicColorFormatInfo f_basic = kelvin_color_format_info_map[state.color_format];
 
     const hwaddr texture_vram_offset = pgraph_get_texture_phys_addr(pg, texture_idx);
-    size_t texture_palette_data_size;
-    const hwaddr texture_palette_vram_offset =
-        pgraph_get_texture_palette_phys_addr_length(pg, texture_idx,
-                                                    &texture_palette_data_size);
-
     size_t texture_length = pgraph_get_texture_length(pg, &state);
+    hwaddr texture_palette_vram_offset = 0;
+    size_t texture_palette_data_size = 0;
 
     uint32_t filter =
         pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + texture_idx * 4);
@@ -1102,23 +1099,31 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + texture_idx * 4);
     uint32_t border_color_pack32 =
         pgraph_reg_r(pg, NV_PGRAPH_BORDERCOLOR0 + texture_idx * 4);
+    bool is_indexed = (state.color_format ==
+            NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8);
+    uint32_t max_anisotropy =
+        1 << (GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_TEXCTL0_0 + texture_idx*4),
+                       NV_PGRAPH_TEXCTL0_0_MAX_ANISOTROPY));
 
     TextureKey key;
     memset(&key, 0, sizeof(key));
     key.state = state;
     key.texture_vram_offset = texture_vram_offset;
     key.texture_length = texture_length;
-    key.palette_vram_offset = texture_palette_vram_offset;
-    key.palette_length = texture_palette_data_size;
+    if (is_indexed) {
+        texture_palette_vram_offset =
+            pgraph_get_texture_palette_phys_addr_length(
+                pg, texture_idx, &texture_palette_data_size);
+        key.palette_vram_offset = texture_palette_vram_offset;
+        key.palette_length = texture_palette_data_size;
+    }
     key.scale = 1;
 
     // FIXME: Separate sampler from texture
     key.filter = filter;
     key.address = address;
     key.border_color = border_color_pack32;
-
-    bool is_indexed = (state.color_format ==
-            NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8);
+    key.max_anisotropy = max_anisotropy;
 
     bool possibly_dirty = false;
     bool possibly_dirty_checked = false;
@@ -1335,6 +1340,16 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD ||
         min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_NEARESTLOD;
 
+    float lod_bias = pgraph_convert_lod_bias_to_float(
+        GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS));
+    if (lod_bias > r->device_props.limits.maxSamplerLodBias) {
+        lod_bias = r->device_props.limits.maxSamplerLodBias;
+    } else if (lod_bias < -r->device_props.limits.maxSamplerLodBias) {
+        lod_bias = -r->device_props.limits.maxSamplerLodBias;
+    }
+    uint32_t sampler_max_anisotropy =
+        MIN(r->device_props.limits.maxSamplerAnisotropy, max_anisotropy);
+
     VkSamplerCreateInfo sampler_create_info = {
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .magFilter = vk_mag_filter,
@@ -1343,11 +1358,12 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
             GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU)),
         .addressModeV = lookup_texture_address_mode(
             GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV)),
-        .addressModeW = lookup_texture_address_mode(
-            GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP)),
-        .anisotropyEnable = VK_FALSE,
-        // .anisotropyEnable = VK_TRUE,
-        // .maxAnisotropy = properties.limits.maxSamplerAnisotropy,
+        .addressModeW = (state.dimensionality > 2) ? lookup_texture_address_mode(
+            GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP)) : 0,
+        .anisotropyEnable =
+            r->enabled_physical_device_features.samplerAnisotropy &&
+            sampler_max_anisotropy > 1,
+        .maxAnisotropy = sampler_max_anisotropy,
         .borderColor = vk_border_color,
         .compareEnable = VK_FALSE,
         .compareOp = VK_COMPARE_OP_ALWAYS,
@@ -1355,7 +1371,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
                                        VK_SAMPLER_MIPMAP_MODE_LINEAR,
         .minLod = mipmap_en ? MIN(state.min_mipmap_level, state.levels - 1) : 0.0,
         .maxLod = mipmap_en ? MIN(state.max_mipmap_level, state.levels - 1) : 0.0,
-        .mipLodBias = 0.0,
+        .mipLodBias = lod_bias,
         .pNext = sampler_next_struct,
     };
 
@@ -1432,7 +1448,7 @@ void pgraph_vk_bind_textures(NV2AState *d)
     NV2A_VK_DGROUP_END();
 }
 
-static void texture_cache_entry_init(Lru *lru, LruNode *node, void *state)
+static void texture_cache_entry_init(Lru *lru, LruNode *node, const void *state)
 {
     TextureBinding *snode = container_of(node, TextureBinding, node);
 
@@ -1485,7 +1501,8 @@ static void texture_cache_entry_post_evict(Lru *lru, LruNode *node)
     texture_cache_release_node_resources(r, snode);
 }
 
-static bool texture_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+static bool texture_cache_entry_compare(Lru *lru, LruNode *node,
+                                        const void *key)
 {
     TextureBinding *snode = container_of(node, TextureBinding, node);
     return memcmp(&snode->key, key, sizeof(TextureKey));

@@ -68,7 +68,6 @@ if host_os == 'windows'
   util_ss.add(files('miniz/miniz.c'))
 endif
 util_ss.add(files('fast-hash.c'))
-util_ss.add(files('mstring.c'))
 
 if have_user
   util_ss.add(files('selfmap.c'))

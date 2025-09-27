@@ -225,6 +225,8 @@ void pgraph_init(NV2AState *d)
     qemu_event_init(&pg->sync_complete, false);
     qemu_event_init(&pg->flush_complete, false);
     qemu_cond_init(&pg->framebuffer_released);
+    qemu_event_init(&pg->renderer_switch_complete, false);
+    pg->renderer_switch_phase = PGRAPH_RENDERER_SWITCH_PHASE_IDLE;
 
     pg->frame_time = 0;
     pg->draw_time = 0;
@@ -1966,6 +1968,12 @@ DEF_METHOD_INC(NV097, SET_COMBINER_COLOR_ICW)
     pgraph_reg_w(pg, NV_PGRAPH_COMBINECOLORI0 + slot*4, parameter);
 }
 
+DEF_METHOD_INC(NV097, SET_COLOR_KEY_COLOR)
+{
+    int slot = (method - NV097_SET_COLOR_KEY_COLOR) / 4;
+    pgraph_reg_w(pg, NV_PGRAPH_COLORKEYCOLOR0 + slot * 4, parameter);
+}
+
 DEF_METHOD_INC(NV097, SET_VIEWPORT_SCALE)
 {
     int slot = (method - NV097_SET_VIEWPORT_SCALE) / 4;
@@ -2490,6 +2498,7 @@ DEF_METHOD(NV097, SET_BEGIN_END)
     } else {
         if (pg->primitive_mode != PRIM_TYPE_INVALID) {
             NV2A_DPRINTF("Begin without End!\n");
+            return;
         }
         assert(parameter <= NV097_SET_BEGIN_END_OP_POLYGON);
         pg->primitive_mode = parameter;
@@ -3054,7 +3063,7 @@ void pgraph_get_clear_color(PGRAPHState *pg, float rgba[4])
         *b = 1.0f;
         fprintf(stderr, "CLEAR_SURFACE for color_format 0x%x unsupported",
                 pg->surface_shape.color_format);
-        assert(false);
+        assert(!"CLEAR_SURFACE not supported for selected surface format");
         break;
     }
 
@@ -3068,7 +3077,7 @@ void pgraph_get_clear_color(PGRAPHState *pg, float rgba[4])
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_Z1A7R8G8B8:
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_O1A7R8G8B8:
         *a = ((clear_color >> 24) & 0x7F) / 127.0f;
-        assert(false); /* Untested */
+        assert(!"CLEAR_SURFACE handling for LE_X1A7R8G8B8_Z1A7R8G8B8 and LE_X1A7R8G8B8_O1A7R8G8B8 is untested"); /* Untested */
         break;
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8:
         *a = ((clear_color >> 24) & 0xFF) / 255.0f;
@@ -3139,12 +3148,31 @@ void pgraph_write_zpass_pixel_cnt_report(NV2AState *d, uint32_t parameter,
     NV2A_DPRINTF("Report result %d @%" HWADDR_PRIx, result, offset);
 }
 
+static void do_wait_for_renderer_switch(CPUState *cpu, run_on_cpu_data data)
+{
+    NV2AState *d = (NV2AState *)data.host_ptr;
+
+    qemu_mutex_lock(&d->pfifo.lock);
+    d->pgraph.renderer_switch_phase = PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING;
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_event_wait(&d->pgraph.renderer_switch_complete);
+}
+
 void pgraph_process_pending(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
     pg->renderer->ops.process_pending(d);
 
-    if (g_config.display.renderer != pg->renderer->type) {
+    if (g_config.display.renderer != pg->renderer->type &&
+        pg->renderer_switch_phase == PGRAPH_RENDERER_SWITCH_PHASE_IDLE) {
+        pg->renderer_switch_phase = PGRAPH_RENDERER_SWITCH_PHASE_STARTED;
+        qemu_event_reset(&pg->renderer_switch_complete);
+        async_safe_run_on_cpu(qemu_get_cpu(0), do_wait_for_renderer_switch,
+                              RUN_ON_CPU_HOST_PTR(d));
+    }
+
+    if (pg->renderer_switch_phase == PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING) {
         qemu_mutex_lock(&d->pgraph.renderer_lock);
         qemu_mutex_unlock(&d->pfifo.lock);
         qemu_mutex_lock(&d->pgraph.lock);
@@ -3156,14 +3184,13 @@ void pgraph_process_pending(NV2AState *d)
             qemu_mutex_lock(&d->pfifo.lock);
             qemu_mutex_unlock(&d->pgraph.lock);
 
-            if (pg->renderer->ops.process_pending) {
-                pg->renderer->ops.process_pending(d);
-            }
+            pg->renderer->ops.process_pending(d);
 
             qemu_mutex_unlock(&d->pfifo.lock);
             qemu_mutex_lock(&d->pgraph.lock);
             while (pg->framebuffer_in_use) {
-                qemu_cond_wait(&d->pgraph.framebuffer_released, &d->pgraph.renderer_lock);
+                qemu_cond_wait(&d->pgraph.framebuffer_released,
+                               &d->pgraph.renderer_lock);
             }
 
             if (pg->renderer->ops.finalize) {
@@ -3176,6 +3203,9 @@ void pgraph_process_pending(NV2AState *d)
         qemu_mutex_unlock(&d->pgraph.renderer_lock);
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock(&d->pfifo.lock);
+
+        pg->renderer_switch_phase = PGRAPH_RENDERER_SWITCH_PHASE_IDLE;
+        qemu_event_set(&pg->renderer_switch_complete);
     }
 }
 

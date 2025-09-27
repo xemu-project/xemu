@@ -31,8 +31,6 @@
 #include "svf.h"
 #include "hrtf.h"
 
-#define NUM_VOICE_WORKERS 16
-
 typedef struct MCPXAPUState MCPXAPUState;
 
 typedef struct MCPXAPUVPSSLData {
@@ -65,7 +63,8 @@ typedef struct VoiceWorker {
 
 typedef struct VoiceWorkDispatch {
     QemuMutex lock;
-    VoiceWorker workers[NUM_VOICE_WORKERS];
+    int num_workers;
+    VoiceWorker *workers;
     bool workers_should_exit;
     QemuCond work_pending;
     uint64_t workers_pending;
