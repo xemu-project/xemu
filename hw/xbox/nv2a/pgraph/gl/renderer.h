@@ -234,6 +234,10 @@ typedef struct PGRAPHGLState {
 
     GLfloat supported_aliased_line_width_range[2];
     GLfloat supported_smooth_line_width_range[2];
+
+    struct supported_extensions {
+        GLboolean texture_filter_anisotropic;
+    } supported_extensions;
 } PGRAPHGLState;
 
 extern GloContext *g_nv2a_context_render;

@@ -540,12 +540,13 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
             .enabled = &r->enabled_physical_device_features.n, \
             .required = req, \
         }
-        F(shaderClipDistance, true),
-        F(geometryShader, true),
-        F(shaderTessellationAndGeometryPointSize, true),
         F(depthClamp, true),
-        F(occlusionQueryPrecise, true),
         F(fillModeNonSolid, true),
+        F(geometryShader, true),
+        F(occlusionQueryPrecise, true),
+        F(samplerAnisotropy, false),
+        F(shaderClipDistance, true),
+        F(shaderTessellationAndGeometryPointSize, true),
         F(wideLines, false),
         #undef F
         // clang-format on
