@@ -1,0 +1,2 @@
+event-boxed-empty.json: In event 'FOO':
+event-boxed-empty.json:2: 'boxed': true requires 'data'

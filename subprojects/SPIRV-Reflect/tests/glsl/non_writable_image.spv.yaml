@@ -1,0 +1,153 @@
+%YAML 1.1
+---
+all_type_descriptions:
+  - &td0
+    id: 19
+    op: 25
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00010008 # EXTERNAL_IMAGE FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 1, depth: 0, arrayed: 0, ms: 0, sampled: 2, image_format: 1 } # dim=2D image_format=Rgba32f
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td1
+    id: 11
+    op: 23
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00000104 # VECTOR INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+all_block_variables:
+  - &bv0
+    name: 
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description:
+  - &bv1
+    name: 
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description:
+all_descriptor_bindings:
+  - &db0
+    spirv_id: 24
+    name: "input_image"
+    binding: 0
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000080 # NON_WRITABLE 
+    descriptor_type: 3 # VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+    resource_type: 8 # UAV
+    image: { dim: 1, depth: 0, arrayed: 0, ms: 0, sampled: 2, image_format: 1 } # dim=2D image_format=Rgba32f
+    block: *bv0 # 
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td0
+    word_offset: { binding: 79, set: 75 }
+  - &db1
+    spirv_id: 21
+    name: "output_image"
+    binding: 1
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000200 # NON_READABLE 
+    descriptor_type: 3 # VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+    resource_type: 8 # UAV
+    image: { dim: 1, depth: 0, arrayed: 0, ms: 0, sampled: 2, image_format: 1 } # dim=2D image_format=Rgba32f
+    block: *bv1 # 
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td0
+    word_offset: { binding: 68, set: 64 }
+all_interface_variables:
+  - &iv0
+    spirv_id: 13
+    name: "gl_GlobalInvocationID"
+    location: 4294967295
+    storage_class: 1 # Input
+    semantic: 
+    decoration_flags: 0x00000010 # BUILT_IN 
+    built_in: 28 # GlobalInvocationId
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 104 # VK_FORMAT_R32G32B32_UINT
+    type_description: *td1
+    word_offset: { location: 0 }
+module:
+  generator: 8 # Khronos Glslang Reference Front End
+  entry_point_name: "main"
+  entry_point_id: 4
+  source_language: 2 # GLSL
+  source_language_version: 450
+  spirv_execution_model: 5 # GLCompute
+  shader_stage: 0x00000020 # CS
+  descriptor_binding_count: 2
+  descriptor_bindings:
+    - *db0 # "input_image"
+    - *db1 # "output_image"
+  descriptor_set_count: 1
+  descriptor_sets:
+  - set: 0
+    binding_count: 2
+    bindings:
+      - *db0 # "input_image"
+      - *db1 # "output_image"
+  input_variable_count: 1,
+  input_variables:
+    - *iv0 # "gl_GlobalInvocationID"
+  output_variable_count: 0,
+  output_variables:
+  push_constant_count: 0,
+  push_constants:
+  specialization_constant_count: 0,
+  specialization_constants:
+...

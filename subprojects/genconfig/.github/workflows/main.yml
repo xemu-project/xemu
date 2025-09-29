@@ -1,0 +1,16 @@
+name: main
+on: ['push', 'pull_request']
+jobs:
+  main:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Build
+      run: |
+        pip install --user pyyaml tomli
+        cd example
+        make
+        ./example
+        ./check.py
