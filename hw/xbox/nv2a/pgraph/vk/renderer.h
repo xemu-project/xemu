@@ -206,6 +206,7 @@ typedef struct TextureKey {
     uint32_t filter;
     uint32_t address;
     uint32_t border_color;
+    uint32_t max_anisotropy;
 } TextureKey;
 
 typedef struct TextureBinding {
