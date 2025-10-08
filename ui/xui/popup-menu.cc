@@ -19,6 +19,8 @@
 #include "ui/xemu-notifications.h"
 #include <string>
 #include <vector>
+#include <filesystem>
+#include <map>
 #include "misc.hh"
 #include "actions.hh"
 #include "font-manager.hh"
@@ -338,9 +340,70 @@ public:
     }
 };
 
+class GamesPopupMenu : public virtual PopupMenu {
+protected:
+    std::multimap<std::string, std::string> sorted_file_names;
+
+public:
+    void Show(const ImVec2 &direction) override
+    {
+        PopupMenu::Show(direction);
+        PopulateGameList();
+    }
+
+    bool DrawItems(PopupMenuItemDelegate &nav) override
+    {
+        bool pop = false;
+
+        if (m_focus && !m_pop_focus) {
+            ImGui::SetKeyboardFocusHere();
+        }
+
+        for (const auto &[label, file_path] : sorted_file_names) {
+            if (PopupMenuButton(label, ICON_FA_COMPACT_DISC)) {
+                ActionLoadDiscFile(file_path.c_str());
+                nav.ClearMenuStack();
+                pop = true;
+            }
+        }
+
+        if (sorted_file_names.size() == 0) {
+            if (PopupMenuButton("No games found", ICON_FA_SLIDERS)) {
+                nav.ClearMenuStack();
+                g_scene_mgr.PushScene(g_main_menu);
+            }
+        }
+
+        if (m_pop_focus) {
+            nav.PopFocus();
+        }
+        return pop;
+    }
+
+    void PopulateGameList() {
+        const char *games_dir = g_config.general.games_dir;
+
+        sorted_file_names.clear();
+        std::filesystem::path directory(games_dir);
+        if (std::filesystem::is_directory(directory)) {
+            for (const auto &file :
+                 std::filesystem::directory_iterator(directory)) {
+                const auto &file_path = file.path();
+                if (std::filesystem::is_regular_file(file_path) &&
+                    (file_path.extension() == ".iso" ||
+                     file_path.extension() == ".xiso")) {
+                    sorted_file_names.insert(
+                        { file_path.stem().string(), file_path.string() });
+                }
+            }
+        }
+    }
+};
+
 class RootPopupMenu : public virtual PopupMenu {
 protected:
     SettingsPopupMenu settings;
+    GamesPopupMenu games;
     bool refocus_first_item;
 
 public:
@@ -377,6 +440,10 @@ public:
             xemu_snapshots_save(NULL, NULL);
             xemu_queue_notification("Created new snapshot");
             pop = true;
+        }
+        if (PopupMenuSubmenuButton("Games", ICON_FA_GAMEPAD)) {
+            nav.PushFocus();
+            nav.PushMenu(games);
         }
         if (PopupMenuButton("Eject Disc", ICON_FA_EJECT)) {
             ActionEjectDisc();
