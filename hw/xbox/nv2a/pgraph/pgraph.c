@@ -1026,14 +1026,14 @@ DEF_METHOD(NV097, SET_SURFACE_COLOR_OFFSET)
 {
     d->pgraph.renderer->ops.surface_update(d, false, true, true);
     pg->surface_color.buffer_dirty |= (pg->surface_color.offset != parameter);
-    pg->surface_color.offset = parameter;
+    pg->surface_color.offset = parameter & 0x0FFFFFFF;
 }
 
 DEF_METHOD(NV097, SET_SURFACE_ZETA_OFFSET)
 {
     d->pgraph.renderer->ops.surface_update(d, false, true, true);
     pg->surface_zeta.buffer_dirty |= (pg->surface_zeta.offset != parameter);
-    pg->surface_zeta.offset = parameter;
+    pg->surface_zeta.offset = parameter & 0x0FFFFFFF;
 }
 
 DEF_METHOD_INC(NV097, SET_COMBINER_ALPHA_ICW)
