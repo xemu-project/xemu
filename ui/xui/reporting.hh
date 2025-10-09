@@ -41,6 +41,8 @@ public:
 	std::string compat_rating;
 	std::string compat_comments;
 	std::string xbe_headers;
+	std::string rendering_scale;
+	std::string backend;
 
 private:
 	std::string serialized;
@@ -48,8 +50,8 @@ private:
 	std::string result_msg;
 
 public:
-	CompatibilityReport();
-	~CompatibilityReport();
+	CompatibilityReport() = default;
+	~CompatibilityReport() = default;
 	bool Send();
 	int GetResultCode() { return result_code; }
 	std::string &GetResultMessage() { return result_msg; }
