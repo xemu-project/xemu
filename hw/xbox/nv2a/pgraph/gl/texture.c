@@ -107,16 +107,20 @@ static bool check_texture_possibly_dirty(NV2AState *d,
     return possibly_dirty;
 }
 
-static void apply_texture_parameters(TextureBinding *binding,
+static void apply_texture_parameters(PGRAPHGLState *r,
+                                     TextureBinding *binding,
                                      const BasicColorFormatInfo *f,
                                      unsigned int dimensionality,
                                      unsigned int filter,
                                      unsigned int address,
                                      bool is_bordered,
-                                     uint32_t border_color)
+                                     uint32_t border_color,
+                                     uint32_t max_anisotropy)
 {
     unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
     unsigned int mag_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
+    unsigned int lod_bias =
+        GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS);
     unsigned int addru = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU);
     unsigned int addrv = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV);
     unsigned int addrp = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP);
@@ -146,6 +150,11 @@ static void apply_texture_parameters(TextureBinding *binding,
                         pgraph_texture_mag_filter_gl_map[mag_filter]);
         binding->mag_filter = mag_filter;
     }
+    if (lod_bias != binding->lod_bias) {
+        binding->lod_bias = lod_bias;
+        glTexParameterf(binding->gl_target, GL_TEXTURE_LOD_BIAS,
+                        pgraph_convert_lod_bias_to_float(lod_bias));
+    }
 
     /* Texture wrapping */
     assert(addru < ARRAY_SIZE(pgraph_texture_addr_gl_map));
@@ -172,6 +181,11 @@ static void apply_texture_parameters(TextureBinding *binding,
             binding->addrp = addrp;
         }
         needs_border_color = needs_border_color || binding->addrp == NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER;
+    }
+
+    if (r->supported_extensions.texture_filter_anisotropic) {
+        glTexParameterf(binding->gl_target, GL_TEXTURE_MAX_ANISOTROPY_EXT,
+                        max_anisotropy);
     }
 
     if (!is_bordered && needs_border_color) {
@@ -212,6 +226,9 @@ void pgraph_gl_bind_textures(NV2AState *d)
         uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i*4);
         uint32_t address = pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + i*4);
         uint32_t border_color = pgraph_reg_r(pg, NV_PGRAPH_BORDERCOLOR0 + i*4);
+        uint32_t max_anisotropy =
+            1 << (GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_TEXCTL0_0 + i*4),
+                           NV_PGRAPH_TEXCTL0_0_MAX_ANISOTROPY));
 
         /* Check for unsupported features */
         if (filter & NV_PGRAPH_TEXFILTER0_ASIGNED) NV2A_UNIMPLEMENTED("NV_PGRAPH_TEXFILTER0_ASIGNED");
@@ -255,13 +272,15 @@ void pgraph_gl_bind_textures(NV2AState *d)
             if (reusable) {
                 glBindTexture(r->texture_binding[i]->gl_target,
                               r->texture_binding[i]->gl_texture);
-                apply_texture_parameters(r->texture_binding[i],
+                apply_texture_parameters(r,
+                                         r->texture_binding[i],
                                          &kelvin_color_format_info_map[state.color_format],
                                          state.dimensionality,
                                          filter,
                                          address,
                                          state.border,
-                                         border_color);
+                                         border_color,
+                                         max_anisotropy);
                 continue;
             }
         }
@@ -365,13 +384,15 @@ void pgraph_gl_bind_textures(NV2AState *d)
             binding->scale = pg->surface_scale_factor;
         }
 
-        apply_texture_parameters(binding,
+        apply_texture_parameters(r,
+                                 binding,
                                  &kelvin_color_format_info_map[state.color_format],
                                  state.dimensionality,
                                  filter,
                                  address,
                                  state.border,
-                                 border_color);
+                                 border_color,
+                                 max_anisotropy);
 
         if (r->texture_binding[i]) {
             if (r->texture_binding[i]->gl_target != binding->gl_target) {
@@ -727,6 +748,7 @@ static TextureBinding* generate_texture(const TextureShape s,
     ret->data_hash = 0;
     ret->min_filter = 0xFFFFFFFF;
     ret->mag_filter = 0xFFFFFFFF;
+    ret->lod_bias = 0xFFFFFFFF;
     ret->addru = 0xFFFFFFFF;
     ret->addrv = 0xFFFFFFFF;
     ret->addrp = 0xFFFFFFFF;
