@@ -223,6 +223,9 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         "vec4 NaNToOne(vec4 src) {\n"
         "  return mix(src, vec4(1.0), isnan(src));\n"
         "}\n"
+        "vec4 NaNToValue(vec4 src, float replacement) {\n"
+        "  return mix(src, vec4(replacement), isnan(src));\n"
+        "}\n"
         "\n"
         // Xbox NV2A rasterizer appears to have 4 bit precision fixed-point
         // fractional part and to convert floating-point coordinates by
@@ -321,6 +324,9 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
 
         /* FIXME: Do this per pixel? */
 
+        float infinite_fogdistance_result = 0.0f;
+        float nan_fogfactor_result = 0.0f;
+
         switch (state->fog_mode) {
         case FOG_MODE_LINEAR:
         case FOG_MODE_LINEAR_ABS:
@@ -329,29 +335,21 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
              *    fogParam.y = -1 / (end - start)
              *    fogParam.x = 1 - end * fogParam.y;
              */
-
-            mstring_append(body,
-                "  if (isinf(fogDistance)) {\n"
-                "    fogDistance = 0.0;\n"
-                "  }\n"
-            );
+            infinite_fogdistance_result = 1.0f;
+            nan_fogfactor_result = 1.0f;
             mstring_append(body, "  float fogFactor = fogParam.x + fogDistance * fogParam.y;\n");
             mstring_append(body, "  fogFactor -= 1.0;\n");
             break;
         case FOG_MODE_EXP:
-          mstring_append(body,
-                         "  if (isinf(fogDistance)) {\n"
-                         "    fogDistance = 0.0;\n"
-                         "  }\n"
-          );
-          /* fallthru */
+            infinite_fogdistance_result = 1.0f;
+            nan_fogfactor_result = 1.0f;
+            /* fallthrough */
         case FOG_MODE_EXP_ABS:
 
             /* f = 1 / (e^(d * density))
              *    fogParam.y = -density / (2 * ln(256))
              *    fogParam.x = 1.5
              */
-
             mstring_append(body, "  float fogFactor = fogParam.x + exp2(fogDistance * fogParam.y * 16.0);\n");
             mstring_append(body, "  fogFactor -= 1.5;\n");
             break;
@@ -384,8 +382,14 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
          * interpolation. It is then clamped to [0,1] in the pixel shader.
          */
         // clang-format off
-        mstring_append(body,
-                       "  oFog = clamp(NaNToOne(vec4(fogFactor)), -FLOAT_MAX, FLOAT_MAX);\n");
+        mstring_append_fmt(
+            body,
+            "  if (isinf(fogDistance)) {\n"
+            "    oFog = vec4(%f);\n"
+            "  } else {\n"
+            "    oFog = clamp(NaNToValue(vec4(fogFactor), %f), -FLOAT_MAX, FLOAT_MAX);\n"
+            "  }\n",
+            infinite_fogdistance_result, nan_fogfactor_result);
         // clang-format on
     }
 
