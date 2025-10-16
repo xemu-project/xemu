@@ -1,0 +1,52 @@
+generator       : Google spiregg
+entry point     : main
+source lang     : HLSL
+source lang ver : 600
+source file     : hlsl/binding_array.hlsl
+shader stage    : PS
+
+
+  Input variables: 1
+
+    0:
+      spirv id  : 23
+      location  : (built-in) FragCoord
+      type      : float4
+      semantic  : SV_POSITION
+      name      : 
+      qualifier : 
+
+
+  Output variables: 1
+
+    0:
+      spirv id  : 27
+      location  : 0
+      type      : float4
+      semantic  : SV_TARGET
+      name      : out.var.SV_TARGET
+      qualifier : 
+
+
+  Descriptor bindings: 2
+
+    Binding 0.0
+      spirv id : 7
+      set      : 0
+      binding  : 0
+      type     : VK_DESCRIPTOR_TYPE_SAMPLER (SAMPLER)
+      count    : 6
+      array    : [6]
+      accessed : true
+      name     : MySampler (type.sampler)
+
+    Binding 0.8
+      spirv id : 13
+      set      : 0
+      binding  : 8
+      type     : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE (SRV)
+      count    : 2
+      array    : [2]
+      accessed : true
+      name     : MyTexture (type.2d.image)
+
