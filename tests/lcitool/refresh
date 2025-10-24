@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+#
+# Re-generate container recipes
+#
+# This script uses the "lcitool" available from
+#
+#   https://gitlab.com/libvirt/libvirt-ci
+#
+# Copyright (c) 2020 Red Hat Inc.
+#
+# This work is licensed under the terms of the GNU GPL, version 2
+# or (at your option) any later version. See the COPYING file in
+# the top-level directory.
+
+import sys
+import subprocess
+
+from pathlib import Path
+
+if len(sys.argv) != 1:
+    print("syntax: %s" % sys.argv[0], file=sys.stderr)
+    sys.exit(1)
+
+self_dir = Path(__file__).parent
+src_dir = self_dir.parent.parent
+dockerfiles_dir = Path(src_dir, "tests", "docker", "dockerfiles")
+
+lcitool_path = Path(self_dir, "libvirt-ci", "bin", "lcitool")
+
+lcitool_cmd = [lcitool_path, "--data-dir", self_dir]
+
+
+def atomic_write(filename, content):
+    tmp = filename.with_suffix(filename.suffix + ".tmp")
+    try:
+        with tmp.open("w") as fp:
+            print(content, file=fp, end="")
+            tmp.rename(filename)
+    except Exception as ex:
+        tmp.unlink()
+        raise
+
+
+def generate(filename, cmd, trailer):
+    print("Generate %s" % filename)
+    lcitool = subprocess.run(cmd, capture_output=True, encoding='utf8')
+
+    if lcitool.returncode != 0:
+        raise Exception("Failed to generate %s: %s" % (filename, lcitool.stderr))
+
+    content = lcitool.stdout
+    if trailer is not None:
+        content += trailer
+    atomic_write(filename, content)
+
+# Optional user setting, this will always be the last thing added
+# so maximise the number of layers that are cached
+add_user_mapping = [
+    "# As a final step configure the user (if env is defined)",
+    "ARG USER",
+    "ARG UID",
+    "RUN if [ \"${USER}\" ]; then \\",
+    "  id ${USER} 2>/dev/null || useradd -u ${UID} -U ${USER}; fi\n"
+]
+
+def generate_dockerfile(host, target, project="qemu", cross=None, trailer=None):
+    filename = Path(src_dir, "tests", "docker", "dockerfiles", host + ".docker")
+    cmd = lcitool_cmd + ["dockerfile"]
+    if cross is not None:
+        cmd.extend(["--cross", cross])
+    cmd.extend([target, project])
+
+    if trailer is not None:
+        trailer += "\n".join(add_user_mapping)
+    else:
+        trailer = "\n".join(add_user_mapping)
+
+    generate(filename, cmd, trailer)
+
+
+def generate_cirrus(target, trailer=None):
+    filename = Path(src_dir, ".gitlab-ci.d", "cirrus", target + ".vars")
+    cmd = lcitool_cmd + ["variables", "--format", "shell", target, "qemu"]
+    generate(filename, cmd, trailer)
+
+
+def generate_pkglist(vm, target):
+    filename = Path(src_dir, "tests", "vm", "generated", vm + ".json")
+    cmd = lcitool_cmd + ["variables", "--format", "json", target, "qemu"]
+    generate(filename, cmd, None)
+
+
+def generate_yaml(os, target, arch, trailer=None):
+    filename = Path(src_dir, "scripts", "ci", "setup", os, f"{target}-{arch}.yaml")
+    cmd = lcitool_cmd + ["variables", "--format", "yaml", "-a",
+                         arch, target, "qemu"]
+    generate(filename, cmd, trailer)
+
+
+# Netmap still needs to be manually built as it is yet to be packaged
+# into a distro. We also add cscope and gtags which are used in the CI
+# test
+debian12_extras = [
+    "# netmap/cscope/global\n",
+    "RUN DEBIAN_FRONTEND=noninteractive eatmydata \\\n",
+    "  apt install -y --no-install-recommends \\\n",
+    "  cscope\\\n",
+    "  global\\\n",
+    "  linux-headers-generic\n",
+    "RUN git clone https://github.com/luigirizzo/netmap.git /usr/src/netmap\n",
+    "RUN cd /usr/src/netmap && git checkout v11.3\n",
+    "RUN cd /usr/src/netmap/LINUX && \\\n",
+    "  ./configure --no-drivers --no-apps \\\n",
+    "  --kernel-dir=$(ls -d /usr/src/linux-headers-*-$(dpkg --print-architecture)) \\\n",
+    "  && make install\n",
+    "ENV QEMU_CONFIGURE_OPTS --enable-netmap\n"
+]
+
+# Based on the hub.docker.com/library/rust Dockerfiles
+fedora_rustup_nightly_extras = [
+    "RUN dnf install -y wget\n",
+    "ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo\n",
+    "ENV RUSTC=/usr/local/rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/rustc\n",
+    "RUN set -eux && \\\n",
+    "  rustArch='x86_64-unknown-linux-gnu' && \\\n",
+    "  rustupSha256='6aeece6993e902708983b209d04c0d1dbb14ebb405ddb87def578d41f920f56d' && \\\n",
+    '  url="https://static.rust-lang.org/rustup/archive/1.27.1/${rustArch}/rustup-init" && \\\n',
+    '  wget "$url" && \\\n',
+    '  echo "${rustupSha256} *rustup-init" | sha256sum -c - && \\\n',
+    "  chmod +x rustup-init && \\\n",
+    "  ./rustup-init -y --no-modify-path --profile default --default-toolchain nightly --default-host ${rustArch} && \\\n",
+    "  chmod -R a+w $RUSTUP_HOME $CARGO_HOME && \\\n",
+    "  /usr/local/cargo/bin/rustup --version && \\\n",
+    "  /usr/local/cargo/bin/rustup run nightly rustc --version && \\\n",
+    '  test "$RUSTC" = "$(/usr/local/cargo/bin/rustup +nightly which rustc)"\n',
+    'ENV PATH=$CARGO_HOME/bin:$PATH\n',
+    'RUN /usr/local/cargo/bin/rustup run nightly cargo install bindgen-cli\n',
+]
+
+ubuntu2204_bindgen_extras = [
+    "ENV CARGO_HOME=/usr/local/cargo\n",
+    'ENV PATH=$CARGO_HOME/bin:$PATH\n',
+    "RUN DEBIAN_FRONTEND=noninteractive eatmydata \\\n",
+    "  apt install -y --no-install-recommends cargo\n",
+    'RUN cargo install bindgen-cli\n',
+]
+
+def cross_build(prefix, targets):
+    conf = "ENV QEMU_CONFIGURE_OPTS --cross-prefix=%s\n" % (prefix)
+    targets = "ENV DEF_TARGET_LIST %s\n" % (targets)
+    return "".join([conf, targets])
+
+#
+# Update all the various build configurations.
+# Please keep each group sorted alphabetically for easy reading.
+#
+
+try:
+    #
+    # Standard native builds
+    #
+    generate_dockerfile("alpine", "alpine-319")
+    generate_dockerfile("centos9", "centos-stream-9")
+    generate_dockerfile("debian", "debian-12",
+                        trailer="".join(debian12_extras))
+    generate_dockerfile("fedora", "fedora-40")
+    generate_dockerfile("opensuse-leap", "opensuse-leap-15")
+    generate_dockerfile("ubuntu2204", "ubuntu-2204",
+                        trailer="".join(ubuntu2204_bindgen_extras))
+
+    #
+    # Non-fatal Rust-enabled build
+    #
+    generate_dockerfile("fedora-rust-nightly", "fedora-40",
+                        trailer="".join(fedora_rustup_nightly_extras))
+
+    #
+    # Cross compiling builds
+    #
+    generate_dockerfile("debian-amd64-cross", "debian-12",
+                        cross="x86_64",
+                        trailer=cross_build("x86_64-linux-gnu-",
+                                            "x86_64-softmmu,"
+                                            "x86_64-linux-user,"
+                                            "i386-softmmu,i386-linux-user"))
+
+    generate_dockerfile("debian-arm64-cross", "debian-12",
+                        cross="aarch64",
+                        trailer=cross_build("aarch64-linux-gnu-",
+                                            "aarch64-softmmu,aarch64-linux-user"))
+
+    generate_dockerfile("debian-armhf-cross", "debian-12",
+                        cross="armv7l",
+                        trailer=cross_build("arm-linux-gnueabihf-",
+                                            "arm-softmmu,arm-linux-user"))
+
+    generate_dockerfile("debian-i686-cross", "debian-12",
+                        cross="i686",
+                        trailer=cross_build("i686-linux-gnu-",
+                                            "x86_64-softmmu,"
+                                            "x86_64-linux-user,"
+                                            "i386-softmmu,i386-linux-user"))
+
+    generate_dockerfile("debian-mips64el-cross", "debian-12",
+                        cross="mips64el",
+                        trailer=cross_build("mips64el-linux-gnuabi64-",
+                                            "mips64el-softmmu,mips64el-linux-user"))
+
+    generate_dockerfile("debian-mipsel-cross", "debian-12",
+                        cross="mipsel",
+                        trailer=cross_build("mipsel-linux-gnu-",
+                                            "mipsel-softmmu,mipsel-linux-user"))
+
+    generate_dockerfile("debian-ppc64el-cross", "debian-12",
+                        cross="ppc64le",
+                        trailer=cross_build("powerpc64le-linux-gnu-",
+                                            "ppc64-softmmu,ppc64-linux-user"))
+
+    generate_dockerfile("debian-riscv64-cross", "debian-sid",
+                        project="qemu-minimal",
+                        cross="riscv64",
+                        trailer=cross_build("riscv64-linux-gnu-",
+                                            "riscv64-softmmu,riscv64-linux-user"))
+
+    generate_dockerfile("debian-s390x-cross", "debian-12",
+                        cross="s390x",
+                        trailer=cross_build("s390x-linux-gnu-",
+                                            "s390x-softmmu,s390x-linux-user"))
+
+    generate_dockerfile("fedora-win64-cross", "fedora-40",
+                        project='qemu,qemu-win-installer',
+                        cross="mingw64",
+                        trailer=cross_build("x86_64-w64-mingw32-",
+                                            "x86_64-softmmu"))
+
+    #
+    # Cirrus packages lists for GitLab
+    #
+    generate_cirrus("freebsd-14")
+    generate_cirrus("macos-14")
+
+    #
+    # VM packages lists
+    #
+    generate_pkglist("freebsd", "freebsd-14")
+
+    #
+    # Ansible package lists
+    #
+    generate_yaml("ubuntu", "ubuntu-2204", "aarch64")
+    generate_yaml("ubuntu", "ubuntu-2204", "s390x")
+
+
+    sys.exit(0)
+except Exception as ex:
+    print(str(ex), file=sys.stderr)
+    sys.exit(1)

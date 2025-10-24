@@ -1,0 +1,14 @@
+option('devel', 				type: 'boolean', value: false,  description: 'Tell meson whether or not it is a development build. (default: false)')
+option('build_lib',				type: 'boolean', value: false,	description: 'Compile the library, rather than consuming it in header-only mode. (default: false) (implied by devel)')
+option('build_examples',		type: 'boolean', value: false,	description: 'Build the examples (default: false) (implied by devel)')
+option('build_tests',			type: 'boolean', value: false,	description: 'Build tests (default: false) (implied by devel)')
+option('build_tt',				type: 'boolean', value: false,	description: 'Enable to build the toml-test encoder and decoder. (default: false) (implied by devel) (disabled by unreleased_features)')
+option('pedantic',				type: 'boolean', value: false,	description: 'Enable as many compiler warnings as possible (default: false) (implied by devel)')
+option('time_trace',			type: 'boolean', value: false,	description: 'Enable the -ftime-trace option (Clang only)')
+option('unreleased_features',	type: 'boolean', value: false,	description: 'Enable TOML_UNRELEASED_FEATURES=1 (default: false) (only relevant when compiling the library)')
+
+option('generate_cmake_config',	type: 'boolean', value: true,	description: 'Generate a cmake package config file (default: true - no effect when included as a subproject)')
+option('use_vendored_libs',		type: 'boolean', value: true,	description: 'Use the libs from the vendor dir when building tests.')
+
+option('compile_library',		type: 'boolean', deprecated: true)
+option('float16',				type: 'boolean', deprecated: true)
