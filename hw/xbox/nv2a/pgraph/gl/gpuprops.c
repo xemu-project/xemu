@@ -333,7 +333,7 @@ static void determine_triangle_winding_order(uint8_t *pixels, int width,
     props->geom_shader_winding.tri_fan = (fan_rot + 2) % 3;
 }
 
-void pgraph_gl_determine_gpu_properties(NV2AState *d)
+void pgraph_gl_determine_gpu_properties(void)
 {
     const int width = 640;
     const int height = 480;

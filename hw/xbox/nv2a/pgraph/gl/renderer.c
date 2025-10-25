@@ -31,6 +31,8 @@ static void early_context_init(void)
 {
     g_nv2a_context_render = glo_context_create();
     g_nv2a_context_display = glo_context_create();
+
+    pgraph_gl_determine_gpu_properties();
 }
 
 static void pgraph_gl_init(NV2AState *d, Error **errp)
@@ -69,8 +71,6 @@ static void pgraph_gl_init(NV2AState *d, Error **errp)
 
     r->supported_extensions.texture_filter_anisotropic =
         glo_check_extension("GL_EXT_texture_filter_anisotropic");
-
-    pgraph_gl_determine_gpu_properties(d);
 }
 
 static void pgraph_gl_finalize(NV2AState *d)
