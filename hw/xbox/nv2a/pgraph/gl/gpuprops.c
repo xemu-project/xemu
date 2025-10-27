@@ -338,8 +338,6 @@ void pgraph_gl_determine_gpu_properties(void)
     const int width = 640;
     const int height = 480;
 
-    GloContext *g_context = glo_context_create();
-
     uint8_t *pixels = render_geom_shader_triangles(width, height);
     determine_triangle_winding_order(pixels, width, height,
                                      &pgraph_gl_gpu_properties);
@@ -350,8 +348,6 @@ void pgraph_gl_determine_gpu_properties(void)
             pgraph_gl_gpu_properties.geom_shader_winding.tri_strip0,
             pgraph_gl_gpu_properties.geom_shader_winding.tri_strip1,
             pgraph_gl_gpu_properties.geom_shader_winding.tri_fan);
-
-    glo_context_destroy(g_context);
 }
 
 GPUProperties *pgraph_gl_get_gpu_properties(void)
