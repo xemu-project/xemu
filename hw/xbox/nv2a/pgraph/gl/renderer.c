@@ -33,6 +33,7 @@ static void early_context_init(void)
     g_nv2a_context_display = glo_context_create();
 
     pgraph_gl_determine_gpu_properties();
+    glo_set_current(g_nv2a_context_display);
 }
 
 static void pgraph_gl_init(NV2AState *d, Error **errp)
