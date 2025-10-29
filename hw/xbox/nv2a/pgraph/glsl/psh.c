@@ -134,6 +134,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         uint32_t border_source =
             GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BORDER_SOURCE);
         bool cubemap = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_CUBEMAPENABLE);
+        state->tex_cubemap[i] = cubemap;
         state->border_logical_size[i][0] = 0.0f;
         state->border_logical_size[i][1] = 0.0f;
         state->border_logical_size[i][2] = 0.0f;
@@ -627,13 +628,13 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
         return NULL;
 
     case PS_TEXTUREMODES_PROJECT2D:
-        if (state->dim_tex[i] == 2) {
+        if (dim == 2) {
             if (state->tex_x8y24[i] && ps->opts.vulkan) {
                 return "usampler2D";
             }
             return sampler2D;
         }
-        if (state->dim_tex[i] == 3) return sampler3D;
+        if (dim == 3) return sampler3D;
         assert(!"Unhandled texture dimensions");
         return NULL;
 
@@ -644,8 +645,8 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
             fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
             assert(!"Shadow map support not implemented for this mode");
         }
-        if (state->dim_tex[i] == 2) return sampler2D;
-        if (state->dim_tex[i] == 3 && mode != PS_TEXTUREMODES_DOT_ST) return sampler3D;
+        if (dim == 2) return sampler2D;
+        if (dim == 3 && mode != PS_TEXTUREMODES_DOT_ST) return sampler3D;
         assert(!"Unhandled texture dimensions");
         return NULL;
 
@@ -667,8 +668,11 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
             fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
             assert(!"Shadow map support not implemented for this mode");
         }
-        assert(state->dim_tex[i] == 2);
-        return samplerCube;
+        assert(dim == 2);
+        if (state->tex_cubemap[i]) {
+            return samplerCube;
+        }
+        return sampler2D;
 
     case PS_TEXTUREMODES_DPNDNT_AR:
     case PS_TEXTUREMODES_DPNDNT_GB:
@@ -676,7 +680,7 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
             fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
             assert(!"Shadow map support not implemented for this mode");
         }
-        assert(state->dim_tex[i] == 2);
+        assert(dim == 2);
         return sampler2D;
     }
 }
@@ -920,6 +924,41 @@ static MString* psh_convert(struct PixelShader *ps)
         "    vec2(-1.0,-1.0),vec2(0.0,-1.0),vec2(1.0,-1.0),\n"
         "    vec2(-1.0, 0.0),vec2(0.0, 0.0),vec2(1.0, 0.0),\n"
         "    vec2(-1.0, 1.0),vec2(0.0, 1.0),vec2(1.0, 1.0));\n"
+        "vec2 remapCubeTo2D(vec3 texCoord) {\n"
+        "    vec2 uv;\n"
+        "    vec3 absTexCoord = abs(texCoord);\n"
+        "    if (absTexCoord.x > absTexCoord.y && absTexCoord.x > absTexCoord.z) {\n"
+        "        if (texCoord.x > 0.0) {\n"
+        "            // +X: Right\n"
+        "            uv = vec2(-texCoord.z, texCoord.y);\n"
+        "        } else {\n"
+        "            // -X: Left\n"
+        "            uv = vec2(texCoord.z, texCoord.y);\n"
+        "        }\n"
+        "        uv /= absTexCoord.x;\n"
+        "    }\n"
+        "    else if (absTexCoord.y > absTexCoord.x && absTexCoord.y > absTexCoord.z) {\n"
+        "        if (texCoord.y > 0.0) {\n"
+        "            // +Y: Top\n"
+        "            uv = vec2(texCoord.x, -texCoord.z);\n"
+        "        } else {\n"
+        "            // -Y: Bottom\n"
+        "            uv = vec2(texCoord.x, texCoord.z);\n"
+        "        }\n"
+        "        uv /= absTexCoord.y;\n"
+        "    }\n"
+        "    else {\n"
+        "        if (texCoord.z > 0.0) {\n"
+        "            // +Z: Front\n"
+        "            uv = vec2(texCoord.x, texCoord.y);\n"
+        "        } else {\n"
+        "            // -Z: Back\n"
+        "            uv = vec2(-texCoord.x, texCoord.y);\n"
+        "        }\n"
+        "        uv /= absTexCoord.z;\n"
+        "    }\n"
+        "    return uv;\n"
+        "}\n"
         );
 
     MString *clip = mstring_new();
@@ -1089,8 +1128,14 @@ static MString* psh_convert(struct PixelShader *ps)
             }
             break;
         case PS_TEXTUREMODES_CUBEMAP:
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xyz);\n",
-                               i, i, i);
+            if (!ps->state->tex_cubemap[i]) {
+                mstring_append_fmt(vars,
+                    "pT%d.xy = remapCubeTo2D(pT%d.xyz);\n",
+                    i, i);
+            }
+            mstring_append_fmt(vars,
+                "vec4 t%d = texture(texSamp%d, pT%d.xy%s);\n",
+                i, i, i, ps->state->tex_cubemap[i] ? "z" : "");
             break;
         case PS_TEXTUREMODES_PASSTHRU:
             assert(ps->state->border_logical_size[i][0] == 0.0f && "Unexpected border texture on passthru");
@@ -1200,8 +1245,13 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "vec3 n_%d = vec3(dot%d, dot%d, dot%d_n);\n",
                 i, i-1, i, i);
             apply_border_adjustment(ps, vars, i, "n_%d");
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, n_%d);\n",
-                i, i, i);
+            if (!ps->state->tex_cubemap[i]) {
+                mstring_append_fmt(vars,
+                    "n_%d.xy = remapCubeTo2D(n_%d);\n", i, i);
+            }
+            mstring_append_fmt(vars,
+                "vec4 t%d = texture(texSamp%d, n_%d%s);\n",
+                i, i, i, ps->state->tex_cubemap[i] ? "" : ".xy");
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_SPEC:
             assert(i == 3);
@@ -1215,8 +1265,13 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "vec3 rv_%d = 2*n_%d*dot(n_%d,e_%d)/dot(n_%d,n_%d) - e_%d;\n",
                 i, i, i, i, i, i, i);
             apply_border_adjustment(ps, vars, i, "rv_%d");
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, rv_%d);\n",
-                i, i, i);
+            if (!ps->state->tex_cubemap[i]) {
+                mstring_append_fmt(vars,
+                    "rv_%d.xy = remapCubeTo2D(rv_%d);\n", i, i);
+            }
+            mstring_append_fmt(vars,
+                "vec4 t%d = texture(texSamp%d, rv_%d%s);\n",
+                i, i, i, ps->state->tex_cubemap[i] ? "" : ".xy");
             break;
         case PS_TEXTUREMODES_DOT_STR_3D:
             assert(i == 3);
@@ -1228,7 +1283,8 @@ static MString* psh_convert(struct PixelShader *ps)
                 i, i-2, i-1, i);
 
             apply_border_adjustment(ps, vars, i, "dotSTR%d");
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(dotSTR%d%s));\n",
+            mstring_append_fmt(vars,
+                "vec4 t%d = texture(texSamp%d, %s(dotSTR%d%s));\n",
                 i, i, tex_remap, i, ps->state->dim_tex[i] == 2 ? ".xy" : "");
             break;
         case PS_TEXTUREMODES_DOT_STR_CUBE:
@@ -1239,8 +1295,14 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "vec3 dotSTR%dCube = vec3(dot%d, dot%d, dot%d);\n",
                                i, i-2, i-1, i);
             apply_border_adjustment(ps, vars, i, "dotSTR%dCube");
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, dotSTR%dCube);\n",
-                i, i, i);
+            if (!ps->state->tex_cubemap[i]) {
+                mstring_append_fmt(vars,
+                    "dotSTR%dCube.xy = remapCubeTo2D(dotSTR%dCube);\n",
+                    i, i);
+            }
+            mstring_append_fmt(vars,
+                "vec4 t%d = texture(texSamp%d, dotSTR%dCube%s);\n",
+                i, i, i, ps->state->tex_cubemap[i] ? "" : ".xy");
             break;
         case PS_TEXTUREMODES_DPNDNT_AR:
             assert(i >= 1);
