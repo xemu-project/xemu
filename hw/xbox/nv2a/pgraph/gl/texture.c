@@ -24,10 +24,12 @@
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "hw/xbox/nv2a/pgraph/s3tc.h"
 #include "hw/xbox/nv2a/pgraph/texture.h"
+#include "constants.h"
 #include "debug.h"
 #include "renderer.h"
+#include <stdint.h>
 
-static TextureBinding* generate_texture(const TextureShape s, const uint8_t *texture_data, const uint8_t *palette_data);
+static TextureBinding* generate_texture(const TextureShape s, const uint8_t *texture_data, const uint8_t *palette_data, uint32_t filter);
 static void texture_binding_destroy(gpointer data);
 
 struct pgraph_texture_possibly_dirty_struct {
@@ -362,7 +364,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
 
         if (key_out->binding == NULL) {
             // Must create the texture
-            key_out->binding = generate_texture(state, texture_data, palette_data);
+            key_out->binding = generate_texture(state, texture_data, palette_data, filter);
             key_out->binding->data_hash = tex_data_hash;
             key_out->binding->scale = 1;
         } else {
@@ -379,7 +381,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
 
             trace_nv2a_pgraph_surface_render_to_texture(
                 surface->vram_addr, surface->width, surface->height);
-            pgraph_gl_render_surface_to_texture(d, surface, binding, &state, i);
+            pgraph_gl_render_surface_to_texture(d, surface, binding, &state, i, filter);
             binding->draw_time = surface->draw_time;
             binding->scale = pg->surface_scale_factor;
         }
@@ -424,9 +426,14 @@ gl_internal_format_to_s3tc_enum(GLint gl_internal_format)
 static void upload_gl_texture(GLenum gl_target,
                               const TextureShape s,
                               const uint8_t *texture_data,
-                              const uint8_t *palette_data)
+                              const uint8_t *palette_data,
+                              uint32_t filter)
 {
     ColorFormatInfo f = kelvin_color_format_gl_map[s.color_format];
+    uint32_t mask = kelvin_signed_format_mask_gl_map[s.color_format];
+    if (mask && (filter & mask) == mask)
+        f = kelvin_signed_color_format_gl_map[s.color_format];
+
     nv2a_profile_inc_counter(NV2A_PROF_TEX_UPLOAD);
 
     unsigned int adjusted_width = s.width;
@@ -641,9 +648,13 @@ static void upload_gl_texture(GLenum gl_target,
 
 static TextureBinding* generate_texture(const TextureShape s,
                                         const uint8_t *texture_data,
-                                        const uint8_t *palette_data)
+                                        const uint8_t *palette_data,
+                                        uint32_t filter)
 {
     ColorFormatInfo f = kelvin_color_format_gl_map[s.color_format];
+    uint32_t mask = kelvin_signed_format_mask_gl_map[s.color_format];
+    if (mask && (filter & mask) == mask)
+        f = kelvin_signed_color_format_gl_map[s.color_format];
 
     /* Create a new opengl texture */
     GLuint gl_texture;
@@ -711,19 +722,19 @@ static TextureBinding* generate_texture(const TextureShape s,
         length = (length + NV2A_CUBEMAP_FACE_ALIGNMENT - 1) & ~(NV2A_CUBEMAP_FACE_ALIGNMENT - 1);
 
         upload_gl_texture(GL_TEXTURE_CUBE_MAP_POSITIVE_X,
-                          s, texture_data + 0 * length, palette_data);
+                          s, texture_data + 0 * length, palette_data, filter);
         upload_gl_texture(GL_TEXTURE_CUBE_MAP_NEGATIVE_X,
-                          s, texture_data + 1 * length, palette_data);
+                          s, texture_data + 1 * length, palette_data, filter);
         upload_gl_texture(GL_TEXTURE_CUBE_MAP_POSITIVE_Y,
-                          s, texture_data + 2 * length, palette_data);
+                          s, texture_data + 2 * length, palette_data, filter);
         upload_gl_texture(GL_TEXTURE_CUBE_MAP_NEGATIVE_Y,
-                          s, texture_data + 3 * length, palette_data);
+                          s, texture_data + 3 * length, palette_data, filter);
         upload_gl_texture(GL_TEXTURE_CUBE_MAP_POSITIVE_Z,
-                          s, texture_data + 4 * length, palette_data);
+                          s, texture_data + 4 * length, palette_data, filter);
         upload_gl_texture(GL_TEXTURE_CUBE_MAP_NEGATIVE_Z,
-                          s, texture_data + 5 * length, palette_data);
+                          s, texture_data + 5 * length, palette_data, filter);
     } else {
-        upload_gl_texture(gl_target, s, texture_data, palette_data);
+        upload_gl_texture(gl_target, s, texture_data, palette_data, filter);
     }
 
     /* Linear textures don't support mipmapping */
