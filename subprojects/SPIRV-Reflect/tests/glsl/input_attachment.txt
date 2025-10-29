@@ -1,0 +1,48 @@
+generator       : Google Shaderc over Glslang
+entry point     : main
+source lang     : GLSL
+source lang ver : 450
+source file     : 
+shader stage    : PS
+
+
+  Output variables: 1
+
+    0:
+      spirv id  : 9
+      location  : 0
+      type      : float4
+      semantic  : 
+      name      : oColor
+      qualifier : 
+
+
+  Descriptor bindings: 3
+
+    Binding 0.0
+      spirv id : 12
+      set      : 0
+      binding  : 0
+      type     : VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT (UNDEFINED)
+      count    : 1
+      accessed : true
+      name     : MyInputAttachment0
+
+    Binding 0.1
+      spirv id : 19
+      set      : 0
+      binding  : 1
+      type     : VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT (UNDEFINED)
+      count    : 1
+      accessed : true
+      name     : MyInputAttachment1
+
+    Binding 0.2
+      spirv id : 23
+      set      : 0
+      binding  : 2
+      type     : VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT (UNDEFINED)
+      count    : 1
+      accessed : true
+      name     : MyInputAttachment4
+
