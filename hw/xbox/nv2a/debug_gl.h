@@ -1,9 +1,30 @@
+/*
+ * Geforce NV2A PGRAPH OpenGL Renderer debug routines
+ *
+ * Copyright (c) 2025 Matt Borgerson
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 #ifndef XEMU_HW_XBOX_NV2A_DEBUG_GL_H_
 #define XEMU_HW_XBOX_NV2A_DEBUG_GL_H_
 
 #ifdef XEMU_DEBUG_BUILD
 
-#define ASSERT_NO_GL_ERROR()                                                 \
+#include <epoxy/gl.h>
+
+#define ASSERT_NO_GL_ERROR()                                             \
     do {                                                                 \
         GLenum error = glGetError();                                     \
         if (error != GL_NO_ERROR) {                                      \
@@ -13,18 +34,15 @@
         }                                                                \
     } while (0)
 
-#define ASSERT_FRAMEBUFFER_COMPLETE()                                         \
-    do {                                                                     \
-        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);            \
-        if (status != GL_FRAMEBUFFER_COMPLETE) {                             \
-            fprintf(stderr,                                                  \
-                    "OpenGL framebuffer status: 0x%X (%d) != "               \
-                    "GL_FRAMEBUFFER_COMPLETE at %s:%d\n",                    \
-                    status, status, __FILE__, __LINE__);                     \
-            assert(                                                          \
-                !"OpenGL GL_FRAMEBUFFER status != GL_FRAMEBUFFER_COMPLETE"); \
-        }                                                                    \
-    } while (0)
+#if defined(__clang__) && defined(__FILE_NAME__)
+#define ASSERT_FRAMEBUFFER_COMPLETE() \
+    gl_debug_assert_framebuffer_complete(__FILE_NAME__, __LINE__)
+#else
+#define ASSERT_FRAMEBUFFER_COMPLETE() \
+    gl_debug_assert_framebuffer_complete(__FILE__, __LINE__)
+#endif
+
+void gl_debug_assert_framebuffer_complete(const char *source_file, int line);
 
 #else
 
