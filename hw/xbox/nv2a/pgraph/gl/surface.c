@@ -421,6 +421,26 @@ static bool check_surface_overlaps_range(const SurfaceBinding *surface,
     return !(surface->vram_addr >= range_end || range_start >= surface_end);
 }
 
+static void wait_for_surface_downloads(NV2AState *d)
+{
+    bool is_main_thread = qemu_in_main_thread();
+    if (is_main_thread) {
+        bql_unlock();
+    }
+
+    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
+    qemu_mutex_lock(&d->pfifo.lock);
+    qemu_event_reset(&r->downloads_complete);
+    qatomic_set(&r->downloads_pending, true);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_event_wait(&r->downloads_complete);
+
+    if (is_main_thread) {
+        bql_lock();
+    }
+}
+
 static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
                                     hwaddr len, bool write)
 {
@@ -457,12 +477,7 @@ static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
     qemu_mutex_unlock(&d->pgraph.lock);
 
     if (wait_for_downloads) {
-        qemu_mutex_lock(&d->pfifo.lock);
-        qemu_event_reset(&r->downloads_complete);
-        qatomic_set(&r->downloads_pending, true);
-        pfifo_kick(d);
-        qemu_mutex_unlock(&d->pfifo.lock);
-        qemu_event_wait(&r->downloads_complete);
+        wait_for_surface_downloads(d);
     }
 }
 
