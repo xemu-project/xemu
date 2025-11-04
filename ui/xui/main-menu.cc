@@ -71,6 +71,7 @@ void MainMenuGeneralView::Draw()
            "Skip the full Xbox boot animation sequence");
     FilePicker("Screenshot output directory", &g_config.general.screenshot_dir,
                NULL, true);
+    FilePicker("Games directory", &g_config.general.games_dir, NULL, true);
     // toggle("Throttle DVD/HDD speeds", &g_config.general.throttle_io,
     //        "Limit DVD/HDD throughput to approximate Xbox load times");
 }
