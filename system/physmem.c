@@ -3868,7 +3868,19 @@ void *address_space_map(AddressSpace *as,
     fv = address_space_to_flatview(as);
     mr = flatview_translate(fv, addr, &xlat, &l, is_write, attrs);
 
+#ifdef XBOX
+    bool direct_access = memory_access_is_direct(mr, is_write, attrs);
+    if (direct_access) {
+        CPUState *cpu = qemu_get_cpu(0);
+        ram_addr_t ram_addr = addr + memory_region_get_ram_addr(mr);
+        int callback_guarded = mem_access_callback_address_matches(cpu, ram_addr, len);
+        direct_access = (callback_guarded & (is_write ? BP_MEM_WRITE : BP_MEM_READ)) == 0;
+    }
+
+    if (!direct_access) {
+#else
     if (!memory_access_is_direct(mr, is_write, attrs)) {
+#endif
         size_t used = qatomic_read(&as->bounce_buffer_size);
         for (;;) {
             hwaddr alloc = MIN(as->max_bounce_buffer_size - used, l);
