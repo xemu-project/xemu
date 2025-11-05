@@ -534,6 +534,26 @@ void pgraph_vk_download_dirty_surfaces(NV2AState *d)
     qemu_event_set(&r->dirty_surfaces_download_complete);
 }
 
+static void wait_for_surface_downloads(NV2AState *d)
+{
+    bool is_main_thread = qemu_in_main_thread();
+    if (is_main_thread) {
+        bql_unlock();
+    }
+
+    PGRAPHVkState *r = d->pgraph.vk_renderer_state;
+    qemu_mutex_lock(&d->pfifo.lock);
+    qemu_event_reset(&r->downloads_complete);
+    qatomic_set(&r->downloads_pending, true);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_event_wait(&r->downloads_complete);
+
+    if (is_main_thread) {
+        bql_lock();
+    }
+}
+
 static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
                                     hwaddr len, bool write)
 {
@@ -570,12 +590,7 @@ static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
     qemu_mutex_unlock(&d->pgraph.lock);
 
     if (wait_for_downloads) {
-        qemu_mutex_lock(&d->pfifo.lock);
-        qemu_event_reset(&r->downloads_complete);
-        qatomic_set(&r->downloads_pending, true);
-        pfifo_kick(d);
-        qemu_mutex_unlock(&d->pfifo.lock);
-        qemu_event_wait(&r->downloads_complete);
+        wait_for_surface_downloads(d);
     }
 }
 
