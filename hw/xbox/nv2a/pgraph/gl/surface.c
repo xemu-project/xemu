@@ -468,10 +468,14 @@ static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
 
 static void register_cpu_access_callback(NV2AState *d, SurfaceBinding *surface)
 {
-    if (tcg_enabled() && surface->width && surface->height) {
-        surface->access_cb = mem_access_callback_insert(
-            qemu_get_cpu(0), d->vram, surface->vram_addr, surface->size,
-            &surface_access_callback, d);
+    if (tcg_enabled()) {
+        if (surface->width && surface->height) {
+            surface->access_cb = mem_access_callback_insert(
+                qemu_get_cpu(0), d->vram, surface->vram_addr, surface->size,
+                &surface_access_callback, d);
+        } else {
+            surface->access_cb = NULL;
+        }
     }
 }
 
