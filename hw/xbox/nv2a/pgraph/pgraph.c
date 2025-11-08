@@ -2497,6 +2497,8 @@ DEF_METHOD(NV097, SET_BEGIN_END)
     if (parameter == NV097_SET_BEGIN_END_OP_END) {
         if (pg->primitive_mode == PRIM_TYPE_INVALID) {
             NV2A_DPRINTF("End without Begin!\n");
+            pgraph_reset_inline_buffers(pg);
+            return;
         }
         nv2a_profile_inc_counter(NV2A_PROF_BEGIN_ENDS);
         d->pgraph.renderer->ops.draw_end(d);
