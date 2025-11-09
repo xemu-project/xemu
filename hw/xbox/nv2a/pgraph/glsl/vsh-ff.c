@@ -489,16 +489,15 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     "  oPos.xy *= oPos.w;\n"
     );
 
-    /* FIXME: Testing */
     if (state->point_params_enable) {
         mstring_append(
             body,
             "  float d_e = length(position * modelViewMat0);\n"
-            "  float ptMinSize = pointParams[7];\n"
-            "  float ptMaxSize = pointParams[3] + ptMinSize;\n"
+            "  float ptMinSize = min(pointParams[7], 63.875);\n"
+            "  float ptMaxSize = min(pointParams[3] + ptMinSize, 63.875);\n"
             "  oPts.x = 1/sqrt(pointParams[0] + pointParams[1] * d_e + pointParams[2] * d_e * d_e) + pointParams[6];\n");
         mstring_append_fmt(body,
-                           "  oPts.x = max(min(oPts.x * pointParams[3] + pointParams[7], ptMaxSize), ptMinSize) * %d;\n",
+                           "  oPts.x = clamp(oPts.x * pointParams[3] + pointParams[7], ptMinSize, ptMaxSize) * %d;\n",
                            state->surface_scale_factor);
     } else {
         mstring_append_fmt(body, "  oPts.x = %f * %d;\n", state->point_size,
