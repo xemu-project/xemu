@@ -34,7 +34,19 @@ typedef struct OHCIPort {
     uint32_t ctrl;
 } OHCIPort;
 
+typedef struct USBActivePacket USBActivePacket;
 typedef struct OHCIState OHCIState;
+
+struct USBActivePacket {
+    USBEndpoint *ep;
+    USBPacket usb_packet;
+    uint8_t usb_buf[8192];
+    uint32_t async_td;
+    bool async_complete;
+    OHCIState *ohci;
+
+    QTAILQ_ENTRY(USBActivePacket) next;
+};
 
 struct OHCIState {
     USBBus bus;
@@ -87,10 +99,10 @@ struct OHCIState {
 
     /* Active packets.  */
     uint32_t old_ctl;
-    USBPacket usb_packet;
     uint8_t usb_buf[8192];
     uint32_t async_td;
     bool async_complete;
+    QTAILQ_HEAD(, USBActivePacket) active_packets;
 
     void (*ohci_die)(OHCIState *ohci);
 };
@@ -120,5 +132,6 @@ void ohci_bus_stop(OHCIState *ohci);
 void ohci_stop_endpoints(OHCIState *ohci);
 void ohci_hard_reset(OHCIState *ohci);
 void ohci_sysbus_die(struct OHCIState *ohci);
+void ohci_clear_active_packets(struct OHCIState *ohci);
 
 #endif
