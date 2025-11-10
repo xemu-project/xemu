@@ -48,6 +48,10 @@ class MainMenuInputView : public virtual MainMenuTabView
 {
 public:
     void Draw() override;
+    void DrawExpansionSlotOptions(int active);
+    void DrawExpansionSlotOptions(int active, int expansion_slot_index);
+    void DrawXmuSettings(int active, int expansion_slot_index);
+    void DrawXblcSettings(int active, int expansion_slot_index);
 };
 
 class MainMenuDisplayView : public virtual MainMenuTabView
