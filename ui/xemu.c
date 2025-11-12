@@ -55,6 +55,7 @@
 
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
+#include "hw/xbox/nv2a/debug.h"
 #include "hw/xbox/nv2a/debug_gl.h"
 #include "ui/xemu-notifications.h"
 
@@ -1347,6 +1348,11 @@ int main(int argc, char **argv)
     fprintf(stderr, "xemu_version: %s\n", xemu_version);
     fprintf(stderr, "xemu_commit: %s\n", xemu_commit);
     fprintf(stderr, "xemu_date: %s\n", xemu_date);
+
+    gchar *fatal_error_log_path = g_build_filename(g_get_home_dir(), "xemu-fatal-error.log", NULL);
+    nv2a_set_fatal_error_log_path(fatal_error_log_path);
+    fprintf(stderr, "xemu fatal error log path: %s\n", fatal_error_log_path);
+    g_free(fatal_error_log_path);
 
     DPRINTF("Entered main()\n");
     gArgc = argc;

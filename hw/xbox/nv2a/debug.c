@@ -1,5 +1,5 @@
 /*
- * Geforce NV2A PGRAPH OpenGL Renderer debug routines
+ * Geforce NV2A PGRAPH general debug routines
  *
  * Copyright (c) 2025 Matt Borgerson
  *
@@ -17,11 +17,56 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "hw/xbox/nv2a/debug.h"
 #include "hw/xbox/nv2a/debug_gl.h"
 
-#include <stdio.h>
-
 #include "qemu/osdep.h"
+
+
+static gchar *fatal_error_log_path = NULL;
+
+void nv2a_set_fatal_error_log_path(const gchar *path)
+{
+    if (fatal_error_log_path) {
+        g_free(fatal_error_log_path);
+    }
+
+    fatal_error_log_path = path ? g_strdup(path) : NULL;
+}
+
+void nv2a_log_fatal_error(const char *msg, ...)
+{
+    FILE *error_log = stderr;
+    if (fatal_error_log_path) {
+        error_log = fopen(fatal_error_log_path, "w");
+        if (!error_log) {
+            fprintf(stderr, "Failed to open fatal error log at '%s'\n",
+                    fatal_error_log_path);
+            error_log = stderr;
+        }
+    }
+
+    time_t now = time(NULL);
+    struct tm *local_time = localtime(&now);
+
+    char timestamp[32] = {
+        0,
+    };
+    strftime(timestamp, sizeof(timestamp), "%Y%m%d at %T", local_time);
+
+    fprintf(error_log, "%s\n", timestamp);
+
+    va_list args;
+    va_start(args, msg);
+    vfprintf(error_log, msg, args);
+    va_end(args);
+
+    fprintf(error_log, "\n\n");
+
+    if (error_log != stderr) {
+        fclose(error_log);
+    }
+}
 
 #ifdef XEMU_DEBUG_BUILD
 
