@@ -20,38 +20,47 @@
 #ifndef XEMU_HW_XBOX_NV2A_DEBUG_GL_H_
 #define XEMU_HW_XBOX_NV2A_DEBUG_GL_H_
 
-#ifdef XEMU_DEBUG_BUILD
-
 #include <epoxy/gl.h>
 
-#define ASSERT_NO_GL_ERROR()                                             \
-    do {                                                                 \
-        int error_count = 0;                                             \
-        GLenum error;                                                    \
-        while ((error = glGetError()) != GL_NO_ERROR) {                  \
-            ++error_count;                                               \
-            fprintf(stderr, "OpenGL error: 0x%X (%d) at %s:%d\n", error, \
-                    error, __FILE__, __LINE__);                          \
-        }                                                                \
-        assert(!error_count && "OpenGL error(s) detected");              \
+#define ASSERT_NO_GL_ERROR()                                                 \
+    do {                                                                     \
+        int error_count = 0;                                                 \
+        GLenum error;                                                        \
+        while ((error = glGetError()) != GL_NO_ERROR) {                      \
+            ++error_count;                                                   \
+            fprintf(stderr, "OpenGL error: 0x%X (%d) at %s:%d\n", error,     \
+                    error, __FILE__, __LINE__);                              \
+            nv2a_log_fatal_error("OpenGL error 0x%X (%d) detected at %s:%d", \
+                                 error, error, __FILE__, __LINE__);          \
+        }                                                                    \
+        assert(!error_count && "OpenGL error(s) detected");                  \
     } while (0)
 
-#if defined(__clang__) && defined(__FILE_NAME__)
-#define ASSERT_FRAMEBUFFER_COMPLETE() \
-    gl_debug_assert_framebuffer_complete(__FILE_NAME__, __LINE__)
-#else
+
+#ifdef XEMU_DEBUG_BUILD
+
 #define ASSERT_FRAMEBUFFER_COMPLETE() \
     gl_debug_assert_framebuffer_complete(__FILE__, __LINE__)
-#endif
 
 void gl_debug_assert_framebuffer_complete(const char *source_file, int line);
 
 #else
 
-#define ASSERT_NO_GL_ERROR() assert(glGetError() == GL_NO_ERROR)
-
-#define ASSERT_FRAMEBUFFER_COMPLETE() \
-    assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
+#define ASSERT_FRAMEBUFFER_COMPLETE()                             \
+    do {                                                          \
+        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER); \
+        if (status != GL_FRAMEBUFFER_COMPLETE) {                  \
+            fprintf(stderr,                                       \
+                    "OpenGL framebuffer status 0x%X (%d) != "     \
+                    "GL_FRAMEBUFFER_COMPLETE at %s:%d\n",         \
+                    status, status, __FILE__, __LINE__);          \
+            nv2a_log_fatal_error(                                 \
+                "OpenGL framebuffer status not complete: 0x%X "   \
+                "(%d)\nat %s:%d\n",                               \
+                status, status, __FILE__, __LINE__);              \
+            assert(status == GL_FRAMEBUFFER_COMPLETE);            \
+        }                                                         \
+    } while (0)
 
 #endif // XEMU_DEBUG_BUILD
 
