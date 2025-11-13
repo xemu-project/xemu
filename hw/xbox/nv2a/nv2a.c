@@ -20,6 +20,7 @@
  */
 
 #include "hw/xbox/nv2a/nv2a_int.h"
+#include "hw/xbox/smbus.h"
 #include "qemu/main-loop.h"
 
 void nv2a_update_irq(NV2AState *d)
@@ -198,8 +199,13 @@ static void nv2a_vga_gfx_update(void *opaque)
     VGACommonState *vga = opaque;
     vga->hw_ops->gfx_update(vga);
 
+
     NV2AState *d = container_of(vga, NV2AState, vga);
-    d->pcrtc.pending_interrupts |= NV_PCRTC_INTR_0_VBLANK;
+    if (!(d->pcrtc.pending_interrupts & NV_PCRTC_INTR_0_VBLANK)) {
+        smbus_cx25871_notify_vblank();
+        d->pcrtc.pending_interrupts |= NV_PCRTC_INTR_0_VBLANK;
+    }
+
     d->pcrtc.raster = 0;
 
     nv2a_update_irq(d);
