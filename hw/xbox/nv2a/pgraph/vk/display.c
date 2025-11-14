@@ -1069,7 +1069,8 @@ void pgraph_vk_render_display(PGRAPHState *pg)
 
     SurfaceBinding *surface = pgraph_vk_surface_get_within(
         d, d->pcrtc.start + vga_display_params.line_offset);
-    if (surface == NULL || !surface->color) {
+    if (surface == NULL || !surface->color || !surface->width ||
+        !surface->height) {
         return;
     }
 

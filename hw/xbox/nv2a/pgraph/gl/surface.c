@@ -469,9 +469,13 @@ static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
 static void register_cpu_access_callback(NV2AState *d, SurfaceBinding *surface)
 {
     if (tcg_enabled()) {
-        surface->access_cb = mem_access_callback_insert(
-            qemu_get_cpu(0), d->vram, surface->vram_addr, surface->size,
-            &surface_access_callback, d);
+        if (surface->width && surface->height) {
+            surface->access_cb = mem_access_callback_insert(
+                qemu_get_cpu(0), d->vram, surface->vram_addr, surface->size,
+                &surface_access_callback, d);
+        } else {
+            surface->access_cb = NULL;
+        }
     }
 }
 
@@ -684,6 +688,10 @@ static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
     swizzle &= surface->swizzle;
     downscale &= (pg->surface_scale_factor != 1);
 
+    if (!surface->width || !surface->height) {
+        return;
+    }
+
     trace_nv2a_pgraph_surface_download(
         surface->color ? "COLOR" : "ZETA",
         surface->swizzle ? "sz" : "lin", surface->vram_addr,
@@ -756,7 +764,8 @@ static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
 
 static void surface_download(NV2AState *d, SurfaceBinding *surface, bool force)
 {
-    if (!(surface->download_pending || force)) {
+    if (!(surface->download_pending || force) || !surface->width ||
+        !surface->height) {
         return;
     }
 
@@ -876,6 +885,10 @@ void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
 
     surface->upload_pending = false;
     surface->draw_time = pg->draw_time;
+
+    if (!surface->width || !surface->height) {
+        return;
+    }
 
     // FIXME: Don't query GL for texture binding
     GLint last_texture_binding;
@@ -1209,7 +1222,8 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            unsigned int width = entry.width, height = entry.height;
+            unsigned int width = entry.width ? entry.width : 1;
+            unsigned int height = entry.height ? entry.height : 1;
             pgraph_apply_scaling_factor(pg, &width, &height);
             glTexImage2D(GL_TEXTURE_2D, 0, entry.fmt.gl_internal_format, width,
                          height, 0, entry.fmt.gl_format, entry.fmt.gl_type,
