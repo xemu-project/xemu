@@ -24,6 +24,8 @@
 #include "../xemu-notifications.h"
 #include "snapshot-manager.hh"
 
+#define MAX_RECENT_DISCS 10
+
 void ActionEjectDisc(void)
 {
     Error *err = NULL;
@@ -71,13 +73,16 @@ void ActionLoadDiscFile(const char *file_path)
                         g_config.general.history.discs[j] = g_config.general.history.discs[j-1];
                     }
                     g_config.general.history.discs[0] = g_strdup(file_path);
-                    break;
+                    return;
                 }
             }
 
             if (i == g_config.general.history.discs_count) {
-                if (g_config.general.history.discs_count >= 10) {
-                    g_free((void*)g_config.general.history.discs[9]);
+                if (g_config.general.history.discs_count >= MAX_RECENT_DISCS) {
+                    for (int j = MAX_RECENT_DISCS; j < g_config.general.history.discs_count; j++) {
+                        g_free((void*)g_config.general.history.discs[j]);
+                    }
+                    g_config.general.history.discs_count = MAX_RECENT_DISCS;
                 } else {
                     const char **new_discs = g_renew(const char *, g_config.general.history.discs, 
                                                g_config.general.history.discs_count + 1);
@@ -91,7 +96,6 @@ void ActionLoadDiscFile(const char *file_path)
                 g_config.general.history.discs[0] = g_strdup(file_path);
             }
         }
-        xemu_settings_save();
     }
 }
 
@@ -150,6 +154,8 @@ void ActionLoadSnapshotChecked(const char *name)
 
 void ActionLoadDiscFromHistory(int index)
 {
+    g_assert(index >= 0 && index < g_config.general.history.discs_count);
+
     if (index < 0 || index >= g_config.general.history.discs_count) {
         return;
     }
@@ -160,6 +166,15 @@ void ActionLoadDiscFromHistory(int index)
     }
 
     if (qemu_access(file_path, F_OK) == -1) {
+        g_free((void*)g_config.general.history.discs[index]);
+        for (int j = index; j < g_config.general.history.discs_count - 1; j++) {
+            g_config.general.history.discs[j] = g_config.general.history.discs[j + 1];
+        }
+        g_config.general.history.discs_count--;
+        if (g_config.general.history.discs_count == 0) {
+            g_free(g_config.general.history.discs);
+            g_config.general.history.discs = NULL;
+        }
         return;
     }
 
