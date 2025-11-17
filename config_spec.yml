@@ -24,7 +24,6 @@ general:
       type: array
       items:
         type: string
-      max_items: 10
 
 input:
   bindings:
