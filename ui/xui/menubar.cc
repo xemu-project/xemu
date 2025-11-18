@@ -138,6 +138,39 @@ void ShowMainMenu()
             if (ImGui::MenuItem("Eject Disc", SHORTCUT_MENU_TEXT(E))) ActionEjectDisc();
             if (ImGui::MenuItem("Load Disc...", SHORTCUT_MENU_TEXT(O))) ActionLoadDisc();
 
+            if (ImGui::BeginMenu("Recent")) {
+                bool has_recent = g_config.general.history.discs && g_config.general.history.discs_count > 0;
+                
+                if (has_recent) {
+                    for (int i = 0; i < g_config.general.history.discs_count; i++) {
+                        const char *disc_path = g_config.general.history.discs[i];
+                        if (!disc_path) continue;
+                        
+                        const char *filename = g_path_get_basename(disc_path);
+                        bool file_exists = qemu_access(disc_path, F_OK) != -1;
+                        
+                        if (file_exists) {
+                            if (ImGui::MenuItem(filename)) {
+                                ActionLoadDiscFromHistory(i);
+                            }
+                        } else {
+                            ImGui::MenuItem(filename, NULL, false, false);
+                        }
+                        
+                        g_free((void *)filename);
+                    }
+                    
+                    ImGui::Separator();
+                }
+                
+                if (ImGui::MenuItem("Clear History")) {
+                    ActionClearDiscHistory();
+                    xemu_settings_save();
+                }
+                
+                ImGui::EndMenu();
+            }
+
             ImGui::Separator();
 
             if (ImGui::MenuItem("Settings...")) g_main_menu.ShowSettings();
