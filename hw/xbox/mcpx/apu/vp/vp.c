@@ -1105,7 +1105,6 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                 cbo = lbo;
             } else {
                 cbo = ebo;
-                voice_off(d, v);
                 DPRINTF("end of buffer!\n");
             }
         }
