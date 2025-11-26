@@ -220,4 +220,6 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len);
 hwaddr nv_clip_gpu_tile_blit(NV2AState *d, hwaddr blit_base_address,
                              hwaddr len);
 
+void ptimer_process_alarm(NV2AState *d);
+
 #endif

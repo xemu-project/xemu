@@ -63,6 +63,7 @@
 #define NV_PMC_INTR_0                                    0x00000100
 #   define NV_PMC_INTR_0_PFIFO                                 (1 << 8)
 #   define NV_PMC_INTR_0_PGRAPH                               (1 << 12)
+#   define NV_PMC_INTR_0_PTIMER_PENDING                       (1 << 20)
 #   define NV_PMC_INTR_0_PCRTC                                (1 << 24)
 #   define NV_PMC_INTR_0_PBUS                                 (1 << 28)
 #   define NV_PMC_INTR_0_SOFTWARE                             (1 << 31)

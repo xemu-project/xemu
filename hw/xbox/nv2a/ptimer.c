@@ -31,6 +31,19 @@ static uint64_t ptimer_get_clock(NV2AState *d)
                     d->ptimer.numerator);
 }
 
+void ptimer_process_alarm(NV2AState *d)
+{
+    if (d->ptimer.alarm_time == 0xFFFFFFFF) {
+        return;
+    }
+
+    uint32_t current_time_low = (ptimer_get_clock(d) & 0x7ffffff) << 5;
+    if (d->ptimer.alarm_time <= current_time_low) {
+        d->ptimer.pending_interrupts |= NV_PTIMER_INTR_0_ALARM;
+        d->ptimer.alarm_time = 0xFFFFFFFF;
+    }
+}
+
 uint64_t ptimer_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = opaque;
