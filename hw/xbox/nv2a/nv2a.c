@@ -45,6 +45,14 @@ void nv2a_update_irq(NV2AState *d)
         d->pmc.pending_interrupts &= ~NV_PMC_INTR_0_PGRAPH;
     }
 
+    /* PTIMER */
+    ptimer_process_alarm(d);
+    if (d->ptimer.pending_interrupts & d->ptimer.enabled_interrupts) {
+        d->pmc.pending_interrupts |= NV_PMC_INTR_0_PTIMER_PENDING;
+    } else {
+        d->pmc.pending_interrupts &= ~NV_PMC_INTR_0_PTIMER_PENDING;
+    }
+
     if (d->pmc.pending_interrupts && d->pmc.enabled_interrupts) {
         trace_nv2a_irq(d->pmc.pending_interrupts);
         pci_irq_assert(PCI_DEVICE(d));
@@ -320,6 +328,7 @@ static void nv2a_reset(NV2AState *d)
     d->pmc.pending_interrupts = 0;
     d->pfifo.pending_interrupts = 0;
     d->ptimer.pending_interrupts = 0;
+    d->ptimer.alarm_time = 0xFFFFFFFF;
     d->pcrtc.pending_interrupts = 0;
 
     for (int i = 0; i < 256; i++) {
