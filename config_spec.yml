@@ -181,7 +181,7 @@ display:
       default: true
     fit:
       type: enum
-      values: [center, scale, stretch]
+      values: [center, scale, integer, stretch]
       default: scale
     aspect_ratio:
       type: enum
