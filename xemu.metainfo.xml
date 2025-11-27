@@ -21,12 +21,12 @@
   </description>
 
   <screenshots>
-    <screenshot type="default"><image>https://xemu.app/screenshots/0.png</image><caption>Xbox menu</caption></screenshot>
-    <screenshot><image>https://xemu.app/screenshots/1.png</image></screenshot>
-    <screenshot><image>https://xemu.app/screenshots/2.png</image></screenshot>
-    <screenshot><image>https://xemu.app/screenshots/3.png</image></screenshot>
-    <screenshot><image>https://xemu.app/screenshots/4.png</image></screenshot>
-    <screenshot><image>https://xemu.app/screenshots/5.png</image></screenshot>
+    <screenshot type="default"><image>https://xemu.app/screenshots/0.png</image><caption>"Xbox Dashboard" running in xemu</caption></screenshot>
+    <screenshot><image>https://xemu.app/screenshots/1.png</image><caption>"Halo: Combat Evolved" (Campaign) running in xemu</caption></screenshot>
+    <screenshot><image>https://xemu.app/screenshots/2.png</image><caption>"Fuzion Frenzy" running in xemu</caption></screenshot>
+    <screenshot><image>https://xemu.app/screenshots/3.png</image><caption>"Halo: Combat Evolved" (Multiplayer) running in xemu</caption></screenshot>
+    <screenshot><image>https://xemu.app/screenshots/4.png</image><caption>"Tony Hawk's Pro Skater 2x" running in xemu</caption></screenshot>
+    <screenshot><image>https://xemu.app/screenshots/5.png</image><caption>xemu Settings Menu</caption></screenshot>
   </screenshots>
 
   <categories>
