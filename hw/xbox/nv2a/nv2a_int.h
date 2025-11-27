@@ -115,6 +115,8 @@ typedef struct NV2AState {
         uint32_t numerator;
         uint32_t denominator;
         uint32_t alarm_time;
+        uint32_t alarm_time_high;
+        uint64_t time_offset;
     } ptimer;
 
     struct {
