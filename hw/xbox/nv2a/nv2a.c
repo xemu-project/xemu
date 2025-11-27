@@ -329,6 +329,7 @@ static void nv2a_reset(NV2AState *d)
     d->pfifo.pending_interrupts = 0;
     d->ptimer.pending_interrupts = 0;
     d->ptimer.alarm_time = 0xFFFFFFFF;
+    d->ptimer.time_offset = 0;
     d->pcrtc.pending_interrupts = 0;
 
     for (int i = 0; i < 256; i++) {
@@ -453,7 +454,7 @@ const VMStateDescription vmstate_nv2a_pgraph_vertex_attributes = {
 
 static const VMStateDescription vmstate_nv2a = {
     .name = "nv2a",
-    .version_id = 3,
+    .version_id = 4,
     .minimum_version_id = 1,
     .post_save = nv2a_post_save,
     .post_load = nv2a_post_load,
@@ -559,6 +560,8 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(ptimer.numerator, NV2AState),
         VMSTATE_UINT32(ptimer.denominator, NV2AState),
         VMSTATE_UINT32(ptimer.alarm_time, NV2AState),
+        VMSTATE_UINT32(ptimer.alarm_time_high, NV2AState),
+        VMSTATE_UINT64(ptimer.time_offset, NV2AState),
         VMSTATE_UINT32_ARRAY(pfb.regs, NV2AState, 0x1000),
         VMSTATE_UINT32(pcrtc.pending_interrupts, NV2AState),
         VMSTATE_UINT32(pcrtc.enabled_interrupts, NV2AState),
