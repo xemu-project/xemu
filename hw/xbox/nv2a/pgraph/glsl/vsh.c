@@ -130,9 +130,7 @@ void pgraph_glsl_set_vsh_state(PGRAPHState *pg, VshState *vsh)
 
     vsh->point_params_enable = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
                                         NV_PGRAPH_CSV0_D_POINTPARAMSENABLE);
-    vsh->point_size = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_POINTSIZE),
-                               NV097_SET_POINT_SIZE_V) /
-                      8.0f;
+    vsh->point_size = pgraph_reg_r(pg, NV_PGRAPH_POINTSIZE) / 8.0f;
     if (vsh->point_params_enable) {
         for (int i = 0; i < 8; i++) {
             vsh->point_params[i] = pg->point_params[i];
@@ -306,6 +304,12 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         pgraph_glsl_gen_vsh_prog(
             VSH_VERSION_XVS, (uint32_t *)state->programmable.program_data,
             state->programmable.program_length, header, body);
+        if (!state->point_params_enable) {
+            mstring_append_fmt(body, "  oPts.x = %f * %d;\n",
+                               state->point_size <= 0.f ? 1.f :
+                                                          state->point_size,
+                               state->surface_scale_factor);
+        }
     }
 
     if (!state->fog_enable) {
