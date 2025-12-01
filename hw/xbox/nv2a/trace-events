@@ -30,4 +30,4 @@ nv2a_pgraph_surface_texture_compat_failed(int32_t surface_fmt, int32_t texture_f
 nv2a_pgraph_surface_upload(const char *binding, const char *layout, uint32_t addr, uint32_t width, uint32_t height, uint32_t pitch, uint32_t bytes_per_pixel) "[RAM->GPU] %s (%s) surface @ 0x%08" PRIx32 " (w=%d,h=%d,p=%d,bpp=%d)"
 nv2a_pgraph_flip_stall(void) ""
 nv2a_pgraph_flip_increment_write(uint32_t write3d_old, uint32_t write3d_new) "0x%"PRIx32" -> 0x%"PRIx32
-
+nv2a_pgraph_surface_download_vga_overlapping(uint32_t addr, uint32_t length) "Downloading surfaces overlapping VGA @ 0x%08" PRIx32 " (%d)"

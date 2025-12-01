@@ -632,6 +632,24 @@ void pgraph_gl_surface_download_if_dirty(NV2AState *d,
     }
 }
 
+void pgraph_gl_download_surfaces_in_range_if_dirty(NV2AState *d, hwaddr start, hwaddr size)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
+
+    SurfaceBinding *surface;
+
+    hwaddr end = start + size - 1;
+
+    QTAILQ_FOREACH(surface, &r->surfaces, entry) {
+        hwaddr surf_end = surface->vram_addr + surface->size - 1;
+        bool overlapping = !(surface->vram_addr >= end || start >= surf_end);
+        if (overlapping) {
+            pgraph_gl_surface_download_if_dirty(d, surface);
+        }
+    }
+}
+
 static void bind_current_surface(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
