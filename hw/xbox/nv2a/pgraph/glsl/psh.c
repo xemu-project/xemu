@@ -632,6 +632,9 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
             if (state->tex_x8y24[i] && ps->opts.vulkan) {
                 return "usampler2D";
             }
+            if (state->tex_cubemap[i]) {
+                return samplerCube;
+            }
             return sampler2D;
         }
         if (dim == 3) return sampler3D;
@@ -959,6 +962,11 @@ static MString* psh_convert(struct PixelShader *ps)
         "    }\n"
         "    return uv;\n"
         "}\n"
+        "\n"
+        "vec3 remap2DToCube(vec3 texCoord2DProjective) {\n"
+        "    vec2 st = (texCoord2DProjective.xy / texCoord2DProjective.z);"
+        "    return normalize(vec3(1.0, st.y, -st.x));"
+        "}\n"
         );
 
     MString *clip = mstring_new();
@@ -1106,8 +1114,17 @@ static MString* psh_convert(struct PixelShader *ps)
                     apply_convolution_filter(ps, vars, i);
                 } else {
                     if (ps->state->dim_tex[i] == 2) {
-                        mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, %s(pT%d.xyw));\n",
-                                           i, i, tex_remap, i);
+                        if (ps->state->tex_cubemap[i]) {
+                            mstring_append_fmt(
+                                vars,
+                                "vec4 t%d = texture(texSamp%d, remap2DToCube(%s(pT%d.xyw)));\n",
+                                i, i, tex_remap, i);
+                        } else {
+                            mstring_append_fmt(
+                                vars,
+                                "vec4 t%d = textureProj(texSamp%d, %s(pT%d.xyw));\n",
+                                i, i, tex_remap, i);
+                        }
                     } else if (ps->state->dim_tex[i] == 3) {
                         mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, vec4(pT%d.xy, 0.0, pT%d.w));\n",
                                            i, i, i, i);
