@@ -24,7 +24,7 @@
 #include "../xemu-notifications.h"
 #include "snapshot-manager.hh"
 
-#define MAX_RECENT_DISCS 10
+#define MAX_RECENT_DISCS 15
 
 void ActionEjectDisc(void)
 {
@@ -61,39 +61,39 @@ void ActionLoadDiscFile(const char *file_path)
         error_free(err);
     } else {
         if (file_path && file_path[0]) {
-            if (!g_config.general.history.discs) {
-                g_config.general.history.discs = g_new0(const char *, 1);
-                g_config.general.history.discs_count = 0;
+            if (!g_config.general.recent.discs) {
+                g_config.general.recent.discs = g_new0(const char *, 1);
+                g_config.general.recent.discs_count = 0;
             }
 
             int i;
-            for (i = 0; i < g_config.general.history.discs_count; i++) {
-                if (g_strcmp0(g_config.general.history.discs[i], file_path) == 0) {
+            for (i = 0; i < g_config.general.recent.discs_count; i++) {
+                if (g_strcmp0(g_config.general.recent.discs[i], file_path) == 0) {
                     for (int j = i; j > 0; j--) {
-                        g_config.general.history.discs[j] = g_config.general.history.discs[j-1];
+                        g_config.general.recent.discs[j] = g_config.general.recent.discs[j-1];
                     }
-                    g_config.general.history.discs[0] = g_strdup(file_path);
+                    g_config.general.recent.discs[0] = g_strdup(file_path);
                     return;
                 }
             }
 
-            if (i == g_config.general.history.discs_count) {
-                if (g_config.general.history.discs_count >= MAX_RECENT_DISCS) {
-                    for (int j = MAX_RECENT_DISCS; j < g_config.general.history.discs_count; j++) {
-                        g_free((void*)g_config.general.history.discs[j]);
+            if (i == g_config.general.recent.discs_count) {
+                if (g_config.general.recent.discs_count >= MAX_RECENT_DISCS) {
+                    for (int j = MAX_RECENT_DISCS; j < g_config.general.recent.discs_count; j++) {
+                        g_free((void*)g_config.general.recent.discs[j]);
                     }
-                    g_config.general.history.discs_count = MAX_RECENT_DISCS;
+                    g_config.general.recent.discs_count = MAX_RECENT_DISCS;
                 } else {
-                    const char **new_discs = g_renew(const char *, g_config.general.history.discs, 
-                                               g_config.general.history.discs_count + 1);
-                    g_config.general.history.discs = new_discs;
-                    g_config.general.history.discs_count++;
+                    const char **new_discs = g_renew(const char *, g_config.general.recent.discs, 
+                                               g_config.general.recent.discs_count + 1);
+                    g_config.general.recent.discs = new_discs;
+                    g_config.general.recent.discs_count++;
                 }
 
-                for (int i = g_config.general.history.discs_count - 1; i > 0; i--) {
-                    g_config.general.history.discs[i] = g_config.general.history.discs[i-1];
+                for (int i = g_config.general.recent.discs_count - 1; i > 0; i--) {
+                    g_config.general.recent.discs[i] = g_config.general.recent.discs[i-1];
                 }
-                g_config.general.history.discs[0] = g_strdup(file_path);
+                g_config.general.recent.discs[0] = g_strdup(file_path);
             }
         }
     }
@@ -152,28 +152,23 @@ void ActionLoadSnapshotChecked(const char *name)
     g_snapshot_mgr.LoadSnapshotChecked(name);
 }
 
-void ActionLoadDiscFromHistory(int index)
+void ActionLoadDiscFromRecent(unsigned int index)
 {
-    g_assert(index >= 0 && index < g_config.general.history.discs_count);
+    g_assert(index < g_config.general.recent.discs_count);
+    if (index >= g_config.general.recent.discs_count) return;
 
-    if (index < 0 || index >= g_config.general.history.discs_count) {
-        return;
-    }
-
-    const char *file_path = g_config.general.history.discs[index];
-    if (!file_path || !file_path[0]) {
-        return;
-    }
+    const char *file_path = g_config.general.recent.discs[index];
+    if (!file_path || !file_path[0]) return;
 
     if (qemu_access(file_path, F_OK) == -1) {
-        g_free((void*)g_config.general.history.discs[index]);
-        for (int j = index; j < g_config.general.history.discs_count - 1; j++) {
-            g_config.general.history.discs[j] = g_config.general.history.discs[j + 1];
+        g_free((void*)g_config.general.recent.discs[index]);
+        for (int j = index; j < g_config.general.recent.discs_count - 1; j++) {
+            g_config.general.recent.discs[j] = g_config.general.recent.discs[j + 1];
         }
-        g_config.general.history.discs_count--;
-        if (g_config.general.history.discs_count == 0) {
-            g_free(g_config.general.history.discs);
-            g_config.general.history.discs = NULL;
+        g_config.general.recent.discs_count--;
+        if (g_config.general.recent.discs_count == 0) {
+            g_free(g_config.general.recent.discs);
+            g_config.general.recent.discs = NULL;
         }
         return;
     }
@@ -181,12 +176,60 @@ void ActionLoadDiscFromHistory(int index)
     ActionLoadDiscFile(file_path);
 }
 
-void ActionClearDiscHistory(void)
+void ActionRemoveDiscFromRecent(unsigned int index)
 {
-    for (int i = 0; i < g_config.general.history.discs_count; i++) {
-        g_free((void*)g_config.general.history.discs[i]);
+    g_assert(index < g_config.general.recent.discs_count);
+    if (index >= g_config.general.recent.discs_count) return;
+
+    g_free((void*)g_config.general.recent.discs[index]);
+    for (int j = index; j < g_config.general.recent.discs_count - 1; j++) {
+        g_config.general.recent.discs[j] = g_config.general.recent.discs[j + 1];
     }
-    g_free(g_config.general.history.discs);
-    g_config.general.history.discs = NULL;
-    g_config.general.history.discs_count = 0;
+    g_config.general.recent.discs_count--;
+    if (g_config.general.recent.discs_count == 0) {
+        g_free(g_config.general.recent.discs);
+        g_config.general.recent.discs = NULL;
+    }
+}
+
+void ActionClearDiscRecent(void)
+{
+    for (int i = 0; i < g_config.general.recent.discs_count; i++) {
+        g_free((void*)g_config.general.recent.discs[i]);
+    }
+    g_free(g_config.general.recent.discs);
+    g_config.general.recent.discs = NULL;
+    g_config.general.recent.discs_count = 0;
+}
+
+void ActionClearMissingRecentDiscs(void)
+{
+    int valid_count = 0;
+    for (int i = 0; i < g_config.general.recent.discs_count; i++) {
+        const char *disc_path = g_config.general.recent.discs[i];
+        if (!disc_path) continue;
+        if (qemu_access(disc_path, F_OK) != -1) {
+            valid_count++;
+        }
+    }
+    
+    const char **valid_discs = NULL;
+    if (valid_count > 0) {
+        valid_discs = (const char **)g_new0(const char *, valid_count);
+        
+        int valid_index = 0;
+        for (int i = 0; i < g_config.general.recent.discs_count; i++) {
+            const char *disc_path = g_config.general.recent.discs[i];
+            if (!disc_path) continue;
+            if (qemu_access(disc_path, F_OK) != -1) {
+                valid_discs[valid_index++] = disc_path;
+            } else {
+                g_free((void*)disc_path);
+            }
+        }
+    }
+    
+    g_free(g_config.general.recent.discs);
+    g_config.general.recent.discs = valid_discs;
+    g_config.general.recent.discs_count = valid_count;
 }

@@ -151,7 +151,6 @@ display:
     validation_layers: bool
     debug_shaders: bool
     assert_on_validation_msg: bool
-    preferred_physical_device: string
   quality:
     surface_scale:
       type: integer
