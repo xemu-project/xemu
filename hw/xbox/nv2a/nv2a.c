@@ -46,7 +46,6 @@ void nv2a_update_irq(NV2AState *d)
     }
 
     /* PTIMER */
-    ptimer_process_alarm(d);
     if (d->ptimer.pending_interrupts & d->ptimer.enabled_interrupts) {
         d->pmc.pending_interrupts |= NV_PMC_INTR_0_PTIMER_PENDING;
     } else {
@@ -307,8 +306,7 @@ static void nv2a_reset(NV2AState *d)
     d->pmc.pending_interrupts = 0;
     d->pfifo.pending_interrupts = 0;
     d->ptimer.pending_interrupts = 0;
-    d->ptimer.alarm_time = 0xFFFFFFFF;
-    d->ptimer.time_offset = 0;
+    ptimer_reset(d);
     d->pcrtc.pending_interrupts = 0;
 
     for (int i = 0; i < 256; i++) {
@@ -438,6 +436,8 @@ static const VMStateDescription vmstate_nv2a = {
     .post_save = nv2a_post_save,
     .post_load = nv2a_post_load,
     .pre_load = nv2a_pre_load,
+    // NOTE: New fields should be appended, regardless of similarity to existing
+    //       fields.
     .fields = (VMStateField[]) {
         // FIXME: Split this up into subsections
         VMSTATE_PCI_DEVICE(parent_obj, NV2AState),
@@ -539,7 +539,6 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(ptimer.numerator, NV2AState),
         VMSTATE_UINT32(ptimer.denominator, NV2AState),
         VMSTATE_UINT32(ptimer.alarm_time, NV2AState),
-        VMSTATE_UINT32(ptimer.alarm_time_high, NV2AState),
         VMSTATE_UINT64(ptimer.time_offset, NV2AState),
         VMSTATE_UINT32_ARRAY(pfb.regs, NV2AState, 0x1000),
         VMSTATE_UINT32(pcrtc.pending_interrupts, NV2AState),
@@ -555,6 +554,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_BOOL(pgraph.waiting_for_nop, NV2AState),
         VMSTATE_UNUSED(1),
         VMSTATE_BOOL(pgraph.waiting_for_context_switch, NV2AState),
+        VMSTATE_UINT32(ptimer.alarm_time_high, NV2AState),
         VMSTATE_END_OF_LIST()
     },
 };
@@ -606,5 +606,6 @@ void nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram)
     NV2AState *d = NV2A_DEVICE(dev);
     nv2a_init_memory(d, ram);
     nv2a_init_vga(d);
+    ptimer_init(d);
     qemu_add_vm_change_state_handler(nv2a_vm_state_change, d);
 }

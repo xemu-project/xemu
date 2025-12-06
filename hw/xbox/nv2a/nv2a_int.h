@@ -116,6 +116,7 @@ typedef struct NV2AState {
         uint32_t alarm_time;
         uint32_t alarm_time_high;
         uint64_t time_offset;
+        QEMUTimer timer;
     } ptimer;
 
     struct {
@@ -212,6 +213,7 @@ DEFINE_PROTO(user)
 DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address);
 void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len);
 
-void ptimer_process_alarm(NV2AState *d);
+void ptimer_init(NV2AState *d);
+void ptimer_reset(NV2AState *d);
 
 #endif
