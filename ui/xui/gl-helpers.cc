@@ -949,6 +949,15 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
         float t_ratio = GetDisplayAspectRatio(tw, th);
         scale[0] = t_ratio*(float)th/(float)width;
         scale[1] = (float)th/(float)height;
+    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_INTEGER) {
+        // Integer scaling
+        float t_ratio = GetDisplayAspectRatio(tw, th);
+        int s_factor = (float)width/(float)tw;
+        int s_height = (float)height/(float)th;
+        if (s_height < s_factor) s_factor = s_height;
+        if (s_factor < 1) s_factor = 1;
+            scale[0] = s_factor*t_ratio*(int)th/(float)width;
+            scale[1] = s_factor*(int)th/(float)height;
     } else {
         float t_ratio = GetDisplayAspectRatio(tw, th);
         float w_ratio = (float)width/(float)height;
