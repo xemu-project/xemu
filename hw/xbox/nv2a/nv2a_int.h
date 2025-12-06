@@ -117,6 +117,7 @@ typedef struct NV2AState {
         uint32_t alarm_time;
         uint32_t alarm_time_high;
         uint64_t time_offset;
+        QEMUTimer timer;
     } ptimer;
 
     struct {
@@ -222,6 +223,7 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len);
 hwaddr nv_clip_gpu_tile_blit(NV2AState *d, hwaddr blit_base_address,
                              hwaddr len);
 
-void ptimer_process_alarm(NV2AState *d);
+void ptimer_init(NV2AState *d);
+void ptimer_reset(NV2AState *d);
 
 #endif
