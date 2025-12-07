@@ -590,6 +590,7 @@ void MainMenuDisplayView::Draw()
            "Enable xemu user interface animations");
     ChevronCombo("Display mode", &g_config.display.ui.fit,
                  "Center\0"
+                 "Integer\0"
                  "Scale\0"
                  "Stretch\0",
                  "Select how the framebuffer should fit or scale into the window");

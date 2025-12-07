@@ -195,7 +195,7 @@ void ShowMainMenu()
             }
 
             ImGui::Combo("Display Mode", &g_config.display.ui.fit,
-                         "Center\0Scale\0Integer\0Stretch\0");
+                         "Center\0Integer\0Scale\0Stretch\0");
             ImGui::SameLine();
             HelpMarker("Controls how the rendered content should be scaled "
                        "into the window");
