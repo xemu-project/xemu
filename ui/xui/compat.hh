@@ -34,7 +34,7 @@ public:
     std::string serialized_report;
 
     CompatibilityReporter();
-    ~CompatibilityReporter();
+    ~CompatibilityReporter() = default;
     void Draw();
 };
 
