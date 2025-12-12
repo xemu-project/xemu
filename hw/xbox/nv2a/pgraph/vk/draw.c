@@ -883,10 +883,15 @@ static void create_pipeline(PGRAPHState *pg)
     if (pgraph_reg_r(pg, NV_PGRAPH_BLEND) & NV_PGRAPH_BLEND_EN) {
         color_blend_attachment.blendEnable = VK_TRUE;
 
-        uint32_t sfactor =
-            GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND), NV_PGRAPH_BLEND_SFACTOR);
-        uint32_t dfactor =
-            GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND), NV_PGRAPH_BLEND_DFACTOR);
+        uint32_t sfactor = fixup_blend_factor_for_surface(
+            GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
+                     NV_PGRAPH_BLEND_SFACTOR),
+            &pg->surface_shape);
+        uint32_t dfactor = fixup_blend_factor_for_surface(
+            GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
+                     NV_PGRAPH_BLEND_DFACTOR),
+            &pg->surface_shape);
+
         assert(sfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
         assert(dfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
         color_blend_attachment.srcColorBlendFactor =
