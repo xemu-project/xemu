@@ -14,10 +14,10 @@ jobs:
     name: "Bump Meson subprojects"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
 
       - name: Install the latest version of uv
-        uses: astral-sh/setup-uv@2ddd2b9cb38ad8efd50337e8ab201519a34c9f24 # v6
+        uses: astral-sh/setup-uv@ed21f2f24f8dd64503750218de024bcf64c7250a # v6
         with:
           enable-cache: false
 
