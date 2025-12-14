@@ -560,7 +560,6 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(ptimer.numerator, NV2AState),
         VMSTATE_UINT32(ptimer.denominator, NV2AState),
         VMSTATE_UINT32(ptimer.alarm_time, NV2AState),
-        VMSTATE_UINT64(ptimer.time_offset, NV2AState),
         VMSTATE_UINT32_ARRAY(pfb.regs, NV2AState, 0x1000),
         VMSTATE_UINT32(pcrtc.pending_interrupts, NV2AState),
         VMSTATE_UINT32(pcrtc.enabled_interrupts, NV2AState),
@@ -576,6 +575,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UNUSED(1),
         VMSTATE_BOOL(pgraph.waiting_for_context_switch, NV2AState),
         VMSTATE_UINT32(ptimer.alarm_time_high, NV2AState),
+        VMSTATE_UINT64(ptimer.time_offset, NV2AState),
         VMSTATE_END_OF_LIST()
     },
 };
