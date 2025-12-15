@@ -90,7 +90,7 @@ jobs:
       run: tar xf src.tar.gz
     - name: Initialize compiler cache
       id: cache
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
       with:
         path: /tmp/xemu-ccache
         key: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
@@ -196,7 +196,7 @@ jobs:
     steps:
     - name: Initialize compiler cache
       id: cache
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
       with:
         path: /tmp/xemu-ccache
         key: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
@@ -324,7 +324,7 @@ jobs:
         pip install pyyaml requests
     - name: Initialize compiler, library cache
       id: cache
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
       with:
         path: |
           xemu-ccache
