@@ -83,7 +83,7 @@ jobs:
 
     steps:
     - name: Download source package
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v4
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
         name: src.tar.gz
     - name: Extract source package
@@ -140,7 +140,7 @@ jobs:
           arch: aarch64
     steps:
     - name: Download artifacts
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v4
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
         name: ${{ matrix.artifact_name }}
         path: ${{ matrix.artifact_name }}
@@ -202,7 +202,7 @@ jobs:
         key: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
     - name: Download source package
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v4
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
         name: src.tar.gz
     - name: Extract source package
@@ -305,7 +305,7 @@ jobs:
           artifact_filename: xemu-macos-arm64-release.zip
     steps:
     - name: Download source package
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v4
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
         name: src.tar.gz
     - name: Extract source package
@@ -358,12 +358,12 @@ jobs:
         configuration: ["debug", "release"]
     steps:
     - name: Download x86_64 build
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v4
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
         name: xemu-macos-x86_64-${{ matrix.configuration }}
         path: xemu-macos-x86_64-${{ matrix.configuration }}
     - name: Download arm64 build
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v4
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
         name: xemu-macos-arm64-${{ matrix.configuration }}
         path: xemu-macos-arm64-${{ matrix.configuration }}
@@ -398,7 +398,7 @@ jobs:
     needs: [Ubuntu, macOSUniversal, Windows, WindowsPdb]
     steps:
     - name: Download artifacts
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v4
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
         path: dist
     - name: Extract source package
@@ -462,7 +462,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Download source package
-      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v4
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
         name: src.tar.gz
     - name: Extract source package
