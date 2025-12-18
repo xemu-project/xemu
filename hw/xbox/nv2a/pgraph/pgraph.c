@@ -1534,6 +1534,13 @@ DEF_METHOD(NV097, SET_SHADE_MODE)
     }
 }
 
+DEF_METHOD(NV097, SET_PROVOKING_VERTEX)
+{
+    assert((parameter & ~1) == 0);
+    PG_SET_MASK(NV_PGRAPH_CONTROL_3, NV_PGRAPH_CONTROL_3_PROVOKING_VERTEX,
+             parameter);
+}
+
 DEF_METHOD(NV097, SET_POLYGON_OFFSET_SCALE_FACTOR)
 {
     pgraph_reg_w(pg, NV_PGRAPH_ZOFFSETFACTOR, parameter);
@@ -1722,7 +1729,11 @@ DEF_METHOD_INC(NV097, SET_TEXTURE_MATRIX_ENABLE)
 
 DEF_METHOD(NV097, SET_POINT_SIZE)
 {
-    PG_SET_MASK(NV_PGRAPH_POINTSIZE, NV097_SET_POINT_SIZE_V, parameter);
+    if (parameter > NV097_SET_POINT_SIZE_V_MAX) {
+        return;
+    }
+
+    pgraph_reg_w(pg, NV_PGRAPH_POINTSIZE, parameter);
 }
 
 DEF_METHOD_INC(NV097, SET_PROJECTION_MATRIX)
@@ -2490,6 +2501,8 @@ DEF_METHOD(NV097, SET_BEGIN_END)
     if (parameter == NV097_SET_BEGIN_END_OP_END) {
         if (pg->primitive_mode == PRIM_TYPE_INVALID) {
             NV2A_DPRINTF("End without Begin!\n");
+            pgraph_reset_inline_buffers(pg);
+            return;
         }
         nv2a_profile_inc_counter(NV2A_PROF_BEGIN_ENDS);
         d->pgraph.renderer->ops.draw_end(d);

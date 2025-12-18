@@ -106,7 +106,8 @@ const char *unpack_z24s8_to_d32_sfloat_s8_uint_glsl =
     "void main() {\n"
     "    uint idx_out = gl_GlobalInvocationID.x;\n"
     "    uint idx_in = get_input_idx(idx_out);\n"
-    "    depth_out[idx_out] = float(depth_stencil_in[idx_in] >> 8) / float(0xffffff);\n"
+    // Conversion to float depth must be the same as in fragment shader
+    "    depth_out[idx_out] = uintBitsToFloat(floatBitsToUint(float(depth_stencil_in[idx_in] >> 8) / 16777216.0) + 1u);\n"
     "    if (idx_out % 4 == 0) {\n"
     "       uint stencil_value = 0;\n"
     "       for (int i = 0; i < 4; i++) {\n" // Include next 3 pixels

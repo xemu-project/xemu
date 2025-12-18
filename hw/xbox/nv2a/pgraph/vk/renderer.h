@@ -326,7 +326,6 @@ typedef struct PGRAPHVkState {
 
     bool debug_utils_extension_enabled;
     bool custom_border_color_extension_enabled;
-    bool provoking_vertex_extension_enabled;
     bool memory_budget_extension_enabled;
 
     VkPhysicalDevice physical_device;
@@ -594,5 +593,9 @@ void pgraph_vk_end_nondraw_commands(PGRAPHState *pg, VkCommandBuffer cmd);
 
 // blit.c
 void pgraph_vk_image_blit(NV2AState *d);
+
+// gpuprops.c
+void pgraph_vk_determine_gpu_properties(NV2AState *d);
+GPUProperties *pgraph_vk_get_gpu_properties(void);
 
 #endif

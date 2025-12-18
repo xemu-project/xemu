@@ -96,6 +96,15 @@ typedef struct BetaState {
   uint32_t beta;
 } BetaState;
 
+typedef struct GPUProperties {
+    struct {
+        short tri;
+        short tri_strip0;
+        short tri_strip1;
+        short tri_fan;
+    } geom_shader_winding;
+} GPUProperties;
+
 typedef struct PGRAPHRenderer {
     CONFIG_DISPLAY_RENDERER type;
     const char *name;
@@ -122,6 +131,7 @@ typedef struct PGRAPHRenderer {
         void (*set_surface_scale_factor)(NV2AState *d, unsigned int scale);
         unsigned int (*get_surface_scale_factor)(NV2AState *d);
         int (*get_framebuffer_surface)(NV2AState *d);
+        GPUProperties *(*get_gpu_properties)(void);
     } ops;
 } PGRAPHRenderer;
 

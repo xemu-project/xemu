@@ -134,6 +134,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         uint32_t border_source =
             GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BORDER_SOURCE);
         bool cubemap = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_CUBEMAPENABLE);
+        state->tex_cubemap[i] = cubemap;
         state->border_logical_size[i][0] = 0.0f;
         state->border_logical_size[i][1] = 0.0f;
         state->border_logical_size[i][2] = 0.0f;
@@ -208,6 +209,26 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         }
 
         state->conv_tex[i] = kernel;
+    }
+
+    state->surface_zeta_format = pg->surface_shape.zeta_format;
+    unsigned int z_format = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER),
+                                     NV_PGRAPH_SETUPRASTER_Z_FORMAT);
+
+    switch (pg->surface_shape.zeta_format) {
+    case NV097_SET_SURFACE_FORMAT_ZETA_Z16:
+        state->depth_format =
+            z_format ? DEPTH_FORMAT_F16 : DEPTH_FORMAT_D16;
+        break;
+    case NV097_SET_SURFACE_FORMAT_ZETA_Z24S8:
+        state->depth_format =
+            z_format ? DEPTH_FORMAT_F24 : DEPTH_FORMAT_D24;
+        break;
+    default:
+        fprintf(stderr, "Unknown zeta surface format: 0x%x\n",
+                pg->surface_shape.zeta_format);
+        assert(false);
+        break;
     }
 }
 
@@ -607,13 +628,13 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
         return NULL;
 
     case PS_TEXTUREMODES_PROJECT2D:
-        if (state->dim_tex[i] == 2) {
+        if (dim == 2) {
             if (state->tex_x8y24[i] && ps->opts.vulkan) {
                 return "usampler2D";
             }
             return sampler2D;
         }
-        if (state->dim_tex[i] == 3) return sampler3D;
+        if (dim == 3) return sampler3D;
         assert(!"Unhandled texture dimensions");
         return NULL;
 
@@ -624,8 +645,8 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
             fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
             assert(!"Shadow map support not implemented for this mode");
         }
-        if (state->dim_tex[i] == 2) return sampler2D;
-        if (state->dim_tex[i] == 3 && mode != PS_TEXTUREMODES_DOT_ST) return sampler3D;
+        if (dim == 2) return sampler2D;
+        if (dim == 3 && mode != PS_TEXTUREMODES_DOT_ST) return sampler3D;
         assert(!"Unhandled texture dimensions");
         return NULL;
 
@@ -647,8 +668,11 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
             fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
             assert(!"Shadow map support not implemented for this mode");
         }
-        assert(state->dim_tex[i] == 2);
-        return samplerCube;
+        assert(dim == 2);
+        if (state->tex_cubemap[i]) {
+            return samplerCube;
+        }
+        return sampler2D;
 
     case PS_TEXTUREMODES_DPNDNT_AR:
     case PS_TEXTUREMODES_DPNDNT_GB:
@@ -656,7 +680,7 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
             fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
             assert(!"Shadow map support not implemented for this mode");
         }
-        assert(state->dim_tex[i] == 2);
+        assert(dim == 2);
         return sampler2D;
     }
 }
@@ -875,6 +899,23 @@ static MString* psh_convert(struct PixelShader *ps)
         "vec3 dotmap_hilo_hemisphere(vec4 col) {\n"
         "    return col.rgb;\n" // FIXME
         "}\n"
+        // Kahan's algorithm for computing determinant using FMA for higher
+        // precision. See e.g.:
+        // Muller et al, "Handbook of Floating-Point Arithmetic", 2nd ed.
+        // or
+        // Claude-Pierre Jeannerod, Nicolas Louvet, and Jean-Michel Muller,
+        // Further analysis of Kahan's algorithm for the accurate
+        // computation of 2x2 determinants,
+        // Mathematics of Computation 82(284), October 2013.
+        "float kahan_det(vec2 a, vec2 b) {\n"
+        "    precise float cd = a.y*b.x;\n"
+        "    precise float err = fma(-a.y, b.x, cd);\n"
+        "    precise float res = fma(a.x, b.y, -cd) + err;\n"
+        "    return res;\n"
+        "}\n"
+        "float area(vec2 a, vec2 b, vec2 c) {\n"
+        "    return kahan_det(b - a, c - a);\n"
+        "}\n"
         "const float[9] gaussian3x3 = float[9](\n"
         "    1.0/16.0, 2.0/16.0, 1.0/16.0,\n"
         "    2.0/16.0, 4.0/16.0, 2.0/16.0,\n"
@@ -883,6 +924,41 @@ static MString* psh_convert(struct PixelShader *ps)
         "    vec2(-1.0,-1.0),vec2(0.0,-1.0),vec2(1.0,-1.0),\n"
         "    vec2(-1.0, 0.0),vec2(0.0, 0.0),vec2(1.0, 0.0),\n"
         "    vec2(-1.0, 1.0),vec2(0.0, 1.0),vec2(1.0, 1.0));\n"
+        "vec2 remapCubeTo2D(vec3 texCoord) {\n"
+        "    vec2 uv;\n"
+        "    vec3 absTexCoord = abs(texCoord);\n"
+        "    if (absTexCoord.x > absTexCoord.y && absTexCoord.x > absTexCoord.z) {\n"
+        "        if (texCoord.x > 0.0) {\n"
+        "            // +X: Right\n"
+        "            uv = vec2(-texCoord.z, texCoord.y);\n"
+        "        } else {\n"
+        "            // -X: Left\n"
+        "            uv = vec2(texCoord.z, texCoord.y);\n"
+        "        }\n"
+        "        uv /= absTexCoord.x;\n"
+        "    }\n"
+        "    else if (absTexCoord.y > absTexCoord.x && absTexCoord.y > absTexCoord.z) {\n"
+        "        if (texCoord.y > 0.0) {\n"
+        "            // +Y: Top\n"
+        "            uv = vec2(texCoord.x, -texCoord.z);\n"
+        "        } else {\n"
+        "            // -Y: Bottom\n"
+        "            uv = vec2(texCoord.x, texCoord.z);\n"
+        "        }\n"
+        "        uv /= absTexCoord.y;\n"
+        "    }\n"
+        "    else {\n"
+        "        if (texCoord.z > 0.0) {\n"
+        "            // +Z: Front\n"
+        "            uv = vec2(texCoord.x, texCoord.y);\n"
+        "        } else {\n"
+        "            // -Z: Back\n"
+        "            uv = vec2(-texCoord.x, texCoord.y);\n"
+        "        }\n"
+        "        uv /= absTexCoord.z;\n"
+        "    }\n"
+        "    return uv;\n"
+        "}\n"
         );
 
     MString *clip = mstring_new();
@@ -911,45 +987,69 @@ static MString* psh_convert(struct PixelShader *ps)
                              "}\n");
     }
 
+    if (ps->state->z_perspective) {
+        mstring_append(
+            clip,
+            "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n"
+            "precise float bc0 = area(unscaled_xy, vtxPos1.xy, vtxPos2.xy);\n"
+            "precise float bc1 = area(unscaled_xy, vtxPos2.xy, vtxPos0.xy);\n"
+            "precise float bc2 = area(unscaled_xy, vtxPos0.xy, vtxPos1.xy);\n"
+            "bc0 /= vtxPos0.w;\n"
+            "bc1 /= vtxPos1.w;\n"
+            "bc2 /= vtxPos2.w;\n"
+            "float inv_bcsum = 1.0 / (bc0 + bc1 + bc2);\n"
+            // Denominator can be zero in case the rasterized primitive is a
+            // point or a degenerate line or triangle.
+            "if (isinf(inv_bcsum)) {\n"
+            "  inv_bcsum = 0.0;\n"
+            "}\n"
+            "bc1 *= inv_bcsum;\n"
+            "bc2 *= inv_bcsum;\n"
+            "precise float zvalue = vtxPos0.w + (bc1*(vtxPos1.w - vtxPos0.w) + bc2*(vtxPos2.w - vtxPos0.w));\n"
+            // If GPU clipping is inaccurate, the point gl_FragCoord.xy might
+            // be above the horizon of the plane of a rasterized triangle
+            // making the interpolated w-coordinate above zero or negative. We
+            // should prevent such wrapping through infinity by clamping to
+            // infinity.
+            "if (zvalue > 0.0) {\n"
+            "  float zslopeofs = depthFactor*triMZ*zvalue*zvalue;\n"
+            "  zvalue += depthOffset;\n"
+            "  zvalue += zslopeofs;\n"
+            "} else {\n"
+            "  zvalue = uintBitsToFloat(0x7F7FFFFFu);\n"
+            "}\n"
+            "if (isnan(zvalue)) {\n"
+            "  zvalue = uintBitsToFloat(0x7F7FFFFFu);\n"
+            "}\n");
+    } else {
+        mstring_append(
+            clip,
+            "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n"
+            "precise float bc0 = area(unscaled_xy, vtxPos1.xy, vtxPos2.xy);\n"
+            "precise float bc1 = area(unscaled_xy, vtxPos2.xy, vtxPos0.xy);\n"
+            "precise float bc2 = area(unscaled_xy, vtxPos0.xy, vtxPos1.xy);\n"
+            "float inv_bcsum = 1.0 / (bc0 + bc1 + bc2);\n"
+            // Denominator can be zero in case the rasterized primitive is a
+            // point or a degenerate line or triangle.
+            "if (isinf(inv_bcsum)) {\n"
+            "  inv_bcsum = 0.0;\n"
+            "}\n"
+            "bc1 *= inv_bcsum;\n"
+            "bc2 *= inv_bcsum;\n"
+            "precise float zvalue = vtxPos0.z + (bc1*(vtxPos1.z - vtxPos0.z) + bc2*(vtxPos2.z - vtxPos0.z));\n"
+            "zvalue += depthOffset;\n"
+            "zvalue += depthFactor*triMZ;\n");
+    }
+
+    /* Depth clipping */
     if (ps->state->depth_clipping) {
-        if (ps->state->z_perspective) {
-            mstring_append(
-                clip, "float zvalue = 1.0/gl_FragCoord.w + depthOffset;\n"
-                      "if (zvalue < clipRange.z || clipRange.w < zvalue) {\n"
-                      "  discard;\n"
-                      "}\n");
-        } else {
-            /* Take care of floating point precision problems. MS dashboard
-             * outputs exactly 0.0 z-coordinates and then our fixed function
-             * vertex shader outputs -w as the z-coordinate when OpenGL is
-             * used. Since -w/w = -1, this should give us exactly 0.0 as
-             * gl_FragCoord.z here. Unfortunately, with AMD Radeon RX 6600 the
-             * result is slightly greater than 0. MS dashboard sets the clip
-             * range to [0.0, 0.0] and so the imprecision causes unwanted
-             * clipping. Note that since Vulkan uses NDC range [0,1] it
-             * doesn't suffer from this problem with Radeon. Also, despite the
-             * imprecision OpenGL Radeon writes the correct value 0 to the depth
-             * buffer (if writing is enabled.) Radeon appears to write floored
-             * values. To compare, Intel integrated UHD 770 has gl_FragCoord.z
-             * exactly 0 (and writes rounded to closest integer values to the
-             * depth buffer.) Radeon OpenGL problem could also be fixed by using
-             * glClipControl(), but it requires OpenGL 4.5.
-             * Above is based on experiments with Linux and Mesa.
-             */
-            if (ps->opts.vulkan) {
-                mstring_append(
-                    clip, "if (gl_FragCoord.z*clipRange.y < clipRange.z ||\n"
-                          "    gl_FragCoord.z*clipRange.y > clipRange.w) {\n"
-                          "  discard;\n"
-                          "}\n");
-            } else {
-                mstring_append(
-                    clip, "if ((gl_FragCoord.z + 1.0f/16777216.0f)*clipRange.y < clipRange.z ||\n"
-                          "    (gl_FragCoord.z - 1.0f/16777216.0f)*clipRange.y > clipRange.w) {\n"
-                          "  discard;\n"
-                          "}\n");
-            }
-        }
+        mstring_append(
+            clip, "if (zvalue < clipRange.z || clipRange.w < zvalue) {\n"
+                  "  discard;\n"
+                  "}\n");
+    } else {
+        mstring_append(
+            clip, "zvalue = clamp(zvalue, clipRange.z, clipRange.w);\n");
     }
 
     MString *vars = mstring_new();
@@ -1028,8 +1128,14 @@ static MString* psh_convert(struct PixelShader *ps)
             }
             break;
         case PS_TEXTUREMODES_CUBEMAP:
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xyz);\n",
-                               i, i, i);
+            if (!ps->state->tex_cubemap[i]) {
+                mstring_append_fmt(vars,
+                    "pT%d.xy = remapCubeTo2D(pT%d.xyz);\n",
+                    i, i);
+            }
+            mstring_append_fmt(vars,
+                "vec4 t%d = texture(texSamp%d, pT%d.xy%s);\n",
+                i, i, i, ps->state->tex_cubemap[i] ? "z" : "");
             break;
         case PS_TEXTUREMODES_PASSTHRU:
             assert(ps->state->border_logical_size[i][0] == 0.0f && "Unexpected border texture on passthru");
@@ -1139,8 +1245,13 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "vec3 n_%d = vec3(dot%d, dot%d, dot%d_n);\n",
                 i, i-1, i, i);
             apply_border_adjustment(ps, vars, i, "n_%d");
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, n_%d);\n",
-                i, i, i);
+            if (!ps->state->tex_cubemap[i]) {
+                mstring_append_fmt(vars,
+                    "n_%d.xy = remapCubeTo2D(n_%d);\n", i, i);
+            }
+            mstring_append_fmt(vars,
+                "vec4 t%d = texture(texSamp%d, n_%d%s);\n",
+                i, i, i, ps->state->tex_cubemap[i] ? "" : ".xy");
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_SPEC:
             assert(i == 3);
@@ -1154,8 +1265,13 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "vec3 rv_%d = 2*n_%d*dot(n_%d,e_%d)/dot(n_%d,n_%d) - e_%d;\n",
                 i, i, i, i, i, i, i);
             apply_border_adjustment(ps, vars, i, "rv_%d");
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, rv_%d);\n",
-                i, i, i);
+            if (!ps->state->tex_cubemap[i]) {
+                mstring_append_fmt(vars,
+                    "rv_%d.xy = remapCubeTo2D(rv_%d);\n", i, i);
+            }
+            mstring_append_fmt(vars,
+                "vec4 t%d = texture(texSamp%d, rv_%d%s);\n",
+                i, i, i, ps->state->tex_cubemap[i] ? "" : ".xy");
             break;
         case PS_TEXTUREMODES_DOT_STR_3D:
             assert(i == 3);
@@ -1167,7 +1283,8 @@ static MString* psh_convert(struct PixelShader *ps)
                 i, i-2, i-1, i);
 
             apply_border_adjustment(ps, vars, i, "dotSTR%d");
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(dotSTR%d%s));\n",
+            mstring_append_fmt(vars,
+                "vec4 t%d = texture(texSamp%d, %s(dotSTR%d%s));\n",
                 i, i, tex_remap, i, ps->state->dim_tex[i] == 2 ? ".xy" : "");
             break;
         case PS_TEXTUREMODES_DOT_STR_CUBE:
@@ -1178,8 +1295,14 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "vec3 dotSTR%dCube = vec3(dot%d, dot%d, dot%d);\n",
                                i, i-2, i-1, i);
             apply_border_adjustment(ps, vars, i, "dotSTR%dCube");
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, dotSTR%dCube);\n",
-                i, i, i);
+            if (!ps->state->tex_cubemap[i]) {
+                mstring_append_fmt(vars,
+                    "dotSTR%dCube.xy = remapCubeTo2D(dotSTR%dCube);\n",
+                    i, i);
+            }
+            mstring_append_fmt(vars,
+                "vec4 t%d = texture(texSamp%d, dotSTR%dCube%s);\n",
+                i, i, i, ps->state->tex_cubemap[i] ? "" : ".xy");
             break;
         case PS_TEXTUREMODES_DPNDNT_AR:
             assert(i >= 1);
@@ -1334,21 +1457,33 @@ static MString* psh_convert(struct PixelShader *ps)
         }
     }
 
-    if (ps->state->z_perspective) {
-        if (!ps->state->depth_clipping) {
-            mstring_append(ps->code,
-                           "float zvalue = 1.0/gl_FragCoord.w + depthOffset;\n");
-        }
-        /* TODO: With integer depth buffers Xbox hardware floors values and so
-         * does Radeon, but Intel UHD 770 rounds to nearest. Should probably
-         * floor here explicitly (in some way that doesn't also cause
-         * imprecision issues due to division by clipRange.y)
-         */
-        mstring_append(ps->code,
-                       "gl_FragDepth = clamp(zvalue, clipRange.z, clipRange.w)/clipRange.y;\n");
-    } else if (!ps->state->depth_clipping) {
-        mstring_append(ps->code,
-                       "gl_FragDepth = clamp(gl_FragCoord.z, clipRange.z/clipRange.y, clipRange.w/clipRange.y);\n");
+    /* With integer depth buffers Xbox hardware floors values. For gl_FragDepth
+     * range [0,1] Radeon floors values to integer depth buffer, but Intel UHD
+     * 770 rounds to nearest. For 24-bit OpenGL/Vulkan integer depth buffer,
+     * we divide the desired depth integer value by 16777216.0, then add 1 in
+     * integer bit representation to get the same result as dividing the
+     * desired depth integer by 16777215.0 would give. (GPUs can't divide by
+     * 16777215.0, only multiply by 1.0/16777215.0 which gives different results
+     * due to rounding.)
+     */
+
+    switch (ps->state->depth_format) {
+    case DEPTH_FORMAT_D16:
+        // 16-bit unsigned int
+        mstring_append(
+            ps->code,
+            "gl_FragDepth = floor(zvalue) / 65535.0;\n");
+        break;
+    case DEPTH_FORMAT_D24:
+        // 24-bit unsigned int
+        mstring_append(
+            ps->code,
+            "gl_FragDepth = uintBitsToFloat(floatBitsToUint(floor(zvalue) / 16777216.0) + 1u);\n");
+        break;
+    default:
+        // TODO: handle floating-point depth buffers properly
+        mstring_append(ps->code, "gl_FragDepth = zvalue / clipRange.y;\n");
+        break;
     }
 
     MString *final = mstring_new();
@@ -1542,29 +1677,60 @@ void pgraph_glsl_set_psh_uniform_values(PGRAPHState *pg,
         pgraph_glsl_set_clip_range_uniform_value(pg, values->clipRange[0]);
     }
 
+    bool polygon_offset_enabled = false;
+    if (pg->primitive_mode >= PRIM_TYPE_TRIANGLES) {
+        uint32_t raster = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER);
+        uint32_t polygon_mode =
+            GET_MASK(raster, NV_PGRAPH_SETUPRASTER_FRONTFACEMODE);
+
+        if ((polygon_mode == NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_FILL &&
+             (raster & NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE)) ||
+            (polygon_mode == NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_LINE &&
+             (raster & NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE)) ||
+            (polygon_mode == NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_POINT &&
+             (raster & NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE))) {
+            polygon_offset_enabled = true;
+        }
+    }
+
     if (locs[PshUniform_depthOffset] != -1) {
         float zbias = 0.0f;
 
-        if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
+        if (polygon_offset_enabled) {
             uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
             zbias = *(float *)&zbias_u32;
-
-            if (pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR) != 0 &&
-                (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
-                 NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE)) {
-                /* TODO: emulate zfactor when z_perspective true, i.e.
-                 * w-buffering. Perhaps calculate an additional offset based on
-                 * triangle orientation in geometry shader and pass the result
-                 * to fragment shader and add it to gl_FragDepth as well.
-                 */
-                NV2A_UNIMPLEMENTED("NV_PGRAPH_ZOFFSETFACTOR for w-buffering");
-            }
         }
 
         values->depthOffset[0] = zbias;
+    }
+
+    if (locs[PshUniform_depthFactor] != -1) {
+        float zfactor = 0.0f;
+
+        if (polygon_offset_enabled) {
+            uint32_t zfactor_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR);
+            zfactor = *(float *)&zfactor_u32;
+            if (zfactor != 0.0f &&
+                (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                 NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE)) {
+                /* FIXME: for w-buffering, polygon slope in screen-space is
+                 * computed per-pixel, but Xbox appears to use constant that
+                 * is the polygon slope at the first visible pixel in top-left
+                 * order.
+                 */
+                NV2A_UNIMPLEMENTED("NV_PGRAPH_ZOFFSETFACTOR only partially implemented for w-buffering");
+            }
+        }
+
+        values->depthFactor[0] = zfactor;
+    }
+
+    if (locs[PshUniform_surfaceScale] != -1) {
+        unsigned int wscale = 1, hscale = 1;
+        pgraph_apply_anti_aliasing_factor(pg, &wscale, &hscale);
+        pgraph_apply_scaling_factor(pg, &wscale, &hscale);
+        values->surfaceScale[0][0] = wscale;
+        values->surfaceScale[0][1] = hscale;
     }
 
     unsigned int max_gl_width = pg->surface_binding_dim.width;

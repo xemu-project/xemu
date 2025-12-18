@@ -51,7 +51,7 @@ public:
     PopupMenu();
     void InitFocus();
     virtual ~PopupMenu();
-    void Show(const ImVec2 &direction);
+    virtual void Show(const ImVec2 &direction);
     void Hide(const ImVec2 &direction);
     bool IsAnimating();
     void Draw(PopupMenuItemDelegate &nav);

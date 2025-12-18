@@ -27,6 +27,13 @@
 
 typedef struct PGRAPHState PGRAPHState;
 
+enum PshDepthFormat {
+    DEPTH_FORMAT_D24,
+    DEPTH_FORMAT_D16,
+    DEPTH_FORMAT_F24,
+    DEPTH_FORMAT_F16,
+};
+
 typedef struct PshState {
     uint32_t combiner_control;
     uint32_t shader_stage_program;
@@ -46,6 +53,7 @@ typedef struct PshState {
     enum ConvolutionFilter conv_tex[4];
     bool tex_x8y24[4];
     int dim_tex[4];
+    bool tex_cubemap[4];
 
     float border_logical_size[4][3];
     float border_inv_real_size[4][3];
@@ -61,6 +69,9 @@ typedef struct PshState {
     bool smooth_shading;
     bool depth_clipping;
     bool z_perspective;
+
+    unsigned int surface_zeta_format;
+    enum PshDepthFormat depth_format;
 } PshState;
 
 void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state);
@@ -75,8 +86,10 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state);
     DECL(S, colorKey, uint, 4)      \
     DECL(S, colorKeyMask, uint, 4)  \
     DECL(S, consts, vec4, 18)       \
+    DECL(S, depthFactor, float, 1)  \
     DECL(S, depthOffset, float, 1)  \
     DECL(S, fogColor, vec4, 1)      \
+    DECL(S, surfaceScale, ivec2, 1) \
     DECL(S, texScale, float, 4)
 
 DECL_UNIFORM_TYPES(PshUniform, PSH_UNIFORM_DECL_X)

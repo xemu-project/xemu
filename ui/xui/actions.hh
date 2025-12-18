@@ -20,6 +20,7 @@
 
 void ActionEjectDisc();
 void ActionLoadDisc();
+void ActionLoadDiscFile(const char *file_path);
 void ActionTogglePause();
 void ActionReset();
 void ActionShutdown();

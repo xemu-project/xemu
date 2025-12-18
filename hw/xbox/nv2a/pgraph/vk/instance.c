@@ -401,10 +401,6 @@ static void add_optional_device_extension_names(
         add_extension_if_available(available_extensions, enabled_extension_names,
                                    VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME);
 
-    r->provoking_vertex_extension_enabled =
-        add_extension_if_available(available_extensions, enabled_extension_names,
-                                   VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME);
-
     r->memory_budget_extension_enabled = add_extension_if_available(
         available_extensions, enabled_extension_names,
         VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
@@ -455,19 +451,33 @@ static bool select_physical_device(PGRAPHState *pg, Error **errp)
         g_malloc_n(num_physical_devices, sizeof(VkPhysicalDevice));
     vkEnumeratePhysicalDevices(r->instance, &num_physical_devices, devices);
 
+    const char *preferred_device = g_config.display.vulkan.preferred_physical_device;
+    int preferred_device_index = -1;
+
     fprintf(stderr, "Available physical devices:\n");
     for (int i = 0; i < num_physical_devices; i++) {
         vkGetPhysicalDeviceProperties(devices[i], &r->device_props);
-        fprintf(stderr, "- %s\n", r->device_props.deviceName);
+        bool is_preferred =
+            preferred_device &&
+            !strcmp(r->device_props.deviceName, preferred_device);
+        if (is_preferred) {
+            preferred_device_index = i;
+        }
+        fprintf(stderr, "- %s%s\n", r->device_props.deviceName,
+                is_preferred ? " *" : "");
     }
 
-    // FIXME: Store preferred device
-
     r->physical_device = VK_NULL_HANDLE;
-    for (int i = 0; i < num_physical_devices; i++) {
-        if (is_device_compatible(devices[i])) {
-            r->physical_device = devices[i];
-            break;
+
+    if (preferred_device_index >= 0 &&
+        is_device_compatible(devices[preferred_device_index])) {
+        r->physical_device = devices[preferred_device_index];
+    } else {
+        for (int i = 0; i < num_physical_devices; i++) {
+            if (is_device_compatible(devices[i])) {
+                r->physical_device = devices[i];
+                break;
+            }
         }
     }
     if (r->physical_device == VK_NULL_HANDLE) {
@@ -476,6 +486,9 @@ static bool select_physical_device(PGRAPHState *pg, Error **errp)
     }
 
     vkGetPhysicalDeviceProperties(r->physical_device, &r->device_props);
+    xemu_settings_set_string(&g_config.display.vulkan.preferred_physical_device,
+                             r->device_props.deviceName);
+
     fprintf(stderr,
             "Selected physical device: %s\n"
             "- Vendor: %x, Device: %x\n"
@@ -570,17 +583,6 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
     }
 
     void *next_struct = NULL;
-
-    VkPhysicalDeviceProvokingVertexFeaturesEXT provoking_vertex_features;
-    if (r->provoking_vertex_extension_enabled) {
-        provoking_vertex_features = (VkPhysicalDeviceProvokingVertexFeaturesEXT){
-            .sType =
-                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROVOKING_VERTEX_FEATURES_EXT,
-            .provokingVertexLast = VK_TRUE,
-            .pNext = next_struct,
-        };
-        next_struct = &provoking_vertex_features;
-    }
 
     VkPhysicalDeviceCustomBorderColorFeaturesEXT custom_border_features;
     if (r->custom_border_color_extension_enabled) {
