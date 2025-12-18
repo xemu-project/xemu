@@ -59,17 +59,11 @@ static inline bool IsShortcutKeyPressed(ImGuiKey key)
 {
     ImGuiIO& io = ImGui::GetIO();
 
-    // Disallow Alt/Shift for plain shortcuts
     if (io.KeyAlt || io.KeyShift) {
         return false;
     }
 
-    // ImGui input model (>= v1.92.5):
-    // On macOS Ctrl/Cmd are swapped internally by ImGui,
-    // so using Ctrl as the shortcut modifier is cross-platform idiomatic.
-    const bool shortcut_mod = io.KeyCtrl;
-
-    return shortcut_mod && ImGui::IsKeyPressed(key);
+    return io.KeyCtrl && ImGui::IsKeyPressed(key);
 }
 
 static inline float mix(float a, float b, float t)
