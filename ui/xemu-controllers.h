@@ -76,7 +76,7 @@ extern "C" {
 
 extern int *g_keyboard_scancode_map[25];
 
-GamepadMappings *xemu_settings_load_gamepad_mapping(const char *guid);
+GamepadMappings *xemu_settings_load_gamepad_mapping(const char *guid, bool reset_to_default);
 
 #ifdef __cplusplus
 } // extern "C"

@@ -55,6 +55,7 @@ input:
   auto_bind:
     type: bool
     default: true
+  # Deprecated: use 'enable_rumble' on the controller mapping settings instead
   allow_vibration:
     type: bool
     default: true

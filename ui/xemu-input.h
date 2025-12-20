@@ -148,6 +148,7 @@ void xemu_save_peripheral_settings(int player_index, int peripheral_index,
 
 void xemu_input_set_test_mode(int enabled);
 int xemu_input_get_test_mode(void);
+void xemu_input_reset_input_mapping(ControllerState *state);
 
 #ifdef __cplusplus
 }
