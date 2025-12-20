@@ -5,14 +5,9 @@
 FROM ubuntu:24.04
 
 ENV MXE_PATH=/opt/mxe
-ENV MXE_REPO=https://github.com/mxe/mxe.git
-ENV MXE_VERSION=db7f5247eaab700f28bb9b9433d279e5958f5f01
+ENV MXE_REPO=https://github.com/kleisauke/mxe
+ENV MXE_VERSION=llvm-mingw-20251119
 
-ENV MXE_LLVM_MINGW_REPO=https://github.com/libvips/build-win64-mxe
-ENV MXE_LLVM_MINGW_VERSION=51fc5884d0c4a3be43a2f09fa36a464885918d3d
-ENV MXE_LLVM_MINGW_PATH=/opt/build-win64-mxe
-
-ARG PLUGIN_DIRS="${MXE_LLVM_MINGW_PATH} ${MXE_LLVM_MINGW_PATH}/build/plugins/llvm-mingw"
 ARG TARGETS="x86_64-w64-mingw32.static aarch64-w64-mingw32.static"
 ARG JOBS=6
 
@@ -33,9 +28,11 @@ RUN apt-get update \
         gperf \
         intltool \
         libc6-dev-i386 \
+        libclang-dev \
         libgdk-pixbuf2.0-dev \
-        libgl-dev \
         libltdl-dev \
+        libgl-dev \
+        libpcre2-dev \
         libssl-dev \
         libtool-bin \
         libxml-parser-perl \
@@ -47,34 +44,32 @@ RUN apt-get update \
         p7zip-full \
         patch \
         perl \
-        python-is-python3 \
         python3 \
         python3-mako \
-        python3-pip \
+        python3-packaging \
         python3-pkg-resources \
         python3-yaml \
+        python3-setuptools \
+        python-is-python3 \
         ruby \
         sed \
-        software-properties-common \
+        sqlite3 \
         unzip \
         wget \
-        xz-utils
+        xz-utils \
+        zip
 
-RUN git clone ${MXE_LLVM_MINGW_REPO} ${MXE_LLVM_MINGW_PATH} \
- && cd ${MXE_LLVM_MINGW_PATH} \
- && git checkout ${MXE_LLVM_MINGW_VERSION} \
- \
- && git clone ${MXE_REPO} ${MXE_PATH} \
- && cd ${MXE_PATH} \
- && git checkout ${MXE_VERSION} \
- && git apply ${MXE_LLVM_MINGW_PATH}/build/patches/mxe-fixes.patch
+RUN git clone -b ${MXE_VERSION} ${MXE_REPO} ${MXE_PATH}
 
+RUN echo "MXE_TARGETS := x86_64-pc-linux-gnu" > ${MXE_PATH}/settings.mk
 RUN make \
-    MXE_TARGETS="${TARGETS}" \
-    MXE_PLUGIN_DIRS="${PLUGIN_DIRS}" \
+    MXE_PLUGIN_DIRS="plugins/llvm-mingw" \
+    MXE_VERBOSE=true \
     JOBS=${JOBS} \
+    MXE_TMP="/var/tmp" \
+    MXE_USE_CCACHE= \
     -C ${MXE_PATH} \
-        cc
+         autotools cargo-c cc meson nasm pe-util
 
 RUN rm ${MXE_PATH}/src/sdl2*.patch
 COPY vulkan-headers.mk \
@@ -86,9 +81,11 @@ COPY vulkan-headers.mk \
 
 RUN make \
     MXE_TARGETS="${TARGETS}" \
-    MXE_PLUGIN_DIRS="${PLUGIN_DIRS}" \
+    MXE_PLUGIN_DIRS="plugins/llvm-mingw" \
+    MXE_VERBOSE=true \
     JOBS=${JOBS} \
     CFLAGS=-O2 \
+    MXE_USE_CCACHE= \
     -C ${MXE_PATH} \
         glib \
         libepoxy \
