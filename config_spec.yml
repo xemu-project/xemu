@@ -55,6 +55,7 @@ input:
   auto_bind:
     type: bool
     default: true
+  # Deprecated: use 'enable_rumble' on the controller mapping settings instead
   allow_vibration:
     type: bool
     default: true
@@ -136,6 +137,91 @@ input:
     rtrigger:
       type: integer
       default: 18 # w
+  gamepad_mappings:
+    type: array
+    items:
+      gamepad_id: string
+      enable_rumble:
+        type: bool
+        default: true
+      # steel_battalion_mapping:
+      # ...
+      controller_mapping:
+        a:
+          type: integer
+          default: 0
+        b:
+          type: integer
+          default: 1
+        x:
+          type: integer
+          default: 2
+        y:
+          type: integer
+          default: 3
+        back:
+          type: integer
+          default: 4
+        guide:
+          type: integer
+          default: 5
+        start:
+          type: integer
+          default: 6
+        lstick_btn:
+          type: integer
+          default: 7
+        rstick_btn:
+          type: integer
+          default: 8
+        lshoulder:
+          type: integer
+          default: 9
+        rshoulder:
+          type: integer
+          default: 10
+        dpad_up:
+          type: integer
+          default: 11
+        dpad_down:
+          type: integer
+          default: 12
+        dpad_left:
+          type: integer
+          default: 13
+        dpad_right:
+          type: integer
+          default: 14
+        axis_left_x:
+          type: integer
+          default: 0
+        axis_left_y:
+          type: integer
+          default: 1
+        axis_right_x:
+          type: integer
+          default: 2
+        axis_right_y:
+          type: integer
+          default: 3
+        axis_trigger_left:
+          type: integer
+          default: 4
+        axis_trigger_right:
+          type: integer
+          default: 5
+        invert_axis_left_x:
+          type: bool
+          default: false
+        invert_axis_left_y:
+          type: bool
+          default: false
+        invert_axis_right_x:
+          type: bool
+          default: false
+        invert_axis_right_y:
+          type: bool
+          default: false
 
 display:
   renderer:
