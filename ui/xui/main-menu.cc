@@ -47,7 +47,9 @@
 MainMenuScene g_main_menu;
 
 MainMenuTabView::~MainMenuTabView() {}
-void MainMenuTabView::Draw() {}
+void MainMenuTabView::Draw()
+{
+}
 
 void MainMenuGeneralView::Draw()
 {
@@ -74,6 +76,25 @@ void MainMenuGeneralView::Draw()
     FilePicker("Games directory", &g_config.general.games_dir, NULL, true);
     // toggle("Throttle DVD/HDD speeds", &g_config.general.throttle_io,
     //        "Limit DVD/HDD throughput to approximate Xbox load times");
+}
+
+bool MainMenuInputView::ConsumeRebindEvent(SDL_Event *event)
+{
+    if (!m_rebinding) {
+        return false;
+    }
+
+    RebindEventResult rebind_result = m_rebinding->ConsumeRebindEvent(event);
+    if (rebind_result == RebindEventResult::Complete) {
+        m_rebinding = nullptr;
+    }
+
+    return rebind_result == RebindEventResult::Ignore;
+}
+
+bool MainMenuInputView::IsInputRebinding()
+{
+    return m_rebinding != nullptr;
 }
 
 void MainMenuInputView::Draw()
@@ -144,6 +165,7 @@ void MainMenuInputView::Draw()
 
         if (activated) {
             active = i;
+            m_rebinding = nullptr;
         }
 
         uint32_t port_color = 0xafafafff;
@@ -193,6 +215,7 @@ void MainMenuInputView::Draw()
             DRIVER_S_DISPLAY_NAME, 
             DRIVER_LIGHT_GUN_DISPLAY_NAME
         };
+
         bool is_selected = false;
         int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);
         for (int i = 0; i < num_drivers; i++) {
@@ -302,7 +325,7 @@ void MainMenuInputView::Draw()
         device_selected = true;
         RenderController(0, 0, 0x81dc8a00, 0x0f0f0f00, bound_state);
     } else {
-        static ControllerState state = { 0 };
+        static ControllerState state{};
         RenderController(0, 0, 0x1f1f1f00, 0x0f0f0f00, &state);
     }
 
@@ -505,14 +528,219 @@ void MainMenuInputView::Draw()
         ImGui::Columns(1);
     }
 
+    SectionTitle("Mapping");
+    ImVec4 tc = ImGui::GetStyle().Colors[ImGuiCol_Header];
+    tc.w = 0.0f;
+    ImGui::PushStyleColor(ImGuiCol_Header, tc);
+
+    if (ImGui::CollapsingHeader("Input Mapping")) {
+        float p = ImGui::GetFrameHeight() * 0.3;
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(p, p));
+        if (ImGui::BeginTable("input_remap_tbl", 2,
+                              ImGuiTableFlags_RowBg |
+                                  ImGuiTableFlags_Borders)) {
+            ImGui::TableSetupColumn("Emulated Input");
+            ImGui::TableSetupColumn("Host Input");
+            ImGui::TableHeadersRow();
+
+            PopulateTableController(bound_state);
+
+            ImGui::EndTable();
+        }
+        ImGui::PopStyleVar();
+    }
+
+    if (bound_state && bound_state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
+        Toggle("Enable Rumble", &bound_state->controller_map->enable_rumble);
+        Toggle("Invert Left X Axis",
+               &bound_state->controller_map->controller_mapping
+                    .invert_axis_left_x);
+        Toggle("Invert Left Y Axis",
+               &bound_state->controller_map->controller_mapping
+                    .invert_axis_left_y);
+        Toggle("Invert Right X Axis",
+               &bound_state->controller_map->controller_mapping
+                    .invert_axis_right_x);
+        Toggle("Invert Right Y Axis",
+               &bound_state->controller_map->controller_mapping
+                    .invert_axis_right_y);
+    }
+
+    if (ImGui::Button("Reset to Default")) {
+      xemu_input_reset_input_mapping(bound_state);
+    }
+
+    ImGui::PopStyleColor();
+
     SectionTitle("Options");
     Toggle("Auto-bind controllers", &g_config.input.auto_bind,
            "Bind newly connected controllers to any open port");
-    Toggle("Controller vibration", &g_config.input.allow_vibration,
-           "Allows the controllers to vibrate");
     Toggle("Background controller input capture",
            &g_config.input.background_input_capture,
            "Capture even if window is unfocused (requires restart)");
+}
+
+void MainMenuInputView::Hide()
+{
+    m_rebinding = nullptr;
+}
+
+void MainMenuInputView::PopulateTableController(ControllerState *state)
+{
+    if (!state)
+        return;
+
+    // Must match g_keyboard_scancode_map and the controller
+    // button map below.
+    static constexpr const char *face_button_index_to_name_map[15] = {
+        "A",
+        "B",
+        "X",
+        "Y",
+        "Back",
+        "Guide",
+        "Start",
+        "Left Stick Button",
+        "Right Stick Button",
+        "White",
+        "Black",
+        "DPad Up",
+        "DPad Down",
+        "DPad Left",
+        "DPad Right",
+    };
+
+    // Must match g_keyboard_scancode_map[15:]. Each axis requires
+    // two keys for the positive and negative direction with the
+    // exception of the triggers, which only require one each.
+    static constexpr const char *keyboard_stick_index_to_name_map[10] = {
+        "Left Stick Up",
+        "Left Stick Left",
+        "Left Stick Right",
+        "Left Stick Down",
+        "Left Trigger",
+        "Right Stick Up",
+        "Right Stick Left",
+        "Right Stick Right",
+        "Right Stick Down",
+        "Right Trigger",
+    };
+
+    // Must match controller axis map below.
+    static constexpr const char *gamepad_axis_index_to_name_map[6] = {
+        "Left Stick Axis X",
+        "Left Stick Axis Y",
+        "Right Stick Axis X",
+        "Right Stick Axis Y",
+        "Left Trigger Axis",
+        "Right Trigger Axis",
+    };
+
+    bool is_keyboard = state->type == INPUT_DEVICE_SDL_KEYBOARD;
+
+    int num_axis_mappings;
+    const char *const *axis_index_to_name_map;
+    if (is_keyboard) {
+      num_axis_mappings = std::size(keyboard_stick_index_to_name_map);
+      axis_index_to_name_map = keyboard_stick_index_to_name_map;
+    } else {
+      num_axis_mappings = std::size(gamepad_axis_index_to_name_map);
+      axis_index_to_name_map = gamepad_axis_index_to_name_map;
+    }
+
+    constexpr int num_face_buttons = std::size(face_button_index_to_name_map);
+    const int table_rows = num_axis_mappings + num_face_buttons;
+    for (int i = 0; i < table_rows; ++i) {
+        ImGui::TableNextRow();
+
+        // Button/Axis Name Column
+        ImGui::TableSetColumnIndex(0);
+
+        if (i < num_face_buttons) {
+          ImGui::Text("%s", face_button_index_to_name_map[i]);
+        } else {
+          ImGui::Text("%s", axis_index_to_name_map[i - num_face_buttons]);
+        }
+
+        // Button Binding Column
+        ImGui::TableSetColumnIndex(1);
+
+        if (m_rebinding && m_rebinding->GetTableRow() == i) {
+            ImGui::Text("Press a key to rebind");
+            continue;
+        }
+
+        const char *remap_button_text = "Invalid";
+        if (is_keyboard) {
+          // g_keyboard_scancode_map includes both face buttons and axis buttons.
+            int keycode = *(g_keyboard_scancode_map[i]);
+            if (keycode != SDL_SCANCODE_UNKNOWN) {
+                remap_button_text =
+                    SDL_GetScancodeName(static_cast<SDL_Scancode>(keycode));
+            }
+        } else if (i < num_face_buttons) {
+                int *button_map[num_face_buttons] = {
+                    &state->controller_map->controller_mapping.a,
+                    &state->controller_map->controller_mapping.b,
+                    &state->controller_map->controller_mapping.x,
+                    &state->controller_map->controller_mapping.y,
+                    &state->controller_map->controller_mapping.back,
+                    &state->controller_map->controller_mapping.guide,
+                    &state->controller_map->controller_mapping.start,
+                    &state->controller_map->controller_mapping.lstick_btn,
+                    &state->controller_map->controller_mapping.rstick_btn,
+                    &state->controller_map->controller_mapping.lshoulder,
+                    &state->controller_map->controller_mapping.rshoulder,
+                    &state->controller_map->controller_mapping.dpad_up,
+                    &state->controller_map->controller_mapping.dpad_down,
+                    &state->controller_map->controller_mapping.dpad_left,
+                    &state->controller_map->controller_mapping.dpad_right,
+                };
+
+                int button = *(button_map[i]);
+                if (button != SDL_CONTROLLER_BUTTON_INVALID) {
+                    remap_button_text = SDL_GameControllerGetStringForButton(
+                        static_cast<SDL_GameControllerButton>(button));
+                }
+        } else {
+          int *axis_map[6] = {
+            &state->controller_map->controller_mapping.axis_left_x,
+            &state->controller_map->controller_mapping.axis_left_y,
+            &state->controller_map->controller_mapping.axis_right_x,
+            &state->controller_map->controller_mapping.axis_right_y,
+            &state->controller_map->controller_mapping
+              .axis_trigger_left,
+            &state->controller_map->controller_mapping
+              .axis_trigger_right,
+          };
+          int axis = *(axis_map[i - num_face_buttons]);
+          if (axis != SDL_CONTROLLER_AXIS_INVALID) {
+            remap_button_text = SDL_GameControllerGetStringForAxis(
+                static_cast<SDL_GameControllerAxis>(axis));
+          }
+        }
+
+        ImGui::PushID(i);
+        float tw = ImGui::CalcTextSize(remap_button_text).x;
+        auto &style = ImGui::GetStyle();
+        float max_button_width =
+          tw + g_viewport_mgr.m_scale * 2 * style.FramePadding.x;
+
+        float min_button_width = ImGui::GetColumnWidth(1) / 2;
+        float button_width = std::max(min_button_width, max_button_width);
+
+        if (ImGui::Button(remap_button_text, ImVec2(button_width, 0))) {
+          if (is_keyboard) {
+            m_rebinding =
+              std::make_unique<ControllerKeyboardRebindingMap>(i);
+          } else {
+            m_rebinding =
+              std::make_unique<ControllerGamepadRebindingMap>(i,
+                  state);
+          }
+        }
+        ImGui::PopID();
+    }
 }
 
 void MainMenuDisplayView::Draw()
@@ -1541,6 +1769,7 @@ void MainMenuScene::Show()
 
 void MainMenuScene::Hide()
 {
+    m_views[m_current_view_index]->Hide();
     m_background.Hide();
     m_nav_control_view.Hide();
     m_animation.EaseOut();
@@ -1553,6 +1782,7 @@ bool MainMenuScene::IsAnimating()
 
 void MainMenuScene::SetNextViewIndex(int i)
 {
+    m_views[m_current_view_index]->Hide();
     m_next_view_index = i % m_tabs.size();
     g_config.general.last_viewed_menu_index = i;
 }
@@ -1590,6 +1820,16 @@ void MainMenuScene::HandleInput()
 void MainMenuScene::UpdateAboutViewConfigInfo()
 {
     m_about_view.UpdateConfigInfoText();
+}
+
+bool MainMenuScene::ConsumeRebindEvent(SDL_Event *event)
+{
+    return m_input_view.ConsumeRebindEvent(event);
+}
+
+bool MainMenuScene::IsInputRebinding()
+{
+    return m_input_view.IsInputRebinding();
 }
 
 bool MainMenuScene::Draw()

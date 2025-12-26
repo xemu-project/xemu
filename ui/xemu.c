@@ -559,8 +559,10 @@ void sdl2_poll_events(struct sdl2_console *scon)
     xemu_hud_should_capture_kbd_mouse(&kbd, &mouse);
 
     while (SDL_PollEvent(ev)) {
-        xemu_input_process_sdl_events(ev);
+        // HUD must process events first so that if a controller is detached,
+        // a latent rebind request can cancel before the state is freed
         xemu_hud_process_sdl_events(ev);
+        xemu_input_process_sdl_events(ev);
 
         switch (ev->type) {
         case SDL_KEYDOWN:

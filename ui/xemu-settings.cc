@@ -31,6 +31,7 @@
 #include <iostream>
 #include <locale.h>
 
+#include "xemu-controllers.h"
 #include "xemu-settings.h"
 
 #define DEFINE_CONFIG_TREE
@@ -217,6 +218,11 @@ void xemu_settings_save(void)
     /* Ensure numeric values are printed with '.' radix, no grouping */
     setlocale(LC_NUMERIC, "C");
 
+    // The global controller vibration setting is replaced with a per-controller config.
+    // xemu_settings_load_gamepad_mapping should have migrated that setting to any connected
+    // controller, so we can set it to true (default) now to remove it from the user config.
+    g_config.input.allow_vibration = true;
+
     config_tree.update_from_struct(&g_config);
     fprintf(fd, "%s", config_tree.generate_delta_toml().c_str());
     fclose(fd);
@@ -253,4 +259,58 @@ void remove_net_nat_forward_ports(unsigned int index)
     cnode->children.erase(cnode->children.begin()+index);
     cnode->free_allocations(&g_config);
     cnode->store_to_struct(&g_config);
+}
+
+GamepadMappings *xemu_settings_load_gamepad_mapping(const char *guid, bool reset_to_default)
+{
+    unsigned int i;
+    unsigned int gamepad_mappings_count = g_config.input.gamepad_mappings_count;
+    for (i = 0; i < gamepad_mappings_count; ++i) {
+        auto *mapping = &g_config.input.gamepad_mappings[i];
+        if (strcmp(mapping->gamepad_id, guid) != 0) {
+          continue;
+        }
+
+        if (reset_to_default) {
+          break;
+        }
+
+        // Migrate global 'allow_vibration' setting to the controller config
+        mapping->enable_rumble = g_config.input.allow_vibration;
+
+        return mapping;
+    }
+
+    auto cnode = config_tree.child("input")->child("gamepad_mappings");
+    cnode->update_from_struct(&g_config);
+    cnode->free_allocations(&g_config);
+
+    CNode *mapping_node;
+    if (reset_to_default && i < gamepad_mappings_count) {
+      mapping_node = &cnode->children[i];
+      mapping_node->reset_to_defaults();
+    } else {
+      cnode->children.push_back(*cnode->array_item_type);
+      mapping_node = &cnode->children.back();
+    }
+
+    mapping_node->child("gamepad_id")->set_string(guid);
+
+    cnode->store_to_struct(&g_config);
+
+    auto *mapping = &g_config.input
+      .gamepad_mappings[g_config.input.gamepad_mappings_count - 1];
+
+    // Migrate global 'allow_vibration' setting to the controller config
+    mapping->enable_rumble = g_config.input.allow_vibration;
+
+    return mapping;
+}
+
+void xemu_settings_reset_keyboard_mapping(void)
+{
+  auto cnode = config_tree.child("input")->child("keyboard_controller_scancode_map");
+  cnode->update_from_struct(&g_config);
+  cnode->reset_to_defaults();
+  cnode->store_to_struct(&g_config);
 }
