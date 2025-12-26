@@ -114,7 +114,8 @@ static int guest_cursor;
 static int guest_x, guest_y;
 static SDL_Cursor *guest_sprite;
 static Notifier mouse_mode_notifier;
-static SDL_Window *m_window;
+SDL_Window *m_window;
+int viewport_coords[4];
 static SDL_GLContext m_context;
 // struct decal_shader *blit;
 
