@@ -456,7 +456,6 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         memset(new_con, 0, sizeof(ControllerState));
         new_con->type                 = INPUT_DEVICE_SDL_GAMECONTROLLER;
         new_con->name                 = SDL_GameControllerName(sdl_con);
-        new_con->gp.rumble_enabled    = true;
         new_con->sdl_gamecontroller   = sdl_con;
         new_con->sdl_joystick         = SDL_GameControllerGetJoystick(new_con->sdl_gamecontroller);
         new_con->sdl_joystick_id      = SDL_JoystickInstanceID(new_con->sdl_joystick);
