@@ -21,6 +21,7 @@ Build-Depends: debhelper (>= 11),
  libpcap-dev,
  libslirp-dev,
  libvulkan-dev,
+ libusb-1.0-0-dev,
  libcurl4-gnutls-dev,
 Standards-Version: 3.9.8
 Homepage: https://xemu.app
