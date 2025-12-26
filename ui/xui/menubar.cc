@@ -231,7 +231,7 @@ void ShowMainMenu()
         if (ImGui::BeginMenu("Help"))
         {
             if (ImGui::MenuItem("Help", NULL)) {
-                xemu_open_web_browser("https://xemu.app/docs/getting-started/");
+                SDL_OpenURL("https://xemu.app/docs/getting-started/");
             }
 
             ImGui::MenuItem("Report Compatibility...", NULL,

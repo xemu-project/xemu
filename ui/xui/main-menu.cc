@@ -975,7 +975,7 @@ void MainMenuNetworkView::DrawPcapOptions(bool appearing)
         ImGui::Dummy(ImVec2(0,10*g_viewport_mgr.m_scale));
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_viewport_mgr.m_scale)/2);
         if (ImGui::Button("Install npcap", ImVec2(120*g_viewport_mgr.m_scale, 0))) {
-            xemu_open_web_browser("https://nmap.org/npcap/");
+            SDL_OpenURL("https://nmap.org/npcap/");
         }
 #endif
     } else {
@@ -1643,7 +1643,7 @@ void MainMenuAboutView::Draw()
     ImGui::Text("Visit");
     ImGui::SameLine();
     if (ImGui::SmallButton("https://xemu.app")) {
-        xemu_open_web_browser("https://xemu.app");
+        SDL_OpenURL("https://xemu.app");
     }
     ImGui::SameLine();
     ImGui::Text("for more information");
