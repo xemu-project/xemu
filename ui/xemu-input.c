@@ -975,7 +975,7 @@ void xemu_input_update_rumble(ControllerState *state)
         return;
     }
 
-    if (!state->gp.rumble_enabled || !g_config.input.allow_vibration) {
+    if (!state->controller_map->enable_rumble) {
         return;
     }
 
