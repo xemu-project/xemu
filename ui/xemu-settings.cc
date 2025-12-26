@@ -276,7 +276,9 @@ GamepadMappings *xemu_settings_load_gamepad_mapping(const char *guid, bool reset
         }
 
         // Migrate global 'allow_vibration' setting to the controller config
-        mapping->enable_rumble = g_config.input.allow_vibration;
+        if (!g_config.input.allow_vibration) {
+            mapping->enable_rumble = g_config.input.allow_vibration;
+        }
 
         return mapping;
     }
@@ -302,7 +304,9 @@ GamepadMappings *xemu_settings_load_gamepad_mapping(const char *guid, bool reset
       .gamepad_mappings[g_config.input.gamepad_mappings_count - 1];
 
     // Migrate global 'allow_vibration' setting to the controller config
-    mapping->enable_rumble = g_config.input.allow_vibration;
+    if (!g_config.input.allow_vibration) {
+        mapping->enable_rumble = g_config.input.allow_vibration;
+    }
 
     return mapping;
 }
