@@ -28,9 +28,12 @@
 #include "qemu/timer.h"
 #include "qemu/config-file.h"
 
+#include "xemu-controllers.h"
 #include "xemu-input.h"
 #include "xemu-notifications.h"
 #include "xemu-settings.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "sysemu/blockdev.h"
 #include "../hw/xbox/xblc.h"
@@ -155,7 +158,90 @@ static float *xblc_output_volume_map[4] = {
     &g_config.input.peripherals.port4.xblc4_settings.output_device_volume,
 };
 
-static int sdl_kbd_scancode_map[25];
+int *g_keyboard_scancode_map[25] = {
+    &g_config.input.keyboard_controller_scancode_map.a,
+    &g_config.input.keyboard_controller_scancode_map.b,
+    &g_config.input.keyboard_controller_scancode_map.x,
+    &g_config.input.keyboard_controller_scancode_map.y,
+    &g_config.input.keyboard_controller_scancode_map.back,
+    &g_config.input.keyboard_controller_scancode_map.guide,
+    &g_config.input.keyboard_controller_scancode_map.start,
+    &g_config.input.keyboard_controller_scancode_map.lstick_btn,
+    &g_config.input.keyboard_controller_scancode_map.rstick_btn,
+    &g_config.input.keyboard_controller_scancode_map.white,
+    &g_config.input.keyboard_controller_scancode_map.black,
+    &g_config.input.keyboard_controller_scancode_map.dpad_up,
+    &g_config.input.keyboard_controller_scancode_map.dpad_down,
+    &g_config.input.keyboard_controller_scancode_map.dpad_left,
+    &g_config.input.keyboard_controller_scancode_map.dpad_right,
+    &g_config.input.keyboard_controller_scancode_map.lstick_up,
+    &g_config.input.keyboard_controller_scancode_map.lstick_left,
+    &g_config.input.keyboard_controller_scancode_map.lstick_right,
+    &g_config.input.keyboard_controller_scancode_map.lstick_down,
+    &g_config.input.keyboard_controller_scancode_map.ltrigger,
+    &g_config.input.keyboard_controller_scancode_map.rstick_up,
+    &g_config.input.keyboard_controller_scancode_map.rstick_left,
+    &g_config.input.keyboard_controller_scancode_map.rstick_right,
+    &g_config.input.keyboard_controller_scancode_map.rstick_down,
+    &g_config.input.keyboard_controller_scancode_map.rtrigger,
+};
+
+static void check_and_reset_in_range(int *btn, int min, int max,
+                                     const char *message)
+{
+    if (*btn < min || *btn >= max) {
+        fprintf(stderr, "%s\n", message);
+        *btn = min;
+    }
+}
+
+static void xemu_input_bindings_reload_controller_map(ControllerState *con, bool reset_to_default)
+{
+    assert(con->type == INPUT_DEVICE_SDL_GAMECONTROLLER);
+
+    char guid[35] = { 0 };
+    SDL_JoystickGetGUIDString(con->sdl_joystick_guid, guid, sizeof(guid));
+    con->controller_map = xemu_settings_load_gamepad_mapping(guid, reset_to_default);
+
+#define CHECK_RESET_BUTTON(btn)                                            \
+    check_and_reset_in_range(&con->controller_map->controller_mapping.btn, \
+                             SDL_CONTROLLER_BUTTON_INVALID,                \
+                             SDL_CONTROLLER_BUTTON_MAX,                    \
+                             "Invalid entry for button " #btn ", resetting")
+
+    CHECK_RESET_BUTTON(a);
+    CHECK_RESET_BUTTON(b);
+    CHECK_RESET_BUTTON(x);
+    CHECK_RESET_BUTTON(y);
+    CHECK_RESET_BUTTON(dpad_left);
+    CHECK_RESET_BUTTON(dpad_up);
+    CHECK_RESET_BUTTON(dpad_right);
+    CHECK_RESET_BUTTON(dpad_down);
+    CHECK_RESET_BUTTON(back);
+    CHECK_RESET_BUTTON(start);
+    CHECK_RESET_BUTTON(lshoulder);
+    CHECK_RESET_BUTTON(rshoulder);
+    CHECK_RESET_BUTTON(lstick_btn);
+    CHECK_RESET_BUTTON(rstick_btn);
+    CHECK_RESET_BUTTON(guide);
+
+#undef CHECK_RESET_BUTTON
+
+#define CHECK_RESET_AXIS(axis)                                              \
+    check_and_reset_in_range(&con->controller_map->controller_mapping.axis, \
+                             SDL_CONTROLLER_AXIS_INVALID,                   \
+                             SDL_CONTROLLER_AXIS_MAX,                       \
+                             "Invalid entry for button " #axis ", resetting")
+
+    CHECK_RESET_AXIS(axis_trigger_left);
+    CHECK_RESET_AXIS(axis_trigger_right);
+    CHECK_RESET_AXIS(axis_left_x);
+    CHECK_RESET_AXIS(axis_left_y);
+    CHECK_RESET_AXIS(axis_right_x);
+    CHECK_RESET_AXIS(axis_right_y);
+
+#undef CHECK_RESET_AXIS
+}
 
 static const char *get_bound_driver(int port)
 {
@@ -206,38 +292,14 @@ void xemu_input_init(void)
     new_con->peripherals[0] = NULL;
     new_con->peripherals[1] = NULL;
 
-    sdl_kbd_scancode_map[0] = g_config.input.keyboard_controller_scancode_map.a;
-    sdl_kbd_scancode_map[1] = g_config.input.keyboard_controller_scancode_map.b;
-    sdl_kbd_scancode_map[2] = g_config.input.keyboard_controller_scancode_map.x;
-    sdl_kbd_scancode_map[3] = g_config.input.keyboard_controller_scancode_map.y;
-    sdl_kbd_scancode_map[4] = g_config.input.keyboard_controller_scancode_map.dpad_left;
-    sdl_kbd_scancode_map[5] = g_config.input.keyboard_controller_scancode_map.dpad_up;
-    sdl_kbd_scancode_map[6] = g_config.input.keyboard_controller_scancode_map.dpad_right;
-    sdl_kbd_scancode_map[7] = g_config.input.keyboard_controller_scancode_map.dpad_down;
-    sdl_kbd_scancode_map[8] = g_config.input.keyboard_controller_scancode_map.back;
-    sdl_kbd_scancode_map[9] = g_config.input.keyboard_controller_scancode_map.start;
-    sdl_kbd_scancode_map[10] = g_config.input.keyboard_controller_scancode_map.white;
-    sdl_kbd_scancode_map[11] = g_config.input.keyboard_controller_scancode_map.black;
-    sdl_kbd_scancode_map[12] = g_config.input.keyboard_controller_scancode_map.lstick_btn;
-    sdl_kbd_scancode_map[13] = g_config.input.keyboard_controller_scancode_map.rstick_btn;
-    sdl_kbd_scancode_map[14] = g_config.input.keyboard_controller_scancode_map.guide;
-    sdl_kbd_scancode_map[15] = g_config.input.keyboard_controller_scancode_map.lstick_up;
-    sdl_kbd_scancode_map[16] = g_config.input.keyboard_controller_scancode_map.lstick_left;
-    sdl_kbd_scancode_map[17] = g_config.input.keyboard_controller_scancode_map.lstick_right;
-    sdl_kbd_scancode_map[18] = g_config.input.keyboard_controller_scancode_map.lstick_down;
-    sdl_kbd_scancode_map[19] = g_config.input.keyboard_controller_scancode_map.ltrigger;
-    sdl_kbd_scancode_map[20] = g_config.input.keyboard_controller_scancode_map.rstick_up;
-    sdl_kbd_scancode_map[21] = g_config.input.keyboard_controller_scancode_map.rstick_left;
-    sdl_kbd_scancode_map[22] = g_config.input.keyboard_controller_scancode_map.rstick_right;
-    sdl_kbd_scancode_map[23] = g_config.input.keyboard_controller_scancode_map.rstick_down;
-    sdl_kbd_scancode_map[24] = g_config.input.keyboard_controller_scancode_map.rtrigger;
-
     for (int i = 0; i < 25; i++) {
-        if( (sdl_kbd_scancode_map[i] < SDL_SCANCODE_UNKNOWN) ||
-            (sdl_kbd_scancode_map[i] >= SDL_NUM_SCANCODES) ) {
-            fprintf(stderr, "WARNING: Keyboard controller map scancode out of range (%d) : Disabled\n", sdl_kbd_scancode_map[i]);
-            sdl_kbd_scancode_map[i] = SDL_SCANCODE_UNKNOWN;
-        }
+        static const char *format_str =
+            "WARNING: Keyboard controller map scancode out of range "
+            "(%d) : Disabled\n";
+        char buf[128];
+        snprintf(buf, sizeof(buf), format_str, i);
+        check_and_reset_in_range(g_keyboard_scancode_map[i],
+                                 SDL_SCANCODE_UNKNOWN, SDL_NUM_SCANCODES, buf);
     }
 
     bound_drivers[0] = get_bound_driver(0);
@@ -312,7 +374,6 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         memset(new_con, 0, sizeof(ControllerState));
         new_con->type                 = INPUT_DEVICE_SDL_GAMECONTROLLER;
         new_con->name                 = SDL_GameControllerName(sdl_con);
-        new_con->rumble_enabled       = true;
         new_con->sdl_gamecontroller   = sdl_con;
         new_con->sdl_joystick         = SDL_GameControllerGetJoystick(new_con->sdl_gamecontroller);
         new_con->sdl_joystick_id      = SDL_JoystickInstanceID(new_con->sdl_joystick);
@@ -326,6 +387,8 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         char guid_buf[35] = { 0 };
         SDL_JoystickGetGUIDString(new_con->sdl_joystick_guid, guid_buf, sizeof(guid_buf));
         DPRINTF("Opened %s (%s)\n", new_con->name, guid_buf);
+
+        xemu_input_bindings_reload_controller_map(new_con, /*reset_to_default=*/false);
 
         QTAILQ_INSERT_TAIL(&available_controllers, new_con, entry);
 
@@ -489,21 +552,48 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
 
     const uint8_t *kbd = SDL_GetKeyboardState(NULL);
 
-    for (int i = 0; i < 15; i++) {
-        state->buttons |= kbd[sdl_kbd_scancode_map[i]] << i;
-    }
+#define KBD_STATE(btn) \
+    (kbd[g_config.input.keyboard_controller_scancode_map.btn])
 
-    if (kbd[sdl_kbd_scancode_map[15]]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = 32767;
-    if (kbd[sdl_kbd_scancode_map[16]]) state->axis[CONTROLLER_AXIS_LSTICK_X] = -32768;
-    if (kbd[sdl_kbd_scancode_map[17]]) state->axis[CONTROLLER_AXIS_LSTICK_X] = 32767;
-    if (kbd[sdl_kbd_scancode_map[18]]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = -32768;
-    if (kbd[sdl_kbd_scancode_map[19]]) state->axis[CONTROLLER_AXIS_LTRIG] = 32767;
+    state->buttons |= KBD_STATE(a) << 0;
+    state->buttons |= KBD_STATE(b) << 1;
+    state->buttons |= KBD_STATE(x) << 2;
+    state->buttons |= KBD_STATE(y) << 3;
+    state->buttons |= KBD_STATE(dpad_left) << 4;
+    state->buttons |= KBD_STATE(dpad_up) << 5;
+    state->buttons |= KBD_STATE(dpad_right) << 6;
+    state->buttons |= KBD_STATE(dpad_down) << 7;
+    state->buttons |= KBD_STATE(back) << 8;
+    state->buttons |= KBD_STATE(start) << 9;
+    state->buttons |= KBD_STATE(white) << 10;
+    state->buttons |= KBD_STATE(black) << 11;
+    state->buttons |= KBD_STATE(lstick_btn) << 12;
+    state->buttons |= KBD_STATE(rstick_btn) << 13;
+    state->buttons |= KBD_STATE(guide) << 14;
 
-    if (kbd[sdl_kbd_scancode_map[20]]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = 32767;
-    if (kbd[sdl_kbd_scancode_map[21]]) state->axis[CONTROLLER_AXIS_RSTICK_X] = -32768;
-    if (kbd[sdl_kbd_scancode_map[22]]) state->axis[CONTROLLER_AXIS_RSTICK_X] = 32767;
-    if (kbd[sdl_kbd_scancode_map[23]]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = -32768;
-    if (kbd[sdl_kbd_scancode_map[24]]) state->axis[CONTROLLER_AXIS_RTRIG] = 32767;
+    if (KBD_STATE(lstick_up))
+        state->axis[CONTROLLER_AXIS_LSTICK_Y] = 32767;
+    if (KBD_STATE(lstick_left))
+        state->axis[CONTROLLER_AXIS_LSTICK_X] = -32768;
+    if (KBD_STATE(lstick_right))
+        state->axis[CONTROLLER_AXIS_LSTICK_X] = 32767;
+    if (KBD_STATE(lstick_down))
+        state->axis[CONTROLLER_AXIS_LSTICK_Y] = -32768;
+    if (KBD_STATE(ltrigger))
+        state->axis[CONTROLLER_AXIS_LTRIG] = 32767;
+
+    if (KBD_STATE(rstick_up))
+        state->axis[CONTROLLER_AXIS_RSTICK_Y] = 32767;
+    if (KBD_STATE(rstick_left))
+        state->axis[CONTROLLER_AXIS_RSTICK_X] = -32768;
+    if (KBD_STATE(rstick_right))
+        state->axis[CONTROLLER_AXIS_RSTICK_X] = 32767;
+    if (KBD_STATE(rstick_down))
+        state->axis[CONTROLLER_AXIS_RSTICK_Y] = -32768;
+    if (KBD_STATE(rtrigger))
+        state->axis[CONTROLLER_AXIS_RTRIG] = 32767;
+
+#undef KBD_STATE
 }
 
 void xemu_input_update_sdl_controller_state(ControllerState *state)
@@ -511,48 +601,76 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
     state->buttons = 0;
     memset(state->axis, 0, sizeof(state->axis));
 
-    const SDL_GameControllerButton sdl_button_map[15] = {
-        SDL_CONTROLLER_BUTTON_A,
-        SDL_CONTROLLER_BUTTON_B,
-        SDL_CONTROLLER_BUTTON_X,
-        SDL_CONTROLLER_BUTTON_Y,
-        SDL_CONTROLLER_BUTTON_DPAD_LEFT,
-        SDL_CONTROLLER_BUTTON_DPAD_UP,
-        SDL_CONTROLLER_BUTTON_DPAD_RIGHT,
-        SDL_CONTROLLER_BUTTON_DPAD_DOWN,
-        SDL_CONTROLLER_BUTTON_BACK,
-        SDL_CONTROLLER_BUTTON_START,
-        SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
-        SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
-        SDL_CONTROLLER_BUTTON_LEFTSTICK,
-        SDL_CONTROLLER_BUTTON_RIGHTSTICK,
-        SDL_CONTROLLER_BUTTON_GUIDE
-    };
+#define SDL_MASK_BUTTON(state, btn, idx)                  \
+    (SDL_GameControllerGetButton(                         \
+         (state)->sdl_gamecontroller,                     \
+         (state)->controller_map->controller_mapping.btn) \
+     << idx)
 
-    for (int i = 0; i < 15; i++) {
-        state->buttons |= SDL_GameControllerGetButton(state->sdl_gamecontroller, sdl_button_map[i]) << i;
+    state->buttons |= SDL_MASK_BUTTON(state, a, 0);
+    state->buttons |= SDL_MASK_BUTTON(state, b, 1);
+    state->buttons |= SDL_MASK_BUTTON(state, x, 2);
+    state->buttons |= SDL_MASK_BUTTON(state, y, 3);
+    state->buttons |= SDL_MASK_BUTTON(state, dpad_left, 4);
+    state->buttons |= SDL_MASK_BUTTON(state, dpad_up, 5);
+    state->buttons |= SDL_MASK_BUTTON(state, dpad_right, 6);
+    state->buttons |= SDL_MASK_BUTTON(state, dpad_down, 7);
+    state->buttons |= SDL_MASK_BUTTON(state, back, 8);
+    state->buttons |= SDL_MASK_BUTTON(state, start, 9);
+    state->buttons |= SDL_MASK_BUTTON(state, lshoulder, 10);
+    state->buttons |= SDL_MASK_BUTTON(state, rshoulder, 11);
+    state->buttons |= SDL_MASK_BUTTON(state, lstick_btn, 12);
+    state->buttons |= SDL_MASK_BUTTON(state, rstick_btn, 13);
+    state->buttons |= SDL_MASK_BUTTON(state, guide, 14);
+
+#undef SDL_MASK_BUTTON
+
+#define SDL_GET_AXIS(state, axis)    \
+    SDL_GameControllerGetAxis(       \
+        (state)->sdl_gamecontroller, \
+        (state)->controller_map->controller_mapping.axis)
+
+    state->axis[0] = SDL_GET_AXIS(state, axis_trigger_left);
+    state->axis[1] = SDL_GET_AXIS(state, axis_trigger_right);
+    state->axis[2] = SDL_GET_AXIS(state, axis_left_x);
+    state->axis[3] = SDL_GET_AXIS(state, axis_left_y);
+    state->axis[4] = SDL_GET_AXIS(state, axis_right_x);
+    state->axis[5] = SDL_GET_AXIS(state, axis_right_y);
+
+#undef SDL_GET_AXIS
+
+// FIXME: Check range
+#define INVERT_AXIS(controller_axis) \
+    state->axis[controller_axis] = -1 - state->axis[controller_axis]
+
+    if (state->controller_map->controller_mapping.invert_axis_left_x) {
+        INVERT_AXIS(CONTROLLER_AXIS_LSTICK_X);
     }
 
-    const SDL_GameControllerAxis sdl_axis_map[6] = {
-        SDL_CONTROLLER_AXIS_TRIGGERLEFT, SDL_CONTROLLER_AXIS_TRIGGERRIGHT,
-        SDL_CONTROLLER_AXIS_LEFTX,       SDL_CONTROLLER_AXIS_LEFTY,
-        SDL_CONTROLLER_AXIS_RIGHTX,      SDL_CONTROLLER_AXIS_RIGHTY,
-    };
-
-    for (int i = 0; i < 6; i++) {
-        state->axis[i] = SDL_GameControllerGetAxis(state->sdl_gamecontroller, sdl_axis_map[i]);
+    if (!state->controller_map->controller_mapping.invert_axis_left_y) {
+        INVERT_AXIS(CONTROLLER_AXIS_LSTICK_Y);
     }
 
-    // FIXME: Check range
-    state->axis[CONTROLLER_AXIS_LSTICK_Y] = -1 - state->axis[CONTROLLER_AXIS_LSTICK_Y];
-    state->axis[CONTROLLER_AXIS_RSTICK_Y] = -1 - state->axis[CONTROLLER_AXIS_RSTICK_Y];
+    if (state->controller_map->controller_mapping.invert_axis_right_x) {
+        INVERT_AXIS(CONTROLLER_AXIS_RSTICK_X);
+    }
+
+    if (!state->controller_map->controller_mapping.invert_axis_right_y) {
+        INVERT_AXIS(CONTROLLER_AXIS_RSTICK_Y);
+    }
+
+#undef INVERT_AXIS
 
     // xemu_input_print_controller_state(state);
 }
 
 void xemu_input_update_rumble(ControllerState *state)
 {
-    if (!state->rumble_enabled || !g_config.input.allow_vibration) {
+    if (state->type != INPUT_DEVICE_SDL_GAMECONTROLLER) {
+        return;
+    }
+
+    if (!state->controller_map->enable_rumble) {
         return;
     }
 
@@ -1093,4 +1211,13 @@ void xemu_input_set_test_mode(int enabled)
 int xemu_input_get_test_mode(void)
 {
     return test_mode;
+}
+
+void xemu_input_reset_input_mapping(ControllerState *state)
+{
+    if (state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
+        xemu_input_bindings_reload_controller_map(state, /*reset_to_default=*/true);
+    } else if (state->type == INPUT_DEVICE_SDL_KEYBOARD) {
+        xemu_settings_reset_keyboard_mapping();
+    }
 }

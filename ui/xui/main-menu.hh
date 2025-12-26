@@ -25,6 +25,8 @@
 #include "scene.hh"
 #include "scene-components.hh"
 #include "../xemu-snapshots.h"
+#include "../xemu-controllers.h"
+#include "ui/xemu-input.h"
 
 extern "C" {
 #include "net/pcap.h"
@@ -36,6 +38,9 @@ class MainMenuTabView
 public:
     virtual ~MainMenuTabView();
     virtual void Draw();
+    virtual void Hide()
+    {
+    }
 };
 
 class MainMenuGeneralView : public virtual MainMenuTabView
@@ -47,11 +52,20 @@ public:
 class MainMenuInputView : public virtual MainMenuTabView
 {
 public:
+    std::unique_ptr<RebindingMap> m_rebinding;
+
+    MainMenuInputView() : m_rebinding{ nullptr }
+    {
+    }
+    bool ConsumeRebindEvent(SDL_Event *event);
+    bool IsInputRebinding();
     void Draw() override;
     void DrawExpansionSlotOptions(int active);
     void DrawExpansionSlotOptions(int active, int expansion_slot_index);
     void DrawXmuSettings(int active, int expansion_slot_index);
     void DrawXblcSettings(int active, int expansion_slot_index);
+    void Hide() override;
+    void PopulateTableController(ControllerState *state);
 };
 
 class MainMenuDisplayView : public virtual MainMenuTabView
@@ -197,6 +211,8 @@ public:
     void SetNextViewIndex(int i);
     void HandleInput();
     void UpdateAboutViewConfigInfo();
+    bool ConsumeRebindEvent(SDL_Event *event);
+    bool IsInputRebinding();
     bool Draw() override;
 };
 

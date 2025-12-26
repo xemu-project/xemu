@@ -55,12 +55,15 @@ std::string string_format( const std::string& format, Args ... args )
     return std::string( buf.get(), buf.get() + size - 1 ); // We don't want the '\0' inside
 }
 
-static inline bool IsShortcutKeyPressed(int scancode)
+static inline bool IsShortcutKeyPressed(ImGuiKey key)
 {
     ImGuiIO& io = ImGui::GetIO();
-    const bool is_osx = io.ConfigMacOSXBehaviors;
-    const bool is_shortcut_key = (is_osx ? (io.KeySuper && !io.KeyCtrl) : (io.KeyCtrl && !io.KeySuper)) && !io.KeyAlt && !io.KeyShift; // OS X style: Shortcuts using Cmd/Super instead of Ctrl
-    return is_shortcut_key && ImGui::IsKeyPressed((enum ImGuiKey)scancode);
+
+    if (io.KeyAlt || io.KeyShift) {
+        return false;
+    }
+
+    return io.KeyCtrl && ImGui::IsKeyPressed(key);
 }
 
 static inline float mix(float a, float b, float t)
