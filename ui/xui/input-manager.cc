@@ -1,6 +1,7 @@
-#include "common.hh"
+#include "ui/xui/main-menu.hh"
 #include "input-manager.hh"
 #include "../xemu-input.h"
+#include "common.hh"
 
 InputManager g_input_mgr;
 
@@ -18,14 +19,18 @@ void InputManager::Update()
     m_buttons = 0;
     int16_t axis[CONTROLLER_AXIS__COUNT] = {0};
 
-    ControllerState *iter;
-    QTAILQ_FOREACH(iter, &available_controllers, entry) {
-        if (iter->type != INPUT_DEVICE_SDL_GAMECONTROLLER) continue;
-        m_buttons |= iter->buttons;
-        // We simply take any axis that is >10 % activation
-        for (int i = 0; i < CONTROLLER_AXIS__COUNT; i++) {
-            if ((iter->axis[i] > 3276) || (iter->axis[i] < -3276)) {
-                axis[i] = iter->axis[i];
+    // If we are rebinding a controller, prevent navigation
+    if (!g_main_menu.IsInputRebinding()) {
+        ControllerState *iter;
+        QTAILQ_FOREACH (iter, &available_controllers, entry) {
+            if (iter->type != INPUT_DEVICE_SDL_GAMECONTROLLER)
+                continue;
+            m_buttons |= iter->buttons;
+            // We simply take any axis that is >10 % activation
+            for (int i = 0; i < CONTROLLER_AXIS__COUNT; i++) {
+                if ((iter->axis[i] > 3276) || (iter->axis[i] < -3276)) {
+                    axis[i] = iter->axis[i];
+                }
             }
         }
     }

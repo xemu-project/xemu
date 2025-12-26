@@ -67,6 +67,9 @@ static inline void xemu_settings_set_string(const char **str, const char *new_st
 void add_net_nat_forward_ports(int host, int guest, CONFIG_NET_NAT_FORWARD_PORTS_PROTOCOL protocol);
 void remove_net_nat_forward_ports(unsigned int index);
 
+// Reset keyboard mappings to default settings.
+void xemu_settings_reset_keyboard_mapping(void);
+
 #ifdef __cplusplus
 }
 #endif
