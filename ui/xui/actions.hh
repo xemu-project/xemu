@@ -27,3 +27,7 @@ void ActionShutdown();
 void ActionScreenshot();
 void ActionActivateBoundSnapshot(int slot, bool save);
 void ActionLoadSnapshotChecked(const char *name);
+void ActionLoadDiscFromRecent(unsigned int index);
+void ActionRemoveDiscFromRecent(unsigned int index);
+void ActionClearDiscRecent(void);
+void ActionClearMissingRecentDiscs(void);
