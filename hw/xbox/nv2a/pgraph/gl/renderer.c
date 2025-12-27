@@ -123,6 +123,7 @@ static void pgraph_gl_process_pending(NV2AState *d)
 
     if (qatomic_read(&r->downloads_pending) ||
         qatomic_read(&r->download_dirty_surfaces_pending) ||
+        qatomic_read(&r->download_dirty_surfaces_in_range_pending) ||
         qatomic_read(&d->pgraph.sync_pending) ||
         qatomic_read(&d->pgraph.flush_pending) ||
         qatomic_read(&r->shader_cache_writeback_pending)) {
@@ -133,6 +134,13 @@ static void pgraph_gl_process_pending(NV2AState *d)
         }
         if (qatomic_read(&r->download_dirty_surfaces_pending)) {
             pgraph_gl_download_dirty_surfaces(d);
+        }
+        if (qatomic_read(&r->download_dirty_surfaces_in_range_pending)) {
+            pgraph_gl_download_surfaces_in_range_if_dirty(
+                d, r->download_dirty_surfaces_in_range_start,
+                r->download_dirty_surfaces_in_range_size);
+            qatomic_set(&r->download_dirty_surfaces_in_range_pending, false);
+            qemu_event_set(&r->dirty_surfaces_download_complete);
         }
         if (qatomic_read(&d->pgraph.sync_pending)) {
             pgraph_gl_sync(d);
@@ -165,6 +173,46 @@ static void pgraph_gl_pre_savevm_wait(NV2AState *d)
     qemu_event_wait(&r->dirty_surfaces_download_complete);
 }
 
+static bool pgraph_gl_have_overlapping_dirty_surfaces(NV2AState *d,
+                                                      hwaddr start, hwaddr size)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
+
+    SurfaceBinding *surface;
+
+    hwaddr end = start + size - 1;
+
+    QTAILQ_FOREACH (surface, &r->surfaces, entry) {
+        hwaddr surf_end = surface->vram_addr + surface->size - 1;
+        bool overlapping = !(surface->vram_addr >= end || start >= surf_end);
+        if (overlapping && surface->draw_dirty) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void pgraph_gl_download_overlapping_surfaces_trigger(NV2AState *d,
+                                                            hwaddr start,
+                                                            hwaddr size)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
+
+    r->download_dirty_surfaces_in_range_start = start;
+    r->download_dirty_surfaces_in_range_size = size;
+    qemu_event_reset(&r->dirty_surfaces_download_complete);
+    qatomic_set(&r->download_dirty_surfaces_in_range_pending, true);
+}
+
+static void pgraph_gl_download_overlapping_surfaces_wait(NV2AState *d)
+{
+    qemu_event_wait(
+        &d->pgraph.gl_renderer_state->dirty_surfaces_download_complete);
+}
+
 static void pgraph_gl_pre_shutdown_trigger(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -182,34 +230,47 @@ static void pgraph_gl_pre_shutdown_wait(NV2AState *d)
     qemu_event_wait(&r->shader_cache_writeback_complete);
 }
 
-static PGRAPHRenderer pgraph_gl_renderer = {
-    .type = CONFIG_DISPLAY_RENDERER_OPENGL,
-    .name = "OpenGL",
-    .ops = {
-        .init = pgraph_gl_init,
-        .early_context_init = early_context_init,
-        .finalize = pgraph_gl_finalize,
-        .clear_report_value = pgraph_gl_clear_report_value,
-        .clear_surface = pgraph_gl_clear_surface,
-        .draw_begin = pgraph_gl_draw_begin,
-        .draw_end = pgraph_gl_draw_end,
-        .flip_stall = pgraph_gl_flip_stall,
-        .flush_draw = pgraph_gl_flush_draw,
-        .get_report = pgraph_gl_get_report,
-        .image_blit = pgraph_gl_image_blit,
-        .pre_savevm_trigger = pgraph_gl_pre_savevm_trigger,
-        .pre_savevm_wait = pgraph_gl_pre_savevm_wait,
-        .pre_shutdown_trigger = pgraph_gl_pre_shutdown_trigger,
-        .pre_shutdown_wait = pgraph_gl_pre_shutdown_wait,
-        .process_pending = pgraph_gl_process_pending,
-        .process_pending_reports = pgraph_gl_process_pending_reports,
-        .surface_update = pgraph_gl_surface_update,
-        .set_surface_scale_factor = pgraph_gl_set_surface_scale_factor,
-        .get_surface_scale_factor = pgraph_gl_get_surface_scale_factor,
-        .get_framebuffer_surface = pgraph_gl_get_framebuffer_surface,
-        .get_gpu_properties = pgraph_gl_get_gpu_properties,
-    }
-};
+static PGRAPHRenderer
+    pgraph_gl_renderer = { .type = CONFIG_DISPLAY_RENDERER_OPENGL,
+                           .name = "OpenGL",
+                           .ops = {
+                               .init = pgraph_gl_init,
+                               .early_context_init = early_context_init,
+                               .finalize = pgraph_gl_finalize,
+                               .clear_report_value =
+                                   pgraph_gl_clear_report_value,
+                               .clear_surface = pgraph_gl_clear_surface,
+                               .draw_begin = pgraph_gl_draw_begin,
+                               .draw_end = pgraph_gl_draw_end,
+                               .flip_stall = pgraph_gl_flip_stall,
+                               .flush_draw = pgraph_gl_flush_draw,
+                               .get_report = pgraph_gl_get_report,
+                               .image_blit = pgraph_gl_image_blit,
+                               .pre_savevm_trigger =
+                                   pgraph_gl_pre_savevm_trigger,
+                               .pre_savevm_wait = pgraph_gl_pre_savevm_wait,
+                               .pre_shutdown_trigger =
+                                   pgraph_gl_pre_shutdown_trigger,
+                               .pre_shutdown_wait = pgraph_gl_pre_shutdown_wait,
+                               .process_pending = pgraph_gl_process_pending,
+                               .process_pending_reports =
+                                   pgraph_gl_process_pending_reports,
+                               .surface_update = pgraph_gl_surface_update,
+                               .have_overlapping_dirty_surfaces =
+                                   pgraph_gl_have_overlapping_dirty_surfaces,
+                               .download_overlapping_surfaces_trigger =
+                                   pgraph_gl_download_overlapping_surfaces_trigger,
+                               .download_overlapping_surfaces_wait =
+                                   pgraph_gl_download_overlapping_surfaces_wait,
+                               .set_surface_scale_factor =
+                                   pgraph_gl_set_surface_scale_factor,
+                               .get_surface_scale_factor =
+                                   pgraph_gl_get_surface_scale_factor,
+                               .get_framebuffer_surface =
+                                   pgraph_gl_get_framebuffer_surface,
+                               .get_gpu_properties =
+                                   pgraph_gl_get_gpu_properties,
+                           } };
 
 static void __attribute__((constructor)) register_renderer(void)
 {
