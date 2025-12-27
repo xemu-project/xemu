@@ -1,0 +1,4 @@
+# See docs/devel/tracing.rst for syntax documentation.
+
+# pci.c
+alpha_pci_iack_write(void) ""
