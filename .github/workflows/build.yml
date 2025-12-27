@@ -197,6 +197,8 @@ jobs:
       CCACHE_DIR: /tmp/xemu-ccache
       CCACHE_MAXSIZE: 512M
       XEMU_BUILD_OPTIONS: ${{ matrix.build_param }}
+      CC_LD: gold
+      CXX_LD: gold
     steps:
     - name: Initialize compiler cache
       id: cache
