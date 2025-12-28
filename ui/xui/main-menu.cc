@@ -358,6 +358,8 @@ void MainMenuInputView::Draw()
     ImGui::SetCursorPos(pos);
 
     if (bound_state) {
+        ImGui::PushID(active);
+
         SectionTitle("Expansion Slots");
         // Begin a 2-column layout to render the expansion slots
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
@@ -514,51 +516,53 @@ void MainMenuInputView::Draw()
 
         ImGui::PopStyleVar(); // ItemSpacing
         ImGui::Columns(1);
-    }
 
-    SectionTitle("Mapping");
-    ImVec4 tc = ImGui::GetStyle().Colors[ImGuiCol_Header];
-    tc.w = 0.0f;
-    ImGui::PushStyleColor(ImGuiCol_Header, tc);
+        SectionTitle("Mapping");
+        ImVec4 tc = ImGui::GetStyle().Colors[ImGuiCol_Header];
+        tc.w = 0.0f;
+        ImGui::PushStyleColor(ImGuiCol_Header, tc);
 
-    if (ImGui::CollapsingHeader("Input Mapping")) {
-        float p = ImGui::GetFrameHeight() * 0.3;
-        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(p, p));
-        if (ImGui::BeginTable("input_remap_tbl", 2,
-                              ImGuiTableFlags_RowBg |
-                                  ImGuiTableFlags_Borders)) {
-            ImGui::TableSetupColumn("Emulated Input");
-            ImGui::TableSetupColumn("Host Input");
-            ImGui::TableHeadersRow();
+        if (ImGui::CollapsingHeader("Input Mapping")) {
+            float p = ImGui::GetFrameHeight() * 0.3;
+            ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(p, p));
+            if (ImGui::BeginTable("input_remap_tbl", 2,
+                                  ImGuiTableFlags_RowBg |
+                                      ImGuiTableFlags_Borders)) {
+                ImGui::TableSetupColumn("Emulated Input");
+                ImGui::TableSetupColumn("Host Input");
+                ImGui::TableHeadersRow();
 
-            PopulateTableController(bound_state);
+                PopulateTableController(bound_state);
 
-            ImGui::EndTable();
+                ImGui::EndTable();
+            }
+            ImGui::PopStyleVar();
         }
-        ImGui::PopStyleVar();
-    }
 
-    if (bound_state && bound_state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
-        Toggle("Enable Rumble", &bound_state->controller_map->enable_rumble);
-        Toggle("Invert Left X Axis",
-               &bound_state->controller_map->controller_mapping
-                    .invert_axis_left_x);
-        Toggle("Invert Left Y Axis",
-               &bound_state->controller_map->controller_mapping
-                    .invert_axis_left_y);
-        Toggle("Invert Right X Axis",
-               &bound_state->controller_map->controller_mapping
-                    .invert_axis_right_x);
-        Toggle("Invert Right Y Axis",
-               &bound_state->controller_map->controller_mapping
-                    .invert_axis_right_y);
-    }
+        if (bound_state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
+            Toggle("Enable Rumble",
+                   &bound_state->controller_map->enable_rumble);
+            Toggle("Invert Left X Axis",
+                   &bound_state->controller_map->controller_mapping
+                        .invert_axis_left_x);
+            Toggle("Invert Left Y Axis",
+                   &bound_state->controller_map->controller_mapping
+                        .invert_axis_left_y);
+            Toggle("Invert Right X Axis",
+                   &bound_state->controller_map->controller_mapping
+                        .invert_axis_right_x);
+            Toggle("Invert Right Y Axis",
+                   &bound_state->controller_map->controller_mapping
+                        .invert_axis_right_y);
+        }
 
-    if (ImGui::Button("Reset to Default")) {
-      xemu_input_reset_input_mapping(bound_state);
-    }
+        if (ImGui::Button("Reset to Default")) {
+            xemu_input_reset_input_mapping(bound_state);
+        }
 
-    ImGui::PopStyleColor();
+        ImGui::PopStyleColor();
+        ImGui::PopID();
+    }
 
     SectionTitle("Options");
     Toggle("Auto-bind controllers", &g_config.input.auto_bind,
