@@ -888,6 +888,17 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip, float scale[
 {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
+    
+    switch (g_config.display.filtering) {
+    case CONFIG_DISPLAY_FILTERING_LINEAR:
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    break;
+    case CONFIG_DISPLAY_FILTERING_NEAREST:
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    break;
+    }
 
     DecalShader *s = g_framebuffer_shader;
     s->flip = flip;

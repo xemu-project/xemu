@@ -324,6 +324,15 @@ bool pgraph_gl_shader_load_from_memory(ShaderBinding *binding)
         return false;
     }
 
+    GLint link_status = GL_FALSE;
+    glGetProgramiv(gl_program, GL_LINK_STATUS, &link_status);
+    if (!link_status) {
+        NV2A_DPRINTF(
+            "failed to load shader binary from disk: link status is FALSE\n");
+        glDeleteProgram(gl_program);
+        return false;
+    }
+
     glUseProgram(gl_program);
 
     g_free(binding->program);

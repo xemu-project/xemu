@@ -136,7 +136,7 @@ void CompatibilityReporter::Draw()
     ImGui::PopFont();
     ImGui::SameLine();
     if (ImGui::Button("Get Token")) {
-        xemu_open_web_browser("https://reports.xemu.app");
+        SDL_OpenURL("https://reports.xemu.app");
     }
     ImGui::NextColumn();
 

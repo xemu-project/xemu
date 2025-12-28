@@ -34,6 +34,12 @@ extern "C" {
 
 #include "xemu-config.h"
 
+#ifdef __cplusplus
+using GamepadMappings = struct config::input::gamepad_mappings;
+#else
+typedef struct gamepad_mappings GamepadMappings;
+#endif
+
 extern struct config g_config;
 
 // Override the default config file paths
@@ -66,6 +72,18 @@ static inline void xemu_settings_set_string(const char **str, const char *new_st
 
 void add_net_nat_forward_ports(int host, int guest, CONFIG_NET_NAT_FORWARD_PORTS_PROTOCOL protocol);
 void remove_net_nat_forward_ports(unsigned int index);
+
+
+// Load gamepad mapping for controller with 'guid', setting the mapping pointer
+// to the config entry. Returns true if the mapping did not previously exist.
+bool xemu_settings_load_gamepad_mapping(const char *guid,
+                                        GamepadMappings **mapping);
+
+// Reset controller mapping to default settings.
+void xemu_settings_reset_controller_mapping(const char *guid);
+
+// Reset keyboard mappings to default settings.
+void xemu_settings_reset_keyboard_mapping(void);
 
 #ifdef __cplusplus
 }

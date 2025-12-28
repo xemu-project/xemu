@@ -29,6 +29,8 @@
 #include <stdbool.h>
 
 #include "qemu/queue.h"
+#include "xemu-settings.h"
+#include <SDL2/SDL.h>
 
 #define DRIVER_DUKE "usb-xbox-gamepad"
 #define DRIVER_S "usb-xbox-gamepad-s"
@@ -93,7 +95,6 @@ typedef struct ControllerState {
     uint32_t animate_trigger_end;
 
     // Rumble state
-    bool rumble_enabled;
     uint16_t rumble_l, rumble_r;
 
     enum controller_input_device_type type;
@@ -105,6 +106,8 @@ typedef struct ControllerState {
 
     enum peripheral_type peripheral_types[2];
     void *peripherals[2];
+
+    GamepadMappings *controller_map;
 
     int   bound;  // Which port this input device is bound to
     void *device; // DeviceState opaque
@@ -118,6 +121,8 @@ extern const char *bound_drivers[4];
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+extern int *g_keyboard_scancode_map[25];
 
 void xemu_input_init(void);
 void xemu_input_process_sdl_events(const SDL_Event *event); // SDL_CONTROLLERDEVICEADDED, SDL_CONTROLLERDEVICEREMOVED
@@ -139,6 +144,7 @@ void xemu_save_peripheral_settings(int player_index, int peripheral_index,
 
 void xemu_input_set_test_mode(int enabled);
 int xemu_input_get_test_mode(void);
+void xemu_input_reset_input_mapping(ControllerState *state);
 
 #ifdef __cplusplus
 }
