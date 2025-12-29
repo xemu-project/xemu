@@ -247,7 +247,8 @@ jobs:
     - name: Test
       run: |
         pushd src/build
-        ./pyvenv/bin/meson test --suite xbox
+        ./pyvenv/bin/meson compile test-xbox
+        ./pyvenv/bin/meson test --suite xbox --no-rebuild
         popd
     - name: Report ccache stats
       run: ccache -s
