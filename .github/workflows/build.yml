@@ -193,6 +193,10 @@ jobs:
           artifact_name: xemu-ubuntu-aarch64-release
           artifact_filename: xemu-ubuntu-aarch64-release.tgz
           runs-on: ubuntu-22.04-arm
+    env:
+      CCACHE_DIR: /tmp/xemu-ccache
+      CCACHE_MAXSIZE: 512M
+      XEMU_BUILD_OPTIONS: ${{ matrix.build_param }}
     steps:
     - name: Initialize compiler cache
       id: cache
@@ -224,14 +228,12 @@ jobs:
         sudo apt-get install ccache libfuse2 libusb-1.0-0-dev
         pushd src
         sudo apt-get -qy build-dep .
+    - name: Setup ccache
+      run: |
+        echo "PATH=/usr/lib/ccache:$PATH" >> "$GITHUB_ENV"
+        ccache -z
     - name: Compile
       run: |
-        export CCACHE_DIR=/tmp/xemu-ccache
-        export CCACHE_MAXSIZE=512M
-        export PATH="/usr/lib/ccache:$PATH"
-        export XEMU_BUILD_OPTIONS="${{ matrix.build_param }}"
-        ccache -z
-
         # XXX: dpkg-genbuildinfo takes two minutes on GH runners. Nuke it for now.
         sudo rm /usr/bin/dpkg-genbuildinfo
         sudo ln -s /bin/true /usr/bin/dpkg-genbuildinfo
@@ -242,14 +244,13 @@ jobs:
 
         mkdir -p dist
         mv *.deb *.ddeb dist
-
-        echo -e "\n\nCompiler Cache Stats:"
-        ccache -s
     - name: Test
       run: |
         pushd src/build
         ./pyvenv/bin/meson test --suite xbox
         popd
+    - name: Report ccache stats
+      run: ccache -s
     - name: Generate AppImage
       run: |
         wget --no-verbose https://github.com/linuxdeploy/linuxdeploy/releases/latest/download/linuxdeploy-${{ matrix.arch }}.AppImage
