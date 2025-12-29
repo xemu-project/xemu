@@ -197,6 +197,12 @@ jobs:
       CCACHE_DIR: /tmp/xemu-ccache
       CCACHE_MAXSIZE: 512M
       XEMU_BUILD_OPTIONS: ${{ matrix.build_param }}
+      CC: ccache clang
+      CXX: ccache clang++
+      CC_LD: lld
+      CXX_LD: lld
+      CFLAGS: -gdwarf-4
+      CXXFLAGS: -gdwarf-4
     steps:
     - name: Initialize compiler cache
       id: cache
@@ -205,6 +211,13 @@ jobs:
         path: /tmp/xemu-ccache
         key: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
+    - name: Install LLVM and Clang
+      uses: KyleMayes/install-llvm-action@98e68e10c96dffcb7bfed8b2144541a66b49aa02 # v2
+      with:
+        version: "21"
+    # Workaround flawed compiler test that invokes system linker
+    - name: Replace ld
+      run: sudo ln -fs ${LLVM_PATH}/bin/ld.lld /usr/bin/ld
     - name: Download source package
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
@@ -230,7 +243,6 @@ jobs:
         sudo apt-get -qy build-dep .
     - name: Setup ccache
       run: |
-        echo "PATH=/usr/lib/ccache:$PATH" >> "$GITHUB_ENV"
         ccache -z
     - name: Compile
       run: |
