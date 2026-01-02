@@ -289,22 +289,22 @@ jobs:
           configuration: Debug
           build_param: --debug -a x86_64
           artifact_name: xemu-macos-x86_64-debug
-          artifact_filename: xemu-macos-x86_64-debug.zip
+          artifact_filename: xemu-macos-x86_64-debug-unsigned.zip
         - arch: x86_64
           configuration: Release
           build_param: -a x86_64
           artifact_name: xemu-macos-x86_64-release
-          artifact_filename: xemu-macos-x86_64-release.zip
+          artifact_filename: xemu-macos-x86_64-release-unsigned.zip
         - arch: arm64
           configuration: Debug
           build_param: --debug -a arm64
           artifact_name: xemu-macos-arm64-debug
-          artifact_filename: xemu-macos-arm64-debug.zip
+          artifact_filename: xemu-macos-arm64-debug-unsigned.zip
         - arch: arm64
           configuration: Release
           build_param: -a arm64
           artifact_name: xemu-macos-arm64-release
-          artifact_filename: xemu-macos-arm64-release.zip
+          artifact_filename: xemu-macos-arm64-release-unsigned.zip
     steps:
     - name: Download source package
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
@@ -374,10 +374,10 @@ jobs:
         mkdir dist
         for arch in x86_64 arm64; do
           pushd xemu-macos-${arch}-${{ matrix.configuration }}
-          unzip xemu-macos-${arch}-${{ matrix.configuration }}.zip
+          unzip xemu-macos-${arch}-${{ matrix.configuration }}-unsigned.zip
           popd
           pushd dist
-          unzip -o ../xemu-macos-${arch}-${{ matrix.configuration }}/xemu-macos-${arch}-${{ matrix.configuration }}.zip
+          unzip -o ../xemu-macos-${arch}-${{ matrix.configuration }}/xemu-macos-${arch}-${{ matrix.configuration }}-unsigned.zip
           popd
         done
         pushd dist
@@ -386,13 +386,13 @@ jobs:
           ../xemu-macos-x86_64-${{ matrix.configuration }}/xemu.app/Contents/MacOS/xemu \
           ../xemu-macos-arm64-${{ matrix.configuration }}/xemu.app/Contents/MacOS/xemu
         codesign --force --deep --preserve-metadata=entitlements,requirements,flags,runtime --sign - xemu.app/Contents/MacOS/xemu
-        zip -r ../xemu-macos-universal-${{ matrix.configuration }}.zip *
+        zip -r ../xemu-macos-universal-${{ matrix.configuration }}-unsigned.zip *
         popd
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
         name: xemu-macos-universal-${{ matrix.configuration }}
-        path: xemu-macos-universal-${{ matrix.configuration }}.zip
+        path: xemu-macos-universal-${{ matrix.configuration }}-unsigned.zip
 
   Release:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
@@ -439,8 +439,8 @@ jobs:
           dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release.zip
           dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release-pdb.zip
           dist/xemu-win-x86_64-release-pdb/xemu-win-release.zip
-          dist/xemu-macos-universal-release/xemu-macos-universal-release.zip
-          dist/xemu-macos-universal-debug/xemu-macos-universal-debug.zip
+          dist/xemu-macos-universal-release/xemu-macos-universal-release-unsigned.zip
+          dist/xemu-macos-universal-debug/xemu-macos-universal-debug-unsigned.zip
           dist/xemu-ubuntu-x86_64-debug/xemu/xemu-v${{ env.XEMU_VERSION }}-dbg-x86_64.AppImage
           dist/xemu-ubuntu-x86_64-release/xemu/xemu-v${{ env.XEMU_VERSION }}-x86_64.AppImage
           dist/xemu-ubuntu-aarch64-debug/xemu/xemu-v${{ env.XEMU_VERSION }}-dbg-aarch64.AppImage
