@@ -57,14 +57,16 @@ void CompatibilityReporter::Draw()
         "Intro",
         "Starts",
         "Playable",
+        "Almost Perfect",
         "Perfect",
     };
 
     const char *playability_descriptions[] = {
         "This title crashes very soon after launching, or displays nothing at all.",
         "This title displays an intro sequence, but fails to make it to gameplay.",
-        "This title starts, but may crash or have significant issues.",
-        "This title is playable, but may have minor issues.",
+        "This title starts, but may crash, have significant issues, or be unplayable.",
+        "This title runs but has noticeable issues, graphical, audio, or performance issues that may affect gameplay.",
+        "This title is playable with very minor graphical, audio, or performance issues.",
         "This title is playable from start to finish with no noticable issues."
     };
 
