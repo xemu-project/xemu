@@ -31,6 +31,12 @@ void smbus_fs454_init(I2CBus *smbus, int address);
 void smbus_xcalibur_init(I2CBus *smbus, int address);
 void smbus_adm1032_init(I2CBus *smbus, int address);
 
+/**
+ * Must be called on every vblank interrupt to update the Conexant field
+ * counter.
+ */
+void smbus_cx25871_notify_vblank(void);
+
 bool xbox_smc_avpack_to_reg(const char *avpack, uint8_t *value);
 void xbox_smc_append_avpack_hint(Error **errp);
 void xbox_smc_append_smc_version_hint(Error **errp);
