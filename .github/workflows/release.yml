@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.2.3)"
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ inputs.tag }}
+
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+      with:
+        path: dist
+        merge-multiple: true
+    - name: Extract source package
+      run: tar xf dist/src.tar.gz
+    - name: Extract Ubuntu artifacts
+      run: |
+        pushd dist
+        for arch in x86_64 aarch64; do
+          for config in release debug; do
+            tar xvf xemu-ubuntu-$arch-$config.tgz
+          done
+        done
+    - name: Add transitionary package alias
+      run: |
+        cp dist/xemu-win-x86_64-release.zip dist/xemu-win-release.zip
+    - name: Create release draft
+      uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+      with:
+        name: ${{ inputs.tag }}
+        tag_name: ${{ inputs.tag }}
+        draft: true
+        files: dist/*

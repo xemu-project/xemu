@@ -1,0 +1,120 @@
+name: Build for Linux
+
+on:
+  workflow_call:
+
+jobs:
+  ubuntu:
+    name: Build for Ubuntu (${{matrix.arch}}, ${{ matrix.configuration }})
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      matrix:
+        include:
+        - arch: x86_64
+          configuration: Debug
+          build_param: --debug
+          artifact_name: xemu-ubuntu-x86_64-debug
+          artifact_filename: xemu-ubuntu-x86_64-debug.tgz
+          runs-on: ubuntu-22.04
+        - arch: x86_64
+          configuration: Release
+          build_param:
+          artifact_name: xemu-ubuntu-x86_64-release
+          artifact_filename: xemu-ubuntu-x86_64-release.tgz
+          runs-on: ubuntu-22.04
+        - arch: aarch64
+          configuration: Debug
+          build_param: --debug
+          artifact_name: xemu-ubuntu-aarch64-debug
+          artifact_filename: xemu-ubuntu-aarch64-debug.tgz
+          runs-on: ubuntu-22.04-arm
+        - arch: aarch64
+          configuration: Release
+          build_param:
+          artifact_name: xemu-ubuntu-aarch64-release
+          artifact_filename: xemu-ubuntu-aarch64-release.tgz
+          runs-on: ubuntu-22.04-arm
+    env:
+      CCACHE_DIR: /tmp/xemu-ccache
+      CCACHE_MAXSIZE: 512M
+      XEMU_BUILD_OPTIONS: ${{ matrix.build_param }}
+    steps:
+    - name: Initialize compiler cache
+      id: cache
+      uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
+      with:
+        path: /tmp/xemu-ccache
+        key: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
+        restore-keys: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
+    - name: Download source package
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+      with:
+        name: src.tar.gz
+    - name: Extract source package
+      run: |
+        mkdir src
+        tar -C src -xf src.tar.gz
+    - name: Create debian changelog
+      run: |
+        pushd src
+        echo -e "\
+        xemu (1:0.0.0-0) unstable; urgency=medium\n\
+          Built from $(cat XEMU_VERSION)\n\
+         -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" > debian/changelog
+        popd
+    - name: Install dependencies
+      run: |
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt-get -qy update
+        sudo apt-get install ccache libfuse2 libusb-1.0-0-dev
+        pushd src
+        sudo apt-get -qy build-dep .
+    - name: Setup ccache
+      run: |
+        echo "PATH=/usr/lib/ccache:$PATH" >> "$GITHUB_ENV"
+        ccache -z
+    - name: Compile
+      run: |
+        # XXX: dpkg-genbuildinfo takes two minutes on GH runners. Nuke it for now.
+        sudo rm /usr/bin/dpkg-genbuildinfo
+        sudo ln -s /bin/true /usr/bin/dpkg-genbuildinfo
+
+        pushd src
+        dpkg-buildpackage --no-sign -b
+        popd
+
+        mkdir -p dist
+        mv *.deb *.ddeb dist
+    - name: Test
+      run: |
+        pushd src/build
+        ./pyvenv/bin/meson compile test-xbox
+        ./pyvenv/bin/meson test --suite xbox --no-rebuild
+        popd
+    - name: Report ccache stats
+      run: ccache -s
+    - name: Generate AppImage
+      run: |
+        wget --no-verbose https://github.com/linuxdeploy/linuxdeploy/releases/latest/download/linuxdeploy-${{ matrix.arch }}.AppImage
+        chmod +x linuxdeploy-${{ matrix.arch }}.AppImage
+
+        ar x dist/*.deb
+        mkdir appimage
+        tar -C appimage -xf data.tar*
+        install -DT src/xemu.metainfo.xml appimage/usr/share/metainfo/xemu.metainfo.xml
+
+        export VERSION=v$(cat src/XEMU_VERSION)
+        if [[ "${{ matrix.configuration }}" == "Debug" ]]; then
+          export VERSION=$VERSION-dbg
+        fi
+
+        ./linuxdeploy-${{ matrix.arch }}.AppImage --output appimage --appdir appimage
+        mv xemu-*.AppImage dist
+    - name: Bundle artifacts
+      run: |
+        tar -czvf ${{ matrix.artifact_filename }} --transform "s#^dist#xemu#" dist
+    - name: Upload build artifact
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.artifact_filename }}
