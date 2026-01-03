@@ -1,0 +1,17 @@
+name: Release (Published)
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update_website:
+    name: Update website
+    if: github.repository_owner == 'xemu-project'
+    uses: ./.github/workflows/update-website.yml
+
+  update_ppa_snapshot:
+    name: Update PPA snapshot
+    uses: ./.github/workflows/update-ppa.yml
+    with:
+      release: ${{ github.event.release.name }}

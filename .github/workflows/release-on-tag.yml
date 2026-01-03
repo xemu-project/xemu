@@ -1,0 +1,12 @@
+name: Release (Tag Pushed)
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    name: Release
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ github.ref_name }}
