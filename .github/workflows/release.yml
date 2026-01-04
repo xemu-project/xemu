@@ -28,7 +28,7 @@ jobs:
     - name: Add transitionary package alias
       run: |
         pushd dist
-        cp xemu-$(cat XEMU_VERSION)-win-x86_64.zip xemu-win-release.zip
+        cp xemu-$(cat XEMU_VERSION)-win-x86_64.zip xemu-win-x86_64-release.zip
     - name: Create release draft
       uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
       with:
