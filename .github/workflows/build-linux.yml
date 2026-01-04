@@ -14,25 +14,21 @@ jobs:
           configuration: Debug
           build_param: --debug
           artifact_name: xemu-ubuntu-x86_64-debug
-          artifact_filename: xemu-ubuntu-x86_64-debug.tgz
           runs-on: ubuntu-22.04
         - arch: x86_64
           configuration: Release
           build_param:
           artifact_name: xemu-ubuntu-x86_64-release
-          artifact_filename: xemu-ubuntu-x86_64-release.tgz
           runs-on: ubuntu-22.04
         - arch: aarch64
           configuration: Debug
           build_param: --debug
           artifact_name: xemu-ubuntu-aarch64-debug
-          artifact_filename: xemu-ubuntu-aarch64-debug.tgz
           runs-on: ubuntu-22.04-arm
         - arch: aarch64
           configuration: Release
           build_param:
           artifact_name: xemu-ubuntu-aarch64-release
-          artifact_filename: xemu-ubuntu-aarch64-release.tgz
           runs-on: ubuntu-22.04-arm
     env:
       CCACHE_DIR: /tmp/xemu-ccache
@@ -83,8 +79,8 @@ jobs:
         dpkg-buildpackage --no-sign -b
         popd
 
-        mkdir -p dist
-        mv *.deb *.ddeb dist
+        mkdir -p deb
+        mv *.deb *.ddeb deb
     - name: Test
       run: |
         pushd src/build
@@ -98,7 +94,7 @@ jobs:
         wget --no-verbose https://github.com/linuxdeploy/linuxdeploy/releases/latest/download/linuxdeploy-${{ matrix.arch }}.AppImage
         chmod +x linuxdeploy-${{ matrix.arch }}.AppImage
 
-        ar x dist/*.deb
+        ar x deb/*.deb
         mkdir appimage
         tar -C appimage -xf data.tar*
         install -DT src/xemu.metainfo.xml appimage/usr/share/metainfo/xemu.metainfo.xml
@@ -109,12 +105,13 @@ jobs:
         fi
 
         ./linuxdeploy-${{ matrix.arch }}.AppImage --output appimage --appdir appimage
-        mv xemu-*.AppImage dist
     - name: Bundle artifacts
       run: |
-        tar -czvf ${{ matrix.artifact_filename }} --transform "s#^dist#xemu#" dist
+        mkdir -p dist
+        tar -czvf ./dist/${{ matrix.artifact_name }}.tgz --transform "s#^dist#${{ matrix.artifact_name }}#" deb
+        mv xemu-*.AppImage dist
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
         name: ${{ matrix.artifact_name }}
-        path: ${{ matrix.artifact_filename }}
+        path: dist

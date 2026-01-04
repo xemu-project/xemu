@@ -25,16 +25,6 @@ jobs:
       with:
         path: dist
         merge-multiple: true
-    - name: Extract source package
-      run: tar xf dist/src.tar.gz
-    - name: Extract Ubuntu artifacts
-      run: |
-        pushd dist
-        for arch in x86_64 aarch64; do
-          for config in release debug; do
-            tar xvf xemu-ubuntu-$arch-$config.tgz
-          done
-        done
     - name: Add transitionary package alias
       run: |
         cp dist/xemu-win-x86_64-release.zip dist/xemu-win-release.zip
