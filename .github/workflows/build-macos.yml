@@ -27,6 +27,8 @@ jobs:
           build_param: -a arm64
           artifact_name: xemu-macos-arm64-release
     env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
       CCACHE_DIR: ${{ github.workspace }}/xemu-ccache
       CCACHE_MAXSIZE: 512M
     steps:
@@ -41,8 +43,6 @@ jobs:
         python-version: '3.12'
     - name: Install dependencies
       run: |
-        export HOMEBREW_NO_AUTO_UPDATE=1
-        export HOMEBREW_NO_INSTALL_CLEANUP=1
         brew install \
           ccache \
           coreutils \
