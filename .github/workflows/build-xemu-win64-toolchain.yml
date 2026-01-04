@@ -17,7 +17,7 @@ env:
 jobs:
   build-image:
     name: Build and Publish Image
-    if: github.repository_owner == 'xemu-project'
+    if: ${{ github.repository_owner == 'xemu-project' }}
     runs-on: ubuntu-latest
     steps:
       - name: Clone tree

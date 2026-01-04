@@ -81,16 +81,16 @@ function subproject_dir() {
 git archive --format tar "$(tree_ish)" > "$tar_file"
 test $? -ne 0 && error "failed to archive qemu"
 
+meson subprojects download -j8 $subprojects
+# test $? -ne 0 && error "failed to download subprojects"
+
 for sp in $subprojects; do
-    meson subprojects download $sp
-    # test $? -ne 0 && error "failed to download subproject $sp"
     tar --append --file "$tar_file" --exclude=.git subprojects/"$(subproject_dir $sp)"
     test $? -ne 0 && error "failed to append subproject $sp to $tar_file"
 done
 
 git rev-parse HEAD 2>/dev/null | tr -d '\n' > XEMU_COMMIT
-git symbolic-ref --short HEAD > XEMU_BRANCH
 git describe --tags --match 'v*' | cut -c 2- | tr -d '\n' > XEMU_VERSION
-tar -r --file "$tar_file" XEMU_COMMIT XEMU_BRANCH XEMU_VERSION
+tar -r --file "$tar_file" XEMU_COMMIT XEMU_VERSION
 
 exit 0
