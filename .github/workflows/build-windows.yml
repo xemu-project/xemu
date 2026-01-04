@@ -57,6 +57,7 @@ jobs:
           -u $(id -u):$(id -g) \
           $DOCKER_IMAGE_NAME \
             bash -c "ccache -z; ./build.sh -p win64-cross ${{ matrix.build_param }} && ccache -s"
+        cp XEMU_VERSION dist
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
@@ -100,9 +101,24 @@ jobs:
         cd ${{ matrix.artifact_name }}
         ../cv2pdb/cv2pdb64.exe xemu.exe
         ../llvm-mingw-20241217-ucrt-x86_64/bin/${{ matrix.arch }}-w64-mingw32-strip.exe xemu.exe
-        mkdir ../dist
-        7z a -tzip ../dist/${{ matrix.artifact_name }}.zip * "-xr!*.pdb"
-        7z a -tzip ../dist/${{ matrix.artifact_name }}-pdb.zip "-ir!*.pdb"
+    - name: Determine package version
+      id: package_id
+      shell: bash
+      run: |
+        cd ${{ matrix.artifact_name }}
+        version="$(cat XEMU_VERSION)"
+        if [[ "${{ matrix.configuration}}" == "Debug" ]]; then
+          version="${version}-dbg"
+        fi
+        echo "pkg_filename=xemu-${version}-win-${{ matrix.arch }}.zip" >> $GITHUB_OUTPUT
+        echo "pdb_filename=xemu-${version}-win-${{ matrix.arch }}-pdb.zip" >> $GITHUB_OUTPUT
+        rm XEMU_VERSION
+    - name: Package
+      run: |
+        mkdir dist
+        cd ${{ matrix.artifact_name }}
+        7z a -tzip ../dist/${{ steps.package_id.outputs.pkg_filename}} * "-xr!*.pdb"
+        7z a -tzip ../dist/${{ steps.package_id.outputs.pdb_filename}} "-ir!*.pdb"
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
