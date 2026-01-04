@@ -32,9 +32,9 @@ jobs:
     - name: Download source package
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
-        name: src.tar.gz
+        name: src
     - name: Extract source package
-      run: tar xf src.tar.gz
+      run: tar xf xemu-*.tar.gz
     - name: Initialize compiler cache
       id: cache
       uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4

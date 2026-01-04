@@ -21,14 +21,21 @@ jobs:
     - name: Install dependencies
       run: sudo apt-get install meson
     - name: Create source package
+      id: package
       run: |
         ./scripts/archive-source.sh src.tar
+
+        version="$(cat XEMU_VERSION)"
+        pkg_filename=xemu-${version}.tar.gz
+        echo "pkg_filename=${pkg_filename}" >> $GITHUB_OUTPUT
+
         gzip -1 src.tar
+        mv src.tar.gz ${pkg_filename}
     - name: Upload source package artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
-        name: src.tar.gz
-        path: src.tar.gz
+        name: src
+        path: ${{ steps.package.outputs.pkg_filename }}
 
   linux:
     name: Linux
