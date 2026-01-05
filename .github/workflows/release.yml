@@ -37,8 +37,8 @@ jobs:
     - name: Add transitionary package aliases
       run: |
         pushd dist
-        cp xemu-${{ needs.build.outputs.pkg_version }}-win-x86_64.zip xemu-win-x86_64-release.zip
-        cp xemu-${{ needs.build.outputs.pkg_version }}-win-arm64.zip xemu-win-aarch64-release.zip
+        cp xemu-${{ needs.build.outputs.pkg_version }}-windows-x86_64.zip xemu-win-x86_64-release.zip
+        cp xemu-${{ needs.build.outputs.pkg_version }}-windows-arm64.zip xemu-win-aarch64-release.zip
     - name: Create release draft
       uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
       with:
@@ -48,6 +48,6 @@ jobs:
         draft: true
         files: |
           dist/xemu*.tar.zst
-          dist/xemu*-win-*.zip
+          dist/xemu*-win*.zip
           dist/xemu*-macos-universal*.zip
           dist/xemu*.AppImage
