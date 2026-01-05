@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [x86_64, aarch64]
+        arch: [x86_64, arm64]
         configuration: [debug, release]
     env:
       DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-0d06ce8
@@ -36,6 +36,7 @@ jobs:
       run: docker pull $DOCKER_IMAGE_NAME
     - name: Compile
       env:
+        CROSSPREFIX: ${{ matrix.arch == 'arm64' && 'aarch64' || matrix.arch }}-w64-mingw32.static-
         BUILD_FLAGS: ${{ matrix.configuration == 'debug' && '--debug' || '' }}
       run: |
         mkdir -p /tmp/xemu-ccache
@@ -44,8 +45,8 @@ jobs:
           -v /tmp/xemu-ccache:/tmp/xemu-ccache \
           -e CCACHE_DIR=/tmp/xemu-ccache \
           -e CCACHE_MAXSIZE=512M \
-          -e CROSSPREFIX=${{ matrix.arch }}-w64-mingw32.static- \
-          -e CROSSAR=${{ matrix.arch }}-w64-mingw32.static-ar \
+          -e CROSSPREFIX=${CROSSPREFIX} \
+          -e CROSSAR=${CROSSPREFIX}ar \
           -u $(id -u):$(id -g) \
           $DOCKER_IMAGE_NAME \
             bash -c "ccache -z; ./build.sh -p win64-cross ${BUILD_FLAGS} && ccache -s"
@@ -64,7 +65,7 @@ jobs:
     needs: build
     strategy:
       matrix:
-        arch: [x86_64, aarch64]
+        arch: [x86_64, arm64]
         configuration: [debug, release]
     steps:
     - name: Download artifacts
