@@ -26,6 +26,9 @@ jobs:
           configuration: Release
           build_param: -a arm64
           artifact_name: xemu-macos-arm64-release
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/xemu-ccache
+      CCACHE_MAXSIZE: 512M
     steps:
     - name: Download source package
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
@@ -54,15 +57,15 @@ jobs:
           macos-pkgs
         key: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
+    - name: Setup ccache
+      run: |
+        echo "PATH=/usr/local/opt/ccache/libexec:$PATH" >> "$GITHUB_ENV"
+        ccache -z
     - name: Compile
       run: |
-        export CCACHE_DIR=${GITHUB_WORKSPACE}/xemu-ccache
-        export CCACHE_MAXSIZE=512M
-        export PATH="/usr/local/opt/ccache/libexec:$PATH"
-        ccache -z
         ./build.sh ${{ matrix.build_param }}
-        echo -e "\nCompiler Cache Stats:"
-        ccache -s
+    - name: Report ccache stats
+      run: ccache -s
     - name: Package
       id: package
       run: |
