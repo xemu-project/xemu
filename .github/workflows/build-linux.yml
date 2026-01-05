@@ -16,6 +16,7 @@ jobs:
       CCACHE_MAXSIZE: 512M
       XEMU_BUILD_OPTIONS: ${{ matrix.configuration == 'debug' && '--debug' || '' }}
       ARTIFACT_NAME: xemu-ubuntu-${{ matrix.arch }}-${{ matrix.configuration }}
+      DEB_BUILD_MAINT_OPTIONS: optimize=-lto
     steps:
     - name: Initialize compiler cache
       id: cache
