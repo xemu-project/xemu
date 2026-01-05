@@ -1592,9 +1592,10 @@ void MainMenuAboutView::Draw()
     static const char *build_info_text = NULL;
     if (build_info_text == NULL) {
         build_info_text =
-            g_strdup_printf("Version:      %s\nBranch:       %s\nCommit:       "
-                            "%s\nDate:         %s",
-                            xemu_version, xemu_branch, xemu_commit, xemu_date);
+            g_strdup_printf("Version:      %s\n"
+                            "Commit:       %s\n"
+                            "Date:         %s",
+                            xemu_version, xemu_commit, xemu_date);
     }
 
     static const char *sys_info_text = NULL;

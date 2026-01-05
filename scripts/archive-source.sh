@@ -89,8 +89,7 @@ for sp in $subprojects; do
 done
 
 git rev-parse HEAD 2>/dev/null | tr -d '\n' > XEMU_COMMIT
-git symbolic-ref --short HEAD > XEMU_BRANCH
 git describe --tags --match 'v*' | cut -c 2- | tr -d '\n' > XEMU_VERSION
-tar -r --file "$tar_file" XEMU_COMMIT XEMU_BRANCH XEMU_VERSION
+tar -r --file "$tar_file" XEMU_COMMIT XEMU_VERSION
 
 exit 0
