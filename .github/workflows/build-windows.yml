@@ -4,7 +4,7 @@ on:
   workflow_call:
 
 jobs:
-  windows:
+  build:
     name: Build for Windows (${{ matrix.arch }}, ${{ matrix.configuration }})
     runs-on: ubuntu-latest
     strategy:
@@ -54,10 +54,10 @@ jobs:
   # Generate a symbols package for Windows. Use cv2pdb to generate PDBs from
   # DWARF and update + strip the executable. Re-package the original release
   # and create symbols package.
-  windows_pdb:
+  generate_pdb:
     name: Generate PDB for Windows (${{ matrix.arch }}, ${{ matrix.configuration }})
     runs-on: windows-latest
-    needs: windows
+    needs: build
     strategy:
       matrix:
         arch: [x86_64, aarch64]
