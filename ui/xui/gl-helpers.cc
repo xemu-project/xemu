@@ -948,8 +948,14 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
     } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_CENTER) {
         // Centered
         float t_ratio = GetDisplayAspectRatio(tw, th);
-        scale[0] = t_ratio*(float)th/(float)width;
-        scale[1] = (float)th/(float)height;
+        int fb_height = th;
+        int fb_width = (int)(fb_height * t_ratio);
+        offset_x = (width - fb_width) / 2;
+        offset_y = (height - fb_height) / 2;
+        width = fb_width;
+        height = fb_height;
+        scale[0] = 1.0;
+        scale[1] = 1.0;
     } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_INTEGER) {
         // Integer scaling
         float t_ratio = GetDisplayAspectRatio(tw, th);
