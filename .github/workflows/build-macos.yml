@@ -6,7 +6,7 @@ on:
 jobs:
   macos:
     name: Build for macOS (${{ matrix.arch }}, ${{ matrix.configuration }})
-    runs-on: macOS-14
+    runs-on: macos-15
     strategy:
       matrix:
         include:
@@ -89,7 +89,7 @@ jobs:
 
   macos_universal:
     name: Build macOS Universal bundle (${{ matrix.configuration }})
-    runs-on: macOS-14
+    runs-on: macos-15
     needs: macos
     strategy:
       matrix:
