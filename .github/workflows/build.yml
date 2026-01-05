@@ -41,6 +41,7 @@ jobs:
       with:
         name: src
         path: ${{ steps.package.outputs.pkg_filename }}
+        compression-level: 0
 
   linux:
     name: Linux

@@ -85,6 +85,7 @@ jobs:
       with:
         name: ${{ matrix.artifact_name }}
         path: ${{ steps.package.outputs.pkg_filename }}
+        compression-level: 0
 
   macos_universal:
     name: Build macOS Universal bundle (${{ matrix.configuration }})
@@ -123,3 +124,4 @@ jobs:
       with:
         name: xemu-macos-universal-${{ matrix.configuration }}
         path: ${{ steps.package.outputs.pkg_filename }}
+        compression-level: 0

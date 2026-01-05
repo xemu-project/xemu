@@ -121,3 +121,4 @@ jobs:
       with:
         name: ${{ matrix.artifact_name }}-pdb
         path: dist
+        compression-level: 0
