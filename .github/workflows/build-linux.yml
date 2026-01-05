@@ -49,7 +49,7 @@ jobs:
     - name: Extract source package
       run: |
         mkdir src
-        tar -xf xemu-*.tar.gz -C src --strip-components=2
+        tar -xf xemu-*.tar.zst -C src --strip-components=2
     - name: Create debian changelog
       run: |
         pushd src

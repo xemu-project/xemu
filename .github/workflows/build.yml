@@ -31,12 +31,11 @@ jobs:
       run: |
         pkg_name="xemu-${{ steps.version.outputs.pkg_version }}"
         tar_filename="${pkg_name}.tar"
-        echo "pkg_filename=${tar_filename}.gz" >> $GITHUB_OUTPUT
-
         tar_prefix="./${pkg_name}/"
         ./scripts/archive-source.sh ${tar_filename} ${tar_prefix}
         tar -r --file "${tar_filename}" --transform "s,^./,${tar_prefix}," ./XEMU_COMMIT ./XEMU_VERSION
-        gzip -1 "${tar_filename}"
+        zstd "${tar_filename}"
+        echo "pkg_filename=${tar_filename}.zst" >> $GITHUB_OUTPUT
     - name: Upload source package artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
