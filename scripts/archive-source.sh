@@ -89,8 +89,4 @@ for sp in $subprojects; do
     test $? -ne 0 && error "failed to append subproject $sp to $tar_file"
 done
 
-git rev-parse HEAD 2>/dev/null | tr -d '\n' > XEMU_COMMIT
-git describe --tags --match 'v*' | cut -c 2- | tr -d '\n' > XEMU_VERSION
-tar -r --file "$tar_file" XEMU_COMMIT XEMU_VERSION
-
 exit 0
