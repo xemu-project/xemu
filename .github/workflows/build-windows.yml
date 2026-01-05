@@ -95,12 +95,9 @@ jobs:
     - name: Generate PDB
       run: |
         Invoke-WebRequest -Uri "https://github.com/rainers/cv2pdb/releases/download/v0.52/cv2pdb-0.52.zip" -OutFile "cv2pdb.zip"
-        Invoke-WebRequest -Uri "https://github.com/mstorsjo/llvm-mingw/releases/download/20241217/llvm-mingw-20241217-ucrt-x86_64.zip" -OutFile "llvm-mingw.zip"
         7z x -ocv2pdb -y cv2pdb.zip
-        7z x -y llvm-mingw.zip
         cd ${{ matrix.artifact_name }}
         ../cv2pdb/cv2pdb64.exe xemu.exe
-        ../llvm-mingw-20241217-ucrt-x86_64/bin/${{ matrix.arch }}-w64-mingw32-strip.exe xemu.exe
     - name: Determine package version
       id: package_id
       shell: bash
