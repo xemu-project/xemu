@@ -15,10 +15,13 @@ error() {
 }
 
 if test $# -lt 1; then
-    error "Usage: $0 <output tarball>"
+    error "Usage: $0 <output tarball> <prefix>"
 fi
 
 tar_file=$(realpath "$1")
+tar_prefix=${2:-./}
+[[ "$tar_prefix" == ./* && "$tar_prefix" == */ ]] || { echo "Invalid prefix (should be ./<prefix>/)"; exit 1; }
+
 sub_tdir=$(mktemp -d "${tar_file%.tar}.sub.XXXXXXXX")
 sub_file="${sub_tdir}/submodule.tar"
 
@@ -78,14 +81,14 @@ function subproject_dir() {
     echo "${dir:-$1}"
 }
 
-git archive --format tar "$(tree_ish)" > "$tar_file"
+git archive --format tar "$(tree_ish)" --prefix="$tar_prefix" > "$tar_file"
 test $? -ne 0 && error "failed to archive qemu"
 
 meson subprojects download -j8 $subprojects
 # test $? -ne 0 && error "failed to download subprojects"
 
 for sp in $subprojects; do
-    tar --append --file "$tar_file" --exclude=.git subprojects/"$(subproject_dir $sp)"
+    tar --append --file "$tar_file" --exclude=.git --transform "s,^./,$tar_prefix," ./subprojects/"$(subproject_dir $sp)"
     test $? -ne 0 && error "failed to append subproject $sp to $tar_file"
 done
 
