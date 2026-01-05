@@ -21,7 +21,7 @@ jobs:
     - name: Download release source
       env:
         GH_TOKEN: ${{ github.token }}
-      run: gh release download "${{ inputs.release }}" --repo="${GITHUB_REPOSITORY}" -p src.tar.gz
+      run: gh release download "${{ inputs.release }}" --repo="${GITHUB_REPOSITORY}" -p 'xemu-*.tar.gz'
     - name: Extract source package
       run: |
         mkdir src
