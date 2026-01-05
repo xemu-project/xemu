@@ -6,34 +6,16 @@ on:
 jobs:
   ubuntu:
     name: Build for Ubuntu (${{matrix.arch}}, ${{ matrix.configuration }})
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: ubuntu-22.04${{ matrix.arch == 'aarch64' && '-arm' || '' }}
     strategy:
       matrix:
-        include:
-        - arch: x86_64
-          configuration: Debug
-          build_param: --debug
-          artifact_name: xemu-ubuntu-x86_64-debug
-          runs-on: ubuntu-22.04
-        - arch: x86_64
-          configuration: Release
-          build_param:
-          artifact_name: xemu-ubuntu-x86_64-release
-          runs-on: ubuntu-22.04
-        - arch: aarch64
-          configuration: Debug
-          build_param: --debug
-          artifact_name: xemu-ubuntu-aarch64-debug
-          runs-on: ubuntu-22.04-arm
-        - arch: aarch64
-          configuration: Release
-          build_param:
-          artifact_name: xemu-ubuntu-aarch64-release
-          runs-on: ubuntu-22.04-arm
+        arch: [x86_64, aarch64]
+        configuration: [debug, release]
     env:
       CCACHE_DIR: /tmp/xemu-ccache
       CCACHE_MAXSIZE: 512M
-      XEMU_BUILD_OPTIONS: ${{ matrix.build_param }}
+      XEMU_BUILD_OPTIONS: ${{ matrix.configuration == 'debug' && '--debug' || '' }}
+      ARTIFACT_NAME: xemu-ubuntu-${{ matrix.arch }}-${{ matrix.configuration }}
     steps:
     - name: Initialize compiler cache
       id: cache
@@ -100,7 +82,7 @@ jobs:
         install -DT src/xemu.metainfo.xml appimage/usr/share/metainfo/xemu.metainfo.xml
 
         export VERSION=$(cat src/XEMU_VERSION)
-        if [[ "${{ matrix.configuration }}" == "Debug" ]]; then
+        if [[ "${{ matrix.configuration }}" == "debug" ]]; then
           export VERSION=$VERSION-dbg
         fi
 
@@ -108,11 +90,11 @@ jobs:
     - name: Bundle artifacts
       run: |
         mkdir -p dist
-        tar -czvf ./dist/${{ matrix.artifact_name }}.tgz --transform "s#^dist#${{ matrix.artifact_name }}#" deb
+        tar -czvf ./dist/${{ env.ARTIFACT_NAME }}.tgz --transform "s#^dist#${{ env.ARTIFACT_NAME }}#" deb
         mv xemu-*.AppImage dist
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
-        name: ${{ matrix.artifact_name }}
+        name: ${{ env.ARTIFACT_NAME }}
         path: dist
         compression-level: 0

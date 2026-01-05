@@ -9,23 +9,8 @@ jobs:
     runs-on: macos-15
     strategy:
       matrix:
-        include:
-        - arch: x86_64
-          configuration: Debug
-          build_param: --debug -a x86_64
-          artifact_name: xemu-macos-x86_64-debug
-        - arch: x86_64
-          configuration: Release
-          build_param: -a x86_64
-          artifact_name: xemu-macos-x86_64-release
-        - arch: arm64
-          configuration: Debug
-          build_param: --debug -a arm64
-          artifact_name: xemu-macos-arm64-debug
-        - arch: arm64
-          configuration: Release
-          build_param: -a arm64
-          artifact_name: xemu-macos-arm64-release
+        arch: [x86_64, arm64]
+        configuration: [debug, release]
     env:
       HOMEBREW_NO_AUTO_UPDATE: 1
       HOMEBREW_NO_INSTALL_CLEANUP: 1
@@ -62,8 +47,9 @@ jobs:
         echo "PATH=/opt/homebrew/opt/ccache/libexec:$PATH" >> "$GITHUB_ENV"
         ccache -z
     - name: Compile
-      run: |
-        ./build.sh ${{ matrix.build_param }}
+      env:
+        BUILD_FLAGS: ${{ matrix.configuration == 'debug' && '--debug' || '' }}
+      run: ./build.sh -a ${{ matrix.arch }} ${BUILD_FLAGS}
     - name: Report ccache stats
       run: ccache -s
     - name: Package
@@ -71,7 +57,7 @@ jobs:
       run: |
         # Determine package filename
         version="$(cat XEMU_VERSION)"
-        if [[ "${{ matrix.configuration}}" == "Debug" ]]; then
+        if [[ "${{ matrix.configuration}}" == "debug" ]]; then
           version="${version}-dbg"
         fi
         pkg_filename="xemu-${version}-macos-${{ matrix.arch }}-unsigned.zip"
@@ -83,7 +69,7 @@ jobs:
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
-        name: ${{ matrix.artifact_name }}
+        name: xemu-macos-${{ matrix.arch }}-${{ matrix.configuration }}
         path: ${{ steps.package.outputs.pkg_filename }}
         compression-level: 0
 
@@ -93,7 +79,7 @@ jobs:
     needs: macos
     strategy:
       matrix:
-        configuration: ["debug", "release"]
+        configuration: [debug, release]
     steps:
     - name: Download architecture-specific builds
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4

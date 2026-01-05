@@ -9,23 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-        - configuration: Debug
-          build_param: --debug
-          artifact_name: xemu-win-x86_64-debug
-          arch: x86_64
-        - configuration: Release
-          build_param:
-          artifact_name: xemu-win-x86_64-release
-          arch: x86_64
-        - configuration: Debug
-          build_param: --debug
-          artifact_name: xemu-win-aarch64-debug
-          arch: aarch64
-        - configuration: Release
-          build_param:
-          artifact_name: xemu-win-aarch64-release
-          arch: aarch64
+        arch: [x86_64, aarch64]
+        configuration: [debug, release]
     env:
       DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-0d06ce8
     steps:
@@ -45,6 +30,8 @@ jobs:
     - name: Pull Docker image
       run: docker pull $DOCKER_IMAGE_NAME
     - name: Compile
+      env:
+        BUILD_FLAGS: ${{ matrix.configuration == 'debug' && '--debug' || '' }}
       run: |
         mkdir -p /tmp/xemu-ccache
         docker run --rm \
@@ -56,12 +43,12 @@ jobs:
           -e CROSSAR=${{ matrix.arch }}-w64-mingw32.static-ar \
           -u $(id -u):$(id -g) \
           $DOCKER_IMAGE_NAME \
-            bash -c "ccache -z; ./build.sh -p win64-cross ${{ matrix.build_param }} && ccache -s"
+            bash -c "ccache -z; ./build.sh -p win64-cross ${BUILD_FLAGS} && ccache -s"
         cp XEMU_VERSION dist
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
-        name: ${{ matrix.artifact_name }}
+        name: xemu-win-${{ matrix.arch }}-${{ matrix.configuration }}
         path: dist
 
   # Generate a symbols package for Windows. Use cv2pdb to generate PDBs from
@@ -73,38 +60,27 @@ jobs:
     needs: windows
     strategy:
       matrix:
-        include:
-        - configuration: Debug
-          artifact_name: xemu-win-x86_64-debug
-          arch: x86_64
-        - configuration: Release
-          artifact_name: xemu-win-x86_64-release
-          arch: x86_64
-        - configuration: Debug
-          artifact_name: xemu-win-aarch64-debug
-          arch: aarch64
-        - configuration: Release
-          artifact_name: xemu-win-aarch64-release
-          arch: aarch64
+        arch: [x86_64, aarch64]
+        configuration: [debug, release]
     steps:
     - name: Download artifacts
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
-        name: ${{ matrix.artifact_name }}
-        path: ${{ matrix.artifact_name }}
+        name: xemu-win-${{ matrix.arch }}-${{ matrix.configuration }}
+        path: dist
     - name: Generate PDB
       run: |
         Invoke-WebRequest -Uri "https://github.com/rainers/cv2pdb/releases/download/v0.52/cv2pdb-0.52.zip" -OutFile "cv2pdb.zip"
         7z x -ocv2pdb -y cv2pdb.zip
-        cd ${{ matrix.artifact_name }}
+        cd dist
         ../cv2pdb/cv2pdb64.exe xemu.exe
     - name: Determine package version
       id: package_id
       shell: bash
       run: |
-        cd ${{ matrix.artifact_name }}
+        cd ${{ env.ARTIFACT_NAME }}
         version="$(cat XEMU_VERSION)"
-        if [[ "${{ matrix.configuration}}" == "Debug" ]]; then
+        if [[ "${{ matrix.configuration}}" == "debug" ]]; then
           version="${version}-dbg"
         fi
         echo "pkg_filename=xemu-${version}-win-${{ matrix.arch }}.zip" >> $GITHUB_OUTPUT
@@ -112,13 +88,13 @@ jobs:
         rm XEMU_VERSION
     - name: Package
       run: |
-        mkdir dist
-        cd ${{ matrix.artifact_name }}
-        7z a -tzip ../dist/${{ steps.package_id.outputs.pkg_filename}} * "-xr!*.pdb"
-        7z a -tzip ../dist/${{ steps.package_id.outputs.pdb_filename}} "-ir!*.pdb"
+        mkdir dist-pdb
+        cd dist
+        7z a -tzip ../dist-pdb/${{ steps.package_id.outputs.pkg_filename}} * "-xr!*.pdb"
+        7z a -tzip ../dist-pdb/${{ steps.package_id.outputs.pdb_filename}} "-ir!*.pdb"
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
-        name: ${{ matrix.artifact_name }}-pdb
-        path: dist
+        name: xemu-win-${{ matrix.arch }}-${{ matrix.configuration }}-pdb
+        path: dist-pdb
         compression-level: 0
