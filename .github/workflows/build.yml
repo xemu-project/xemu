@@ -7,11 +7,17 @@ on:
         description: "Git ref (commit, branch, or tag) to build"
         required: true
         type: string
+    outputs:
+      pkg_version:
+        description: Build version
+        value: ${{ jobs.source.outputs.pkg_version }}
 
 jobs:
   source:
     name: Create source package
     runs-on: ubuntu-latest
+    outputs:
+      pkg_version: ${{ steps.version.outputs.pkg_version }}
     steps:
     - name: Clone tree
       uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
@@ -23,9 +29,8 @@ jobs:
     - name: Determine release version
       id: version
       run: |
-        echo -n ${{ github.sha }} > XEMU_COMMIT
-        git describe --tags --match 'v*' | cut -c 2- | tr -d '\n' > XEMU_VERSION
-        echo "pkg_version=$(cat XEMU_VERSION)" >> $GITHUB_OUTPUT
+        TAG=$(git describe --tags --match 'v*')
+        echo "pkg_version=${TAG#v}" >> $GITHUB_OUTPUT
     - name: Create source package
       id: package
       run: |
@@ -33,7 +38,11 @@ jobs:
         tar_filename="${pkg_name}.tar"
         tar_prefix="./${pkg_name}/"
         ./scripts/archive-source.sh ${tar_filename} ${tar_prefix}
+
+        echo -n ${{ github.sha }} > XEMU_COMMIT
+        echo -n ${{ steps.version.outputs.pkg_version }} > XEMU_VERSION
         tar -r --file "${tar_filename}" --transform "s,^./,${tar_prefix}," ./XEMU_COMMIT ./XEMU_VERSION
+
         zstd "${tar_filename}"
         echo "pkg_filename=${tar_filename}.zst" >> $GITHUB_OUTPUT
     - name: Upload source package artifact
@@ -47,13 +56,19 @@ jobs:
     name: Linux
     needs: source
     uses: ./.github/workflows/build-linux.yml
+    with:
+      pkg_version: ${{ needs.source.outputs.pkg_version }}
 
   macos:
     name: macOS
     needs: source
     uses: ./.github/workflows/build-macos.yml
+    with:
+      pkg_version: ${{ needs.source.outputs.pkg_version }}
 
   windows:
     name: Windows
     needs: source
     uses: ./.github/workflows/build-windows.yml
+    with:
+      pkg_version: ${{ needs.source.outputs.pkg_version }}
