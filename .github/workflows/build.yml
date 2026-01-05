@@ -20,17 +20,23 @@ jobs:
         ref: ${{ inputs.ref }}
     - name: Install dependencies
       run: sudo apt-get install meson
+    - name: Determine release version
+      id: version
+      run: |
+        echo -n ${{ github.sha }} > XEMU_COMMIT
+        git describe --tags --match 'v*' | cut -c 2- | tr -d '\n' > XEMU_VERSION
+        echo "pkg_version=$(cat XEMU_VERSION)" >> $GITHUB_OUTPUT
     - name: Create source package
       id: package
       run: |
-        ./scripts/archive-source.sh src.tar
+        pkg_name="xemu-${{ steps.version.outputs.pkg_version }}"
+        tar_filename="${pkg_name}.tar"
+        echo "pkg_filename=${tar_filename}.gz" >> $GITHUB_OUTPUT
 
-        version="$(cat XEMU_VERSION)"
-        pkg_filename=xemu-${version}.tar.gz
-        echo "pkg_filename=${pkg_filename}" >> $GITHUB_OUTPUT
-
-        gzip -1 src.tar
-        mv src.tar.gz ${pkg_filename}
+        tar_prefix="./${pkg_name}/"
+        ./scripts/archive-source.sh ${tar_filename} ${tar_prefix}
+        tar -r --file "${tar_filename}" --transform "s,^./,${tar_prefix}," ./XEMU_COMMIT ./XEMU_VERSION
+        gzip -1 "${tar_filename}"
     - name: Upload source package artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
