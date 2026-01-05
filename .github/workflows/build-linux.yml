@@ -4,7 +4,7 @@ on:
   workflow_call:
 
 jobs:
-  ubuntu:
+  build:
     name: Build for Ubuntu (${{matrix.arch}}, ${{ matrix.configuration }})
     runs-on: ubuntu-22.04${{ matrix.arch == 'aarch64' && '-arm' || '' }}
     strategy:

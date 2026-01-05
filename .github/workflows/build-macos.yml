@@ -4,7 +4,7 @@ on:
   workflow_call:
 
 jobs:
-  macos:
+  build:
     name: Build for macOS (${{ matrix.arch }}, ${{ matrix.configuration }})
     runs-on: macos-15
     strategy:
@@ -73,10 +73,10 @@ jobs:
         path: ${{ steps.package.outputs.pkg_filename }}
         compression-level: 0
 
-  macos_universal:
+  build_universal:
     name: Build macOS Universal bundle (${{ matrix.configuration }})
     runs-on: macos-15
-    needs: macos
+    needs: build
     strategy:
       matrix:
         configuration: [debug, release]
