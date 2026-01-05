@@ -31,16 +31,16 @@ jobs:
         path: src.tar.gz
 
   linux:
-    name: Build for Linux
+    name: Linux
     needs: source
     uses: ./.github/workflows/build-linux.yml
 
   macos:
-    name: Build for macOS
+    name: macOS
     needs: source
     uses: ./.github/workflows/build-macos.yml
 
   windows:
-    name: Build for Windows
+    name: Windows
     needs: source
     uses: ./.github/workflows/build-windows.yml
