@@ -2,6 +2,11 @@ name: Build for Linux
 
 on:
   workflow_call:
+    inputs:
+      pkg_version:
+        description: Build version
+        required: true
+        type: string
 
 jobs:
   build:
@@ -32,13 +37,13 @@ jobs:
     - name: Extract source package
       run: |
         mkdir src
-        tar -xf xemu-*.tar.zst -C src --strip-components=2
+        tar -xf xemu-${{ inputs.pkg_version }}.tar.zst -C src --strip-components=2
     - name: Create debian changelog
       run: |
         pushd src
         echo -e "\
         xemu (1:0.0.0-0) unstable; urgency=medium\n\
-          Built from $(cat XEMU_VERSION)\n\
+          Built from ${{ inputs.pkg_version }})\n\
          -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" > debian/changelog
         popd
     - name: Install dependencies
@@ -72,6 +77,8 @@ jobs:
     - name: Report ccache stats
       run: ccache -s
     - name: Generate AppImage
+      env:
+        VERSION: ${{ inputs.pkg_version }}${{ matrix.configuration == 'debug' && '-dbg' || '' }}
       run: |
         wget --no-verbose https://github.com/linuxdeploy/linuxdeploy/releases/latest/download/linuxdeploy-${{ matrix.arch }}.AppImage
         chmod +x linuxdeploy-${{ matrix.arch }}.AppImage
@@ -80,11 +87,6 @@ jobs:
         mkdir appimage
         tar -C appimage -xf data.tar*
         install -DT src/xemu.metainfo.xml appimage/usr/share/metainfo/xemu.metainfo.xml
-
-        export VERSION=$(cat src/XEMU_VERSION)
-        if [[ "${{ matrix.configuration }}" == "debug" ]]; then
-          export VERSION=$VERSION-dbg
-        fi
 
         ./linuxdeploy-${{ matrix.arch }}.AppImage --output appimage --appdir appimage
     - name: Bundle artifacts

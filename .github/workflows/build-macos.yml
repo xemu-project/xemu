@@ -2,6 +2,11 @@ name: Build for macOS
 
 on:
   workflow_call:
+    inputs:
+      pkg_version:
+        description: Build version
+        required: true
+        type: string
 
 jobs:
   build:
@@ -22,7 +27,7 @@ jobs:
       with:
         name: src
     - name: Extract source package
-      run: tar -xf xemu-*.tar.zst --strip-components=2
+      run: tar -xf xemu-${{ inputs.pkg_version }}.tar.zst --strip-components=2
     - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
       with:
         python-version: '3.12'
@@ -54,13 +59,10 @@ jobs:
       run: ccache -s
     - name: Package
       id: package
+      env:
+        VERSION: ${{ inputs.pkg_version }}${{ matrix.configuration == 'debug' && '-dbg' || '' }}
       run: |
-        # Determine package filename
-        version="$(cat XEMU_VERSION)"
-        if [[ "${{ matrix.configuration}}" == "debug" ]]; then
-          version="${version}-dbg"
-        fi
-        pkg_filename="xemu-${version}-macos-${{ matrix.arch }}-unsigned.zip"
+        pkg_filename="xemu-${VERSION}-macos-${{ matrix.arch }}-unsigned.zip"
         echo "pkg_filename=${pkg_filename}" >> $GITHUB_OUTPUT
 
         pushd dist
@@ -99,8 +101,10 @@ jobs:
         popd
     - name: Package
       id: package
+      env:
+        VERSION: ${{ inputs.pkg_version }}${{ matrix.configuration == 'debug' && '-dbg' || '' }}
       run: |
-        pkg_filename="$(ls -1 xemu-*.zip | head -n1 | sed -E 's/(.*)(arm64|x86_64)/\1universal/')"
+        pkg_filename="xemu-${VERSION}-macos-universal-unsigned.zip"
         echo "pkg_filename=${pkg_filename}" >> $GITHUB_OUTPUT
         pushd dist
         zip -r ../${pkg_filename} *

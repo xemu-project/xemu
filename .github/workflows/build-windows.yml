@@ -2,6 +2,11 @@ name: Build for Windows
 
 on:
   workflow_call:
+    inputs:
+      pkg_version:
+        description: Build version
+        required: true
+        type: string
 
 jobs:
   build:
@@ -19,7 +24,7 @@ jobs:
       with:
         name: src
     - name: Extract source package
-      run: tar -xf xemu-*.tar.zst --strip-components=2
+      run: tar -xf xemu-${{ inputs.pkg_version }}.tar.zst --strip-components=2
     - name: Initialize compiler cache
       id: cache
       uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
@@ -44,7 +49,6 @@ jobs:
           -u $(id -u):$(id -g) \
           $DOCKER_IMAGE_NAME \
             bash -c "ccache -z; ./build.sh -p win64-cross ${BUILD_FLAGS} && ccache -s"
-        cp XEMU_VERSION dist
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
@@ -77,15 +81,11 @@ jobs:
     - name: Determine package version
       id: package_id
       shell: bash
+      env:
+        VERSION: ${{ inputs.pkg_version }}${{ matrix.configuration == 'debug' && '-dbg' || '' }}
       run: |
-        cd ${{ env.ARTIFACT_NAME }}
-        version="$(cat XEMU_VERSION)"
-        if [[ "${{ matrix.configuration}}" == "debug" ]]; then
-          version="${version}-dbg"
-        fi
-        echo "pkg_filename=xemu-${version}-win-${{ matrix.arch }}.zip" >> $GITHUB_OUTPUT
-        echo "pdb_filename=xemu-${version}-win-${{ matrix.arch }}-pdb.zip" >> $GITHUB_OUTPUT
-        rm XEMU_VERSION
+        echo "pkg_filename=xemu-${VERSION}-win-${{ matrix.arch }}.zip" >> $GITHUB_OUTPUT
+        echo "pdb_filename=xemu-${VERSION}-win-${{ matrix.arch }}-pdb.zip" >> $GITHUB_OUTPUT
     - name: Package
       run: |
         mkdir dist-pdb
