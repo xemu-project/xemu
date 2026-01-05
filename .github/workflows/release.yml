@@ -20,6 +20,15 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
+    - name: Clone tree
+      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.tag }}
+    - name: Generate Changelog
+      run: |
+        PREVIOUS_TAG=$(git describe --tags --match 'v*' --abbrev=0 HEAD^)
+        git log --pretty=format:'* %h %s' --first-parent $PREVIOUS_TAG..HEAD > CHANGELOG.md
     - name: Download artifacts
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
@@ -34,6 +43,7 @@ jobs:
       with:
         name: ${{ inputs.tag }}
         tag_name: ${{ inputs.tag }}
+        body_path: CHANGELOG.md
         draft: true
         files: |
           dist/xemu*.tar.zst
