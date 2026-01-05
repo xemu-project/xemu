@@ -25,7 +25,7 @@ jobs:
     - name: Extract source package
       run: |
         mkdir src
-        tar -C src -xf src.tar.gz
+        tar -C src -xf xemu-*.tar.gz --strip-components=2
 
         # Ensure subprojects are uploaded
         find src/subprojects -name "*.gitignore" -exec rm {} \;
