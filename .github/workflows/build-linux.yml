@@ -45,11 +45,11 @@ jobs:
     - name: Download source package
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
-        name: src.tar.gz
+        name: src
     - name: Extract source package
       run: |
         mkdir src
-        tar -C src -xf src.tar.gz
+        tar -C src -xf xemu-*.tar.gz
     - name: Create debian changelog
       run: |
         pushd src
