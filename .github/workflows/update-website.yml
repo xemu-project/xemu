@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Trigger website update
-      if: github.repository_owner == 'xemu-project'
+      if: ${{ github.repository_owner == 'xemu-project' }}
       uses: benc-uk/workflow-dispatch@e2e5e9a103e331dad343f381a29e654aea3cf8fc # v1.2.4
       with:
         workflow: build.yml
