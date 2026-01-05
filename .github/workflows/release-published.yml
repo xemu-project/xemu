@@ -7,11 +7,12 @@ on:
 jobs:
   update_website:
     name: Update website
-    if: ${{ github.repository_owner == 'xemu-project' }}
+    if: ${{ github.repository_owner == 'xemu-project' && !github.event.release.prerelease }}
     uses: ./.github/workflows/update-website.yml
 
   update_ppa_snapshot:
     name: Update PPA snapshot
+    if: ${{ !github.event.release.prerelease }}
     uses: ./.github/workflows/update-ppa.yml
     with:
       release: ${{ github.event.release.name }}
