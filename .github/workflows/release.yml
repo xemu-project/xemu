@@ -36,7 +36,7 @@ jobs:
         tag_name: ${{ inputs.tag }}
         draft: true
         files: |
-          dist/xemu*.tar.gz
+          dist/xemu*.tar.zst
           dist/xemu*-win-*.zip
           dist/xemu*-macos-universal*.zip
           dist/xemu*.AppImage

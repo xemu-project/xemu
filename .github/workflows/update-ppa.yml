@@ -21,11 +21,11 @@ jobs:
     - name: Download release source
       env:
         GH_TOKEN: ${{ github.token }}
-      run: gh release download "${{ inputs.release }}" --repo="${GITHUB_REPOSITORY}" -p 'xemu-*.tar.gz'
+      run: gh release download "${{ inputs.release }}" --repo="${GITHUB_REPOSITORY}" -p 'xemu-*.tar.zst'
     - name: Extract source package
       run: |
         mkdir src
-        tar -C src -xf xemu-*.tar.gz --strip-components=2
+        tar -C src -xf xemu-*.tar.zst --strip-components=2
 
         # Ensure subprojects are uploaded
         find src/subprojects -name "*.gitignore" -exec rm {} \;

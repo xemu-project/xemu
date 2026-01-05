@@ -34,7 +34,7 @@ jobs:
       with:
         name: src
     - name: Extract source package
-      run: tar -xf xemu-*.tar.gz --strip-components=2
+      run: tar -xf xemu-*.tar.zst --strip-components=2
     - name: Initialize compiler cache
       id: cache
       uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
