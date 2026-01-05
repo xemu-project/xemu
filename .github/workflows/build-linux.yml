@@ -43,7 +43,6 @@ jobs:
         popd
     - name: Install dependencies
       run: |
-        export DEBIAN_FRONTEND=noninteractive
         sudo apt-get -qy update
         sudo apt-get install ccache libfuse2 libusb-1.0-0-dev
         pushd src
