@@ -17,11 +17,21 @@ jobs:
         arch: [x86_64, aarch64]
         configuration: [debug, release]
     env:
+      ARTIFACT_NAME: xemu-ubuntu-${{ matrix.arch }}-${{ matrix.configuration }}
       CCACHE_DIR: /tmp/xemu-ccache
       CCACHE_MAXSIZE: 512M
       XEMU_BUILD_OPTIONS: ${{ matrix.configuration == 'debug' && '--debug' || '' }}
-      ARTIFACT_NAME: xemu-ubuntu-${{ matrix.arch }}-${{ matrix.configuration }}
       DEB_BUILD_MAINT_OPTIONS: optimize=-lto
+      DEB_CFLAGS_MAINT_APPEND: -gdwarf-4 -gstrict-dwarf
+      DEB_CXXFLAGS_MAINT_APPEND: -gdwarf-4 -gstrict-dwarf
+      DEB_LDFLAGS_MAINT_APPEND: -Wl,--build-id=sha1
+      CC: ccache clang-21
+      CXX: ccache clang++-21
+      CC_LD: lld-21
+      CXX_LD: lld-21
+      AR: llvm-ar-21
+      RANLIB: llvm-ranlib-21
+      NM: llvm-nm-21
     steps:
     - name: Initialize compiler cache
       id: cache
@@ -46,10 +56,19 @@ jobs:
           Built from ${{ inputs.pkg_version }})\n\
          -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" > debian/changelog
         popd
+    - name: Add LLVM APT repository
+      run: |
+        sudo install -d /etc/apt/keyrings
+        curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key \
+          | sudo gpg --dearmor -o /etc/apt/keyrings/llvm.gpg
+        sudo tee /etc/apt/sources.list.d/llvm.list <<EOF
+        deb [signed-by=/etc/apt/keyrings/llvm.gpg] http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main
+        deb-src [signed-by=/etc/apt/keyrings/llvm.gpg] http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main
+        EOF
     - name: Install dependencies
       run: |
         sudo apt-get -qy update
-        sudo apt-get install ccache libfuse2 libusb-1.0-0-dev
+        sudo apt-get install ccache libfuse2 libusb-1.0-0-dev clang-21 lld-21 llvm-21-dev
         pushd src
         sudo apt-get -qy build-dep .
     - name: Setup ccache
