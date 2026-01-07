@@ -29,8 +29,12 @@ jobs:
     - name: Determine release version
       id: version
       run: |
-        TAG=$(git describe --tags --match 'v*')
-        echo "pkg_version=${TAG#v}" >> $GITHUB_OUTPUT
+        if TAG=$(git describe --tags --match 'v*' 2>/dev/null); then
+          echo "pkg_version=${TAG#v}" >> $GITHUB_OUTPUT
+        else
+          SHORT_HASH=$(git rev-parse --short HEAD)
+          echo "pkg_version=0.0.0-unofficial-${SHORT_HASH}" >> $GITHUB_OUTPUT
+        fi
     - name: Create source package
       id: package
       run: |
