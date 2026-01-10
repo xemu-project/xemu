@@ -54,7 +54,8 @@ RUN apt-get update \
         software-properties-common \
         unzip \
         wget \
-        xz-utils
+        xz-utils \
+        zstd
 
 RUN git clone ${MXE_REPO} ${MXE_PATH} \
  && cd ${MXE_PATH} \
