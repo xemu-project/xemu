@@ -4,16 +4,12 @@
 
 FROM ubuntu:24.04
 
-ENV MXE_PATH=/opt/mxe
+ENV MXE_PATH=/usr/local/mxe
 ENV MXE_REPO=https://github.com/mxe/mxe.git
-ENV MXE_VERSION=db7f5247eaab700f28bb9b9433d279e5958f5f01
+ENV MXE_VERSION=9c716d7337fcec2b95eef7ed8f5970b4b8e97f68
 
-ENV MXE_LLVM_MINGW_REPO=https://github.com/libvips/build-win64-mxe
-ENV MXE_LLVM_MINGW_VERSION=51fc5884d0c4a3be43a2f09fa36a464885918d3d
-ENV MXE_LLVM_MINGW_PATH=/opt/build-win64-mxe
-
-ARG PLUGIN_DIRS="${MXE_LLVM_MINGW_PATH} ${MXE_LLVM_MINGW_PATH}/build/plugins/llvm-mingw"
-ARG TARGETS="x86_64-w64-mingw32.static aarch64-w64-mingw32.static"
+ARG PLUGIN_DIRS="plugins/gcc15"
+ARG TARGETS="x86_64-w64-mingw32.static"
 ARG JOBS=6
 
 RUN apt-get update \
@@ -60,18 +56,13 @@ RUN apt-get update \
         wget \
         xz-utils
 
-RUN git clone ${MXE_LLVM_MINGW_REPO} ${MXE_LLVM_MINGW_PATH} \
- && cd ${MXE_LLVM_MINGW_PATH} \
- && git checkout ${MXE_LLVM_MINGW_VERSION} \
- \
- && git clone ${MXE_REPO} ${MXE_PATH} \
+RUN git clone ${MXE_REPO} ${MXE_PATH} \
  && cd ${MXE_PATH} \
- && git checkout ${MXE_VERSION} \
- && git apply ${MXE_LLVM_MINGW_PATH}/build/patches/mxe-fixes.patch
+ && git checkout ${MXE_VERSION}
 
 RUN make \
-    MXE_TARGETS="${TARGETS}" \
     MXE_PLUGIN_DIRS="${PLUGIN_DIRS}" \
+    MXE_TARGETS="${TARGETS}" \
     JOBS=${JOBS} \
     -C ${MXE_PATH} \
         cc
@@ -85,8 +76,8 @@ COPY vulkan-headers.mk \
      ${MXE_PATH}/src/
 
 RUN make \
-    MXE_TARGETS="${TARGETS}" \
     MXE_PLUGIN_DIRS="${PLUGIN_DIRS}" \
+    MXE_TARGETS="${TARGETS}" \
     JOBS=${JOBS} \
     CFLAGS=-O2 \
     -C ${MXE_PATH} \
@@ -104,5 +95,5 @@ RUN make \
 RUN find ${MXE_PATH}/usr -executable -type f -exec chmod a+x {} \;
 
 ENV CROSSPREFIX=x86_64-w64-mingw32.static-
-ENV CROSSAR=${CROSSPREFIX}ar
+ENV CROSSAR=${CROSSPREFIX}gcc-ar
 ENV PATH="${MXE_PATH}/.ccache/bin:${MXE_PATH}/usr/x86_64-pc-linux-gnu/bin:${MXE_PATH}/usr/bin:${PATH}"
