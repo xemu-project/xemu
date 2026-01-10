@@ -32,7 +32,8 @@ RUN apt-get update \
         python3-venv \
         python3-yaml \
         ruby \
-        zip
+        zip \
+        zstd
 
 WORKDIR /usr/local
 RUN git clone -b ${MXE_TAG} --single-branch ${MXE_REPO}
