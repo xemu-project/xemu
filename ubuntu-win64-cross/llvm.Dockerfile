@@ -54,6 +54,7 @@ COPY vulkan-headers.mk \
      sdl2.mk \
      libsamplerate.mk \
      libressl.mk \
+     curl.mk \
      ${MXE_PATH}/src/
 
 RUN make \
@@ -72,7 +73,8 @@ RUN make \
         cmake \
         libslirp \
         sdl2 \
-        vulkan-headers
+        vulkan-headers \
+        curl
 
 RUN find ${MXE_PATH}/usr -executable -type f -exec chmod a+x {} \;
 
