@@ -48,6 +48,7 @@ jobs:
             -Db_thinlto_cache=true
             -Db_thinlto_cache_dir="$LTO_CACHE_DIR"
           )
+          mkdir -p ${LTO_CACHE_DIR}
         fi
         echo "XEMU_BUILD_OPTIONS=${opts[*]}" >> "$GITHUB_ENV"
     - name: Initialize compiler cache
@@ -93,6 +94,7 @@ jobs:
     - name: Setup ccache
       run: |
         echo "PATH=/usr/lib/ccache:$PATH" >> "$GITHUB_ENV"
+        mkdir -p ${CCACHE_DIR}
         ccache -z
     - name: Compile
       run: |

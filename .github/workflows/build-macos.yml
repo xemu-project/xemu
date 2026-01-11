@@ -52,6 +52,7 @@ jobs:
     - name: Setup ccache
       run: |
         echo "PATH=/opt/homebrew/opt/ccache/libexec:$PATH" >> "$GITHUB_ENV"
+        mkdir -p ${CCACHE_DIR}
         ccache -z
     - name: Setup build options
       run: |
@@ -66,6 +67,7 @@ jobs:
             -Db_thinlto_cache=true
             -Db_thinlto_cache_dir="$LTO_CACHE_DIR"
           )
+          mkdir -p ${LTO_CACHE_DIR}
         fi
         echo "XEMU_BUILD_OPTIONS=${opts[*]}" >> "$GITHUB_ENV"
     - name: Compile
