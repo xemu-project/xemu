@@ -17,9 +17,9 @@ jobs:
         arch: [x86_64, arm64]
         configuration: [debug, release]
     env:
-      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-0d06ce8
       CCACHE_DIR: /tmp/xemu-ccache
       CCACHE_MAXSIZE: 512M
+      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain-${{ matrix.arch == 'x86_64' && 'gcc:sha-18018f1' || 'llvm:sha-18018f1' }}
     steps:
     - name: Download source package
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
@@ -49,7 +49,7 @@ jobs:
           CROSSAR=aarch64-w64-mingw32.static-ar
         else
           CROSSPREFIX=x86_64-w64-mingw32.static-
-          CROSSAR=x86_64-w64-mingw32.static-ar
+          CROSSAR=x86_64-w64-mingw32.static-gcc-ar
         fi
         echo "CROSSPREFIX=${CROSSPREFIX}" >> "$GITHUB_ENV"
         echo "CROSSAR=${CROSSAR}" >> "$GITHUB_ENV"
