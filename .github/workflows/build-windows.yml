@@ -24,6 +24,7 @@ jobs:
     env:
       CCACHE_DIR: /tmp/xemu-ccache
       CCACHE_MAXSIZE: 512M
+      LTO_CACHE_DIR: /tmp/xemu-lto-ccache
     steps:
     - name: Download source package
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
@@ -37,6 +38,7 @@ jobs:
       with:
         path: |
           ${{ env.CCACHE_DIR }}
+          ${{ env.LTO_CACHE_DIR }}
         key: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
     - name: Setup ccache
@@ -47,6 +49,17 @@ jobs:
           opts=(
             --debug
           )
+        elif [[ "${{ matrix.arch }}" == "x86_64" ]]; then
+          opts=(
+            --extra-cflags="-flto-incremental=${LTO_CACHE_DIR} -flto-partition=cache"
+            -Db_lto=true
+          )
+        elif [[ "${{ matrix.arch }}" == "arm64" ]]; then
+          # FIXME: llvm-mingw ThinLTO has an issue with `qemu_build_not_reached_always`
+          #        being intentionaly undefined (to ensure 'unreachable' paths are
+          #        optimized out). Regular LTO doesn't pass cv2pdb. Resolve linking
+          #        failure and have llvm toolchain generate PDB directly.
+          opts=()
         fi
         echo "XEMU_BUILD_OPTIONS=${opts[*]}" >> "$GITHUB_ENV"
     - name: Compile
