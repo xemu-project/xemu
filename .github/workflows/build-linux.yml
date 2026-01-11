@@ -20,7 +20,8 @@ jobs:
       ARTIFACT_NAME: xemu-ubuntu-${{ matrix.arch }}-${{ matrix.configuration }}
       CCACHE_DIR: /tmp/xemu-ccache
       CCACHE_MAXSIZE: 512M
-      XEMU_BUILD_OPTIONS: ${{ matrix.configuration == 'debug' && '--debug' || '' }}
+      LTO_CACHE_DIR: /tmp/xemu-lto-cache
+      LTO_CACHE_MAXSIZE: 512m
       DEB_BUILD_MAINT_OPTIONS: optimize=-lto
       DEB_CFLAGS_MAINT_APPEND: -gdwarf-4 -gstrict-dwarf
       DEB_CXXFLAGS_MAINT_APPEND: -gdwarf-4 -gstrict-dwarf
@@ -33,11 +34,29 @@ jobs:
       RANLIB: llvm-ranlib-21
       NM: llvm-nm-21
     steps:
+    - name: Setup build options
+      run: |
+        if [[ "${{ matrix.configuration }}" == "debug" ]]; then
+          opts=(
+            --debug
+          )
+        else
+          opts=(
+            --extra-ldflags="-Wl,--thinlto-cache-policy=cache_size_bytes=$LTO_CACHE_MAXSIZE"
+            -Db_lto=true
+            -Db_lto_mode=thin
+            -Db_thinlto_cache=true
+            -Db_thinlto_cache_dir="$LTO_CACHE_DIR"
+          )
+        fi
+        echo "XEMU_BUILD_OPTIONS=${opts[*]}" >> "$GITHUB_ENV"
     - name: Initialize compiler cache
       id: cache
       uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
       with:
-        path: /tmp/xemu-ccache
+        path: |
+          ${{ env.CCACHE_DIR }}
+          ${{ env.LTO_CACHE_DIR }}
         key: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
     - name: Download source package
