@@ -517,7 +517,7 @@ void Hyperlink(const char *text, const char *url)
     ImGui::GetWindowDrawList()->AddLine(min, max, col, 1.0 * g_viewport_mgr.m_scale);
 
     if (ImGui::IsItemClicked()) {
-        xemu_open_web_browser(url);
+        SDL_OpenURL(url);
     }
 }
 

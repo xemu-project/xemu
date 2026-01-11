@@ -68,12 +68,6 @@ enum controller_state_axis_index {
     CONTROLLER_AXIS__COUNT,
 };
 
-#ifdef __cplusplus
-using GamepadMappings = struct config::input::gamepad_mappings;
-#else
-typedef struct gamepad_mappings GamepadMappings;
-#endif
-
 enum controller_input_device_type {
     INPUT_DEVICE_SDL_KEYBOARD,
     INPUT_DEVICE_SDL_GAMECONTROLLER,
@@ -136,6 +130,8 @@ extern const char *bound_drivers[4];
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+extern int *g_keyboard_scancode_map[25];
 
 void xemu_input_init(void);
 void xemu_input_process_sdl_events(const SDL_Event *event); // SDL_CONTROLLERDEVICEADDED, SDL_CONTROLLERDEVICEREMOVED

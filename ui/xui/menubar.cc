@@ -203,6 +203,8 @@ void ShowMainMenu()
             ImGui::SameLine();
             HelpMarker("Controls how the rendered content should be scaled "
                        "into the window");
+            ImGui::Combo("Filter Method", &g_config.display.filtering,
+                         "Linear\0Nearest\0");
             ImGui::Combo("Aspect Ratio", &g_config.display.ui.aspect_ratio,
                          "Native\0Auto\0""4:3\0""16:9\0");
             if (ImGui::MenuItem("Fullscreen", "F11",
@@ -229,7 +231,7 @@ void ShowMainMenu()
         if (ImGui::BeginMenu("Help"))
         {
             if (ImGui::MenuItem("Help", NULL)) {
-                xemu_open_web_browser("https://xemu.app/docs/getting-started/");
+                SDL_OpenURL("https://xemu.app/docs/getting-started/");
             }
 
             ImGui::MenuItem("Report Compatibility...", NULL,
