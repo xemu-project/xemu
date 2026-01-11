@@ -21,6 +21,7 @@ jobs:
       HOMEBREW_NO_INSTALL_CLEANUP: 1
       CCACHE_DIR: ${{ github.workspace }}/xemu-ccache
       CCACHE_MAXSIZE: 512M
+      LTO_CACHE_DIR: ${{ github.workspace }}/xemu-lto-cache
     steps:
     - name: Download source package
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
@@ -43,18 +44,32 @@ jobs:
       uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
       with:
         path: |
-          xemu-ccache
           macos-pkgs
+          ${{ env.CCACHE_DIR }}
+          ${{ env.LTO_CACHE_DIR }}
         key: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
     - name: Setup ccache
       run: |
         echo "PATH=/opt/homebrew/opt/ccache/libexec:$PATH" >> "$GITHUB_ENV"
         ccache -z
+    - name: Setup build options
+      run: |
+        if [[ "${{ matrix.configuration }}" == "debug" ]]; then
+          opts=(
+            --debug
+          )
+        else
+          opts=(
+            -Db_lto=true
+            -Db_lto_mode=thin
+            -Db_thinlto_cache=true
+            -Db_thinlto_cache_dir="$LTO_CACHE_DIR"
+          )
+        fi
+        echo "XEMU_BUILD_OPTIONS=${opts[*]}" >> "$GITHUB_ENV"
     - name: Compile
-      env:
-        BUILD_FLAGS: ${{ matrix.configuration == 'debug' && '--debug' || '' }}
-      run: ./build.sh -a ${{ matrix.arch }} ${BUILD_FLAGS}
+      run: ./build.sh -a ${{ matrix.arch }} ${XEMU_BUILD_OPTIONS}
     - name: Report ccache stats
       run: ccache -s
     - name: Package
