@@ -23,8 +23,6 @@
 #include "xemu-input.h"
 #include <SDL.h>
 
-#ifdef __cplusplus
-
 enum class RebindEventResult {
     Ignore,
     Complete,
@@ -70,16 +68,5 @@ public:
     {
     }
 };
-
-extern "C" {
-#endif // __cplusplus
-
-extern int *g_keyboard_scancode_map[25];
-
-GamepadMappings *xemu_settings_load_gamepad_mapping(const char *guid, bool reset_to_default);
-
-#ifdef __cplusplus
-} // extern "C"
-#endif
 
 #endif // XEMU_CONTROLLERS_H

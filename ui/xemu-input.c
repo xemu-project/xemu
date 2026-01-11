@@ -28,7 +28,6 @@
 #include "qemu/timer.h"
 #include "qemu/config-file.h"
 
-#include "xemu-controllers.h"
 #include "xemu-input.h"
 #include "xemu-notifications.h"
 #include "xemu-settings.h"
@@ -166,14 +165,8 @@ static void check_and_reset_in_range(int *btn, int min, int max,
     }
 }
 
-static void xemu_input_bindings_reload_controller_map(ControllerState *con, bool reset_to_default)
+static void xemu_input_bindings_set_in_range(ControllerState *con)
 {
-    assert(con->type == INPUT_DEVICE_SDL_GAMECONTROLLER);
-
-    char guid[35] = { 0 };
-    SDL_JoystickGetGUIDString(con->sdl_joystick_guid, guid, sizeof(guid));
-    con->controller_map = xemu_settings_load_gamepad_mapping(guid, reset_to_default);
-
 #define CHECK_RESET_BUTTON(btn)                                            \
     check_and_reset_in_range(&con->controller_map->controller_mapping.btn, \
                              SDL_CONTROLLER_BUTTON_INVALID,                \
@@ -212,6 +205,38 @@ static void xemu_input_bindings_reload_controller_map(ControllerState *con, bool
     CHECK_RESET_AXIS(axis_right_y);
 
 #undef CHECK_RESET_AXIS
+}
+
+static void xemu_input_bindings_reload_map(ControllerState *con)
+{
+    assert(con->type == INPUT_DEVICE_SDL_GAMECONTROLLER);
+
+    char guid[35] = { 0 };
+    SDL_JoystickGetGUIDString(con->sdl_joystick_guid, guid, sizeof(guid));
+    if (!xemu_settings_load_gamepad_mapping(guid, &con->controller_map)) {
+        return;
+    }
+
+    // If this controller did not exist in the mapping array, the config will
+    // have been reallocated. Any gamepad mapping pointers for other controllers
+    // are now invalid, and need to be reloaded.
+    ControllerState *iter, *next;
+    bool is_new_mapping;
+    QTAILQ_FOREACH_SAFE (iter, &available_controllers, entry, next) {
+        if (iter == con || iter->type != INPUT_DEVICE_SDL_GAMECONTROLLER) {
+            continue;
+        }
+
+        memset(guid, 0, sizeof(guid));
+        SDL_JoystickGetGUIDString(iter->sdl_joystick_guid, guid, sizeof(guid));
+
+        is_new_mapping =
+            xemu_settings_load_gamepad_mapping(guid, &iter->controller_map);
+        assert(!is_new_mapping &&
+               "Existing controller GUIDs should exist in the config");
+
+        xemu_input_bindings_set_in_range(iter);
+    }
 }
 
 static const char *get_bound_driver(int port)
@@ -353,9 +378,8 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         SDL_JoystickGetGUIDString(new_con->sdl_joystick_guid, guid_buf, sizeof(guid_buf));
         DPRINTF("Opened %s (%s)\n", new_con->name, guid_buf);
 
-        xemu_input_bindings_reload_controller_map(new_con, /*reset_to_default=*/false);
-
         QTAILQ_INSERT_TAIL(&available_controllers, new_con, entry);
+        xemu_input_bindings_reload_map(new_con);
 
         // Do not replace binding for a currently bound device. In the case that
         // the same GUID is specified multiple times, on different ports, allow
@@ -916,7 +940,9 @@ int xemu_input_get_test_mode(void)
 void xemu_input_reset_input_mapping(ControllerState *state)
 {
     if (state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
-        xemu_input_bindings_reload_controller_map(state, /*reset_to_default=*/true);
+        char guid[35] = { 0 };
+        SDL_JoystickGetGUIDString(state->sdl_joystick_guid, guid, sizeof(guid));
+        xemu_settings_reset_controller_mapping(guid);
     } else if (state->type == INPUT_DEVICE_SDL_KEYBOARD) {
         xemu_settings_reset_keyboard_mapping();
     }
