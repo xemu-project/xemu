@@ -142,79 +142,26 @@ void ShowMainMenu()
             if (ImGui::MenuItem("Eject Disc", SHORTCUT_MENU_TEXT(E))) ActionEjectDisc();
             if (ImGui::MenuItem("Load Disc...", SHORTCUT_MENU_TEXT(O))) ActionLoadDisc();
 
-            int valid_count = 0;
-            for (int i = 0; i < g_config.general.recent.discs_count; i++) {
-                const char *disc_path = g_config.general.recent.discs[i];
-                if (!disc_path) continue;
-                
-                const char *filename = g_path_get_basename(disc_path);
-                bool file_exists = qemu_access(disc_path, F_OK) != -1;
-                g_free((void *)filename);
-                
-                if (file_exists) {
-                    valid_count++;
-                }
-            }
-            
-            bool has_valid_entries = (valid_count > 0);
-            if (ImGui::BeginMenu("Recent Discs", has_valid_entries)) {
+            bool has_any_entries  = (g_config.general.recent.discs_count > 0);
+            if (ImGui::BeginMenu("Recent Discs", has_any_entries)) {
                 for (int i = 0; i < g_config.general.recent.discs_count; i++) {
                     const char *disc_path = g_config.general.recent.discs[i];
-                    if (!disc_path) continue;
-                    
+
                     const char *filename = g_path_get_basename(disc_path);
-                    bool file_exists = qemu_access(disc_path, F_OK) != -1;
-                    
-                    if (file_exists) {
-                        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
-                        ImGui::PushID(i + 1000);
-                        if (ImGui::Button("X", ImVec2(20.0f, 0))) {
-                            ActionRemoveDiscFromRecent(i);
-                        }
-                        ImGui::PopID();
-                        ImGui::PopStyleColor();
-                        
-                        ImGui::SameLine();
-                        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
+
                         if (ImGui::MenuItem(filename)) {
-                            ActionLoadDiscFromRecent(i);
+                           ActionLoadDiscFile(disc_path);
                         }
-                        ImGui::PopStyleColor();
-                    } else {
-                        char *missing_filename = g_strconcat(filename, " (missing)", nullptr);
-                        
-                        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
-                        ImGui::PushID(i + 1000);
-                        if (ImGui::Button("X", ImVec2(20.0f, 0))) {
-                            ActionRemoveDiscFromRecent(i);
-                        }
-                        ImGui::PopID();
-                        ImGui::PopStyleColor();
-                        
-                        ImGui::SameLine();
-                        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(128, 128, 128, 255));
-                        ImGui::Text("%s", missing_filename);
-                        ImGui::PopStyleColor();
-                        
-                        g_free(missing_filename);
-                    }
-                    
+
                     g_free((void *)filename);
                 }
-                
                 if (g_config.general.recent.discs_count > 0) {
                     ImGui::Separator();
-                    
                     if (ImGui::MenuItem("Clear Recent Discs")) {
                         ActionClearDiscRecent();
                     }
-                    
-                    if (ImGui::MenuItem("Clear Missing Recent Discs")) {
-                        ActionClearMissingRecentDiscs();
-                    }
-                }
-                
                 ImGui::EndMenu();
+                }
             }
 
             ImGui::Separator();
