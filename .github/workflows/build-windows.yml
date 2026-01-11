@@ -18,6 +18,8 @@ jobs:
         configuration: [debug, release]
     env:
       DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-0d06ce8
+      CCACHE_DIR: /tmp/xemu-ccache
+      CCACHE_MAXSIZE: 512M
     steps:
     - name: Download source package
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
@@ -29,7 +31,8 @@ jobs:
       id: cache
       uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
       with:
-        path: /tmp/xemu-ccache
+        path: |
+          ${{ env.CCACHE_DIR }}
         key: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
     - name: Pull Docker image
@@ -39,12 +42,12 @@ jobs:
         CROSSPREFIX: ${{ matrix.arch == 'arm64' && 'aarch64' || matrix.arch }}-w64-mingw32.static-
         BUILD_FLAGS: ${{ matrix.configuration == 'debug' && '--debug' || '' }}
       run: |
-        mkdir -p /tmp/xemu-ccache
+        mkdir -p ${CCACHE_DIR}
         docker run --rm \
           -v $PWD:/xemu -w /xemu \
-          -v /tmp/xemu-ccache:/tmp/xemu-ccache \
-          -e CCACHE_DIR=/tmp/xemu-ccache \
-          -e CCACHE_MAXSIZE=512M \
+          -v ${CCACHE_DIR}:${CCACHE_DIR} \
+          -e CCACHE_DIR=${CCACHE_DIR} \
+          -e CCACHE_MAXSIZE=${CCACHE_MAXSIZE} \
           -e CROSSPREFIX=${CROSSPREFIX} \
           -e CROSSAR=${CROSSPREFIX}ar \
           -u $(id -u):$(id -g) \
