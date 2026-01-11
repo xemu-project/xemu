@@ -35,12 +35,27 @@ jobs:
           ${{ env.CCACHE_DIR }}
         key: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
+    - name: Setup build options
+      run: |
+        if [[ "${{ matrix.configuration }}" == "debug" ]]; then
+          opts=(
+            --debug
+          )
+        fi
+        echo "XEMU_BUILD_OPTIONS=${opts[*]}" >> "$GITHUB_ENV"
+
+        if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+          CROSSPREFIX=aarch64-w64-mingw32.static-
+          CROSSAR=aarch64-w64-mingw32.static-ar
+        else
+          CROSSPREFIX=x86_64-w64-mingw32.static-
+          CROSSAR=x86_64-w64-mingw32.static-ar
+        fi
+        echo "CROSSPREFIX=${CROSSPREFIX}" >> "$GITHUB_ENV"
+        echo "CROSSAR=${CROSSAR}" >> "$GITHUB_ENV"
     - name: Pull Docker image
       run: docker pull $DOCKER_IMAGE_NAME
     - name: Compile
-      env:
-        CROSSPREFIX: ${{ matrix.arch == 'arm64' && 'aarch64' || matrix.arch }}-w64-mingw32.static-
-        BUILD_FLAGS: ${{ matrix.configuration == 'debug' && '--debug' || '' }}
       run: |
         mkdir -p ${CCACHE_DIR}
         docker run --rm \
@@ -49,10 +64,10 @@ jobs:
           -e CCACHE_DIR=${CCACHE_DIR} \
           -e CCACHE_MAXSIZE=${CCACHE_MAXSIZE} \
           -e CROSSPREFIX=${CROSSPREFIX} \
-          -e CROSSAR=${CROSSPREFIX}ar \
+          -e CROSSAR=${CROSSAR} \
           -u $(id -u):$(id -g) \
           $DOCKER_IMAGE_NAME \
-            bash -c "ccache -z; ./build.sh -p win64-cross ${BUILD_FLAGS} && ccache -s"
+            bash -c "ccache -z; ./build.sh -p win64-cross ${XEMU_BUILD_OPTIONS} && ccache -s"
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
