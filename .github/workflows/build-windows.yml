@@ -42,7 +42,9 @@ jobs:
         key: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
     - name: Setup ccache
-      run: ccache -z
+      run: |
+        mkdir -p ${CCACHE_DIR}
+        ccache -z
     - name: Setup build options
       run: |
         if [[ "${{ matrix.configuration }}" == "debug" ]]; then
@@ -54,6 +56,7 @@ jobs:
             --extra-cflags="-flto-incremental=${LTO_CACHE_DIR} -flto-partition=cache"
             -Db_lto=true
           )
+          mkdir -p ${LTO_CACHE_DIR}
         elif [[ "${{ matrix.arch }}" == "arm64" ]]; then
           # FIXME: llvm-mingw ThinLTO has an issue with `qemu_build_not_reached_always`
           #        being intentionaly undefined (to ensure 'unreachable' paths are
