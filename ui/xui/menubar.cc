@@ -142,26 +142,28 @@ void ShowMainMenu()
             if (ImGui::MenuItem("Eject Disc", SHORTCUT_MENU_TEXT(E))) ActionEjectDisc();
             if (ImGui::MenuItem("Load Disc...", SHORTCUT_MENU_TEXT(O))) ActionLoadDisc();
 
-            bool has_any_entries  = (g_config.general.recent.discs_count > 0);
+            bool has_any_entries = (g_config.general.recent.discs_count > 0);
             if (ImGui::BeginMenu("Recent Discs", has_any_entries)) {
-                for (int i = 0; i < g_config.general.recent.discs_count; i++) {
-                    const char *disc_path = g_config.general.recent.discs[i];
 
+                for (unsigned i = 0; i < g_config.general.recent.discs_count; i++) {
+                    const char *disc_path = g_config.general.recent.discs[i];
                     const char *filename = g_path_get_basename(disc_path);
 
-                        if (ImGui::MenuItem(filename)) {
+                        if (ImGui::MenuItem(filename))
+                        {
                            ActionLoadDiscFile(disc_path);
                         }
 
-                    g_free((void *)filename);
+                        g_free((void *)filename);
                 }
-                if (g_config.general.recent.discs_count > 0) {
-                    ImGui::Separator();
-                    if (ImGui::MenuItem("Clear Recent Discs")) {
-                        ActionClearDiscRecent();
-                    }
+
+                ImGui::Separator();
+                if (ImGui::MenuItem("Clear Recent Discs"))
+                {
+                    ActionClearDiscRecent();
+                }
+
                 ImGui::EndMenu();
-                }
             }
 
             ImGui::Separator();

@@ -24,7 +24,7 @@
 #include "../xemu-notifications.h"
 #include "snapshot-manager.hh"
 
-#define MAX_RECENT_DISCS 11
+static const unsigned int MAX_RECENT_DISCS = 10;
 
 void ActionEjectDisc(void)
 {
@@ -65,9 +65,9 @@ void ActionLoadDiscFile(const char *file_path)
             g_config.general.recent.discs_count = 0;
         }
 
-        // If current game is already in history,
-        // move other game entries down,
-        // then move the current game to the most recent slot.
+        // If current disc entry is already in history,
+        // collapse other entries down,
+        // then move the current entry to the slot at the top.
         for (unsigned i = 0; i < g_config.general.recent.discs_count; i++) {
             if (g_strcmp0(g_config.general.recent.discs[i], file_path) == 0) {
                 const char *current_path = g_config.general.recent.discs[i];
