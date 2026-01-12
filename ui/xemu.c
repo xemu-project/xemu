@@ -1343,7 +1343,6 @@ int main(int argc, char **argv)
 #endif
 
     fprintf(stderr, "xemu_version: %s\n", xemu_version);
-    fprintf(stderr, "xemu_branch: %s\n", xemu_branch);
     fprintf(stderr, "xemu_commit: %s\n", xemu_commit);
     fprintf(stderr, "xemu_date: %s\n", xemu_date);
 

@@ -205,6 +205,8 @@ extern const char *bound_drivers[4];
 extern "C" {
 #endif
 
+extern int *g_keyboard_scancode_map[25];
+
 void xemu_input_init(void);
 void xemu_input_process_sdl_events(const SDL_Event *event); // SDL_CONTROLLERDEVICEADDED, SDL_CONTROLLERDEVICEREMOVED
 void xemu_input_update_controllers(void);

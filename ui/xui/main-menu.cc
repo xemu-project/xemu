@@ -370,6 +370,8 @@ void MainMenuInputView::Draw()
         bool hasInternalHub =
             strcmp(bound_drivers[active], DRIVER_STEEL_BATTALION) != 0;
         if (hasInternalHub) {
+            ImGui::PushID(active);
+
             SectionTitle("Expansion Slots");
             // Begin a 2-column layout to render the expansion slots
             ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
@@ -530,51 +532,53 @@ void MainMenuInputView::Draw()
             ImGui::PopStyleVar(); // ItemSpacing
             ImGui::Columns(1);
         }
-    }
 
-    SectionTitle("Mapping");
-    ImVec4 tc = ImGui::GetStyle().Colors[ImGuiCol_Header];
-    tc.w = 0.0f;
-    ImGui::PushStyleColor(ImGuiCol_Header, tc);
+        SectionTitle("Mapping");
+        ImVec4 tc = ImGui::GetStyle().Colors[ImGuiCol_Header];
+        tc.w = 0.0f;
+        ImGui::PushStyleColor(ImGuiCol_Header, tc);
 
-    if (ImGui::CollapsingHeader("Input Mapping")) {
-        float p = ImGui::GetFrameHeight() * 0.3;
-        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(p, p));
-        if (ImGui::BeginTable("input_remap_tbl", 2,
-                              ImGuiTableFlags_RowBg |
-                                  ImGuiTableFlags_Borders)) {
-            ImGui::TableSetupColumn("Emulated Input");
-            ImGui::TableSetupColumn("Host Input");
-            ImGui::TableHeadersRow();
+        if (ImGui::CollapsingHeader("Input Mapping")) {
+            float p = ImGui::GetFrameHeight() * 0.3;
+            ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(p, p));
+            if (ImGui::BeginTable("input_remap_tbl", 2,
+                                  ImGuiTableFlags_RowBg |
+                                      ImGuiTableFlags_Borders)) {
+                ImGui::TableSetupColumn("Emulated Input");
+                ImGui::TableSetupColumn("Host Input");
+                ImGui::TableHeadersRow();
 
-            PopulateTableController(bound_state);
+                PopulateTableController(bound_state);
 
-            ImGui::EndTable();
+                ImGui::EndTable();
+            }
+            ImGui::PopStyleVar();
         }
-        ImGui::PopStyleVar();
-    }
 
-    if (bound_state && bound_state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
-        Toggle("Enable Rumble", &bound_state->controller_map->enable_rumble);
-        Toggle("Invert Left X Axis",
-               &bound_state->controller_map->controller_mapping
-                    .invert_axis_left_x);
-        Toggle("Invert Left Y Axis",
-               &bound_state->controller_map->controller_mapping
-                    .invert_axis_left_y);
-        Toggle("Invert Right X Axis",
-               &bound_state->controller_map->controller_mapping
-                    .invert_axis_right_x);
-        Toggle("Invert Right Y Axis",
-               &bound_state->controller_map->controller_mapping
-                    .invert_axis_right_y);
-    }
+        if (bound_state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
+            Toggle("Enable Rumble",
+                   &bound_state->controller_map->enable_rumble);
+            Toggle("Invert Left X Axis",
+                   &bound_state->controller_map->controller_mapping
+                        .invert_axis_left_x);
+            Toggle("Invert Left Y Axis",
+                   &bound_state->controller_map->controller_mapping
+                        .invert_axis_left_y);
+            Toggle("Invert Right X Axis",
+                   &bound_state->controller_map->controller_mapping
+                        .invert_axis_right_x);
+            Toggle("Invert Right Y Axis",
+                   &bound_state->controller_map->controller_mapping
+                        .invert_axis_right_y);
+        }
 
-    if (ImGui::Button("Reset to Default")) {
-      xemu_input_reset_input_mapping(bound_state);
-    }
+        if (ImGui::Button("Reset to Default")) {
+            xemu_input_reset_input_mapping(bound_state);
+        }
 
-    ImGui::PopStyleColor();
+        ImGui::PopStyleColor();
+        ImGui::PopID();
+    }
 
     SectionTitle("Options");
     Toggle("Auto-bind controllers", &g_config.input.auto_bind,
@@ -991,7 +995,7 @@ void MainMenuNetworkView::DrawPcapOptions(bool appearing)
         ImGui::Dummy(ImVec2(0,10*g_viewport_mgr.m_scale));
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_viewport_mgr.m_scale)/2);
         if (ImGui::Button("Install npcap", ImVec2(120*g_viewport_mgr.m_scale, 0))) {
-            xemu_open_web_browser("https://nmap.org/npcap/");
+            SDL_OpenURL("https://nmap.org/npcap/");
         }
 #endif
     } else {
@@ -1604,9 +1608,10 @@ void MainMenuAboutView::Draw()
     static const char *build_info_text = NULL;
     if (build_info_text == NULL) {
         build_info_text =
-            g_strdup_printf("Version:      %s\nBranch:       %s\nCommit:       "
-                            "%s\nDate:         %s",
-                            xemu_version, xemu_branch, xemu_commit, xemu_date);
+            g_strdup_printf("Version:      %s\n"
+                            "Commit:       %s\n"
+                            "Date:         %s",
+                            xemu_version, xemu_commit, xemu_date);
     }
 
     static const char *sys_info_text = NULL;
@@ -1659,7 +1664,7 @@ void MainMenuAboutView::Draw()
     ImGui::Text("Visit");
     ImGui::SameLine();
     if (ImGui::SmallButton("https://xemu.app")) {
-        xemu_open_web_browser("https://xemu.app");
+        SDL_OpenURL("https://xemu.app");
     }
     ImGui::SameLine();
     ImGui::Text("for more information");

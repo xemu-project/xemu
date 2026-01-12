@@ -28,7 +28,6 @@ class CompatibilityReport {
 public:
 	std::string token;
 	std::string xemu_version;
-	std::string xemu_branch;
 	std::string xemu_commit;
 	std::string xemu_date;
 	std::string os_platform;
