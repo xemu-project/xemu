@@ -531,11 +531,11 @@ XblcState *xemu_input_load_xblc_settings(int port)
     const char *default_device_name = "Default";
     XblcState *xblc = (XblcState*)g_malloc(sizeof(XblcState));
     memset(xblc, 0, sizeof(XblcState));
-    xblc->output_device_name = *xblc_output_device_map[port] == NULL ? 
-                                default_device_name : *xblc_output_device_map[port];
+    xblc->output_device_name = strcmp(*xblc_output_device_map[port], default_device_name) == 0 ? 
+                                NULL : *xblc_output_device_map[port];
     xblc->output_device_volume = *xblc_output_volume_map[port] / 100;
-    xblc->input_device_name = *xblc_input_device_map[port] == NULL ? 
-                                default_device_name : *xblc_input_device_map[port];
+    xblc->input_device_name = strcmp(*xblc_input_device_map[port], default_device_name) == 0 ? 
+                                NULL : *xblc_input_device_map[port];
     xblc->input_device_volume = *xblc_input_volume_map[port] / 100;
 
     return xblc;
@@ -1005,10 +1005,15 @@ static void xemu_input_unbind_xblc(int player_index)
             xblc->dev = NULL;
         }
 
-        g_free((void *)xblc->output_device_name);
-        g_free((void *)xblc->input_device_name);
-        xblc->output_device_name = NULL;
-        xblc->input_device_name = NULL;
+        if (xblc->output_device_name != NULL) {
+            g_free((void *)xblc->output_device_name);
+            xblc->output_device_name = NULL;
+        }
+
+        if (xblc->input_device_name != NULL) {
+            g_free((void *)xblc->input_device_name);
+            xblc->input_device_name = NULL;
+        }
     }
 }
 
@@ -1191,7 +1196,7 @@ void xemu_input_unbind_peripheral(int player_index, int expansion_slot_index)
                 xemu_input_unbind_xmu(player_index, expansion_slot_index);
                 break;
             case PERIPHERAL_XBLC:
-                assert(player_index == 0);
+                assert(expansion_slot_index == 0);
                 xemu_input_unbind_xblc(player_index);
                 break;
             case PERIPHERAL_NONE:
