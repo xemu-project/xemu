@@ -25,7 +25,7 @@
 #include "snapshot-manager.hh"
 #include <filesystem>
 
-#define MAX_RECENT_DISCS 11
+static const unsigned int MAX_RECENT_DISCS = 10;
 
 void ActionEjectDisc(void)
 {
@@ -61,14 +61,20 @@ void ActionLoadDiscFile(const char *file_path)
         xemu_queue_error_message(error_get_pretty(err));
         error_free(err);
     } else {
+        const char *games_dir = g_config.general.games_dir;
+        if (!games_dir || !games_dir[0]) {
+            std::string dir = std::filesystem::path(file_path).parent_path().string();
+            xemu_settings_set_string(&g_config.general.games_dir, dir.c_str());
+        }
+
         if (!g_config.general.recent.discs) {
             g_config.general.recent.discs = g_new0(const char *, 1);
             g_config.general.recent.discs_count = 0;
         }
 
-        // If current game is already in history,
-        // move other game entries down,
-        // then move the current game to the most recent slot.
+        // If current disc entry is already in history,
+        // collapse other entries down,
+        // then move the current entry to the slot at the top.
         for (unsigned i = 0; i < g_config.general.recent.discs_count; i++) {
             if (g_strcmp0(g_config.general.recent.discs[i], file_path) == 0) {
                 const char *current_path = g_config.general.recent.discs[i];
@@ -127,7 +133,7 @@ void ActionShutdown(void)
 
 void ActionScreenshot(void)
 {
-    g_screenshot_pending = true;
+	g_screenshot_pending = true;
 }
 
 void ActionActivateBoundSnapshot(int slot, bool save)
