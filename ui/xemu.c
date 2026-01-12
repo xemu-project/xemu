@@ -1339,6 +1339,8 @@ int main(int argc, char **argv)
             freopen("xemu.log", "a", stderr);
         }
     }
+
+    _set_error_mode(_OUT_TO_STDERR);
 #endif
 
     fprintf(stderr, "xemu_version: %s\n", xemu_version);
