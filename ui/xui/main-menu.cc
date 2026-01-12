@@ -367,10 +367,10 @@ void MainMenuInputView::Draw()
     ImGui::SetCursorPos(pos);
 
     if (bound_state) {
+        ImGui::PushID(active);
         bool hasInternalHub =
             strcmp(bound_drivers[active], DRIVER_STEEL_BATTALION) != 0;
         if (hasInternalHub) {
-            ImGui::PushID(active);
 
             SectionTitle("Expansion Slots");
             // Begin a 2-column layout to render the expansion slots
