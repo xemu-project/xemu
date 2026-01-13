@@ -232,7 +232,8 @@ static const VMStateDescription vmstate_usb_xbox = {
 
 static const VMStateDescription vmstate_usb_xbox_s = {
     .name = TYPE_USB_XID_GAMEPAD_S,
-    .minimum_version_id = 1,
+    .version_id = 0,
+    .minimum_version_id = 0,
     .fields = (VMStateField[]){ VMSTATE_USB_DEVICE(dev, USBXIDGamepadState),
                                 // FIXME
                                 VMSTATE_END_OF_LIST() },
