@@ -9,6 +9,7 @@ jobs:
     name: Update website
     if: ${{ github.repository_owner == 'xemu-project' && !github.event.release.prerelease }}
     uses: ./.github/workflows/update-website.yml
+    secrets: inherit
 
   update_ppa_snapshot:
     name: Update PPA snapshot
