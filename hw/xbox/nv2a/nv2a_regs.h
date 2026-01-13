@@ -716,6 +716,7 @@
 #define NV_PFB_CFG0                                      0x00000200
 #   define NV_PFB_CFG0_PART                                   0x00000003
 #define NV_PFB_CSTATUS                                   0x0000020C
+#define NV_PFB_TILE                                      0x00000240
 #define NV_PFB_WBC                                       0x00000410
 #   define NV_PFB_WBC_FLUSH                                     (1 << 16)
 

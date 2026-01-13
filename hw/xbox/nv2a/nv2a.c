@@ -85,6 +85,28 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
     return d->vram_ptr + dma.address;
 }
 
+hwaddr nv_clip_gpu_tile_blit(NV2AState *d, hwaddr blit_base_address, hwaddr len)
+{
+    hwaddr blit_end = blit_base_address + len;
+    for (int i = 0; i < NV_NUM_GPU_TILES; ++i) {
+        uint32_t base_and_flags = PFB_TILE_BASE_ADDR_AND_FLAGS(d, i);
+        if (!(base_and_flags & 0x01)) {
+            continue;
+        }
+
+        uint32_t base = base_and_flags & 0xFFFF000;
+        uint32_t limit = PFB_TILE_END_ADDR(d, i);
+        uint32_t pitch = PFB_TILE_PITCH(d, i);
+
+        if (blit_base_address < limit && blit_end > limit) {
+            // TODO: Determine HW behavior if tiles are consecutive.
+            return limit + 1 - blit_base_address;
+        }
+    }
+
+    return len;
+}
+
 const NV2ABlockInfo blocktable[NV_NUM_BLOCKS] = {
     #define ENTRY(NAME, LNAME, OFFSET, SIZE) [NV_##NAME] = {            \
         .name   = #NAME,                                                \
