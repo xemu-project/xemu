@@ -3,8 +3,8 @@ name: CI
 on:
   pull_request:
   push:
-    branches:
-      - "**"
+    branches-ignore:
+      - master
     tags-ignore:
       - "v*"
 

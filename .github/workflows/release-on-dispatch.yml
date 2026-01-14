@@ -38,4 +38,5 @@ jobs:
     needs: tag
     uses: ./.github/workflows/release.yml
     with:
+      ref: ${{ needs.tag.outputs.tag }}
       tag: ${{ needs.tag.outputs.tag }}
