@@ -5,6 +5,11 @@ on:
     types: [published]
 
 jobs:
+  cleanup_prerelease:
+    name: Delete pre-release
+    if: ${{ !github.event.release.prerelease }}
+    uses: ./.github/workflows/delete-prerelease.yml
+
   update_website:
     name: Update website
     if: ${{ github.repository_owner == 'xemu-project' && !github.event.release.prerelease }}

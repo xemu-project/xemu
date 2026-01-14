@@ -9,4 +9,5 @@ jobs:
     name: Release
     uses: ./.github/workflows/release.yml
     with:
+      ref: ${{ github.ref_name }}
       tag: ${{ github.ref_name }}

@@ -1,0 +1,20 @@
+name: Delete Pre-release
+
+on:
+  workflow_call:
+
+jobs:
+  delete:
+    name: Delete pre-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Delete pre-release
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        if gh release view pre-release --json isPrerelease --jq '.isPrerelease' | grep -q true; then
+          gh release delete pre-release --yes --cleanup-tag || true
+        fi
