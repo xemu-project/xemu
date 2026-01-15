@@ -96,7 +96,6 @@ hwaddr nv_clip_gpu_tile_blit(NV2AState *d, hwaddr blit_base_address, hwaddr len)
         }
 
         uint32_t limit = regs[NV_PFB_TILE_LIMIT(i)];
-        uint32_t pitch = regs[NV_PFB_TILE_PITCH(i)];
 
         if (blit_base_address < limit && blit_end > limit) {
             // TODO: Determine HW behavior if tiles are consecutive.
