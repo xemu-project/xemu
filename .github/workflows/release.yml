@@ -41,13 +41,10 @@ jobs:
       with:
         fetch-depth: 0
         ref: ${{ inputs.ref }}
-    - name: Generate Changelog
-      run: |
-        if PREVIOUS_TAG=$(git describe --tags --match 'v*' --abbrev=0 HEAD^ 2>/dev/null); then
-          git log --pretty=format:'* %h %s' --first-parent $PREVIOUS_TAG..HEAD > CHANGELOG.md
-        else
-          touch CHANGELOG.md
-        fi
+    - name: Generate release notes
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: python3 .github/scripts/gen-changelog.py --ref ${{ inputs.ref }} -o CHANGELOG.md
     - name: Download artifacts
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
