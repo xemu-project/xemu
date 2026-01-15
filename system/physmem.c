@@ -877,6 +877,10 @@ static void do_mem_access_callback_remove_by_ref(CPUState *cpu,
 
 void mem_access_callback_remove_by_ref(CPUState *cpu, MemAccessCallback *cb)
 {
+    if (!cb) {
+        return;
+    }
+
     async_safe_run_on_cpu(cpu, do_mem_access_callback_remove_by_ref,
                           RUN_ON_CPU_HOST_PTR(cb));
 
