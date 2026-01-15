@@ -87,16 +87,16 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
 
 hwaddr nv_clip_gpu_tile_blit(NV2AState *d, hwaddr blit_base_address, hwaddr len)
 {
+    const uint32_t *regs = d->pfb.regs;
     hwaddr blit_end = blit_base_address + len;
     for (int i = 0; i < NV_NUM_GPU_TILES; ++i) {
-        uint32_t base_and_flags = PFB_TILE_BASE_ADDR_AND_FLAGS(d, i);
+        uint32_t base_and_flags = regs[NV_PFB_TILE_BASE_ADDRESS_AND_FLAGS(i)];
         if (!(base_and_flags & 0x01)) {
             continue;
         }
 
-        uint32_t base = base_and_flags & 0xFFFF000;
-        uint32_t limit = PFB_TILE_END_ADDR(d, i);
-        uint32_t pitch = PFB_TILE_PITCH(d, i);
+        uint32_t limit = regs[NV_PFB_TILE_LIMIT(i)];
+        uint32_t pitch = regs[NV_PFB_TILE_PITCH(i)];
 
         if (blit_base_address < limit && blit_end > limit) {
             // TODO: Determine HW behavior if tiles are consecutive.

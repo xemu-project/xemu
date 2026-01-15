@@ -57,6 +57,8 @@
 #define NV_PRAMIN       19  /* RAMIN access */
 #define NV_USER         20  /* PFIFO MMIO and DMA submission area */
 
+#define NV_NUM_GPU_TILES                                 8
+
 #define NV_PMC_BOOT_0                                    0x00000000
 #define NV_PMC_INTR_0                                    0x00000100
 #   define NV_PMC_INTR_0_PFIFO                                 (1 << 8)
@@ -717,6 +719,11 @@
 #   define NV_PFB_CFG0_PART                                   0x00000003
 #define NV_PFB_CSTATUS                                   0x0000020C
 #define NV_PFB_TILE                                      0x00000240
+#   define NV_PFB_TILE_BASE_ADDRESS_AND_FLAGS(i)                (NV_PFB_TILE + (i) * 16)
+#       define NV_PFB_TILE_FLAGS                                       0x00003FFF
+#       define NV_PFB_TILE_BASE_ADDRESS                                0x03FFC000
+#   define NV_PFB_TILE_LIMIT(i)                                 (NV_PFB_TILE + (i) * 16 + 4)
+#   define NV_PFB_TILE_PITCH(i)                                 (NV_PFB_TILE + (i) * 16 + 8)
 #define NV_PFB_WBC                                       0x00000410
 #   define NV_PFB_WBC_FLUSH                                     (1 << 16)
 

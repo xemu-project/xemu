@@ -210,15 +210,6 @@ DEFINE_PROTO(user)
 DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address);
 void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len);
 
-#define NV_NUM_GPU_TILES 8
-#define PFB_TILE_REG_INDEX(tile_index) (NV_PFB_TILE + (tile_index) * 16)
-#define PFB_TILE_BASE_ADDR_AND_FLAGS(nv2astate, index) \
-    (nv2astate->pfb.regs[PFB_TILE_REG_INDEX(index)])
-#define PFB_TILE_END_ADDR(nv2astate, index) \
-    (nv2astate->pfb.regs[PFB_TILE_REG_INDEX(index) + 4])
-#define PFB_TILE_PITCH(nv2astate, index) \
-    (nv2astate->pfb.regs[PFB_TILE_REG_INDEX(index) + 8])
-
 /**
  * Clips an image blit to fit into a GPU tile it overlaps.
  * @param blit_base_address Address of the blit target
