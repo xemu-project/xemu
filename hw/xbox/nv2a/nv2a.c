@@ -47,9 +47,9 @@ void nv2a_update_irq(NV2AState *d)
 
     /* PTIMER */
     if (d->ptimer.pending_interrupts & d->ptimer.enabled_interrupts) {
-        d->pmc.pending_interrupts |= NV_PMC_INTR_0_PTIMER_PENDING;
+        d->pmc.pending_interrupts |= NV_PMC_INTR_0_PTIMER;
     } else {
-        d->pmc.pending_interrupts &= ~NV_PMC_INTR_0_PTIMER_PENDING;
+        d->pmc.pending_interrupts &= ~NV_PMC_INTR_0_PTIMER;
     }
 
     if (d->pmc.pending_interrupts && d->pmc.enabled_interrupts) {
@@ -457,8 +457,6 @@ static const VMStateDescription vmstate_nv2a = {
     .post_save = nv2a_post_save,
     .post_load = nv2a_post_load,
     .pre_load = nv2a_pre_load,
-    // NOTE: New fields should be appended, regardless of similarity to existing
-    //       fields.
     .fields = (VMStateField[]) {
         // FIXME: Split this up into subsections
         VMSTATE_PCI_DEVICE(parent_obj, NV2AState),
