@@ -11,6 +11,7 @@ concurrency:
 jobs:
   release:
     name: Release
+    if: github.repository_owner == 'xemu-project'
     uses: ./.github/workflows/release.yml
     with:
       ref: ${{ github.ref_name }}
