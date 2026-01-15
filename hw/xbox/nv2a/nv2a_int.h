@@ -210,5 +210,13 @@ DEFINE_PROTO(user)
 DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address);
 void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len);
 
+/**
+ * Clips an image blit to fit into a GPU tile it overlaps.
+ * @param blit_base_address Address of the blit target
+ * @param len Length of the blit in bytes
+ * @return The adjusted length
+ */
+hwaddr nv_clip_gpu_tile_blit(NV2AState *d, hwaddr blit_base_address,
+                             hwaddr len);
 
 #endif
