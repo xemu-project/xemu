@@ -91,7 +91,7 @@ hwaddr nv_clip_gpu_tile_blit(NV2AState *d, hwaddr blit_base_address, hwaddr len)
     hwaddr blit_end = blit_base_address + len;
     for (int i = 0; i < NV_NUM_GPU_TILES; ++i) {
         uint32_t base_and_flags = regs[NV_PFB_TILE_BASE_ADDRESS_AND_FLAGS(i)];
-        if (!(base_and_flags & 0x01)) {
+        if (!(base_and_flags & NV_PFB_TILE_FLAGS_VALID)) {
             continue;
         }
 

@@ -720,8 +720,9 @@
 #define NV_PFB_CSTATUS                                   0x0000020C
 #define NV_PFB_TILE                                      0x00000240
 #   define NV_PFB_TILE_BASE_ADDRESS_AND_FLAGS(i)                (NV_PFB_TILE + (i) * 16)
-#       define NV_PFB_TILE_FLAGS                                       0x00003FFF
-#       define NV_PFB_TILE_BASE_ADDRESS                                0x03FFC000
+#       define NV_PFB_TILE_FLAGS                                    0x00003FFF
+#           define NV_PFB_TILE_FLAGS_VALID                              1
+#       define NV_PFB_TILE_BASE_ADDRESS                             0x03FFC000
 #   define NV_PFB_TILE_LIMIT(i)                                 (NV_PFB_TILE + (i) * 16 + 4)
 #   define NV_PFB_TILE_PITCH(i)                                 (NV_PFB_TILE + (i) * 16 + 8)
 #define NV_PFB_WBC                                       0x00000410
