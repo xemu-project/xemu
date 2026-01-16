@@ -1,0 +1,49 @@
+generator       : Google Shaderc over Glslang
+source lang     : GLSL
+source lang ver : 450
+source file     : glsl/storage_buffer.glsl
+entry point     : main
+local size      : (32, 1, 1)
+
+
+  Input variables: 1
+
+    0:
+      spirv id  : 12
+      location  : (built-in) GlobalInvocationId
+      type      : uint3
+      semantic  : 
+      name      : gl_GlobalInvocationID
+      qualifier : 
+
+
+  Descriptor bindings: 2
+
+    Binding 0.0
+      spirv id : 29
+      set      : 0
+      binding  : 0
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (UAV)
+      count    : 1
+      accessed : true
+      name     :  (InputBuffer)
+          // size = 0, padded size = 0
+          struct InputBuffer {       
+              float input_values[64]; // abs offset = 0, rel offset = 0, size = 256, padded size = 256, array stride = 4
+          } ;                        
+
+
+    Binding 0.1
+      spirv id : 22
+      set      : 0
+      binding  : 1
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (UAV)
+      count    : 1
+      accessed : true
+      name     :  (OutputBuffer)
+          // size = 0, padded size = 0
+          struct OutputBuffer {       
+              float output_values[64]; // abs offset = 0, rel offset = 0, size = 256, padded size = 256, array stride = 4
+          } ;                         
+
+

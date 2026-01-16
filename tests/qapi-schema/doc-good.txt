@@ -1,0 +1,283 @@
+Section
+*******
+
+
+Subsection
+==========
+
+*with emphasis* "var" {in braces}
+
+* List item one
+
+* Two, multiple lines
+
+* Three Still in list
+
+Not in list
+
+* Second list Note: still in list
+
+Note: not in list
+
+1. Third list is numbered
+
+2. another item
+
+Returns: the King Since: the first age Notes:
+
+1. Lorem ipsum dolor sit amet
+
+2. Ut enim ad minim veniam
+
+Duis aute irure dolor
+
+Example:
+
+-> in <- out Examples: - *verbatim* - {braces}
+
+
+"Enum" (Enum)
+-------------
+
+
+Values
+~~~~~~
+
+"one" (**If: **"IFONE")
+   The _one_ {and only}, description on the same line
+
+"two"
+   Not documented
+
+
+Features
+~~~~~~~~
+
+"enum-feat"
+   Also _one_ {and only}
+
+"enum-member-feat"
+   a member feature
+
+"two" is undocumented
+
+
+If
+~~
+
+"IFCOND"
+
+
+"Base" (Object)
+---------------
+
+
+Members
+~~~~~~~
+
+"base1": "Enum"
+   description starts on a new line, minimally indented
+
+
+If
+~~
+
+"IFALL1 and IFALL2"
+
+
+"Variant1" (Object)
+-------------------
+
+A paragraph
+
+Another paragraph
+
+"var1" is undocumented
+
+
+Members
+~~~~~~~
+
+"var1": "string" (**If: **"IFSTR")
+   Not documented
+
+
+Features
+~~~~~~~~
+
+"variant1-feat"
+   a feature
+
+"member-feat"
+   a member feature
+
+
+"Variant2" (Object)
+-------------------
+
+
+"Object" (Object)
+-----------------
+
+
+Members
+~~~~~~~
+
+The members of "Base"
+The members of "Variant1" when "base1" is ""one""
+The members of "Variant2" when "base1" is ""two"" (**If: **"IFONE or
+IFTWO")
+
+Features
+~~~~~~~~
+
+"union-feat1"
+   a feature
+
+
+"Alternate" (Alternate)
+-----------------------
+
+
+Members
+~~~~~~~
+
+"i": "int"
+   description starts on the same line remainder indented the same "b"
+   is undocumented
+
+"b": "boolean"
+   Not documented
+
+
+Features
+~~~~~~~~
+
+"alt-feat"
+   a feature
+
+
+If
+~~
+
+"not (IFONE or IFTWO)"
+
+
+Another subsection
+==================
+
+
+"cmd" (Command)
+---------------
+
+
+Arguments
+~~~~~~~~~
+
+"arg1": "int"
+   description starts on a new line, indented
+
+"arg2": "string" (optional)
+   description starts on the same line remainder indented differently
+
+"arg3": "boolean"
+   Not documented
+
+
+Features
+~~~~~~~~
+
+"cmd-feat1"
+   a feature
+
+"cmd-feat2"
+   another feature
+
+Note:
+
+  "arg3" is undocumented
+
+
+Returns
+~~~~~~~
+
+"Object"
+
+
+Errors
+~~~~~~
+
+some
+
+Notes:
+
+* Lorem ipsum dolor sit amet
+
+* Ut enim ad minim veniam
+
+Duis aute irure dolor
+
+Example: Ideal fast-food burger situation:
+
+   -> "in"
+   <- "out"
+
+Examples:
+
+   - Not a QMP code block
+   - Merely a preformatted code block literal
+   It isn't even an rST list.
+   - *verbatim*
+   - {braces}
+
+Note::
+   Ceci n'est pas une note
+
+
+Since
+~~~~~
+
+2.10
+
+
+"cmd-boxed" (Command)
+---------------------
+
+If you're bored enough to read this, go see a video of boxed cats
+
+
+Arguments
+~~~~~~~~~
+
+The members of "Object"
+
+Features
+~~~~~~~~
+
+"cmd-feat1"
+   a feature
+
+"cmd-feat2"
+   another feature
+
+Example::
+
+   -> "this example"
+
+   <- "has no title"
+
+
+"EVT_BOXED" (Event)
+-------------------
+
+
+Arguments
+~~~~~~~~~
+
+The members of "Object"
+
+Features
+~~~~~~~~
+
+"feat3"
+   a feature
