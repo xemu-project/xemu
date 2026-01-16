@@ -23,8 +23,8 @@
 #include "hw/xbox/nv2a/pgraph/blit.h"
 
 
-// TODO: Optimize. Ideally this should all be done via OpenGL.
-void pgraph_common_image_blit(NV2AState *d, const PGRAPHSurfaceOps *ops)
+
+void pgraph_common_image_blit(NV2AState *d)
 
 {
     PGRAPHState *pg = &d->pgraph;
@@ -32,7 +32,7 @@ void pgraph_common_image_blit(NV2AState *d, const PGRAPHSurfaceOps *ops)
     ImageBlitState *image_blit = &pg->image_blit;
     BetaState *beta = &pg->beta;
 
-    ops->surface_update(d, false, true, true);
+    pg->renderer->ops.surface_update(d, false, true, true);
 
     assert(context_surfaces->object_instance == image_blit->context_surfaces);
 
@@ -72,16 +72,16 @@ void pgraph_common_image_blit(NV2AState *d, const PGRAPHSurfaceOps *ops)
     hwaddr source_addr = source - d->vram_ptr;
     hwaddr dest_addr = dest - d->vram_ptr;
 
-    SurfaceBinding *surf_src = ops->surface_get(d, source_addr);
+    SurfaceBinding *surf_src = pg->renderer->ops.surface_get(d, source_addr);
     if (surf_src) {
-        ops->surface_download_if_dirty(d, surf_src);
+        pg->renderer->ops.surface_download_if_dirty(d, surf_src);
     }
 
-    SurfaceBinding *surf_dest = ops->surface_get(d, dest_addr);
+    SurfaceBinding *surf_dest = pg->renderer->ops.surface_get(d, dest_addr);
     if (surf_dest) {
         if (image_blit->height < surf_dest->height ||
             image_blit->width < surf_dest->width) {
-            ops->surface_download_if_dirty(d, surf_dest);
+            pg->renderer->ops.surface_download_if_dirty(d, surf_dest);
         } else {
             // The blit will completely replace the surface so any pending
             // download should be discarded.

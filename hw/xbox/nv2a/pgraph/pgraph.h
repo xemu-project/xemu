@@ -38,6 +38,8 @@ typedef struct NV2AState NV2AState;
 typedef struct PGRAPHNullState PGRAPHNullState;
 typedef struct PGRAPHGLState PGRAPHGLState;
 typedef struct PGRAPHVkState PGRAPHVkState;
+typedef struct SurfaceBinding SurfaceBinding;
+
 
 typedef struct VertexAttribute {
     bool dma_select;
@@ -119,7 +121,6 @@ typedef struct PGRAPHRenderer {
         void (*flip_stall)(NV2AState *d);
         void (*flush_draw)(NV2AState *d);
         void (*get_report)(NV2AState *d, uint32_t parameter);
-        void (*image_blit)(NV2AState *d);
         void (*pre_savevm_trigger)(NV2AState *d);
         void (*pre_savevm_wait)(NV2AState *d);
         void (*pre_shutdown_trigger)(NV2AState *d);
@@ -128,6 +129,8 @@ typedef struct PGRAPHRenderer {
         void (*process_pending_reports)(NV2AState *d);
         void (*surface_flush)(NV2AState *d);
         void (*surface_update)(NV2AState *d, bool upload, bool color_write, bool zeta_write);
+        void *(*surface_get)(NV2AState *d, hwaddr addr);
+        void (*surface_download_if_dirty)(NV2AState *d, void *surface);
         void (*set_surface_scale_factor)(NV2AState *d, unsigned int scale);
         unsigned int (*get_surface_scale_factor)(NV2AState *d);
         int (*get_framebuffer_surface)(NV2AState *d);

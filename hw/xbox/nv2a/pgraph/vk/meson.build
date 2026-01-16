@@ -2,7 +2,6 @@ if vulkan.found()
 
 specific_ss.add([sdl, volk, libglslang, vma, vulkan, spirv_reflect, gloffscreen,
 	files(
-		'blit.c',
 		'buffer.c',
 		'command.c',
 		'debug.c',
