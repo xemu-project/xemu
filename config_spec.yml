@@ -257,6 +257,13 @@ display:
     vsync:
       type: bool
       default: true
+    fps_cap:
+      type: enum
+      values: [none, 15_fps, 30_fps, 60_fps, 120_fps, 144_fps, custom]
+      default: 60_fps
+    custom_fps_cap:
+      type: number
+      default: 60.0
   ui:
     show_menubar:
       type: bool
