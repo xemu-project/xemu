@@ -770,6 +770,9 @@ void MainMenuDisplayView::Draw()
     Toggle("Fullscreen on startup",
            &g_config.display.window.fullscreen_on_startup,
            "Start xemu in fullscreen when opened");
+    Toggle("Exclusive fullscreen",
+           &g_config.display.window.fullscreen_exclusive,
+           "May improve responsiveness, but slows window switching");
     if (ChevronCombo("Window size", &g_config.display.window.startup_size,
                      "Last Used\0"
                      "640x480\0"
