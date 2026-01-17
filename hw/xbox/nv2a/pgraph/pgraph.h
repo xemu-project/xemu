@@ -40,7 +40,6 @@ typedef struct PGRAPHGLState PGRAPHGLState;
 typedef struct PGRAPHVkState PGRAPHVkState;
 typedef struct SurfaceBinding SurfaceBinding;
 
-
 typedef struct VertexAttribute {
     bool dma_select;
     hwaddr offset;
