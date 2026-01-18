@@ -73,13 +73,13 @@ void aio_set_fd_handler(AioContext *ctx,
     AioHandler *old_node;
     AioHandler *node = NULL;
     SOCKET s;
+    bool is_socket = fd_is_socket(fd);
 
-    if (!fd_is_socket(fd)) {
-        error_report("fd=%d is not a socket, AIO implementation is missing", fd);
-        return;
+    if (!is_socket) {
+        s = fd;
+    } else {
+        s = _get_osfhandle(fd);
     }
-
-    s = _get_osfhandle(fd);
 
     qemu_lockcnt_lock(&ctx->list_lock);
     QLIST_FOREACH(old_node, &ctx->aio_handlers, node) {
@@ -121,7 +121,11 @@ void aio_set_fd_handler(AioContext *ctx,
 
         QLIST_INSERT_HEAD_RCU(&ctx->aio_handlers, node, node);
         event = event_notifier_get_handle(&ctx->notifier);
-        qemu_socket_select(fd, event, bitmask, NULL);
+        if (is_socket) {
+            qemu_socket_select(fd, event, bitmask, NULL);
+        } else {
+            WSAEventSelect(s, event, bitmask);
+        }
     }
     if (old_node) {
         aio_remove_fd_handler(ctx, old_node);
