@@ -28,8 +28,6 @@ EOF
 
 REPO=xemu-project/xemu
 ENTITLEMENTS="$PWD/xemu.entitlements"
-UNSIGNED_ZIP_PATH="$PWD/xemu-macos-universal-release-unsigned.zip"
-SIGNED_ZIP_PATH="$PWD/xemu-macos-universal-release.zip"
 
 P12_FILE=""
 P12_PASSWORD_FILE=""
@@ -76,6 +74,9 @@ if [[ "$INPUT_FILE_PATH" ]]; then
     SIGNED_ZIP_PATH="$INPUT_FILE_PATH"
 elif [[ "$TAG" ]]; then
     echo "[*] Downloading unsigned release archive for tag $TAG..."
+    VERSION=${TAG#v}
+    UNSIGNED_ZIP_PATH="$PWD/xemu-${VERSION}-macos-universal-unsigned.zip"
+    SIGNED_ZIP_PATH="$PWD/xemu-${VERSION}-macos-universal.zip"
     gh release download "$TAG" -R "$REPO" -p "$(basename "$UNSIGNED_ZIP_PATH")"
 fi
 

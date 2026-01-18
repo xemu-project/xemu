@@ -3,6 +3,10 @@ name: Release (Dispatched)
 on:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   tag:
     name: Create release tag
@@ -38,4 +42,5 @@ jobs:
     needs: tag
     uses: ./.github/workflows/release.yml
     with:
+      ref: ${{ needs.tag.outputs.tag }}
       tag: ${{ needs.tag.outputs.tag }}

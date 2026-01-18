@@ -33,7 +33,7 @@ jobs:
           echo "pkg_version=${TAG#v}" >> $GITHUB_OUTPUT
         else
           SHORT_HASH=$(git rev-parse --short HEAD)
-          echo "pkg_version=0.0.0-unofficial-${SHORT_HASH}" >> $GITHUB_OUTPUT
+          echo "pkg_version=0.0.0-0-unofficial-${SHORT_HASH}" >> $GITHUB_OUTPUT
         fi
     - name: Create source package
       id: package
