@@ -33,7 +33,7 @@
 #include "migration/snapshot.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-block.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 
 #include "ui/console.h"
 #include "ui/input.h"

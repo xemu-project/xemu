@@ -140,6 +140,12 @@ _optstr_add()
     fi
 }
 
+# report real disk usage for sparse files
+disk_usage()
+{
+    du --block-size=1 "$1" | awk '{print $1}'
+}
+
 # Set the variables to the empty string to turn Valgrind off
 # for specific processes, e.g.
 # $ VALGRIND_QEMU_IO= ./check -qcow2 -valgrind 015
@@ -990,6 +996,36 @@ _require_large_file()
     rm "$FILENAME"
 }
 
+# Check whether disk_usage can be reliably used.
+_require_disk_usage()
+{
+    local unusable=false
+    # ZFS triggers known failures on this front; it does not immediately
+    # allocate files, and then aggressively compresses writes even when full
+    # allocation was requested.
+    if [ -z "$TEST_IMG_FILE" ]; then
+        FILENAME="$TEST_IMG"
+    else
+        FILENAME="$TEST_IMG_FILE"
+    fi
+    if [ -e "$FILENAME" ]; then
+        echo "unwilling to overwrite existing file"
+        exit 1
+    fi
+    $QEMU_IMG create -f raw "$FILENAME" 5M > /dev/null
+    if [ $(disk_usage "$FILENAME") -gt $((1024*1024)) ]; then
+        unusable=true
+    fi
+    $QEMU_IMG create -f raw -o preallocation=full "$FILENAME" 5M > /dev/null
+    if [ $(disk_usage "$FILENAME") -lt $((4*1024*1024)) ]; then
+        unusable=true
+    fi
+    rm -f "$FILENAME"
+    if $unusable; then
+        _notrun "file system on $TEST_DIR does not handle sparse files nicely"
+    fi
+}
+
 # Check that a set of devices is available in the QEMU binary
 #
 _require_devices()
@@ -1015,6 +1051,20 @@ _require_one_device_of()
         fi
     done
     _notrun "$* not available"
+}
+
+_require_secret()
+{
+    if [ -e "$TEST_IMG" ]; then
+        echo "unwilling to overwrite existing file"
+        exit 1
+    fi
+    if $QEMU_IMG create -f $IMGFMT --object secret,id=sec0,data=123 \
+                 -o encryption=on,encrypt.key-secret=sec0 "$TEST_IMG" 1M 2>&1 \
+                 | grep "Unsupported cipher" ; then
+        _notrun "missing cipher support"
+    fi
+    rm -f "$TEST_IMG"
 }
 
 _qcow2_dump_header()

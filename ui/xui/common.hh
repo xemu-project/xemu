@@ -37,8 +37,7 @@ extern "C" {
 // Include necessary QEMU headers
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "hw/xbox/mcpx/apu/apu_debug.h"
 #include "hw/xbox/nv2a/debug.h"
 #include "hw/xbox/nv2a/nv2a.h"

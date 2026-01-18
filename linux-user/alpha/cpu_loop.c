@@ -20,7 +20,7 @@
 #include "qemu/osdep.h"
 #include "qemu.h"
 #include "user-internals.h"
-#include "cpu_loop-common.h"
+#include "user/cpu_loop.h"
 #include "signal-common.h"
 
 void cpu_loop(CPUAlphaState *env)
@@ -35,7 +35,7 @@ void cpu_loop(CPUAlphaState *env)
         cpu_exec_start(cs);
         trapnr = cpu_exec(cs);
         cpu_exec_end(cs);
-        process_queued_cpu_work(cs);
+        qemu_process_cpu_events(cs);
 
         switch (trapnr) {
         case EXCP_RESET:
@@ -94,11 +94,6 @@ void cpu_loop(CPUAlphaState *env)
                 break;
             case 0x86:
                 /* IMB */
-                /* ??? We can probably elide the code using page_unprotect
-                   that is checking for self-modifying code.  Instead we
-                   could simply call tb_flush here.  Until we work out the
-                   changes required to turn off the extra write protection,
-                   this can be a no-op.  */
                 break;
             case 0x9E:
                 /* RDUNIQUE */
@@ -173,13 +168,10 @@ void cpu_loop(CPUAlphaState *env)
     }
 }
 
-void target_cpu_copy_regs(CPUArchState *env, struct target_pt_regs *regs)
+void init_main_thread(CPUState *cs, struct image_info *info)
 {
-    int i;
+    CPUArchState *env = cpu_env(cs);
 
-    for(i = 0; i < 28; i++) {
-        env->ir[i] = ((abi_ulong *)regs)[i];
-    }
-    env->ir[IR_SP] = regs->usp;
-    env->pc = regs->pc;
+    env->pc = info->entry;
+    env->ir[IR_SP] = info->start_stack;
 }

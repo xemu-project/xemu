@@ -37,8 +37,8 @@ struct MirrorState {
     NetFilterState parent_obj;
     char *indev;
     char *outdev;
-    CharBackend chr_in;
-    CharBackend chr_out;
+    CharFrontend chr_in;
+    CharFrontend chr_out;
     SocketReadState rs;
     bool vnet_hdr;
 };
@@ -410,7 +410,7 @@ static void filter_redirector_set_vnet_hdr(Object *obj,
     s->vnet_hdr = value;
 }
 
-static void filter_mirror_class_init(ObjectClass *oc, void *data)
+static void filter_mirror_class_init(ObjectClass *oc, const void *data)
 {
     NetFilterClass *nfc = NETFILTER_CLASS(oc);
 
@@ -425,7 +425,7 @@ static void filter_mirror_class_init(ObjectClass *oc, void *data)
     nfc->receive_iov = filter_mirror_receive_iov;
 }
 
-static void filter_redirector_class_init(ObjectClass *oc, void *data)
+static void filter_redirector_class_init(ObjectClass *oc, const void *data)
 {
     NetFilterClass *nfc = NETFILTER_CLASS(oc);
 

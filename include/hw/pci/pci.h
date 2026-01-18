@@ -1,9 +1,9 @@
 #ifndef QEMU_PCI_H
 #define QEMU_PCI_H
 
-#include "exec/memory.h"
-#include "sysemu/dma.h"
-#include "sysemu/host_iommu_device.h"
+#include "system/memory.h"
+#include "system/dma.h"
+#include "system/host_iommu_device.h"
 
 /* PCI includes legacy ISA access.  */
 #include "hw/isa/isa.h"
@@ -22,6 +22,10 @@ extern bool pci_available;
 #define PCI_DEVFN_MAX           256
 #define PCI_SLOT_MAX            32
 #define PCI_FUNC_MAX            8
+
+#define PCI_SBDF(seg, bus, dev, func) \
+            ((((uint32_t)(seg)) << 16) | \
+            (PCI_BUILD_BDF(bus, PCI_DEVFN(dev, func))))
 
 /* Class, Vendor and Device IDs from Linux's pci_ids.h */
 #include "hw/pci/pci_ids.h"
@@ -130,6 +134,15 @@ struct PCIHostDeviceAddress {
     unsigned int function;
 };
 
+/*
+ * Represents the Address Type (AT) field in a PCI request,
+ * see MemTxAttrs.address_type
+ */
+typedef enum PCIAddressType {
+    PCI_AT_UNTRANSLATED = 0, /* Default when no attribute is set */
+    PCI_AT_TRANSLATED = 1,
+} PCIAddressType;
+
 typedef void PCIConfigWriteFunc(PCIDevice *pci_dev,
                                 uint32_t address, uint32_t data, int len);
 typedef uint32_t PCIConfigReadFunc(PCIDevice *pci_dev,
@@ -216,6 +229,10 @@ enum {
     QEMU_PCIE_ARI_NEXTFN_1 = (1 << QEMU_PCIE_ARI_NEXTFN_1_BITNR),
 #define QEMU_PCIE_EXT_TAG_BITNR 13
     QEMU_PCIE_EXT_TAG = (1 << QEMU_PCIE_EXT_TAG_BITNR),
+#define QEMU_PCI_CAP_PM_BITNR 14
+    QEMU_PCI_CAP_PM = (1 << QEMU_PCI_CAP_PM_BITNR),
+#define QEMU_PCI_SKIP_RESET_ON_CPR_BITNR 15
+    QEMU_PCI_SKIP_RESET_ON_CPR = (1 << QEMU_PCI_SKIP_RESET_ON_CPR_BITNR),
 };
 
 typedef struct PCIINTxRoute {
@@ -297,6 +314,9 @@ int pci_bus_get_irq_level(PCIBus *bus, int irq_num);
 uint32_t pci_bus_get_slot_reserved_mask(PCIBus *bus);
 void pci_bus_set_slot_reserved_mask(PCIBus *bus, uint32_t mask);
 void pci_bus_clear_slot_reserved_mask(PCIBus *bus, uint32_t mask);
+bool pci_bus_add_fw_cfg_extra_pci_roots(FWCfgState *fw_cfg,
+                                        PCIBus *bus,
+                                        Error **errp);
 /* 0 <= pin <= 3 0 = INTA, 1 = INTB, 2 = INTC, 3 = INTD */
 static inline int pci_swizzle(int slot, int pin)
 {
@@ -366,6 +386,28 @@ void pci_bus_get_w64_range(PCIBus *bus, Range *range);
 
 void pci_device_deassert_intx(PCIDevice *dev);
 
+/* Page Request Interface */
+typedef enum {
+    IOMMU_PRI_RESP_SUCCESS,
+    IOMMU_PRI_RESP_INVALID_REQUEST,
+    IOMMU_PRI_RESP_FAILURE,
+} IOMMUPRIResponseCode;
+
+typedef struct IOMMUPRIResponse {
+    IOMMUPRIResponseCode response_code;
+    uint16_t prgi;
+} IOMMUPRIResponse;
+
+struct IOMMUPRINotifier;
+
+typedef void (*IOMMUPRINotify)(struct IOMMUPRINotifier *notifier,
+                               IOMMUPRIResponse *response);
+
+typedef struct IOMMUPRINotifier {
+    IOMMUPRINotify notify;
+} IOMMUPRINotifier;
+
+#define PCI_PRI_PRGI_MASK 0x1ffU
 
 /**
  * struct PCIIOMMUOps: callbacks structure for specific IOMMU handlers
@@ -420,12 +462,305 @@ typedef struct PCIIOMMUOps {
      * @devfn: device and function number of the PCI device.
      */
     void (*unset_iommu_device)(PCIBus *bus, void *opaque, int devfn);
+    /**
+     * @get_iotlb_info: get properties required to initialize a device IOTLB.
+     *
+     * Callback required if devices are allowed to cache translations.
+     *
+     * @opaque: the data passed to pci_setup_iommu().
+     *
+     * @addr_width: the address width of the IOMMU (output parameter).
+     *
+     * @min_page_size: the page size of the IOMMU (output parameter).
+     */
+    void (*get_iotlb_info)(void *opaque, uint8_t *addr_width,
+                           uint32_t *min_page_size);
+    /**
+     * @init_iotlb_notifier: initialize an IOMMU notifier.
+     *
+     * Optional callback.
+     *
+     * @bus: the #PCIBus of the PCI device.
+     *
+     * @opaque: the data passed to pci_setup_iommu().
+     *
+     * @devfn: device and function number of the PCI device.
+     *
+     * @n: the notifier to be initialized.
+     *
+     * @fn: the callback to be installed.
+     *
+     * @user_opaque: a user pointer that can be used to track a state.
+     */
+    void (*init_iotlb_notifier)(PCIBus *bus, void *opaque, int devfn,
+                                IOMMUNotifier *n, IOMMUNotify fn,
+                                void *user_opaque);
+    /**
+     * @register_iotlb_notifier: setup an IOTLB invalidation notifier.
+     *
+     * Callback required if devices are allowed to cache translations.
+     *
+     * @bus: the #PCIBus of the PCI device.
+     *
+     * @opaque: the data passed to pci_setup_iommu().
+     *
+     * @devfn: device and function number of the PCI device.
+     *
+     * @pasid: the pasid of the address space to watch.
+     *
+     * @n: the notifier to register.
+     */
+    void (*register_iotlb_notifier)(PCIBus *bus, void *opaque, int devfn,
+                                    uint32_t pasid, IOMMUNotifier *n);
+    /**
+     * @unregister_iotlb_notifier: remove an IOTLB invalidation notifier.
+     *
+     * Callback required if devices are allowed to cache translations.
+     *
+     * @bus: the #PCIBus of the PCI device.
+     *
+     * @opaque: the data passed to pci_setup_iommu().
+     *
+     * @devfn: device and function number of the PCI device.
+     *
+     * @pasid: the pasid of the address space to stop watching.
+     *
+     * @n: the notifier to unregister.
+     */
+    void (*unregister_iotlb_notifier)(PCIBus *bus, void *opaque, int devfn,
+                                      uint32_t pasid, IOMMUNotifier *n);
+    /**
+     * @ats_request_translation: issue an ATS request.
+     *
+     * Callback required if devices are allowed to use the address
+     * translation service.
+     *
+     * @bus: the #PCIBus of the PCI device.
+     *
+     * @opaque: the data passed to pci_setup_iommu().
+     *
+     * @devfn: device and function number of the PCI device.
+     *
+     * @pasid: the pasid of the address space to use for the request.
+     *
+     * @priv_req: privileged mode bit (PASID TLP).
+     *
+     * @exec_req: execute request bit (PASID TLP).
+     *
+     * @addr: start address of the memory range to be translated.
+     *
+     * @length: length of the memory range in bytes.
+     *
+     * @no_write: request a read-only translation (if supported).
+     *
+     * @result: buffer in which the TLB entries will be stored.
+     *
+     * @result_length: result buffer length.
+     *
+     * @err_count: number of untranslated subregions.
+     *
+     * Returns: the number of translations stored in the result buffer, or
+     * -ENOMEM if the buffer is not large enough.
+     */
+    ssize_t (*ats_request_translation)(PCIBus *bus, void *opaque, int devfn,
+                                       uint32_t pasid, bool priv_req,
+                                       bool exec_req, hwaddr addr,
+                                       size_t length, bool no_write,
+                                       IOMMUTLBEntry *result,
+                                       size_t result_length,
+                                       uint32_t *err_count);
+    /**
+     * @pri_register_notifier: setup the PRI completion callback.
+     *
+     * Callback required if devices are allowed to use the page request
+     * interface.
+     *
+     * @bus: the #PCIBus of the PCI device.
+     *
+     * @opaque: the data passed to pci_setup_iommu().
+     *
+     * @devfn: device and function number of the PCI device.
+     *
+     * @pasid: the pasid of the address space to track.
+     *
+     * @notifier: the notifier to register.
+     */
+    void (*pri_register_notifier)(PCIBus *bus, void *opaque, int devfn,
+                                  uint32_t pasid, IOMMUPRINotifier *notifier);
+    /**
+     * @pri_unregister_notifier: remove the PRI completion callback.
+     *
+     * Callback required if devices are allowed to use the page request
+     * interface.
+     *
+     * @bus: the #PCIBus of the PCI device.
+     *
+     * @opaque: the data passed to pci_setup_iommu().
+     *
+     * @devfn: device and function number of the PCI device.
+     *
+     * @pasid: the pasid of the address space to stop tracking.
+     */
+    void (*pri_unregister_notifier)(PCIBus *bus, void *opaque, int devfn,
+                                    uint32_t pasid);
+    /**
+     * @pri_request_page: issue a PRI request.
+     *
+     * Callback required if devices are allowed to use the page request
+     * interface.
+     *
+     * @bus: the #PCIBus of the PCI device.
+     *
+     * @opaque: the data passed to pci_setup_iommu().
+     *
+     * @devfn: device and function number of the PCI device.
+     *
+     * @pasid: the pasid of the address space to use for the request.
+     *
+     * @priv_req: privileged mode bit (PASID TLP).
+     *
+     * @exec_req: execute request bit (PASID TLP).
+     *
+     * @addr: untranslated address of the requested page.
+     *
+     * @lpig: last page in group.
+     *
+     * @prgi: page request group index.
+     *
+     * @is_read: request read access.
+     *
+     * @is_write: request write access.
+     */
+    int (*pri_request_page)(PCIBus *bus, void *opaque, int devfn,
+                            uint32_t pasid, bool priv_req, bool exec_req,
+                            hwaddr addr, bool lpig, uint16_t prgi, bool is_read,
+                            bool is_write);
 } PCIIOMMUOps;
 
 AddressSpace *pci_device_iommu_address_space(PCIDevice *dev);
 bool pci_device_set_iommu_device(PCIDevice *dev, HostIOMMUDevice *hiod,
                                  Error **errp);
 void pci_device_unset_iommu_device(PCIDevice *dev);
+
+/**
+ * pci_iommu_get_iotlb_info: get properties required to initialize a
+ * device IOTLB.
+ *
+ * Returns 0 on success, or a negative errno otherwise.
+ *
+ * @dev: the device that wants to get the information.
+ * @addr_width: the address width of the IOMMU (output parameter).
+ * @min_page_size: the page size of the IOMMU (output parameter).
+ */
+int pci_iommu_get_iotlb_info(PCIDevice *dev, uint8_t *addr_width,
+                             uint32_t *min_page_size);
+
+/**
+ * pci_iommu_init_iotlb_notifier: initialize an IOMMU notifier.
+ *
+ * This function is used by devices before registering an IOTLB notifier.
+ *
+ * @dev: the device.
+ * @n: the notifier to be initialized.
+ * @fn: the callback to be installed.
+ * @opaque: a user pointer that can be used to track a state.
+ */
+int pci_iommu_init_iotlb_notifier(PCIDevice *dev, IOMMUNotifier *n,
+                                  IOMMUNotify fn, void *opaque);
+
+/**
+ * pci_ats_request_translation: perform an ATS request.
+ *
+ * Returns the number of translations stored in @result in case of success,
+ * a negative error code otherwise.
+ * -ENOMEM is returned when the result buffer is not large enough to store
+ * all the translations.
+ *
+ * @dev: the ATS-capable PCI device.
+ * @pasid: the pasid of the address space in which the translation will be done.
+ * @priv_req: privileged mode bit (PASID TLP).
+ * @exec_req: execute request bit (PASID TLP).
+ * @addr: start address of the memory range to be translated.
+ * @length: length of the memory range in bytes.
+ * @no_write: request a read-only translation (if supported).
+ * @result: buffer in which the TLB entries will be stored.
+ * @result_length: result buffer length.
+ * @err_count: number of untranslated subregions.
+ */
+ssize_t pci_ats_request_translation(PCIDevice *dev, uint32_t pasid,
+                                    bool priv_req, bool exec_req,
+                                    hwaddr addr, size_t length,
+                                    bool no_write, IOMMUTLBEntry *result,
+                                    size_t result_length,
+                                    uint32_t *err_count);
+
+/**
+ * pci_pri_request_page: perform a PRI request.
+ *
+ * Returns 0 if the PRI request has been sent to the guest OS,
+ * an error code otherwise.
+ *
+ * @dev: the PRI-capable PCI device.
+ * @pasid: the pasid of the address space in which the translation will be done.
+ * @priv_req: privileged mode bit (PASID TLP).
+ * @exec_req: execute request bit (PASID TLP).
+ * @addr: untranslated address of the requested page.
+ * @lpig: last page in group.
+ * @prgi: page request group index.
+ * @is_read: request read access.
+ * @is_write: request write access.
+ */
+int pci_pri_request_page(PCIDevice *dev, uint32_t pasid, bool priv_req,
+                         bool exec_req, hwaddr addr, bool lpig,
+                         uint16_t prgi, bool is_read, bool is_write);
+
+/**
+ * pci_pri_register_notifier: register the PRI callback for a given address
+ * space.
+ *
+ * Returns 0 on success, an error code otherwise.
+ *
+ * @dev: the PRI-capable PCI device.
+ * @pasid: the pasid of the address space to track.
+ * @notifier: the notifier to register.
+ */
+int pci_pri_register_notifier(PCIDevice *dev, uint32_t pasid,
+                              IOMMUPRINotifier *notifier);
+
+/**
+ * pci_pri_unregister_notifier: remove the PRI callback from a given address
+ * space.
+ *
+ * @dev: the PRI-capable PCI device.
+ * @pasid: the pasid of the address space to stop tracking.
+ */
+void pci_pri_unregister_notifier(PCIDevice *dev, uint32_t pasid);
+
+/**
+ * pci_iommu_register_iotlb_notifier: register a notifier for changes to
+ * IOMMU translation entries in a specific address space.
+ *
+ * Returns 0 on success, or a negative errno otherwise.
+ *
+ * @dev: the device that wants to get notified.
+ * @pasid: the pasid of the address space to track.
+ * @n: the notifier to register.
+ */
+int pci_iommu_register_iotlb_notifier(PCIDevice *dev, uint32_t pasid,
+                                      IOMMUNotifier *n);
+
+/**
+ * pci_iommu_unregister_iotlb_notifier: unregister a notifier that has been
+ * registered with pci_iommu_register_iotlb_notifier.
+ *
+ * Returns 0 on success, or a negative errno otherwise.
+ *
+ * @dev: the device that wants to stop notifications.
+ * @pasid: the pasid of the address space to stop tracking.
+ * @n: the notifier to unregister.
+ */
+int pci_iommu_unregister_iotlb_notifier(PCIDevice *dev, uint32_t pasid,
+                                        IOMMUNotifier *n);
 
 /**
  * pci_setup_iommu: Initialize specific IOMMU handlers for a PCIBus
@@ -437,6 +772,8 @@ void pci_device_unset_iommu_device(PCIDevice *dev);
  * @opaque: passed to callbacks of the @ops structure.
  */
 void pci_setup_iommu(PCIBus *bus, const PCIIOMMUOps *ops, void *opaque);
+
+void pci_setup_iommu_per_bus(PCIBus *bus, const PCIIOMMUOps *ops, void *opaque);
 
 pcibus_t pci_bar_address(PCIDevice *d,
                          int reg, uint8_t type, pcibus_t size);
@@ -659,6 +996,7 @@ void lsi53c8xx_handle_legacy_cmdline(DeviceState *lsi_dev);
 
 qemu_irq pci_allocate_irq(PCIDevice *pci_dev);
 void pci_set_irq(PCIDevice *pci_dev, int level);
+int pci_irq_disabled(PCIDevice *d);
 
 static inline void pci_irq_assert(PCIDevice *pci_dev)
 {
@@ -671,6 +1009,8 @@ static inline void pci_irq_deassert(PCIDevice *pci_dev)
 }
 
 MSIMessage pci_get_msi_message(PCIDevice *dev, int vector);
+void pci_set_enabled(PCIDevice *pci_dev, bool state);
 void pci_set_power(PCIDevice *pci_dev, bool state);
+int pci_pm_init(PCIDevice *pci_dev, uint8_t offset, Error **errp);
 
 #endif

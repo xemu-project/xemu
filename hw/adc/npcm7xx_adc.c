@@ -267,12 +267,11 @@ static const VMStateDescription vmstate_npcm7xx_adc = {
     },
 };
 
-static Property npcm7xx_timer_properties[] = {
+static const Property npcm7xx_timer_properties[] = {
     DEFINE_PROP_UINT32("iref", NPCM7xxADCState, iref, NPCM7XX_ADC_DEFAULT_IREF),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void npcm7xx_adc_class_init(ObjectClass *klass, void *data)
+static void npcm7xx_adc_class_init(ObjectClass *klass, const void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);

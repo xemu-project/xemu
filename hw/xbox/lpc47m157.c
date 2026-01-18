@@ -22,7 +22,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/qdev-properties-system.h"
 #include "migration/vmstate.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "hw/char/serial.h"
 #include "hw/isa/isa.h"
 #include "qapi/error.h"
@@ -276,14 +276,13 @@ static const VMStateDescription vmstate_lpc47m157 = {
     }
 };
 
-static Property lpc47m157_properties[] = {
+static const Property lpc47m157_properties[] = {
     DEFINE_PROP_BOOL("sysopt", ISALPC47M157State, sysopt, false),
     DEFINE_PROP_CHR("chardev0", ISALPC47M157State, state.serial[0].state.chr),
     DEFINE_PROP_CHR("chardev1", ISALPC47M157State, state.serial[1].state.chr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void lpc47m157_class_init(ObjectClass *klass, void *data)
+static void lpc47m157_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

@@ -23,7 +23,7 @@
 #include "hw/qdev-properties.h"
 #include "qapi/error.h"
 #include "monitor/qdev.h"
-#include "qapi/qmp/qdict.h"
+#include "qobject/qdict.h"
 #include "qemu/option.h"
 #include "qemu/timer.h"
 #include "qemu/config-file.h"
@@ -34,7 +34,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "sysemu/blockdev.h"
+#include "system/blockdev.h"
 
 // #define DEBUG_INPUT
 

@@ -29,9 +29,13 @@
 #include "cpu.h"
 #include "chardev/char-fe.h"
 #include "exec/helper-proto.h"
+#include "exec/target_page.h"
 #include "semihosting/semihost.h"
+#include "semihosting/uaccess.h"
+#include "system/memory.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
+#include "qemu/plugin.h"
 
 enum {
     TARGET_SYS_exit = 1,
@@ -145,7 +149,7 @@ static uint32_t errno_h2g(int host_errno)
 }
 
 typedef struct XtensaSimConsole {
-    CharBackend be;
+    CharFrontend fe;
     struct {
         char buffer[16];
         size_t offset;
@@ -179,8 +183,8 @@ void xtensa_sim_open_console(Chardev *chr)
 {
     static XtensaSimConsole console;
 
-    qemu_chr_fe_init(&console.be, chr, &error_abort);
-    qemu_chr_fe_set_handlers(&console.be,
+    qemu_chr_fe_init(&console.fe, chr, &error_abort);
+    qemu_chr_fe_set_handlers(&console.fe,
                              sim_console_can_read,
                              sim_console_read,
                              NULL, NULL, &console,
@@ -190,8 +194,11 @@ void xtensa_sim_open_console(Chardev *chr)
 
 void HELPER(simcall)(CPUXtensaState *env)
 {
+    const MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
     CPUState *cs = env_cpu(env);
+    AddressSpace *as = cs->as;
     uint32_t *regs = env->regs;
+    uint64_t last_pc = env->pc;
 
     switch (regs[2]) {
     case TARGET_SYS_exit:
@@ -213,7 +220,7 @@ void HELPER(simcall)(CPUXtensaState *env)
                     TARGET_PAGE_SIZE - (vaddr & (TARGET_PAGE_SIZE - 1));
                 uint32_t io_sz = page_left < len ? page_left : len;
                 hwaddr sz = io_sz;
-                void *buf = cpu_physical_memory_map(paddr, &sz, !is_write);
+                void *buf = address_space_map(as, paddr, &sz, !is_write, attrs);
                 uint32_t io_done;
                 bool error = false;
 
@@ -222,7 +229,7 @@ void HELPER(simcall)(CPUXtensaState *env)
                     len -= io_sz;
                     if (fd < 3 && sim_console) {
                         if (is_write && (fd == 1 || fd == 2)) {
-                            io_done = qemu_chr_fe_write_all(&sim_console->be,
+                            io_done = qemu_chr_fe_write_all(&sim_console->fe,
                                                             buf, io_sz);
                             regs[3] = errno_h2g(errno);
                         } else if (!is_write && fd == 0) {
@@ -236,7 +243,7 @@ void HELPER(simcall)(CPUXtensaState *env)
                                         sim_console->input.buffer + io_done,
                                         sim_console->input.offset - io_done);
                                 sim_console->input.offset -= io_done;
-                                qemu_chr_fe_accept_input(&sim_console->be);
+                                qemu_chr_fe_accept_input(&sim_console->fe);
                             } else {
                                 io_done = -1;
                                 regs[3] = TARGET_EAGAIN;
@@ -259,7 +266,7 @@ void HELPER(simcall)(CPUXtensaState *env)
                         error = true;
                         io_done = 0;
                     }
-                    cpu_physical_memory_unmap(buf, sz, !is_write, io_done);
+                    address_space_unmap(as, buf, sz, !is_write, io_done);
                 } else {
                     error = true;
                     regs[3] = TARGET_EINVAL;
@@ -323,15 +330,12 @@ void HELPER(simcall)(CPUXtensaState *env)
             uint32_t fd = regs[3];
             uint32_t rq = regs[4];
             uint32_t target_tv = regs[5];
-            uint32_t target_tvv[2];
 
             struct timeval tv = {0};
 
             if (target_tv) {
-                cpu_memory_rw_debug(cs, target_tv,
-                        (uint8_t *)target_tvv, sizeof(target_tvv), 0);
-                tv.tv_sec = (int32_t)tswap32(target_tvv[0]);
-                tv.tv_usec = (int32_t)tswap32(target_tvv[1]);
+                get_user_u32(tv.tv_sec, target_tv);
+                get_user_u32(tv.tv_sec, target_tv + 4);
             }
             if (fd < 3 && sim_console) {
                 if ((fd == 1 || fd == 2) && rq == SELECT_ONE_WRITE) {
@@ -387,11 +391,8 @@ void HELPER(simcall)(CPUXtensaState *env)
                 const char *str = semihosting_get_arg(i);
                 int str_size = strlen(str) + 1;
 
-                argptr = tswap32(regs[3] + str_offset);
-
-                cpu_memory_rw_debug(cs,
-                                    regs[3] + i * sizeof(uint32_t),
-                                    (uint8_t *)&argptr, sizeof(argptr), 1);
+                put_user_u32(regs[3] + str_offset,
+                             regs[3] + i * sizeof(uint32_t));
                 cpu_memory_rw_debug(cs,
                                     regs[3] + str_offset,
                                     (uint8_t *)str, str_size, 1);
@@ -412,11 +413,11 @@ void HELPER(simcall)(CPUXtensaState *env)
 
             while (sz) {
                 hwaddr len = sz;
-                void *buf = cpu_physical_memory_map(base, &len, 1);
+                void *buf = address_space_map(as, base, &len, true, attrs);
 
                 if (buf && len) {
                     memset(buf, regs[4], len);
-                    cpu_physical_memory_unmap(buf, len, 1, len);
+                    address_space_unmap(as, buf, len, true, len);
                 } else {
                     len = 1;
                 }
@@ -434,4 +435,5 @@ void HELPER(simcall)(CPUXtensaState *env)
         regs[3] = TARGET_ENOSYS;
         break;
     }
+    qemu_plugin_vcpu_hostcall_cb(cs, last_pc);
 }

@@ -27,12 +27,12 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "sysemu/reset.h"
-#include "sysemu/sysemu.h"
+#include "system/reset.h"
+#include "system/system.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
 #include "elf.h"
-#include "exec/memory.h"
+#include "system/memory.h"
 #include "qemu/error-report.h"
 #include "xtensa_memory.h"
 #include "xtensa_sim.h"
@@ -100,7 +100,8 @@ void xtensa_sim_load_kernel(XtensaCPU *cpu, MachineState *machine)
     if (kernel_filename) {
         uint64_t elf_entry;
         int success = load_elf(kernel_filename, NULL, translate_phys_addr, cpu,
-                               &elf_entry, NULL, NULL, NULL, TARGET_BIG_ENDIAN,
+                               &elf_entry, NULL, NULL, NULL,
+                               TARGET_BIG_ENDIAN ? ELFDATA2MSB : ELFDATA2LSB,
                                EM_XTENSA, 0, 0);
 
         if (success > 0) {

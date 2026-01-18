@@ -23,7 +23,7 @@
 #include "qapi/error.h"
 #include "qemu/module.h"
 #include "migration/blocker.h"
-#include "sysemu/kvm.h"
+#include "system/kvm.h"
 #include "kvm_arm.h"
 #include "gic_internal.h"
 #include "vgic_common.h"
@@ -584,7 +584,7 @@ static void kvm_arm_gic_realize(DeviceState *dev, Error **errp)
     }
 }
 
-static void kvm_arm_gic_class_init(ObjectClass *klass, void *data)
+static void kvm_arm_gic_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);

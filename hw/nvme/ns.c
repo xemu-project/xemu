@@ -18,8 +18,8 @@
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "qemu/bitops.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/block-backend.h"
+#include "system/system.h"
+#include "system/block-backend.h"
 
 #include "nvme.h"
 #include "trace.h"
@@ -32,11 +32,13 @@ void nvme_ns_init_format(NvmeNamespace *ns)
     NvmeIdNs *id_ns = &ns->id_ns;
     NvmeIdNsNvm *id_ns_nvm = &ns->id_ns_nvm;
     BlockDriverInfo bdi;
-    int npdg, ret;
+    int npdg, ret, index;
     int64_t nlbas;
 
+    index = NVME_ID_NS_FLBAS_INDEX(id_ns->flbas);
     ns->lbaf = id_ns->lbaf[NVME_ID_NS_FLBAS_INDEX(id_ns->flbas)];
     ns->lbasz = 1 << ns->lbaf.ds;
+    ns->pif = NVME_ID_NS_NVM_ELBAF_PIF(ns->id_ns_nvm.elbaf[index]);
 
     nlbas = ns->size / (ns->lbasz + ns->lbaf.ms);
 
@@ -112,8 +114,6 @@ static int nvme_ns_init(NvmeNamespace *ns, Error **errp)
         id_ns->dps |= NVME_ID_NS_DPS_FIRST_EIGHT;
     }
 
-    ns->pif = ns->params.pif;
-
     static const NvmeLBAF defaults[16] = {
         [0] = { .ds =  9           },
         [1] = { .ds =  9, .ms =  8 },
@@ -130,6 +130,12 @@ static int nvme_ns_init(NvmeNamespace *ns, Error **errp)
     memcpy(&id_ns->lbaf, &defaults, sizeof(defaults));
 
     for (i = 0; i < ns->nlbaf; i++) {
+        if (id_ns->lbaf[i].ms >= 16) {
+            id_ns_nvm->elbaf[i] = (ns->params.pif & 0x3) << 7;
+        }
+    }
+
+    for (i = 0; i < ns->nlbaf; i++) {
         NvmeLBAF *lbaf = &id_ns->lbaf[i];
         if (lbaf->ds == ds) {
             if (lbaf->ms == ms) {
@@ -142,13 +148,14 @@ static int nvme_ns_init(NvmeNamespace *ns, Error **errp)
     /* add non-standard lba format */
     id_ns->lbaf[ns->nlbaf].ds = ds;
     id_ns->lbaf[ns->nlbaf].ms = ms;
+    if (ms >= 16) {
+        id_ns_nvm->elbaf[ns->nlbaf] = (ns->params.pif & 0x3) << 7;
+    }
     ns->nlbaf++;
 
     id_ns->flbas |= i;
 
-
 lbaf_found:
-    id_ns_nvm->elbaf[i] = (ns->pif & 0x3) << 7;
     id_ns->nlbaf = ns->nlbaf - 1;
     nvme_ns_init_format(ns);
 
@@ -718,6 +725,108 @@ static void nvme_ns_unrealize(DeviceState *dev)
     nvme_ns_cleanup(ns);
 }
 
+void nvme_ns_atomic_configure_boundary(bool dn, uint16_t nabsn,
+                                       uint16_t nabspf, NvmeAtomic *atomic)
+{
+    atomic->atomic_boundary = dn ? nabspf : nabsn;
+
+    if (atomic->atomic_boundary > 0) {
+        atomic->atomic_boundary += 1;
+    }
+}
+
+static bool nvme_ns_set_nab(NvmeCtrl *n, NvmeNamespace *ns, Error **errp)
+{
+    NvmeIdNs *id_ns = &ns->id_ns;
+    NvmeIdCtrl *id_ctrl = &n->id_ctrl;
+
+    uint16_t nabsn = ns->params.atomic.nabsn;
+    uint16_t nabspf = ns->params.atomic.nabspf;
+    uint16_t nabo = ns->params.atomic.nabo;
+
+    if (nabsn && nabsn < le16_to_cpu(id_ctrl->awun)) {
+        error_setg(errp, "nabsn must be greater than or equal to awun");
+        return false;
+    }
+
+    if (nabspf && nabspf < le16_to_cpu(id_ctrl->awupf)) {
+        error_setg(errp, "nabspf must be greater than or equal to awupf");
+        return false;
+    }
+
+    if (id_ns->nsfeat & NVME_ID_NS_NSFEAT_NSABP) {
+        if (nabsn && nabsn < le16_to_cpu(id_ns->nawun)) {
+            error_setg(errp, "nabsn must be greater than or equal to nawun");
+            return false;
+        }
+
+        if (nabspf && nabspf < le16_to_cpu(id_ns->nawupf)) {
+            error_setg(errp, "nabspf must be great than or equal to nawupf");
+            return false;
+        }
+    }
+
+    if (nabo && (nabo > nabsn || nabo > nabspf)) {
+        error_setg(errp, "nabo must be less than or equal to nabsn and nabspf");
+        return false;
+    }
+
+    id_ns->nabsn = cpu_to_le16(nabsn);
+    id_ns->nabspf = cpu_to_le16(nabspf);
+    id_ns->nabo = cpu_to_le16(nabo);
+
+    ns->atomic.atomic_nabo = nabo;
+
+    nvme_ns_atomic_configure_boundary(n->dn, nabsn, nabspf, &ns->atomic);
+
+    return true;
+}
+
+static bool nvme_ns_set_nsabp(NvmeCtrl *n, NvmeNamespace *ns, Error **errp)
+{
+    NvmeIdNs *id_ns = &ns->id_ns;
+    NvmeIdCtrl *id_ctrl = &n->id_ctrl;
+
+    uint16_t awun = le16_to_cpu(id_ctrl->awun);
+    uint16_t awupf = le16_to_cpu(id_ctrl->awupf);
+
+    uint16_t nawun = ns->params.atomic.nawun;
+    uint16_t nawupf = ns->params.atomic.nawupf;
+
+    if (nawupf > nawun) {
+        if (nawun == 0) {
+            nawun = nawupf;
+        } else {
+            error_setg(errp, "nawupf must be less than or equal to nawun");
+            return false;
+        }
+    }
+
+    /* neither nawun or nawupf is set */
+    if (nawun == 0) {
+        return true;
+    }
+
+    if (nawun < awun) {
+        error_setg(errp, "nawun must be greater than or equal to awun");
+        return false;
+    }
+
+    if (nawupf < awupf) {
+        error_setg(errp, "nawupf must be greater than or equal to awupf");
+        return false;
+    }
+
+    id_ns->nsfeat |= NVME_ID_NS_NSFEAT_NSABP;
+
+    id_ns->nawun = cpu_to_le16(nawun);
+    id_ns->nawupf = cpu_to_le16(nawupf);
+
+    nvme_atomic_configure_max_write_size(n->dn, nawun, nawupf, &ns->atomic);
+
+    return true;
+}
+
 static void nvme_ns_realize(DeviceState *dev, Error **errp)
 {
     NvmeNamespace *ns = NVME_NS(dev);
@@ -727,24 +836,21 @@ static void nvme_ns_realize(DeviceState *dev, Error **errp)
     uint32_t nsid = ns->params.nsid;
     int i;
 
-    if (!n->subsys) {
-        /* If no subsys, the ns cannot be attached to more than one ctrl. */
-        ns->params.shared = false;
-        if (ns->params.detached) {
-            error_setg(errp, "detached requires that the nvme device is "
-                       "linked to an nvme-subsys device");
-            return;
-        }
-    } else {
-        /*
-         * If this namespace belongs to a subsystem (through a link on the
-         * controller device), reparent the device.
-         */
-        if (!qdev_set_parent_bus(dev, &subsys->bus.parent_bus, errp)) {
-            return;
-        }
-        ns->subsys = subsys;
-        ns->endgrp = &subsys->endgrp;
+    assert(subsys);
+
+    /* reparent to subsystem bus */
+    if (!qdev_set_parent_bus(dev, &subsys->bus.parent_bus, errp)) {
+        return;
+    }
+    ns->subsys = subsys;
+    ns->endgrp = &subsys->endgrp;
+
+    if (!nvme_ns_set_nsabp(n, ns, errp)) {
+        return;
+    }
+
+    if (!nvme_ns_set_nab(n, ns, errp)) {
+        return;
     }
 
     if (nvme_ns_setup(ns, errp)) {
@@ -753,7 +859,7 @@ static void nvme_ns_realize(DeviceState *dev, Error **errp)
 
     if (!nsid) {
         for (i = 1; i <= NVME_MAX_NAMESPACES; i++) {
-            if (nvme_ns(n, i) || nvme_subsys_ns(subsys, i)) {
+            if (nvme_subsys_ns(subsys, i)) {
                 continue;
             }
 
@@ -765,41 +871,22 @@ static void nvme_ns_realize(DeviceState *dev, Error **errp)
             error_setg(errp, "no free namespace id");
             return;
         }
-    } else {
-        if (nvme_ns(n, nsid) || nvme_subsys_ns(subsys, nsid)) {
-            error_setg(errp, "namespace id '%d' already allocated", nsid);
-            return;
-        }
+    } else if (nvme_subsys_ns(subsys, nsid)) {
+        error_setg(errp, "namespace id '%d' already allocated", nsid);
+        return;
     }
 
-    if (subsys) {
-        subsys->namespaces[nsid] = ns;
+    subsys->namespaces[nsid] = ns;
 
-        ns->id_ns.endgid = cpu_to_le16(0x1);
-        ns->id_ns_ind.endgrpid = cpu_to_le16(0x1);
+    ns->id_ns.endgid = cpu_to_le16(0x1);
+    ns->id_ns_ind.endgrpid = cpu_to_le16(0x1);
 
-        if (ns->params.detached) {
-            return;
-        }
-
-        if (ns->params.shared) {
-            for (i = 0; i < ARRAY_SIZE(subsys->ctrls); i++) {
-                NvmeCtrl *ctrl = subsys->ctrls[i];
-
-                if (ctrl && ctrl != SUBSYS_SLOT_RSVD) {
-                    nvme_attach_ns(ctrl, ns);
-                }
-            }
-
-            return;
-        }
-
+    if (!ns->params.shared) {
+        ns->ctrl = n;
     }
-
-    nvme_attach_ns(n, ns);
 }
 
-static Property nvme_ns_props[] = {
+static const Property nvme_ns_props[] = {
     DEFINE_BLOCK_PROPERTIES(NvmeNamespace, blkconf),
     DEFINE_PROP_BOOL("detached", NvmeNamespace, params.detached, false),
     DEFINE_PROP_BOOL("shared", NvmeNamespace, params.shared, true),
@@ -834,10 +921,14 @@ static Property nvme_ns_props[] = {
     DEFINE_PROP_BOOL("eui64-default", NvmeNamespace, params.eui64_default,
                      false),
     DEFINE_PROP_STRING("fdp.ruhs", NvmeNamespace, params.fdp.ruhs),
-    DEFINE_PROP_END_OF_LIST(),
+    DEFINE_PROP_UINT16("atomic.nawun", NvmeNamespace, params.atomic.nawun, 0),
+    DEFINE_PROP_UINT16("atomic.nawupf", NvmeNamespace, params.atomic.nawupf, 0),
+    DEFINE_PROP_UINT16("atomic.nabsn", NvmeNamespace, params.atomic.nabsn, 0),
+    DEFINE_PROP_UINT16("atomic.nabspf", NvmeNamespace, params.atomic.nabspf, 0),
+    DEFINE_PROP_UINT16("atomic.nabo", NvmeNamespace, params.atomic.nabo, 0),
 };
 
-static void nvme_ns_class_init(ObjectClass *oc, void *data)
+static void nvme_ns_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 

@@ -37,9 +37,8 @@ struct VirtIOInputHIDPCI {
     VirtIOInputHID vdev;
 };
 
-static Property virtio_input_pci_properties[] = {
+static const Property virtio_input_pci_properties[] = {
     DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors, 2),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void virtio_input_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
@@ -51,7 +50,7 @@ static void virtio_input_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
     qdev_realize(vdev, BUS(&vpci_dev->bus), errp);
 }
 
-static void virtio_input_pci_class_init(ObjectClass *klass, void *data)
+static void virtio_input_pci_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     VirtioPCIClass *k = VIRTIO_PCI_CLASS(klass);
@@ -64,7 +63,8 @@ static void virtio_input_pci_class_init(ObjectClass *klass, void *data)
     pcidev_k->class_id = PCI_CLASS_INPUT_OTHER;
 }
 
-static void virtio_input_hid_kbd_pci_class_init(ObjectClass *klass, void *data)
+static void virtio_input_hid_kbd_pci_class_init(ObjectClass *klass,
+                                                const void *data)
 {
     PCIDeviceClass *pcidev_k = PCI_DEVICE_CLASS(klass);
 
@@ -72,7 +72,7 @@ static void virtio_input_hid_kbd_pci_class_init(ObjectClass *klass, void *data)
 }
 
 static void virtio_input_hid_mouse_pci_class_init(ObjectClass *klass,
-                                                  void *data)
+                                                  const void *data)
 {
     PCIDeviceClass *pcidev_k = PCI_DEVICE_CLASS(klass);
 

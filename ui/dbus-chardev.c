@@ -106,7 +106,7 @@ dbus_chardev_init(DBusDisplay *dpy)
     dpy->notifier.notify = dbus_display_on_notify;
     dbus_display_notifier_add(&dpy->notifier);
 
-    object_child_foreach(container_get(object_get_root(), "/chardevs"),
+    object_child_foreach(object_get_container("chardevs"),
                          dbus_display_chardev_foreach, dpy);
 }
 
@@ -269,7 +269,7 @@ dbus_chr_parse(QemuOpts *opts, ChardevBackend *backend,
 }
 
 static void
-char_dbus_class_init(ObjectClass *oc, void *data)
+char_dbus_class_init(ObjectClass *oc, const void *data)
 {
     DBusChardevClass *klass = DBUS_CHARDEV_CLASS(oc);
     ChardevClass *cc = CHARDEV_CLASS(oc);

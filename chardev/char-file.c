@@ -92,7 +92,13 @@ static void qmp_chardev_open_file(Chardev *chr,
         }
     }
 
-    qemu_chr_open_fd(chr, in, out);
+    if (!qemu_chr_open_fd(chr, in, out, errp)) {
+        qemu_close(out);
+        if (in >= 0) {
+            qemu_close(in);
+        }
+        return;
+    }
 #endif
 }
 
@@ -123,7 +129,7 @@ static void qemu_chr_parse_file_out(QemuOpts *opts, ChardevBackend *backend,
     file->append = qemu_opt_get_bool(opts, "append", false);
 }
 
-static void char_file_class_init(ObjectClass *oc, void *data)
+static void char_file_class_init(ObjectClass *oc, const void *data)
 {
     ChardevClass *cc = CHARDEV_CLASS(oc);
 

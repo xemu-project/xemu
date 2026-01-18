@@ -253,7 +253,7 @@ static void chihiro_an2131qc_unrealize(USBDevice *dev)
 {
 }
 
-static void chihiro_an2131qc_class_initfn(ObjectClass *klass, void *data)
+static void chihiro_an2131qc_class_init(ObjectClass *klass, const void *data)
 {
     // DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
@@ -275,7 +275,7 @@ static const TypeInfo chihiro_an2131qc_info = {
     .name          = "chihiro-an2131qc",
     .parent        = TYPE_USB_DEVICE,
     .instance_size = sizeof(ChihiroUSBState),
-    .class_init    = chihiro_an2131qc_class_initfn,
+    .class_init    = chihiro_an2131qc_class_init,
 };
 
 static void chihiro_an2131sc_realize(USBDevice *dev, Error **errp)
@@ -288,7 +288,7 @@ static void chihiro_an2131sc_unrealize(USBDevice *dev)
 {
 }
 
-static void chihiro_an2131sc_class_initfn(ObjectClass *klass, void *data)
+static void chihiro_an2131sc_class_init(ObjectClass *klass, const void *data)
 {
     // DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
@@ -310,7 +310,7 @@ static const TypeInfo chihiro_an2131sc_info = {
     .name          = "chihiro-an2131sc",
     .parent        = TYPE_USB_DEVICE,
     .instance_size = sizeof(ChihiroUSBState),
-    .class_init    = chihiro_an2131sc_class_initfn,
+    .class_init    = chihiro_an2131sc_class_init,
 };
 
 static void chihiro_usb_register_types(void)

@@ -24,7 +24,7 @@
 #include "hw/intc/arm_gicv3_its_common.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
-#include "sysemu/kvm.h"
+#include "system/kvm.h"
 
 static int gicv3_its_pre_save(void *opaque)
 {
@@ -135,7 +135,7 @@ static void gicv3_its_common_reset_hold(Object *obj, ResetType type)
     memset(&s->baser, 0, sizeof(s->baser));
 }
 
-static void gicv3_its_common_class_init(ObjectClass *klass, void *data)
+static void gicv3_its_common_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);

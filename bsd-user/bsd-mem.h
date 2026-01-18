@@ -56,7 +56,9 @@
 #include <fcntl.h>
 
 #include "qemu-bsd.h"
+#include "exec/mmap-lock.h"
 #include "exec/page-protection.h"
+#include "user/page-protection.h"
 
 extern struct bsd_shm_regions bsd_shm_regions[];
 extern abi_ulong target_brk;
@@ -369,9 +371,11 @@ static inline abi_long do_bsd_shmat(int shmid, abi_ulong shmaddr, int shmflg)
         if (shmaddr) {
             host_raddr = shmat(shmid, (void *)g2h_untagged(shmaddr), shmflg);
         } else {
+            abi_ulong alignment;
             abi_ulong mmap_start;
 
-            mmap_start = mmap_find_vma(0, shm_info.shm_segsz);
+            alignment = 0; /* alignment above page size not required */
+            mmap_start = mmap_find_vma(0, shm_info.shm_segsz, alignment);
 
             if (mmap_start == -1) {
                 return -TARGET_ENOMEM;
@@ -386,8 +390,9 @@ static inline abi_long do_bsd_shmat(int shmid, abi_ulong shmaddr, int shmflg)
         raddr = h2g(host_raddr);
 
         page_set_flags(raddr, raddr + shm_info.shm_segsz - 1,
-                       PAGE_VALID | PAGE_RESET | PAGE_READ |
-                       (shmflg & SHM_RDONLY ? 0 : PAGE_WRITE));
+                       PAGE_VALID | PAGE_READ |
+                       (shmflg & SHM_RDONLY ? 0 : PAGE_WRITE),
+                       PAGE_VALID);
 
         for (int i = 0; i < N_BSD_SHM_REGIONS; i++) {
             if (bsd_shm_regions[i].start == 0) {
@@ -424,7 +429,7 @@ static inline abi_long do_bsd_shmdt(abi_ulong shmaddr)
             abi_ulong size = bsd_shm_regions[i].size;
 
             bsd_shm_regions[i].start = 0;
-            page_set_flags(shmaddr, shmaddr + size - 1, 0);
+            page_set_flags(shmaddr, shmaddr + size - 1, 0, PAGE_VALID);
             mmap_reserve(shmaddr, size);
         }
     }

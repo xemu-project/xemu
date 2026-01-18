@@ -462,7 +462,7 @@ static const VMStateDescription vmstate_mcpx_apu = {
     },
 };
 
-static void mcpx_apu_class_init(ObjectClass *klass, void *data)
+static void mcpx_apu_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
