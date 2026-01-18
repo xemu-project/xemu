@@ -1,6 +1,7 @@
 #ifndef EXEC_TB_CODE_HASH_H
 #define EXEC_TB_CODE_HASH_H
 
+#include "exec/cpu-common.h"
 #include "accel/tcg/cpu-ldst-common.h"
 #include "accel/tcg/cpu-mmu-index.h"
 #include "qemu/fast-hash.h"
