@@ -2893,6 +2893,13 @@ static const TCGOutOpStore outop_st = {
     .out_r = tcg_out_st,
 };
 
+static inline void tcg_out_op(TCGContext *s, TCGOpcode opc, TCGType type,
+                              const TCGArg args[TCG_MAX_OP_ARGS],
+                              const int const_args[TCG_MAX_OP_ARGS])
+{
+    g_assert_not_reached();
+}
+
 static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
                            unsigned vecl, unsigned vece,
                            const TCGArg args[TCG_MAX_OP_ARGS],
