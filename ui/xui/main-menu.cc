@@ -437,6 +437,8 @@ void MainMenuInputView::DrawExpansionSlotOptions(int active, int expansion_slot_
     ControllerState *bound_state = xemu_input_get_bound(active);
     const char *comboLabels[2] = { "###ExpansionSlotA",
                                    "###ExpansionSlotB" };
+    assert(expansion_slot_index >= 0 && 
+           expansion_slot_index < 2);
     // Display a combo box to allow the user to choose the type of
     // peripheral they want to use
     enum peripheral_type selected_type =
@@ -450,9 +452,10 @@ void MainMenuInputView::DrawExpansionSlotOptions(int active, int expansion_slot_
     if (ImGui::BeginCombo(comboLabels[expansion_slot_index], selected_peripheral_type, ImGuiComboFlags_NoArrowButton)) {
         // Handle all available peripheral types
         for (int j = 0; j < 3 - expansion_slot_index; j++) {
-            bool is_selected = selected_type == j;
+            enum peripheral_type current_type = peripheral_types[expansion_slot_index][j];
+            bool is_selected = selected_type == current_type;
             ImGui::PushID(j);
-            const char *selectable_label = peripheral_type_names[peripheral_types[expansion_slot_index][j]];
+            const char *selectable_label = peripheral_type_names[current_type];
 
             if (ImGui::Selectable(selectable_label, is_selected)) {
                 // Free any existing peripheral
@@ -466,11 +469,13 @@ void MainMenuInputView::DrawExpansionSlotOptions(int active, int expansion_slot_
 
                 // Change the peripheral type to the newly selected type
                 bound_state->peripheral_types[expansion_slot_index] =
-                    (enum peripheral_type)j;
+                    current_type;
 
                 // Allocate state for the new peripheral
-                switch(j)
+                switch(current_type)
                 {
+                    case PERIPHERAL_NONE:
+                        break;
                     case PERIPHERAL_XMU:
                         bound_state->peripherals[expansion_slot_index] = g_malloc(sizeof(XmuState));
                         memset(bound_state->peripherals[expansion_slot_index], 0, sizeof(XmuState));
@@ -607,8 +612,8 @@ void MainMenuInputView::DrawXmuSettings(int active, int expansion_slot_index)
 
 static int num_input_devices = 0;
 static int num_output_devices = 0;
-static const char **input_device_names = nullptr;
-static const char **output_device_names = nullptr;
+static char **input_device_names = nullptr;
+static char **output_device_names = nullptr;
 
 static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_capture)
 {
@@ -624,22 +629,32 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
 
     int num_devices = SDL_GetNumAudioDevices(is_capture);
     // Get pointers to the correct device name cache
-    const char ***device_names = (is_capture ? &input_device_names : &output_device_names);
+    char ***device_names = (is_capture ? &input_device_names : &output_device_names);
     int *num_device_names = (is_capture ? &num_input_devices : &num_output_devices);
 
     // If the number of devices is incorrect, update the cache
     if (num_devices != *num_device_names) {
-        *num_device_names = num_devices;
         // Update the device name cache
-        if(*device_names == nullptr)
+        if(*device_names != nullptr)
+        {
+            for(int i = 0; i < *num_device_names; i++)
+                g_free(*device_names[i]);
             g_free(*device_names);
+        }
+        *num_device_names = num_devices;
         if(num_devices == 0)
             *device_names = nullptr;
         else {
-            *device_names = (const char**)g_malloc(num_devices * sizeof(const char*));
+            *device_names = (char**)g_malloc(num_devices * sizeof(char*));
             for(int i = 0; i < num_devices; i++)
             {
-                (*device_names)[i] = SDL_GetAudioDeviceName(i, is_capture);
+                const char *device_name = SDL_GetAudioDeviceName(i, is_capture);
+
+                // The string returned by this function is UTF-8 encoded, read-only, and managed internally. 
+                // You are not to free it. If you need to keep the string for any length of time, you should 
+                // make your own copy of it, as it will be invalid next time any of several other SDL 
+                // functions are called.
+                (*device_names)[i] = g_strdup(device_name);
             }
         }
     }

@@ -247,10 +247,13 @@ static int calc_peak_amplitude(const int16_t *samples, int len) {
 static void input_callback(void *userdata, uint8_t *stream, int len)
 {
     USBXBLCState *s = (USBXBLCState *)userdata;
-    uint8_t buffer[XBLC_FIFO_SIZE];
+    static uint8_t buffer[XBLC_FIFO_SIZE];
+    int peak;
+    int64_t scaled_peak;
     
-    s->in.peak_volume = s->in.volume * 
-        calc_peak_amplitude((int16_t*)stream, len / sizeof(int16_t)) / SDL_MIX_MAXVOLUME;
+    peak = calc_peak_amplitude((int16_t *)stream, len / sizeof(int16_t));
+    scaled_peak = (int64_t)s->in.volume * peak;
+    s->in.peak_volume = (int)(scaled_peak / SDL_MIX_MAXVOLUME);
 
     // Don't try to put more into the queue than will fit
     uint32_t max_len = MIN(len, fifo8_num_free(&s->in.fifo));
@@ -474,7 +477,21 @@ static void usb_xbox_communicator_unrealize(USBDevice *dev)
     fifo8_destroy(&s->in.fifo);
 
     SDL_CloseAudioDevice(s->in.voice);
+    s->in.voice = 0;
     SDL_CloseAudioDevice(s->out.voice);
+    s->out.voice = 0;
+
+    if(s->in.device_name != NULL)
+    {
+        g_free(s->in.device_name);
+        s->in.device_name = NULL;
+    }
+
+    if(s->out.device_name != NULL)
+    {
+        g_free(s->out.device_name);
+        s->out.device_name = NULL;   
+    }
 }
 
 static void usb_xblc_class_initfn(ObjectClass *klass, void *data)
@@ -494,6 +511,9 @@ static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
 
     fifo8_create(&s->in.fifo, XBLC_FIFO_SIZE);
     fifo8_create(&s->out.fifo, XBLC_FIFO_SIZE);
+
+    s->in.voice = 0;
+    s->out.voice = 0;
 
     s->in.volume = SDL_MIX_MAXVOLUME;
     s->out.volume = SDL_MIX_MAXVOLUME;
