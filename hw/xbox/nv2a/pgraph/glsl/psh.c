@@ -995,13 +995,28 @@ static MString* psh_convert(struct PixelShader *ps)
                              "}\n");
     }
 
+    mstring_append(
+        clip,
+        "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n"
+        // Calculate a power of 2 scaling factor in order to avoid exponent
+        // overflow in 2x2 matrix determinant calculation.
+        "float pos_max = max(abs(vtxPos0.x), abs(vtxPos0.y));\n"
+        "pos_max = max(max(abs(vtxPos1.x), abs(vtxPos1.y)), pos_max);\n"
+        "pos_max = max(max(abs(vtxPos2.x), abs(vtxPos2.y)), pos_max);\n"
+        "int pos_exp;\n"
+        "frexp(pos_max, pos_exp);\n"
+        "pos_exp = min(60 - pos_exp, 0);\n"
+        "float pos_scale = ldexp(1.0, pos_exp);\n"
+        "precise vec2 vtxPos0_xy = vtxPos0.xy * pos_scale;\n"
+        "precise vec2 vtxPos1_xy = vtxPos1.xy * pos_scale;\n"
+        "precise vec2 vtxPos2_xy = vtxPos2.xy * pos_scale;\n"
+        "precise float bc0 = area(unscaled_xy, vtxPos1_xy, vtxPos2_xy);\n"
+        "precise float bc1 = area(unscaled_xy, vtxPos2_xy, vtxPos0_xy);\n"
+        "precise float bc2 = area(unscaled_xy, vtxPos0_xy, vtxPos1_xy);\n");
+
     if (ps->state->z_perspective) {
         mstring_append(
             clip,
-            "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n"
-            "precise float bc0 = area(unscaled_xy, vtxPos1.xy, vtxPos2.xy);\n"
-            "precise float bc1 = area(unscaled_xy, vtxPos2.xy, vtxPos0.xy);\n"
-            "precise float bc2 = area(unscaled_xy, vtxPos0.xy, vtxPos1.xy);\n"
             "bc0 /= vtxPos0.w;\n"
             "bc1 /= vtxPos1.w;\n"
             "bc2 /= vtxPos2.w;\n"
@@ -1032,10 +1047,6 @@ static MString* psh_convert(struct PixelShader *ps)
     } else {
         mstring_append(
             clip,
-            "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n"
-            "precise float bc0 = area(unscaled_xy, vtxPos1.xy, vtxPos2.xy);\n"
-            "precise float bc1 = area(unscaled_xy, vtxPos2.xy, vtxPos0.xy);\n"
-            "precise float bc2 = area(unscaled_xy, vtxPos0.xy, vtxPos1.xy);\n"
             "float inv_bcsum = 1.0 / (bc0 + bc1 + bc2);\n"
             // Denominator can be zero in case the rasterized primitive is a
             // point or a degenerate line or triangle.
