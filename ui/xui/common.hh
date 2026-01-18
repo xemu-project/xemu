@@ -31,11 +31,12 @@
 #include <misc/cpp/imgui_stdlib.h>
 #include <stb_image.h>
 
+#include "qemu/osdep.h"
+
 extern "C" {
 #include <noc_file_dialog.h>
 
 // Include necessary QEMU headers
-#include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/runstate.h"
