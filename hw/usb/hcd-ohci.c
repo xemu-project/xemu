@@ -882,6 +882,8 @@ static int ohci_service_td(OHCIState *ohci, struct ohci_ed *ed)
     uint32_t addr;
     int flag_r;
     int completion;
+    USBActivePacket *packet = NULL;
+    USBActivePacket *iter;
 
     addr = ed->head & OHCI_DPTR_MASK;
     if (addr == 0) {
@@ -942,9 +944,7 @@ static int ohci_service_td(OHCIState *ohci, struct ohci_ed *ed)
     }
 
     ep = usb_ep_get(dev, pid, OHCI_BM(ed->flags, ED_EN));
-    USBActivePacket *packet = NULL;
-    USBActivePacket *iter;
-    QTAILQ_FOREACH (iter, &ohci->active_packets, next) {
+    QTAILQ_FOREACH(iter, &ohci->active_packets, next) {
         if (iter->ep == ep) {
             packet = iter;
             break;
@@ -1010,7 +1010,7 @@ static int ohci_service_td(OHCIState *ohci, struct ohci_ed *ed)
         packet->async_complete = false;
     } else {
         if (packet->async_td) {
-            // Only allow one active packet per endpoint.
+            /* Only allow one active packet per endpoint. */
             trace_usb_ohci_td_too_many_pending(ep->nr);
             return 1;
         }
@@ -1885,13 +1885,12 @@ static void ohci_attach(USBPort *port1)
 
 static void ohci_child_detach(USBPort *port1, USBDevice *dev)
 {
-    OHCIState *ohci = port1->opaque;
-
     USBActivePacket *iter, *iter2;
-    QTAILQ_FOREACH_SAFE (iter, &ohci->active_packets, next, iter2) {
+    OHCIState *ohci = port1->opaque;
+    
+    QTAILQ_FOREACH_SAFE(iter, &ohci->active_packets, next, iter2) {
         if (iter->usb_packet.ep->dev == dev) {
-            if (iter->async_td && usb_packet_is_inflight(&iter->usb_packet) &&
-                iter->usb_packet.ep->dev == dev) {
+            if (iter->async_td && usb_packet_is_inflight(&iter->usb_packet)) {
                 usb_cancel_packet(&iter->usb_packet);
             }
 
@@ -2056,37 +2055,14 @@ void ohci_clear_active_packets(struct OHCIState *ohci)
         if (packet->async_td) {
             usb_cancel_packet(&packet->usb_packet);
             packet->async_td = 0;
-            usb_device_ep_stopped(packet->usb_packet.ep->dev,
-                                  packet->usb_packet.ep);
+            if(packet->usb_packet.ep) {
+                usb_device_ep_stopped(packet->usb_packet.ep->dev,
+                                    packet->usb_packet.ep);
+            }
         }
         QTAILQ_REMOVE(&ohci->active_packets, packet, next);
         g_free(packet);
     }
-}
-
-static void ohci_realize_pxa(DeviceState *dev, Error **errp)
-{
-    OHCISysBusState *s = SYSBUS_OHCI(dev);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
-    Error *err = NULL;
-
-    usb_ohci_init(&s->ohci, dev, s->num_ports, s->dma_offset,
-                  s->masterbus, s->firstport,
-                  &address_space_memory, ohci_sysbus_die, &err);
-    if (err) {
-        error_propagate(errp, err);
-        return;
-    }
-    sysbus_init_irq(sbd, &s->ohci.irq);
-    sysbus_init_mmio(sbd, &s->ohci.mem);
-}
-
-static void usb_ohci_reset_sysbus(DeviceState *dev)
-{
-    OHCISysBusState *s = SYSBUS_OHCI(dev);
-    OHCIState *ohci = &s->ohci;
-
-    ohci_hard_reset(ohci);
 }
 
 static const VMStateDescription vmstate_ohci_state_port = {

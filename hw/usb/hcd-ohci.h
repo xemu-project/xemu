@@ -99,6 +99,16 @@ struct OHCIState {
 
     /* Active packets.  */
     uint32_t old_ctl;
+    /*
+     * Legacy fields kept for VMState / migration compatibility.
+     *
+     * The OHCI implementation was refactored to use per-endpoint
+     * USBActivePacket.{usb_buf,async_td,async_complete}.  These
+     * global fields in OHCIState are no longer used by the live
+     * code, but must remain in place so that vmstate_ohci_state
+     * continues to match the layout expected by older QEMU
+     * versions and saved VM states.
+     */
     uint8_t usb_buf[8192];
     uint32_t async_td;
     bool async_complete;
