@@ -11,6 +11,7 @@ This work is licensed under the terms of the GNU GPL, version 2.
 See the COPYING file in the top-level directory.
 """
 
+from dataclasses import dataclass
 from typing import (
     Any,
     Dict,
@@ -58,7 +59,7 @@ from .source import QAPISourceInfo
 #
 # Sadly, mypy does not support recursive types; so the _Stub alias is used to
 # mark the imprecision in the type model where we'd otherwise use JSONValue.
-_Stub = Any
+_Stub = Any  # pylint: disable=invalid-name
 _Scalar = Union[str, bool, None]
 _NonScalar = Union[Dict[str, _Stub], List[_Stub]]
 _Value = Union[_Scalar, _NonScalar]
@@ -79,19 +80,16 @@ SchemaInfoCommand = Dict[str, object]
 _ValueT = TypeVar('_ValueT', bound=_Value)
 
 
+@dataclass
 class Annotated(Generic[_ValueT]):
     """
     Annotated generally contains a SchemaInfo-like type (as a dict),
     But it also used to wrap comments/ifconds around scalar leaf values,
     for the benefit of features and enums.
     """
-    # TODO: Remove after Python 3.7 adds @dataclass:
-    # pylint: disable=too-few-public-methods
-    def __init__(self, value: _ValueT, ifcond: QAPISchemaIfCond,
-                 comment: Optional[str] = None):
-        self.value = value
-        self.comment: Optional[str] = comment
-        self.ifcond = ifcond
+    value: _ValueT
+    ifcond: QAPISchemaIfCond
+    comment: Optional[str] = None
 
 
 def _tree_to_qlit(obj: JSONValue,
@@ -197,7 +195,7 @@ class QAPISchemaGenIntrospectVisitor(QAPISchemaMonolithicCVisitor):
         # generate C
         name = c_name(self._prefix, protect=False) + 'qmp_schema_qlit'
         self._genh.add(mcgen('''
-#include "qapi/qmp/qlit.h"
+#include "qobject/qlit.h"
 
 extern const QLitObject %(c_name)s;
 ''',

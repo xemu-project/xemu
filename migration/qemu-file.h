@@ -33,6 +33,8 @@ QEMUFile *qemu_file_new_input(QIOChannel *ioc);
 QEMUFile *qemu_file_new_output(QIOChannel *ioc);
 int qemu_fclose(QEMUFile *f);
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(QEMUFile, qemu_fclose)
+
 /*
  * qemu_file_transferred:
  *
@@ -69,7 +71,7 @@ void qemu_file_set_error(QEMUFile *f, int ret);
 int qemu_file_shutdown(QEMUFile *f);
 QEMUFile *qemu_file_get_return_path(QEMUFile *f);
 int qemu_fflush(QEMUFile *f);
-void qemu_file_set_blocking(QEMUFile *f, bool block);
+bool qemu_file_set_blocking(QEMUFile *f, bool block, Error **errp);
 int qemu_file_get_to_fd(QEMUFile *f, int fd, size_t size);
 void qemu_set_offset(QEMUFile *f, off_t off, int whence);
 off_t qemu_get_offset(QEMUFile *f);
@@ -79,5 +81,7 @@ size_t qemu_get_buffer_at(QEMUFile *f, const uint8_t *buf, size_t buflen,
                           off_t pos);
 
 QIOChannel *qemu_file_get_ioc(QEMUFile *file);
+int qemu_file_put_fd(QEMUFile *f, int fd);
+int qemu_file_get_fd(QEMUFile *f);
 
 #endif

@@ -195,15 +195,14 @@ static const VMStateDescription vmstate_pic_common = {
     }
 };
 
-static Property pic_properties_common[] = {
+static const Property pic_properties_common[] = {
     DEFINE_PROP_UINT32("iobase", PICCommonState, iobase,  -1),
     DEFINE_PROP_UINT32("elcr_addr", PICCommonState, elcr_addr,  -1),
     DEFINE_PROP_UINT8("elcr_mask", PICCommonState, elcr_mask,  -1),
     DEFINE_PROP_BIT("master", PICCommonState, master,  0, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pic_common_class_init(ObjectClass *klass, void *data)
+static void pic_common_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     InterruptStatsProviderClass *ic = INTERRUPT_STATS_PROVIDER_CLASS(klass);
@@ -229,7 +228,7 @@ static const TypeInfo pic_common_type = {
     .class_size = sizeof(PICCommonClass),
     .class_init = pic_common_class_init,
     .abstract = true,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_INTERRUPT_STATS_PROVIDER },
         { }
     },

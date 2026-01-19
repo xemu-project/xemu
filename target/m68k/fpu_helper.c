@@ -21,8 +21,7 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "exec/helper-proto.h"
-#include "exec/exec-all.h"
-#include "exec/cpu_ldst.h"
+#include "accel/tcg/cpu-ldst.h"
 #include "softfloat.h"
 
 /*
@@ -175,7 +174,7 @@ static int cpu_m68k_exceptbits_from_host(int host_bits)
     if (host_bits & float_flag_overflow) {
         target_bits |= 0x40;
     }
-    if (host_bits & (float_flag_underflow | float_flag_output_denormal)) {
+    if (host_bits & (float_flag_underflow | float_flag_output_denormal_flushed)) {
         target_bits |= 0x20;
     }
     if (host_bits & float_flag_divbyzero) {
@@ -455,7 +454,7 @@ void HELPER(ftst)(CPUM68KState *env, FPReg *val)
 
     if (floatx80_is_any_nan(val->d)) {
         cc |= FPSR_CC_A;
-    } else if (floatx80_is_infinity(val->d)) {
+    } else if (floatx80_is_infinity(val->d, &env->fp_status)) {
         cc |= FPSR_CC_I;
     } else if (floatx80_is_zero(val->d)) {
         cc |= FPSR_CC_Z;
@@ -615,15 +614,13 @@ void HELPER(frem)(CPUM68KState *env, FPReg *res, FPReg *val0, FPReg *val1)
 
     fp_rem = floatx80_rem(val1->d, val0->d, &env->fp_status);
     if (!floatx80_is_any_nan(fp_rem)) {
-        float_status fp_status = { };
+        /* Use local temporary fp_status to set different rounding mode */
+        float_status fp_status = env->fp_status;
         uint32_t quotient;
         int sign;
 
         /* Calculate quotient directly using round to nearest mode */
-        set_float_2nan_prop_rule(float_2nan_prop_ab, &fp_status);
         set_float_rounding_mode(float_round_nearest_even, &fp_status);
-        set_floatx80_rounding_precision(
-            get_floatx80_rounding_precision(&env->fp_status), &fp_status);
         fp_quot.d = floatx80_div(val1->d, val0->d, &fp_status);
 
         sign = extractFloatx80Sign(fp_quot.d);

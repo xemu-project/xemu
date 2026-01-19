@@ -20,7 +20,7 @@ struct VHostUserBase {
     VirtIODevice parent_obj;
 
     /* Properties */
-    CharBackend chardev;
+    CharFrontend chardev;
     uint16_t virtio_id;
     uint32_t num_vqs;
     uint32_t vq_size; /* can't exceed VIRTIO_QUEUE_MAX */
@@ -44,6 +44,6 @@ struct VHostUserBaseClass {
 };
 
 
-#define TYPE_VHOST_USER_DEVICE "vhost-user-device"
+#define TYPE_VHOST_USER_TEST_DEVICE "vhost-user-test-device"
 
 #endif /* QEMU_VHOST_USER_BASE_H */

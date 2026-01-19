@@ -816,13 +816,6 @@ static void zynqmp_efuse_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq);
 }
 
-static void zynqmp_efuse_finalize(Object *obj)
-{
-    XlnxZynqMPEFuse *s = XLNX_ZYNQMP_EFUSE(obj);
-
-    register_finalize_block(s->reg_array);
-}
-
 static const VMStateDescription vmstate_efuse = {
     .name = TYPE_XLNX_ZYNQMP_EFUSE,
     .version_id = 1,
@@ -833,15 +826,13 @@ static const VMStateDescription vmstate_efuse = {
     }
 };
 
-static Property zynqmp_efuse_props[] = {
+static const Property zynqmp_efuse_props[] = {
     DEFINE_PROP_LINK("efuse",
                      XlnxZynqMPEFuse, efuse,
                      TYPE_XLNX_EFUSE, XlnxEFuse *),
-
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void zynqmp_efuse_class_init(ObjectClass *klass, void *data)
+static void zynqmp_efuse_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -859,7 +850,6 @@ static const TypeInfo efuse_info = {
     .instance_size = sizeof(XlnxZynqMPEFuse),
     .class_init    = zynqmp_efuse_class_init,
     .instance_init = zynqmp_efuse_init,
-    .instance_finalize = zynqmp_efuse_finalize,
 };
 
 static void efuse_register_types(void)

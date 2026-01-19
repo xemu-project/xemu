@@ -26,8 +26,8 @@
 #include "qemu/error-report.h"
 #include "qemu/module.h"
 #include "qemu/sockets.h"
-#include "sysemu/tpm_backend.h"
-#include "sysemu/tpm_util.h"
+#include "system/tpm_backend.h"
+#include "system/tpm_util.h"
 #include "tpm_int.h"
 #include "qapi/clone-visitor.h"
 #include "qapi/qapi-visit-tpm.h"
@@ -211,7 +211,7 @@ static size_t tpm_passthrough_get_buffer_size(TPMBackend *tb)
 static int tpm_passthrough_open_sysfs_cancel(TPMPassthruState *tpm_pt)
 {
     int fd = -1;
-    char *dev;
+    const char *dev;
     char path[PATH_MAX];
 
     if (tpm_pt->options->cancel_path) {
@@ -364,7 +364,7 @@ static void tpm_passthrough_inst_finalize(Object *obj)
     qapi_free_TPMPassthroughOptions(tpm_pt->options);
 }
 
-static void tpm_passthrough_class_init(ObjectClass *klass, void *data)
+static void tpm_passthrough_class_init(ObjectClass *klass, const void *data)
 {
     TPMBackendClass *tbc = TPM_BACKEND_CLASS(klass);
 

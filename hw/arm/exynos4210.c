@@ -27,8 +27,8 @@
 #include "cpu.h"
 #include "hw/cpu/a9mpcore.h"
 #include "hw/irq.h"
-#include "sysemu/blockdev.h"
-#include "sysemu/sysemu.h"
+#include "system/blockdev.h"
+#include "system/system.h"
 #include "hw/sysbus.h"
 #include "hw/arm/boot.h"
 #include "hw/loader.h"
@@ -102,6 +102,8 @@
 #define EXYNOS4210_PL330_BASE0_ADDR         0x12680000
 #define EXYNOS4210_PL330_BASE1_ADDR         0x12690000
 #define EXYNOS4210_PL330_BASE2_ADDR         0x12850000
+
+#define GIC_EXT_IRQS 64 /* FIXME: verify for this SoC */
 
 enum ExtGicId {
     EXT_GIC_ID_MDMA_LCD0 = 66,
@@ -394,7 +396,8 @@ static void exynos4210_init_board_irqs(Exynos4210State *s)
         }
         if (irq_id) {
             qdev_connect_gpio_out(splitter, splitin,
-                                  qdev_get_gpio_in(extgicdev, irq_id - 32));
+                                  qdev_get_gpio_in(extgicdev,
+                                                   irq_id - GIC_INTERNAL));
         }
     }
     for (; n < EXYNOS4210_MAX_INT_COMBINER_IN_IRQ; n++) {
@@ -421,7 +424,8 @@ static void exynos4210_init_board_irqs(Exynos4210State *s)
             s->irq_table[n] = qdev_get_gpio_in(splitter, 0);
             qdev_connect_gpio_out(splitter, 0, qdev_get_gpio_in(intcdev, n));
             qdev_connect_gpio_out(splitter, 1,
-                                  qdev_get_gpio_in(extgicdev, irq_id - 32));
+                                  qdev_get_gpio_in(extgicdev,
+                                                   irq_id - GIC_INTERNAL));
         } else {
             s->irq_table[n] = qdev_get_gpio_in(intcdev, n);
         }
@@ -458,7 +462,6 @@ static uint64_t exynos4210_chipid_and_omr_read(void *opaque, hwaddr offset,
 static void exynos4210_chipid_and_omr_write(void *opaque, hwaddr offset,
                                             uint64_t value, unsigned size)
 {
-    return;
 }
 
 static const MemoryRegionOps exynos4210_chipid_and_omr_ops = {
@@ -586,6 +589,8 @@ static void exynos4210_realize(DeviceState *socdev, Error **errp)
 
     /* Private memory region and Internal GIC */
     qdev_prop_set_uint32(DEVICE(&s->a9mpcore), "num-cpu", EXYNOS4210_NCPUS);
+    qdev_prop_set_uint32(DEVICE(&s->a9mpcore), "num-irq",
+                         GIC_EXT_IRQS + GIC_INTERNAL);
     busdev = SYS_BUS_DEVICE(&s->a9mpcore);
     sysbus_realize(busdev, &error_fatal);
     sysbus_mmio_map(busdev, 0, EXYNOS4210_SMP_PRIVATE_BASE_ADDR);
@@ -837,7 +842,7 @@ static void exynos4210_init(Object *obj)
                             TYPE_EXYNOS4210_COMBINER);
 }
 
-static void exynos4210_class_init(ObjectClass *klass, void *data)
+static void exynos4210_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

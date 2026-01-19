@@ -23,7 +23,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/reset.h"
+#include "system/reset.h"
 #include "target/ppc/cpu.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
@@ -210,6 +210,22 @@ static void chiptod_power10_broadcast_ttype(PnvChipTOD *sender,
     }
 }
 
+static void chiptod_power11_broadcast_ttype(PnvChipTOD *sender,
+                                            uint32_t trigger)
+{
+    PnvMachineState *pnv = PNV_MACHINE(qdev_get_machine());
+    int i;
+
+    for (i = 0; i < pnv->num_chips; i++) {
+        Pnv11Chip *chip11 = PNV11_CHIP(pnv->chips[i]);
+        PnvChipTOD *chiptod = &chip11->chiptod;
+
+        if (chiptod != sender) {
+            chiptod_receive_ttype(chiptod, trigger);
+        }
+    }
+}
+
 static PnvCore *pnv_chip_get_core_by_xscom_base(PnvChip *chip,
                                                 uint32_t xscom_base)
 {
@@ -281,6 +297,12 @@ static PnvCore *chiptod_power10_tx_ttype_target(PnvChipTOD *chiptod,
                       "addressing is not implemented for POWER10\n");
         return NULL;
     }
+}
+
+static PnvCore *chiptod_power11_tx_ttype_target(PnvChipTOD *chiptod,
+                                               uint64_t val)
+{
+    return chiptod_power10_tx_ttype_target(chiptod, val);
 }
 
 static void pnv_chiptod_xscom_write(void *opaque, hwaddr addr,
@@ -450,14 +472,13 @@ static int pnv_chiptod_power9_dt_xscom(PnvXScomInterface *dev, void *fdt,
     return pnv_chiptod_dt_xscom(dev, fdt, xscom_offset, compat, sizeof(compat));
 }
 
-static Property pnv_chiptod_properties[] = {
+static const Property pnv_chiptod_properties[] = {
     DEFINE_PROP_BOOL("primary", PnvChipTOD, primary, false),
     DEFINE_PROP_BOOL("secondary", PnvChipTOD, secondary, false),
     DEFINE_PROP_LINK("chip", PnvChipTOD , chip, TYPE_PNV_CHIP, PnvChip *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pnv_chiptod_power9_class_init(ObjectClass *klass, void *data)
+static void pnv_chiptod_power9_class_init(ObjectClass *klass, const void *data)
 {
     PnvChipTODClass *pctc = PNV_CHIPTOD_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -479,7 +500,7 @@ static const TypeInfo pnv_chiptod_power9_type_info = {
     .parent        = TYPE_PNV_CHIPTOD,
     .instance_size = sizeof(PnvChipTOD),
     .class_init    = pnv_chiptod_power9_class_init,
-    .interfaces    = (InterfaceInfo[]) {
+    .interfaces    = (const InterfaceInfo[]) {
         { TYPE_PNV_XSCOM_INTERFACE },
         { }
     }
@@ -493,7 +514,7 @@ static int pnv_chiptod_power10_dt_xscom(PnvXScomInterface *dev, void *fdt,
     return pnv_chiptod_dt_xscom(dev, fdt, xscom_offset, compat, sizeof(compat));
 }
 
-static void pnv_chiptod_power10_class_init(ObjectClass *klass, void *data)
+static void pnv_chiptod_power10_class_init(ObjectClass *klass, const void *data)
 {
     PnvChipTODClass *pctc = PNV_CHIPTOD_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -515,7 +536,43 @@ static const TypeInfo pnv_chiptod_power10_type_info = {
     .parent        = TYPE_PNV_CHIPTOD,
     .instance_size = sizeof(PnvChipTOD),
     .class_init    = pnv_chiptod_power10_class_init,
-    .interfaces    = (InterfaceInfo[]) {
+    .interfaces    = (const InterfaceInfo[]) {
+        { TYPE_PNV_XSCOM_INTERFACE },
+        { }
+    }
+};
+
+static int pnv_chiptod_power11_dt_xscom(PnvXScomInterface *dev, void *fdt,
+                             int xscom_offset)
+{
+    const char compat[] = "ibm,power-chiptod\0ibm,power11-chiptod";
+
+    return pnv_chiptod_dt_xscom(dev, fdt, xscom_offset, compat, sizeof(compat));
+}
+
+static void pnv_chiptod_power11_class_init(ObjectClass *klass, const void *data)
+{
+    PnvChipTODClass *pctc = PNV_CHIPTOD_CLASS(klass);
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    PnvXScomInterfaceClass *xdc = PNV_XSCOM_INTERFACE_CLASS(klass);
+
+    dc->desc = "PowerNV ChipTOD Controller (Power11)";
+    device_class_set_props(dc, pnv_chiptod_properties);
+
+    xdc->dt_xscom = pnv_chiptod_power11_dt_xscom;
+
+    pctc->broadcast_ttype = chiptod_power11_broadcast_ttype;
+    pctc->tx_ttype_target = chiptod_power11_tx_ttype_target;
+
+    pctc->xscom_size = PNV_XSCOM_CHIPTOD_SIZE;
+}
+
+static const TypeInfo pnv_chiptod_power11_type_info = {
+    .name          = TYPE_PNV11_CHIPTOD,
+    .parent        = TYPE_PNV_CHIPTOD,
+    .instance_size = sizeof(PnvChipTOD),
+    .class_init    = pnv_chiptod_power11_class_init,
+    .interfaces    = (const InterfaceInfo[]) {
         { TYPE_PNV_XSCOM_INTERFACE },
         { }
     }
@@ -556,7 +613,7 @@ static void pnv_chiptod_unrealize(DeviceState *dev)
     qemu_unregister_reset(pnv_chiptod_reset, chiptod);
 }
 
-static void pnv_chiptod_class_init(ObjectClass *klass, void *data)
+static void pnv_chiptod_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -580,6 +637,7 @@ static void pnv_chiptod_register_types(void)
     type_register_static(&pnv_chiptod_type_info);
     type_register_static(&pnv_chiptod_power9_type_info);
     type_register_static(&pnv_chiptod_power10_type_info);
+    type_register_static(&pnv_chiptod_power11_type_info);
 }
 
 type_init(pnv_chiptod_register_types);

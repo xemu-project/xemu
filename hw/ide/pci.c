@@ -27,7 +27,7 @@
 #include "hw/irq.h"
 #include "hw/pci/pci.h"
 #include "migration/vmstate.h"
-#include "sysemu/dma.h"
+#include "system/dma.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
 #include "hw/ide/pci.h"
@@ -625,7 +625,7 @@ static const TypeInfo pci_ide_type_info = {
     .instance_size = sizeof(PCIIDEState),
     .instance_init = pci_ide_init,
     .abstract = true,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },

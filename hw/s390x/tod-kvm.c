@@ -11,7 +11,7 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "hw/s390x/tod.h"
 #include "target/s390x/kvm/pv.h"
 #include "kvm/kvm_s390x.h"
@@ -133,7 +133,7 @@ static void kvm_s390_tod_realize(DeviceState *dev, Error **errp)
     qemu_add_vm_change_state_handler(kvm_s390_tod_vm_state_change, td);
 }
 
-static void kvm_s390_tod_class_init(ObjectClass *oc, void *data)
+static void kvm_s390_tod_class_init(ObjectClass *oc, const void *data)
 {
     S390TODClass *tdc = S390_TOD_CLASS(oc);
 

@@ -800,7 +800,6 @@ static void aspeed_gpio_write_index_mode(void *opaque, hwaddr offset,
         return;
     }
     aspeed_gpio_update(s, set, set->data_value, UINT32_MAX);
-    return;
 }
 
 static void aspeed_gpio_write(void *opaque, hwaddr offset, uint64_t data,
@@ -928,7 +927,6 @@ static void aspeed_gpio_write(void *opaque, hwaddr offset, uint64_t data,
         return;
     }
     aspeed_gpio_update(s, set, set->data_value, UINT32_MAX);
-    return;
 }
 
 static int get_set_idx(AspeedGPIOState *s, const char *group, int *group_idx)
@@ -1183,7 +1181,6 @@ static void aspeed_gpio_2700_write_control_reg(AspeedGPIOState *s,
     }
 
     aspeed_gpio_update(s, set, set->data_value, UINT32_MAX);
-    return;
 }
 
 static uint64_t aspeed_gpio_2700_read(void *opaque, hwaddr offset,
@@ -1308,11 +1305,60 @@ static void aspeed_gpio_2700_write(void *opaque, hwaddr offset,
                       PRIx64"\n", __func__, offset);
         break;
     }
-
-    return;
 }
 
 /* Setup functions */
+static void aspeed_gpio_set_set(Object *obj, Visitor *v,
+                                        const char *name, void *opaque,
+                                        Error **errp)
+{
+    uint32_t set_val = 0;
+    AspeedGPIOState *s = ASPEED_GPIO(obj);
+    AspeedGPIOClass *agc = ASPEED_GPIO_GET_CLASS(s);
+    int set_idx = 0;
+
+    if (!visit_type_uint32(v, name, &set_val, errp)) {
+        return;
+    }
+
+    if (sscanf(name, "gpio-set[%d]", &set_idx) != 1) {
+        error_setg(errp, "%s: error reading %s", __func__, name);
+        return;
+    }
+
+    if (set_idx >= agc->nr_gpio_sets || set_idx < 0) {
+        error_setg(errp, "%s: invalid set_idx %s", __func__, name);
+        return;
+    }
+
+    aspeed_gpio_update(s, &s->sets[set_idx], set_val,
+                       ~s->sets[set_idx].direction);
+}
+
+static void aspeed_gpio_get_set(Object *obj, Visitor *v,
+                                        const char *name, void *opaque,
+                                        Error **errp)
+{
+    uint32_t set_val = 0;
+    AspeedGPIOState *s = ASPEED_GPIO(obj);
+    AspeedGPIOClass *agc = ASPEED_GPIO_GET_CLASS(s);
+    int set_idx = 0;
+
+    if (sscanf(name, "gpio-set[%d]", &set_idx) != 1) {
+        error_setg(errp, "%s: error reading %s", __func__, name);
+        return;
+    }
+
+    if (set_idx >= agc->nr_gpio_sets || set_idx < 0) {
+        error_setg(errp, "%s: invalid set_idx %s", __func__, name);
+        return;
+    }
+
+    set_val = s->sets[set_idx].data_value;
+    visit_type_uint32(v, name, &set_val, errp);
+}
+
+/****************** Setup functions ******************/
 static const GPIOSetProperties ast2400_set_props[ASPEED_GPIO_MAX_NR_SETS] = {
     [0] = {0xffffffff,  0xffffffff,  {"A", "B", "C", "D"} },
     [1] = {0xffffffff,  0xffffffff,  {"E", "F", "G", "H"} },
@@ -1440,6 +1486,12 @@ static void aspeed_gpio_init(Object *obj)
             g_free(name);
         }
     }
+
+    for (int i = 0; i < agc->nr_gpio_sets; i++) {
+        char *name = g_strdup_printf("gpio-set[%d]", i);
+        object_property_add(obj, name, "uint32", aspeed_gpio_get_set,
+        aspeed_gpio_set_set, NULL, NULL);
+    }
 }
 
 static const VMStateDescription vmstate_gpio_regs = {
@@ -1478,7 +1530,7 @@ static const VMStateDescription vmstate_aspeed_gpio = {
    }
 };
 
-static void aspeed_gpio_class_init(ObjectClass *klass, void *data)
+static void aspeed_gpio_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -1488,7 +1540,7 @@ static void aspeed_gpio_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_aspeed_gpio;
 }
 
-static void aspeed_gpio_ast2400_class_init(ObjectClass *klass, void *data)
+static void aspeed_gpio_ast2400_class_init(ObjectClass *klass, const void *data)
 {
     AspeedGPIOClass *agc = ASPEED_GPIO_CLASS(klass);
 
@@ -1501,7 +1553,7 @@ static void aspeed_gpio_ast2400_class_init(ObjectClass *klass, void *data)
     agc->reg_ops = &aspeed_gpio_ops;
 }
 
-static void aspeed_gpio_2500_class_init(ObjectClass *klass, void *data)
+static void aspeed_gpio_2500_class_init(ObjectClass *klass, const void *data)
 {
     AspeedGPIOClass *agc = ASPEED_GPIO_CLASS(klass);
 
@@ -1514,7 +1566,8 @@ static void aspeed_gpio_2500_class_init(ObjectClass *klass, void *data)
     agc->reg_ops = &aspeed_gpio_ops;
 }
 
-static void aspeed_gpio_ast2600_3_3v_class_init(ObjectClass *klass, void *data)
+static void aspeed_gpio_ast2600_3_3v_class_init(ObjectClass *klass,
+                                                const void *data)
 {
     AspeedGPIOClass *agc = ASPEED_GPIO_CLASS(klass);
 
@@ -1527,7 +1580,8 @@ static void aspeed_gpio_ast2600_3_3v_class_init(ObjectClass *klass, void *data)
     agc->reg_ops = &aspeed_gpio_ops;
 }
 
-static void aspeed_gpio_ast2600_1_8v_class_init(ObjectClass *klass, void *data)
+static void aspeed_gpio_ast2600_1_8v_class_init(ObjectClass *klass,
+                                                const void *data)
 {
     AspeedGPIOClass *agc = ASPEED_GPIO_CLASS(klass);
 
@@ -1540,7 +1594,7 @@ static void aspeed_gpio_ast2600_1_8v_class_init(ObjectClass *klass, void *data)
     agc->reg_ops = &aspeed_gpio_ops;
 }
 
-static void aspeed_gpio_1030_class_init(ObjectClass *klass, void *data)
+static void aspeed_gpio_1030_class_init(ObjectClass *klass, const void *data)
 {
     AspeedGPIOClass *agc = ASPEED_GPIO_CLASS(klass);
 
@@ -1553,7 +1607,7 @@ static void aspeed_gpio_1030_class_init(ObjectClass *klass, void *data)
     agc->reg_ops = &aspeed_gpio_ops;
 }
 
-static void aspeed_gpio_2700_class_init(ObjectClass *klass, void *data)
+static void aspeed_gpio_2700_class_init(ObjectClass *klass, const void *data)
 {
     AspeedGPIOClass *agc = ASPEED_GPIO_CLASS(klass);
 

@@ -23,7 +23,7 @@
 #include "hw/qdev-properties.h"
 #include "qemu/event_notifier.h"
 #include "qemu/module.h"
-#include "sysemu/kvm.h"
+#include "system/kvm.h"
 #include "qom/object.h"
 
 typedef struct PCITestDevHdr {
@@ -90,6 +90,7 @@ struct PCITestDevState {
     int current;
 
     uint64_t membar_size;
+    bool membar_backed;
     MemoryRegion membar;
 };
 
@@ -258,8 +259,14 @@ static void pci_testdev_realize(PCIDevice *pci_dev, Error **errp)
     pci_register_bar(pci_dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &d->portio);
 
     if (d->membar_size) {
-        memory_region_init(&d->membar, OBJECT(d), "pci-testdev-membar",
-                           d->membar_size);
+        if (d->membar_backed)
+            memory_region_init_ram(&d->membar, OBJECT(d),
+                                   "pci-testdev-membar-backed",
+                                   d->membar_size, NULL);
+        else
+            memory_region_init(&d->membar, OBJECT(d),
+                               "pci-testdev-membar",
+                               d->membar_size);
         pci_register_bar(pci_dev, 2,
                          PCI_BASE_ADDRESS_SPACE_MEMORY |
                          PCI_BASE_ADDRESS_MEM_PREFETCH |
@@ -319,12 +326,12 @@ static void qdev_pci_testdev_reset(DeviceState *dev)
     pci_testdev_reset(d);
 }
 
-static Property pci_testdev_properties[] = {
+static const Property pci_testdev_properties[] = {
     DEFINE_PROP_SIZE("membar", PCITestDevState, membar_size, 0),
-    DEFINE_PROP_END_OF_LIST(),
+    DEFINE_PROP_BOOL("membar-backed", PCITestDevState, membar_backed, false),
 };
 
-static void pci_testdev_class_init(ObjectClass *klass, void *data)
+static void pci_testdev_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -346,7 +353,7 @@ static const TypeInfo pci_testdev_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCITestDevState),
     .class_init    = pci_testdev_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },

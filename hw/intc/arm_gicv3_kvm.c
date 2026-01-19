@@ -22,25 +22,19 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "hw/intc/arm_gicv3_common.h"
+#include "hw/arm/virt.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
-#include "sysemu/kvm.h"
-#include "sysemu/runstate.h"
+#include "system/kvm.h"
+#include "system/runstate.h"
 #include "kvm_arm.h"
 #include "gicv3_internal.h"
 #include "vgic_common.h"
 #include "migration/blocker.h"
+#include "migration/misc.h"
 #include "qom/object.h"
 #include "target/arm/cpregs.h"
 
-
-#ifdef DEBUG_GICV3_KVM
-#define DPRINTF(fmt, ...) \
-    do { fprintf(stderr, "kvm_gicv3: " fmt, ## __VA_ARGS__); } while (0)
-#else
-#define DPRINTF(fmt, ...) \
-    do { } while (0)
-#endif
 
 #define TYPE_KVM_ARM_GICV3 "kvm-arm-gicv3"
 typedef struct KVMARMGICv3Class KVMARMGICv3Class;
@@ -294,7 +288,7 @@ static void kvm_dist_putbmp(GICv3State *s, uint32_t offset,
          * the 1 bits.
          */
         if (clroffset != 0) {
-            reg = 0;
+            reg = ~0;
             kvm_gicd_access(s, clroffset, &reg, true);
             clroffset += 4;
         }
@@ -386,8 +380,6 @@ static void kvm_arm_gicv3_put(GICv3State *s)
         reg = c->level;
         kvm_gic_line_level_access(s, 0, ncpu, &reg, true);
 
-        reg = ~0;
-        kvm_gicr_access(s, GICR_ICPENDR0, ncpu, &reg, true);
         reg = c->gicr_ipendr0;
         kvm_gicr_access(s, GICR_ISPENDR0, ncpu, &reg, true);
 
@@ -444,7 +436,7 @@ static void kvm_arm_gicv3_put(GICv3State *s)
     kvm_gic_put_line_level_bmp(s, s->level);
 
     /* s->pending bitmap -> GICD_ISPENDRn */
-    kvm_dist_putbmp(s, GICD_ISPENDR, GICD_ICPENDR, s->pending);
+    kvm_dist_putbmp(s, GICD_ISPENDR, 0, s->pending);
 
     /* s->active bitmap -> GICD_ISACTIVERn */
     kvm_dist_putbmp(s, GICD_ISACTIVER, GICD_ICACTIVER, s->active);
@@ -666,11 +658,24 @@ static void kvm_arm_gicv3_get(GICv3State *s)
 
 static void arm_gicv3_icc_reset(CPUARMState *env, const ARMCPRegInfo *ri)
 {
-    GICv3State *s;
-    GICv3CPUState *c;
+    GICv3CPUState *c = (GICv3CPUState *)env->gicv3state;
 
-    c = (GICv3CPUState *)env->gicv3state;
-    s = c->gic;
+    /*
+     * This function is called when each vcpu resets. The kernel
+     * API for the GIC assumes that it is only to be used when the
+     * whole VM is paused, so if we attempt to read the kernel's
+     * reset values here we might get EBUSY failures.
+     * So instead we assume we know what the kernel's reset values
+     * are (mostly zeroes) and only update the QEMU state struct
+     * fields. The exception is that we do need to know the kernel's
+     * idea of the ICC_CTLR_EL1 reset value, so we cache that at
+     * device realize time.
+     *
+     * This makes these sysregs different from the usual CPU ones,
+     * which can be validly read and written when only the single
+     * vcpu they apply to is paused, and where (in target/arm code)
+     * we read the reset values out of the kernel on every reset.
+     */
 
     c->icc_pmr_el1 = 0;
     /*
@@ -691,16 +696,8 @@ static void arm_gicv3_icc_reset(CPUARMState *env, const ARMCPRegInfo *ri)
     memset(c->icc_apr, 0, sizeof(c->icc_apr));
     memset(c->icc_igrpen, 0, sizeof(c->icc_igrpen));
 
-    if (s->migration_blocker) {
-        return;
-    }
-
-    /* Initialize to actual HW supported configuration */
-    kvm_device_access(s->dev_fd, KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS,
-                      KVM_VGIC_ATTR(ICC_CTLR_EL1, c->gicr_typer),
-                      &c->icc_ctlr_el1[GICV3_NS], false, &error_abort);
-
-    c->icc_ctlr_el1[GICV3_S] = c->icc_ctlr_el1[GICV3_NS];
+    c->icc_ctlr_el1[GICV3_NS] = c->kvm_reset_icc_ctlr_el1;
+    c->icc_ctlr_el1[GICV3_S] = c->kvm_reset_icc_ctlr_el1;
 }
 
 static void kvm_arm_gicv3_reset_hold(Object *obj, ResetType type)
@@ -708,14 +705,11 @@ static void kvm_arm_gicv3_reset_hold(Object *obj, ResetType type)
     GICv3State *s = ARM_GICV3_COMMON(obj);
     KVMARMGICv3Class *kgc = KVM_ARM_GICV3_GET_CLASS(s);
 
-    DPRINTF("Reset\n");
-
     if (kgc->parent_phases.hold) {
         kgc->parent_phases.hold(obj, type);
     }
 
     if (s->migration_blocker) {
-        DPRINTF("Cannot put kernel gic state, no kernel interface\n");
         return;
     }
 
@@ -777,6 +771,17 @@ static void vm_change_state_handler(void *opaque, bool running,
     }
 }
 
+static int kvm_arm_gicv3_notifier(NotifierWithReturn *notifier,
+                                  MigrationEvent *e, Error **errp)
+{
+    if (e->type == MIG_EVENT_PRECOPY_DONE) {
+        GICv3State *s = container_of(notifier, GICv3State, cpr_notifier);
+        return kvm_device_access(s->dev_fd, KVM_DEV_ARM_VGIC_GRP_CTRL,
+                                 KVM_DEV_ARM_VGIC_SAVE_PENDING_TABLES,
+                                 NULL, true, errp);
+    }
+    return 0;
+}
 
 static void kvm_arm_gicv3_realize(DeviceState *dev, Error **errp)
 {
@@ -785,8 +790,6 @@ static void kvm_arm_gicv3_realize(DeviceState *dev, Error **errp)
     bool multiple_redist_region_allowed;
     Error *local_err = NULL;
     int i;
-
-    DPRINTF("kvm_arm_gicv3_realize\n");
 
     kgc->parent_realize(dev, &local_err);
     if (local_err) {
@@ -810,6 +813,12 @@ static void kvm_arm_gicv3_realize(DeviceState *dev, Error **errp)
         return;
     }
 
+    if (s->first_cpu_idx != 0) {
+        error_setg(errp, "Non-zero first-cpu-idx is unsupported with the "
+                   "in-kernel GIC");
+        return;
+    }
+
     gicv3_init_irqs_and_mmio(s, kvm_arm_gicv3_set_irq, NULL);
 
     for (i = 0; i < s->num_cpu; i++) {
@@ -823,6 +832,33 @@ static void kvm_arm_gicv3_realize(DeviceState *dev, Error **errp)
     if (s->dev_fd < 0) {
         error_setg_errno(errp, -s->dev_fd, "error creating in-kernel VGIC");
         return;
+    }
+
+    if (s->maint_irq) {
+        Error *kvm_nv_migration_blocker = NULL;
+        int ret;
+
+        error_setg(&kvm_nv_migration_blocker,
+                   "Live migration disabled because KVM nested virt is enabled");
+        if (migrate_add_blocker(&kvm_nv_migration_blocker, errp)) {
+            return;
+        }
+
+        ret = kvm_device_check_attr(s->dev_fd,
+                                    KVM_DEV_ARM_VGIC_GRP_MAINT_IRQ, 0);
+        if (!ret) {
+            error_setg_errno(errp, errno,
+                             "VGICv3 setting maintenance IRQ is not "
+                             "supported by this host kernel");
+            return;
+        }
+
+        ret = kvm_device_access(s->dev_fd, KVM_DEV_ARM_VGIC_GRP_MAINT_IRQ, 0,
+                                &s->maint_irq, true, errp);
+        if (ret) {
+            error_setg_errno(errp, errno, "Failed to set VGIC maintenance IRQ");
+            return;
+       }
     }
 
     multiple_redist_region_allowed =
@@ -890,10 +926,29 @@ static void kvm_arm_gicv3_realize(DeviceState *dev, Error **errp)
     if (kvm_device_check_attr(s->dev_fd, KVM_DEV_ARM_VGIC_GRP_CTRL,
                               KVM_DEV_ARM_VGIC_SAVE_PENDING_TABLES)) {
         qemu_add_vm_change_state_handler(vm_change_state_handler, s);
+        migration_add_notifier_mode(&s->cpr_notifier,
+                                    kvm_arm_gicv3_notifier,
+                                    MIG_MODE_CPR_TRANSFER);
+    }
+
+    /*
+     * Now we can read the kernel's initial value of ICC_CTLR_EL1, which
+     * we will need if a CPU interface is reset. If the kernel is ancient
+     * and doesn't support writing the GIC state then we don't need to
+     * care what reset does to QEMU's data structures.
+     */
+    if (!s->migration_blocker) {
+        for (i = 0; i < s->num_cpu; i++) {
+            GICv3CPUState *c = &s->cpu[i];
+
+            kvm_device_access(s->dev_fd, KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS,
+                              KVM_VGIC_ATTR(ICC_CTLR_EL1, c->gicr_typer),
+                              &c->kvm_reset_icc_ctlr_el1, false, &error_abort);
+        }
     }
 }
 
-static void kvm_arm_gicv3_class_init(ObjectClass *klass, void *data)
+static void kvm_arm_gicv3_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);

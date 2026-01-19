@@ -69,39 +69,52 @@ typedef struct SaveVMHandlers {
     /**
      * @save_cleanup
      *
-     * Uninitializes the data structures on the source
+     * Uninitializes the data structures on the source.
+     * Note that this handler can be called even if save_setup
+     * wasn't called earlier.
      *
      * @opaque: data pointer passed to register_savevm_live()
      */
     void (*save_cleanup)(void *opaque);
 
     /**
-     * @save_live_complete_postcopy
-     *
-     * Called at the end of postcopy for all postcopyable devices.
-     *
-     * @f: QEMUFile where to send the data
-     * @opaque: data pointer passed to register_savevm_live()
-     *
-     * Returns zero to indicate success and negative for error
-     */
-    int (*save_live_complete_postcopy)(QEMUFile *f, void *opaque);
-
-    /**
-     * @save_live_complete_precopy
+     * @save_complete
      *
      * Transmits the last section for the device containing any
-     * remaining data at the end of a precopy phase. When postcopy is
-     * enabled, devices that support postcopy will skip this step,
-     * where the final data will be flushed at the end of postcopy via
-     * @save_live_complete_postcopy instead.
+     * remaining data at the end phase of migration.
+     *
+     * For precopy, this will be invoked _during_ the switchover phase
+     * after source VM is stopped.
+     *
+     * For postcopy, this will be invoked _after_ the switchover phase
+     * (except some very unusual cases, like PMEM ramblocks), while
+     * destination VM can be running.
      *
      * @f: QEMUFile where to send the data
      * @opaque: data pointer passed to register_savevm_live()
      *
      * Returns zero to indicate success and negative for error
      */
-    int (*save_live_complete_precopy)(QEMUFile *f, void *opaque);
+    int (*save_complete)(QEMUFile *f, void *opaque);
+
+    /**
+     * @save_complete_precopy_thread (invoked in a separate thread)
+     *
+     * Called at the end of a precopy phase from a separate worker thread
+     * in configurations where multifd device state transfer is supported
+     * in order to perform asynchronous transmission of the remaining data in
+     * parallel with @save_complete handlers.
+     * When postcopy is enabled, devices that support postcopy will skip this
+     * step.
+     *
+     * @d: a #SaveCompletePrecopyThreadData containing parameters that the
+     * handler may need, including this device section idstr and instance_id,
+     * and opaque data pointer passed to register_savevm_live().
+     * @errp: pointer to Error*, to store an error if it happens.
+     *
+     * Returns true to indicate success and false for errors.
+     */
+    SaveCompletePrecopyThreadHandler save_complete_precopy_thread;
 
     /* This runs both outside and inside the BQL.  */
 
@@ -169,6 +182,21 @@ typedef struct SaveVMHandlers {
     /* This runs outside the BQL!  */
 
     /**
+     * @save_postcopy_prepare
+     *
+     * This hook will be invoked on the source side right before switching
+     * to postcopy (before VM stopped).
+     *
+     * @f:      QEMUFile where to send the data
+     * @opaque: Data pointer passed to register_savevm_live()
+     * @errp:   Error** used to report error message
+     *
+     * Returns: true if succeeded, false if error occured.  When false is
+     * returned, @errp must be set.
+     */
+    bool (*save_postcopy_prepare)(QEMUFile *f, void *opaque, Error **errp);
+
+    /**
      * @state_pending_estimate
      *
      * This estimates the remaining data to transfer
@@ -228,6 +256,21 @@ typedef struct SaveVMHandlers {
     int (*load_state)(QEMUFile *f, void *opaque, int version_id);
 
     /**
+     * @load_state_buffer (invoked outside the BQL)
+     *
+     * Load device state buffer provided to qemu_loadvm_load_state_buffer().
+     *
+     * @opaque: data pointer passed to register_savevm_live()
+     * @buf: the data buffer to load
+     * @len: the data length in buffer
+     * @errp: pointer to Error*, to store an error if it happens.
+     *
+     * Returns true to indicate success and false for errors.
+     */
+    bool (*load_state_buffer)(void *opaque, char *buf, size_t len,
+                              Error **errp);
+
+    /**
      * @load_setup
      *
      * Initializes the data structures on the destination.
@@ -244,6 +287,8 @@ typedef struct SaveVMHandlers {
      * @load_cleanup
      *
      * Uninitializes the data structures on the destination.
+     * Note that this handler can be called even if load_setup
+     * wasn't called earlier.
      *
      * @opaque: data pointer passed to register_savevm_live()
      *
@@ -275,6 +320,18 @@ typedef struct SaveVMHandlers {
      * otherwise
      */
     bool (*switchover_ack_needed)(void *opaque);
+
+    /**
+     * @switchover_start
+     *
+     * Notifies that the switchover has started. Called only on
+     * the destination.
+     *
+     * @opaque: data pointer passed to register_savevm_live()
+     *
+     * Returns zero to indicate success and negative for error
+     */
+    int (*switchover_start)(void *opaque);
 } SaveVMHandlers;
 
 /**

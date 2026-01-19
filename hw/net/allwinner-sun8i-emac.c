@@ -30,7 +30,7 @@
 #include "net/checksum.h"
 #include "qemu/module.h"
 #include "exec/cpu-common.h"
-#include "sysemu/dma.h"
+#include "system/dma.h"
 #include "hw/net/allwinner-sun8i-emac.h"
 
 /* EMAC register offsets */
@@ -784,7 +784,7 @@ static void allwinner_sun8i_emac_set_link(NetClientState *nc)
 static const MemoryRegionOps allwinner_sun8i_emac_mem_ops = {
     .read = allwinner_sun8i_emac_read,
     .write = allwinner_sun8i_emac_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
         .max_access_size = 4,
@@ -829,12 +829,11 @@ static void allwinner_sun8i_emac_realize(DeviceState *dev, Error **errp)
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
 }
 
-static Property allwinner_sun8i_emac_properties[] = {
+static const Property allwinner_sun8i_emac_properties[] = {
     DEFINE_NIC_PROPERTIES(AwSun8iEmacState, conf),
     DEFINE_PROP_UINT8("phy-addr", AwSun8iEmacState, mii_phy_addr, 0),
     DEFINE_PROP_LINK("dma-memory", AwSun8iEmacState, dma_mr,
                      TYPE_MEMORY_REGION, MemoryRegion *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static int allwinner_sun8i_emac_post_load(void *opaque, int version_id)
@@ -876,7 +875,8 @@ static const VMStateDescription vmstate_aw_emac = {
     }
 };
 
-static void allwinner_sun8i_emac_class_init(ObjectClass *klass, void *data)
+static void allwinner_sun8i_emac_class_init(ObjectClass *klass,
+                                            const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

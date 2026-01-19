@@ -20,13 +20,15 @@
 #include "qemu/osdep.h"
 
 #include "cpu.h"
-#include "exec/exec-all.h"
+#include "exec/cputlb.h"
 #include "exec/page-protection.h"
+#include "exec/target_page.h"
 #include "exec/log.h"
+#include "qemu/plugin.h"
 
 #if !defined(CONFIG_USER_ONLY)
 #include "hw/sh4/sh_intc.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #endif
 
 #define MMU_OK                   0
@@ -46,7 +48,7 @@
 
 #if defined(CONFIG_USER_ONLY)
 
-int cpu_sh4_is_cached(CPUSH4State *env, target_ulong addr)
+int cpu_sh4_is_cached(CPUSH4State *env, uint32_t addr)
 {
     /* For user mode, only U0 area is cacheable. */
     return !(addr & 0x80000000);
@@ -57,8 +59,9 @@ int cpu_sh4_is_cached(CPUSH4State *env, target_ulong addr)
 void superh_cpu_do_interrupt(CPUState *cs)
 {
     CPUSH4State *env = cpu_env(cs);
-    int do_irq = cs->interrupt_request & CPU_INTERRUPT_HARD;
+    int do_irq = cpu_test_interrupt(cs, CPU_INTERRUPT_HARD);
     int do_exp, irq_vector = cs->exception_index;
+    uint64_t last_pc = env->pc;
 
     /* prioritize exceptions over interrupts */
 
@@ -175,12 +178,14 @@ void superh_cpu_do_interrupt(CPUState *cs)
             env->pc = env->vbr + 0x100;
             break;
         }
+        qemu_plugin_vcpu_exception_cb(cs, last_pc);
         return;
     }
 
     if (do_irq) {
         env->intevt = irq_vector;
         env->pc = env->vbr + 0x600;
+        qemu_plugin_vcpu_interrupt_cb(cs, last_pc);
         return;
     }
 }
@@ -230,11 +235,11 @@ static int itlb_replacement(CPUSH4State * env)
 /* Find the corresponding entry in the right TLB
    Return entry, MMU_DTLB_MISS or MMU_DTLB_MULTIPLE
 */
-static int find_tlb_entry(CPUSH4State * env, target_ulong address,
+static int find_tlb_entry(CPUSH4State *env, vaddr address,
                           tlb_t * entries, uint8_t nbtlb, int use_asid)
 {
     int match = MMU_DTLB_MISS;
-    uint32_t start, end;
+    vaddr start, end;
     uint8_t asid;
     int i;
 
@@ -290,7 +295,7 @@ static int copy_utlb_entry_itlb(CPUSH4State *env, int utlb)
 /* Find itlb entry
    Return entry, MMU_ITLB_MISS, MMU_ITLB_MULTIPLE or MMU_DTLB_MULTIPLE
 */
-static int find_itlb_entry(CPUSH4State * env, target_ulong address,
+static int find_itlb_entry(CPUSH4State *env, vaddr address,
                            int use_asid)
 {
     int e;
@@ -308,7 +313,7 @@ static int find_itlb_entry(CPUSH4State * env, target_ulong address,
 
 /* Find utlb entry
    Return entry, MMU_DTLB_MISS, MMU_DTLB_MULTIPLE */
-static int find_utlb_entry(CPUSH4State * env, target_ulong address, int use_asid)
+static int find_utlb_entry(CPUSH4State *env, vaddr address, int use_asid)
 {
     /* per utlb access */
     increment_urc(env);
@@ -324,8 +329,8 @@ static int find_utlb_entry(CPUSH4State * env, target_ulong address, int use_asid
    MMU_ITLB_MULTIPLE, MMU_ITLB_VIOLATION,
    MMU_IADDR_ERROR, MMU_DADDR_ERROR_READ, MMU_DADDR_ERROR_WRITE.
 */
-static int get_mmu_address(CPUSH4State * env, target_ulong * physical,
-                           int *prot, target_ulong address,
+static int get_mmu_address(CPUSH4State *env, hwaddr *physical,
+                           int *prot, vaddr address,
                            MMUAccessType access_type)
 {
     int use_asid, n;
@@ -391,8 +396,8 @@ static int get_mmu_address(CPUSH4State * env, target_ulong * physical,
     return n;
 }
 
-static int get_physical_address(CPUSH4State * env, target_ulong * physical,
-                                int *prot, target_ulong address,
+static int get_physical_address(CPUSH4State *env, hwaddr* physical,
+                                int *prot, vaddr address,
                                 MMUAccessType access_type)
 {
     /* P1, P2 and P4 areas do not use translation */
@@ -432,7 +437,7 @@ static int get_physical_address(CPUSH4State * env, target_ulong * physical,
 
 hwaddr superh_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
 {
-    target_ulong physical;
+    hwaddr physical;
     int prot;
 
     if (get_physical_address(cpu_env(cs), &physical, &prot, addr, MMU_DATA_LOAD)
@@ -451,7 +456,7 @@ void cpu_load_tlb(CPUSH4State * env)
 
     if (entry->v) {
         /* Overwriting valid entry in utlb. */
-        target_ulong address = entry->vpn << 10;
+        vaddr address = entry->vpn << 10;
         tlb_flush_page(cs, address);
     }
 
@@ -527,7 +532,7 @@ void cpu_sh4_write_mmaped_itlb_addr(CPUSH4State *s, hwaddr addr,
     tlb_t * entry = &s->itlb[index];
     if (entry->v) {
         /* Overwriting valid entry in itlb. */
-        target_ulong address = entry->vpn << 10;
+        vaddr address = entry->vpn << 10;
         tlb_flush_page(env_cpu(s), address);
     }
     entry->asid = asid;
@@ -569,7 +574,7 @@ void cpu_sh4_write_mmaped_itlb_data(CPUSH4State *s, hwaddr addr,
         /* ITLB Data Array 1 */
         if (entry->v) {
             /* Overwriting valid entry in utlb. */
-            target_ulong address = entry->vpn << 10;
+            vaddr address = entry->vpn << 10;
             tlb_flush_page(env_cpu(s), address);
         }
         entry->ppn = (mem_value & 0x1ffffc00) >> 10;
@@ -664,7 +669,7 @@ void cpu_sh4_write_mmaped_utlb_addr(CPUSH4State *s, hwaddr addr,
             CPUState *cs = env_cpu(s);
 
             /* Overwriting valid entry in utlb. */
-            target_ulong address = entry->vpn << 10;
+            vaddr address = entry->vpn << 10;
             tlb_flush_page(cs, address);
         }
         entry->asid = asid;
@@ -715,7 +720,7 @@ void cpu_sh4_write_mmaped_utlb_data(CPUSH4State *s, hwaddr addr,
         /* UTLB Data Array 1 */
         if (entry->v) {
             /* Overwriting valid entry in utlb. */
-            target_ulong address = entry->vpn << 10;
+            vaddr address = entry->vpn << 10;
             tlb_flush_page(env_cpu(s), address);
         }
         entry->ppn = (mem_value & 0x1ffffc00) >> 10;
@@ -734,7 +739,7 @@ void cpu_sh4_write_mmaped_utlb_data(CPUSH4State *s, hwaddr addr,
     }
 }
 
-int cpu_sh4_is_cached(CPUSH4State * env, target_ulong addr)
+int cpu_sh4_is_cached(CPUSH4State *env, uint32_t addr)
 {
     int n;
     int use_asid = !(env->mmucr & MMUCR_SV) || !(env->sr & (1u << SR_MD));
@@ -799,7 +804,7 @@ bool superh_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
     CPUSH4State *env = cpu_env(cs);
     int ret;
 
-    target_ulong physical;
+    hwaddr physical;
     int prot;
 
     ret = get_physical_address(env, &physical, &prot, address, access_type);

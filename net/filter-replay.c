@@ -17,7 +17,7 @@
 #include "qemu/timer.h"
 #include "qapi/visitor.h"
 #include "net/filter.h"
-#include "sysemu/replay.h"
+#include "system/replay.h"
 #include "qom/object.h"
 
 #define TYPE_FILTER_REPLAY "filter-replay"
@@ -65,7 +65,7 @@ static void filter_replay_instance_finalize(Object *obj)
     replay_unregister_net(nfrs->rns);
 }
 
-static void filter_replay_class_init(ObjectClass *oc, void *data)
+static void filter_replay_class_init(ObjectClass *oc, const void *data)
 {
     NetFilterClass *nfc = NETFILTER_CLASS(oc);
 

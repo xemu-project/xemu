@@ -61,7 +61,7 @@ static void smbus_storage_realize(DeviceState *dev, Error **errp)
     s->offset = 0;
 
     if (s->file) {
-        int size = get_image_size(s->file);
+        int size = get_image_size(s->file, NULL);
         if (size != s->size) {
             error_setg(errp, "%s: file '%s' size of %d, expected %d\n",
                 __func__, s->file, size, s->size);
@@ -152,15 +152,14 @@ static const VMStateDescription vmstate_smbus_storage = {
 };
 
 // default xbox eeprom with persistence
-static Property smbus_storage_props[] = {
+static const Property smbus_storage_props[] = {
     DEFINE_PROP_UINT8("addr", SMBusStorageDevice, addr, 0x54),
     DEFINE_PROP_UINT32("size", SMBusStorageDevice, size, 256),
     DEFINE_PROP_BOOL("persist", SMBusStorageDevice, persist, true),
     DEFINE_PROP_STRING("file", SMBusStorageDevice, file),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void smbus_storage_class_initfn(ObjectClass *klass, void *data)
+static void smbus_storage_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     SMBusDeviceClass *sc = SMBUS_DEVICE_CLASS(klass);
@@ -176,7 +175,7 @@ static TypeInfo smbus_storage_info = {
     .name = TYPE_SMBUS_STORAGE,
     .parent = TYPE_SMBUS_DEVICE,
     .instance_size = sizeof(SMBusStorageDevice),
-    .class_init = smbus_storage_class_initfn
+    .class_init = smbus_storage_class_init,
 };
 
 static void smbus_storage_register_devices(void)

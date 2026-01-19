@@ -11,8 +11,8 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/rng-random.h"
-#include "sysemu/rng.h"
+#include "system/rng-random.h"
+#include "system/rng.h"
 #include "qapi/error.h"
 #include "qapi/qmp/qerror.h"
 #include "qemu/main-loop.h"
@@ -121,7 +121,7 @@ static void rng_random_finalize(Object *obj)
     g_free(s->filename);
 }
 
-static void rng_random_class_init(ObjectClass *klass, void *data)
+static void rng_random_class_init(ObjectClass *klass, const void *data)
 {
     RngBackendClass *rbc = RNG_BACKEND_CLASS(klass);
 

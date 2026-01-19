@@ -24,7 +24,7 @@
 #include "hw/isa/isa.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
-#include "exec/address-spaces.h"
+#include "system/address-spaces.h"
 #include "qapi/error.h"
 #include "trace.h"
 #include "qom/object.h"
@@ -207,13 +207,12 @@ static const VMStateDescription vmstate_rs6000mc = {
     },
 };
 
-static Property rs6000mc_properties[] = {
+static const Property rs6000mc_properties[] = {
     DEFINE_PROP_UINT32("ram-size", RS6000MCState, ram_size, 0),
     DEFINE_PROP_BOOL("auto-configure", RS6000MCState, autoconfigure, true),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void rs6000mc_class_initfn(ObjectClass *klass, void *data)
+static void rs6000mc_class_initfn(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

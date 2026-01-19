@@ -27,15 +27,13 @@
 
 #include "cpu-qom.h"
 #include "cpu_models.h"
+#include "exec/cpu-common.h"
 #include "exec/cpu-defs.h"
+#include "exec/cpu-interrupt.h"
 #include "qemu/cpu-float.h"
 #include "qapi/qapi-types-machine-common.h"
 
 #define ELF_MACHINE_UNAME "S390X"
-
-#define TARGET_HAS_PRECISE_SMC
-
-#define TARGET_INSN_START_EXTRA_WORDS 2
 
 #define MMU_USER_IDX 0
 
@@ -412,15 +410,6 @@ static inline int s390x_env_mmu_index(CPUS390XState *env, bool ifetch)
     }
 #endif
 }
-
-#ifdef CONFIG_TCG
-
-#include "tcg/tcg_s390x.h"
-
-void cpu_get_tb_cpu_state(CPUS390XState *env, vaddr *pc,
-                          uint64_t *cs_base, uint32_t *flags);
-
-#endif /* CONFIG_TCG */
 
 /* PER bits from control register 9 */
 #define PER_CR9_EVENT_BRANCH                    0x80000000
@@ -881,8 +870,6 @@ static inline void s390_do_cpu_load_normal(CPUState *cs, run_on_cpu_data arg)
 
 /* cpu.c */
 void s390_crypto_reset(void);
-int s390_set_memory_limit(uint64_t new_limit, uint64_t *hw_limit);
-void s390_set_max_pagesize(uint64_t pagesize, Error **errp);
 void s390_cmma_reset(void);
 void s390_enable_css_support(S390CPU *cpu);
 void s390_do_cpu_set_diag318(CPUState *cs, run_on_cpu_data arg);
@@ -900,13 +887,6 @@ static inline uint8_t s390_cpu_get_state(S390CPU *cpu)
 {
     return cpu->env.cpu_state;
 }
-
-
-/* cpu_models.c */
-void s390_cpu_list(void);
-#define cpu_list s390_cpu_list
-void s390_set_qemu_cpu_model(uint16_t type, uint8_t gen, uint8_t ec_ga,
-                             const S390FeatInit feat_init);
 
 
 /* helper.c */
@@ -947,7 +927,5 @@ uint64_t s390_cpu_get_psw_mask(CPUS390XState *env);
 
 /* outside of target/s390x/ */
 S390CPU *s390_cpu_addr2state(uint16_t cpu_addr);
-
-#include "exec/cpu-all.h"
 
 #endif

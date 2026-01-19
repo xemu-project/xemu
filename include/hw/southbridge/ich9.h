@@ -7,7 +7,7 @@
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_device.h"
 #include "hw/rtc/mc146818rtc.h"
-#include "exec/memory.h"
+#include "system/memory.h"
 #include "qemu/notify.h"
 #include "qom/object.h"
 
@@ -95,7 +95,7 @@ struct ICH9LPCState {
 #define ICH9_CC_OIC                             0x31FF
 #define ICH9_CC_OIC_AEN                         0x1
 #define ICH9_CC_GCS                             0x3410
-#define ICH9_CC_GCS_DEFAULT                     0x00000020
+#define ICH9_CC_GCS_DEFAULT                     0x00000000
 #define ICH9_CC_GCS_NO_REBOOT                   (1 << 5)
 
 /* D28:F[0-5] */

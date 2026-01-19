@@ -3,7 +3,9 @@
 #
 
 ##
-# = Character devices
+# *****************
+# Character devices
+# *****************
 ##
 
 { 'include': 'sockets.json' }
@@ -34,9 +36,7 @@
 ##
 # @query-chardev:
 #
-# Returns information about current character devices.
-#
-# Returns: a list of @ChardevInfo
+# Return information about current character devices.
 #
 # Since: 0.14
 #
@@ -80,9 +80,7 @@
 ##
 # @query-chardev-backends:
 #
-# Returns information about character device backends.
-#
-# Returns: a list of @ChardevBackendInfo
+# Return information about character device backends.
 #
 # Since: 2.0
 #
@@ -271,21 +269,10 @@
 # @websocket: enable websocket protocol on server sockets
 #     (default: false) (Since: 3.1)
 #
-# @reconnect: For a client socket, if a socket is disconnected, then
-#     attempt a reconnect after the given number of seconds.  Setting
-#     this to zero disables this function.  The use of this member is
-#     deprecated, use @reconnect-ms instead. (default: 0) (Since: 2.2)
-#
 # @reconnect-ms: For a client socket, if a socket is disconnected,
 #     then attempt a reconnect after the given number of milliseconds.
-#     Setting this to zero disables this function.  This member is
-#     mutually exclusive with @reconnect.
+#     Setting this to zero disables this function.
 #     (default: 0) (Since: 9.2)
-#
-# Features:
-#
-# @deprecated: Member @reconnect is deprecated.  Use @reconnect-ms
-#     instead.
 #
 # Since: 1.4
 ##
@@ -299,7 +286,6 @@
             '*telnet': 'bool',
             '*tn3270': 'bool',
             '*websocket': 'bool',
-            '*reconnect': { 'type': 'int', 'features': [ 'deprecated' ] },
             '*reconnect-ms': 'int' },
   'base': 'ChardevCommon' }
 
@@ -333,12 +319,25 @@
   'base': 'ChardevCommon' }
 
 ##
+# @ChardevHub:
+#
+# Configuration info for hub chardevs.
+#
+# @chardevs: IDs to be added to this hub (maximum 4 devices).
+#
+# Since: 10.0
+##
+{ 'struct': 'ChardevHub',
+  'data': { 'chardevs': ['str'] },
+  'base': 'ChardevCommon' }
+
+##
 # @ChardevStdio:
 #
 # Configuration info for stdio chardevs.
 #
 # @signal: Allow signals (such as SIGINT triggered by ^C) be delivered
-#     to qemu.  Default: true.
+#     to QEMU.  Default: true.
 #
 # Since: 1.5
 ##
@@ -430,7 +429,7 @@
 ##
 # @ChardevQemuVDAgent:
 #
-# Configuration info for qemu vdagent implementation.
+# Configuration info for QEMU vdagent implementation.
 #
 # @mouse: enable/disable mouse, default is enabled.
 #
@@ -479,6 +478,8 @@
 #
 # @mux: (since 1.5)
 #
+# @hub: (since 10.0)
+#
 # @msmouse: emulated Microsoft serial mouse (since 1.5)
 #
 # @wctablet: emulated Wacom Penpartner serial tablet (since 2.9)
@@ -521,6 +522,7 @@
             'pty',
             'null',
             'mux',
+            'hub',
             'msmouse',
             'wctablet',
             { 'name': 'braille', 'if': 'CONFIG_BRLAPI' },
@@ -596,6 +598,16 @@
   'data': { 'data': 'ChardevMux' } }
 
 ##
+# @ChardevHubWrapper:
+#
+# @data: Configuration info for hub chardevs
+#
+# Since: 10.0
+##
+{ 'struct': 'ChardevHubWrapper',
+  'data': { 'data': 'ChardevHub' } }
+
+##
 # @ChardevStdioWrapper:
 #
 # @data: Configuration info for stdio chardevs
@@ -630,7 +642,7 @@
 ##
 # @ChardevQemuVDAgentWrapper:
 #
-# @data: Configuration info for qemu vdagent implementation
+# @data: Configuration info for QEMU vdagent implementation
 #
 # Since: 6.1
 ##
@@ -669,7 +681,6 @@
 { 'struct': 'ChardevRingbufWrapper',
   'data': { 'data': 'ChardevRingbuf' } }
 
-
 ##
 # @ChardevPtyWrapper:
 #
@@ -703,6 +714,7 @@
             'pty': 'ChardevPtyWrapper',
             'null': 'ChardevCommonWrapper',
             'mux': 'ChardevMuxWrapper',
+            'hub': 'ChardevHubWrapper',
             'msmouse': 'ChardevCommonWrapper',
             'wctablet': 'ChardevCommonWrapper',
             'braille': { 'type': 'ChardevCommonWrapper',
@@ -745,8 +757,6 @@
 #
 # @backend: backend type and parameters
 #
-# Returns: ChardevReturn.
-#
 # Since: 1.4
 #
 # .. qmp-example::
@@ -784,8 +794,6 @@
 # @id: the chardev's ID, must exist
 #
 # @backend: new backend type and parameters
-#
-# Returns: ChardevReturn.
 #
 # Since: 2.10
 #

@@ -27,6 +27,7 @@
 #include "qapi/error.h"
 #include "qemu/datadir.h"
 #include "cpu.h"
+#include "exec/target_page.h"
 #include "hw/sysbus.h"
 #include "qemu/error-report.h"
 #include "qemu/timer.h"
@@ -35,9 +36,9 @@
 #include "migration/vmstate.h"
 #include "hw/sparc/sparc32_dma.h"
 #include "hw/block/fdc.h"
-#include "sysemu/reset.h"
-#include "sysemu/runstate.h"
-#include "sysemu/sysemu.h"
+#include "system/reset.h"
+#include "system/runstate.h"
+#include "system/system.h"
 #include "net/net.h"
 #include "hw/boards.h"
 #include "hw/scsi/esp.h"
@@ -233,24 +234,19 @@ static unsigned long sun4m_load_kernel(const char *kernel_filename,
 
     kernel_size = 0;
     if (linux_boot) {
-        int bswap_needed;
-
-#ifdef BSWAP_NEEDED
-        bswap_needed = 1;
-#else
-        bswap_needed = 0;
-#endif
         kernel_size = load_elf(kernel_filename, NULL,
                                translate_kernel_address, NULL,
-                               NULL, NULL, NULL, NULL, 1, EM_SPARC, 0, 0);
+                               NULL, NULL, NULL, NULL,
+                               ELFDATA2MSB, EM_SPARC, 0, 0);
         if (kernel_size < 0)
             kernel_size = load_aout(kernel_filename, KERNEL_LOAD_ADDR,
-                                    RAM_size - KERNEL_LOAD_ADDR, bswap_needed,
+                                    RAM_size - KERNEL_LOAD_ADDR, true,
                                     TARGET_PAGE_SIZE);
         if (kernel_size < 0)
             kernel_size = load_image_targphys(kernel_filename,
                                               KERNEL_LOAD_ADDR,
-                                              RAM_size - KERNEL_LOAD_ADDR);
+                                              RAM_size - KERNEL_LOAD_ADDR,
+                                              NULL);
         if (kernel_size < 0) {
             error_report("could not load kernel '%s'", kernel_filename);
             exit(1);
@@ -261,7 +257,8 @@ static unsigned long sun4m_load_kernel(const char *kernel_filename,
         if (initrd_filename) {
             *initrd_size = load_image_targphys(initrd_filename,
                                                INITRD_LOAD_ADDR,
-                                               RAM_size - INITRD_LOAD_ADDR);
+                                               RAM_size - INITRD_LOAD_ADDR,
+                                               NULL);
             if ((int)*initrd_size < 0) {
                 error_report("could not load initial ram disk '%s'",
                              initrd_filename);
@@ -600,7 +597,7 @@ static void idreg_realize(DeviceState *ds, Error **errp)
     sysbus_init_mmio(dev, &s->mem);
 }
 
-static void idreg_class_init(ObjectClass *oc, void *data)
+static void idreg_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
@@ -650,7 +647,7 @@ static void afx_realize(DeviceState *ds, Error **errp)
     sysbus_init_mmio(dev, &s->mem);
 }
 
-static void afx_class_init(ObjectClass *oc, void *data)
+static void afx_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
@@ -703,9 +700,9 @@ static void prom_init(hwaddr addr, const char *bios_name)
     if (filename) {
         ret = load_elf(filename, NULL,
                        translate_prom_address, &addr, NULL,
-                       NULL, NULL, NULL, 1, EM_SPARC, 0, 0);
+                       NULL, NULL, NULL, ELFDATA2MSB, EM_SPARC, 0, 0);
         if (ret < 0 || ret > PROM_SIZE_MAX) {
-            ret = load_image_targphys(filename, addr, PROM_SIZE_MAX);
+            ret = load_image_targphys(filename, addr, PROM_SIZE_MAX, NULL);
         }
         g_free(filename);
     } else {
@@ -732,15 +729,10 @@ static void prom_realize(DeviceState *ds, Error **errp)
     sysbus_init_mmio(dev, &s->prom);
 }
 
-static Property prom_properties[] = {
-    {/* end of property list */},
-};
-
-static void prom_class_init(ObjectClass *klass, void *data)
+static void prom_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    device_class_set_props(dc, prom_properties);
     dc->realize = prom_realize;
 }
 
@@ -781,7 +773,7 @@ static void ram_initfn(Object *obj)
                                     "Valid value is ID of a hostmem backend");
 }
 
-static void ram_class_init(ObjectClass *klass, void *data)
+static void ram_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -979,7 +971,7 @@ static void sun4m_hw_init(MachineState *machine)
     sysbus_mmio_map(s, 0, hwdef->ms_kb_base);
 
     /* Logically OR both its IRQs together */
-    ms_kb_orgate = DEVICE(object_new(TYPE_OR_IRQ));
+    ms_kb_orgate = qdev_new(TYPE_OR_IRQ);
     object_property_set_int(OBJECT(ms_kb_orgate), "num-lines", 2, &error_fatal);
     qdev_realize_and_unref(ms_kb_orgate, NULL, &error_fatal);
     sysbus_connect_irq(s, 0, qdev_get_gpio_in(ms_kb_orgate, 0));
@@ -1000,7 +992,7 @@ static void sun4m_hw_init(MachineState *machine)
     sysbus_mmio_map(s, 0, hwdef->serial_base);
 
     /* Logically OR both its IRQs together */
-    serial_orgate = DEVICE(object_new(TYPE_OR_IRQ));
+    serial_orgate = qdev_new(TYPE_OR_IRQ);
     object_property_set_int(OBJECT(serial_orgate), "num-lines", 2,
                             &error_fatal);
     qdev_realize_and_unref(serial_orgate, NULL, &error_fatal);
@@ -1108,7 +1100,7 @@ enum {
     ss600mp_id,
 };
 
-static void sun4m_machine_class_init(ObjectClass *oc, void *data)
+static void sun4m_machine_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
 
@@ -1119,7 +1111,7 @@ static void sun4m_machine_class_init(ObjectClass *oc, void *data)
     mc->default_ram_id = "sun4m.ram";
 }
 
-static void ss5_class_init(ObjectClass *oc, void *data)
+static void ss5_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     Sun4mMachineClass *smc = SUN4M_MACHINE_CLASS(mc);
@@ -1156,7 +1148,7 @@ static void ss5_class_init(ObjectClass *oc, void *data)
     smc->hwdef = &ss5_hwdef;
 }
 
-static void ss10_class_init(ObjectClass *oc, void *data)
+static void ss10_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     Sun4mMachineClass *smc = SUN4M_MACHINE_CLASS(mc);
@@ -1191,7 +1183,7 @@ static void ss10_class_init(ObjectClass *oc, void *data)
     smc->hwdef = &ss10_hwdef;
 }
 
-static void ss600mp_class_init(ObjectClass *oc, void *data)
+static void ss600mp_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     Sun4mMachineClass *smc = SUN4M_MACHINE_CLASS(mc);
@@ -1224,7 +1216,7 @@ static void ss600mp_class_init(ObjectClass *oc, void *data)
     smc->hwdef = &ss600mp_hwdef;
 }
 
-static void ss20_class_init(ObjectClass *oc, void *data)
+static void ss20_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     Sun4mMachineClass *smc = SUN4M_MACHINE_CLASS(mc);
@@ -1275,7 +1267,7 @@ static void ss20_class_init(ObjectClass *oc, void *data)
     smc->hwdef = &ss20_hwdef;
 }
 
-static void voyager_class_init(ObjectClass *oc, void *data)
+static void voyager_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     Sun4mMachineClass *smc = SUN4M_MACHINE_CLASS(mc);
@@ -1307,7 +1299,7 @@ static void voyager_class_init(ObjectClass *oc, void *data)
     smc->hwdef = &voyager_hwdef;
 }
 
-static void ss_lx_class_init(ObjectClass *oc, void *data)
+static void ss_lx_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     Sun4mMachineClass *smc = SUN4M_MACHINE_CLASS(mc);
@@ -1340,7 +1332,7 @@ static void ss_lx_class_init(ObjectClass *oc, void *data)
     smc->hwdef = &ss_lx_hwdef;
 }
 
-static void ss4_class_init(ObjectClass *oc, void *data)
+static void ss4_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     Sun4mMachineClass *smc = SUN4M_MACHINE_CLASS(mc);
@@ -1373,7 +1365,7 @@ static void ss4_class_init(ObjectClass *oc, void *data)
     smc->hwdef = &ss4_hwdef;
 }
 
-static void scls_class_init(ObjectClass *oc, void *data)
+static void scls_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     Sun4mMachineClass *smc = SUN4M_MACHINE_CLASS(mc);
@@ -1405,7 +1397,7 @@ static void scls_class_init(ObjectClass *oc, void *data)
     smc->hwdef = &scls_hwdef;
 }
 
-static void sbook_class_init(ObjectClass *oc, void *data)
+static void sbook_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     Sun4mMachineClass *smc = SUN4M_MACHINE_CLASS(mc);

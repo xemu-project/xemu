@@ -24,12 +24,6 @@ should exclusively use a non-deprecated machine type, with use of the most
 recent version highly recommended. Non-versioned machine types follow the
 general feature deprecation policy.
 
-Prior to the 2.10.0 release there was no official policy on how
-long features would be deprecated prior to their removal, nor
-any documented list of which features were deprecated. Thus
-any features deprecated prior to 2.10.0 will be treated as if
-they were first deprecated in the 2.10.0 release.
-
 What follows is a list of all features currently marked as
 deprecated.
 
@@ -59,36 +53,6 @@ Therefore, the usage of ``arg`` is redundant. Single-word arguments are treated
 as short-form boolean values, and passed to plugins as ``arg_name=on``.
 However, short-form booleans are deprecated and full explicit ``arg_name=on``
 form is preferred.
-
-``-smp`` (Unsupported "parameter=1" SMP configurations) (since 9.0)
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-
-Specified CPU topology parameters must be supported by the machine.
-
-In the SMP configuration, users should provide the CPU topology parameters that
-are supported by the target machine.
-
-However, historically it was allowed for users to specify the unsupported
-topology parameter as "1", which is meaningless. So support for this kind of
-configurations (e.g. -smp drawers=1,books=1,clusters=1 for x86 PC machine) is
-marked deprecated since 9.0, users have to ensure that all the topology members
-described with -smp are supported by the target machine.
-
-``-runas`` (since 9.1)
-''''''''''''''''''''''
-
-Use ``-run-with user=..`` instead.
-
-
-User-mode emulator command line arguments
------------------------------------------
-
-``-p`` (since 9.0)
-''''''''''''''''''
-
-The ``-p`` option pretends to control the host page size.  However,
-it is not possible to change the host page size, and using the
-option only causes failures.
 
 QEMU Machine Protocol (QMP) commands
 ------------------------------------
@@ -155,36 +119,72 @@ threads (for example, it only reports source side of multifd threads,
 without reporting any destination threads, or non-multifd source threads).
 For debugging purpose, please use ``-name $VM,debug-threads=on`` instead.
 
-Incorrectly typed ``device_add`` arguments (since 6.2)
-''''''''''''''''''''''''''''''''''''''''''''''''''''''
+``block-job-pause`` (since 10.1)
+''''''''''''''''''''''''''''''''
 
-Due to shortcomings in the internal implementation of ``device_add``, QEMU
-incorrectly accepts certain invalid arguments: Any object or list arguments are
-silently ignored. Other argument types are not checked, but an implicit
-conversion happens, so that e.g. string values can be assigned to integer
-device properties or vice versa.
+Use ``job-pause`` instead. The only difference is that ``job-pause``
+always reports GenericError on failure when ``block-job-pause`` reports
+DeviceNotActive when block-job is not found.
 
-This is a bug in QEMU that will be fixed in the future so that previously
-accepted incorrect commands will return an error. Users should make sure that
-all arguments passed to ``device_add`` are consistent with the documented
-property types.
+``block-job-resume`` (since 10.1)
+'''''''''''''''''''''''''''''''''
+
+Use ``job-resume`` instead. The only difference is that ``job-resume``
+always reports GenericError on failure when ``block-job-resume`` reports
+DeviceNotActive when block-job is not found.
+
+``block-job-complete`` (since 10.1)
+'''''''''''''''''''''''''''''''''''
+
+Use ``job-complete`` instead. The only difference is that ``job-complete``
+always reports GenericError on failure when ``block-job-complete`` reports
+DeviceNotActive when block-job is not found.
+
+``block-job-dismiss`` (since 10.1)
+''''''''''''''''''''''''''''''''''
+
+Use ``job-dismiss`` instead.
+
+``block-job-finalize`` (since 10.1)
+'''''''''''''''''''''''''''''''''''
+
+Use ``job-finalize`` instead.
+
+``migrate`` argument ``detach`` (since 10.1)
+''''''''''''''''''''''''''''''''''''''''''''
+
+This argument has always been ignored.
+
+Human Machine Protocol (HMP) commands
+-------------------------------------
+
+``wavcapture`` (since 10.2)
+''''''''''''''''''''''''''''
+
+The ``wavcapture`` command is deprecated and will be removed in a future release.
+
+Use ``-audiodev wav`` or your host audio system to capture audio.
+
+``stopcapture`` (since 10.2)
+''''''''''''''''''''''''''''
+
+The ``stopcapture`` command is deprecated and will be removed in a future release.
+
+``info`` argument ``capture`` (since 10.2)
+''''''''''''''''''''''''''''''''''''''''''
+
+The ``info capture`` command is deprecated and will be removed in a future release.
 
 Host Architectures
 ------------------
 
-Big endian MIPS since 7.2; 32-bit little endian MIPS since 9.2
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+MIPS (since 10.2)
+'''''''''''''''''
 
-As Debian 10 ("Buster") moved into LTS the big endian 32 bit version of
-MIPS moved out of support making it hard to maintain our
-cross-compilation CI tests of the architecture. As we no longer have
-CI coverage support may bitrot away before the deprecation process
+MIPS is not supported by Debian 13 ("Trixie") and newer, making it hard to
+maintain our cross-compilation CI tests of the architecture. As we no longer
+have CI coverage support may bitrot away before the deprecation process
 completes.
-
-Likewise, the little endian variant of 32 bit MIPS is not supported by
-Debian 13 ("Trixie") and newer.
-
-64 bit little endian MIPS is still a supported host architecture.
 
 System emulation on 32-bit x86 hosts (since 8.0)
 ''''''''''''''''''''''''''''''''''''''''''''''''
@@ -216,6 +216,13 @@ is going to be so much slower it wouldn't make sense for any serious
 instrumentation. Due to implementation differences there will also be
 anomalies in things like memory instrumentation.
 
+32-bit host operating systems (since 10.0)
+''''''''''''''''''''''''''''''''''''''''''
+
+Keeping 32-bit host support alive is a substantial burden for the
+QEMU project.  Thus QEMU will in future drop the support for all
+32-bit host systems.
+
 System emulator CPUs
 --------------------
 
@@ -237,8 +244,33 @@ in the QEMU object model anymore. ``Sun-UltraSparc-IIIi+`` and
 but for consistency these will get removed in a future release, too.
 Use ``Sun-UltraSparc-IIIi-plus`` and ``Sun-UltraSparc-IV-plus`` instead.
 
+PPC 405 CPUs (since 10.0)
+'''''''''''''''''''''''''
+
+The PPC 405 CPU has no known users and the ``ref405ep`` machine was
+removed in QEMU 10.0. Since the IBM POWER [8-11] processors uses an
+embedded 405 for power management (OCC) and other internal tasks, it
+is theoretically possible to use QEMU to model them. Let's keep the
+CPU implementation for a while before removing all support.
+
+Power8E and Power8NVL CPUs and corresponding Pnv chips (since 10.1)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+The Power8E and Power8NVL variants of Power8 are not really useful anymore
+in qemu, and are old and unmaintained now.
+
+The CPUs as well as corresponding Power8NVL and Power8E PnvChips will also
+be considered deprecated.
+
 System emulator machines
 ------------------------
+
+Versioned machine types (aarch64, arm, i386, m68k, ppc64, s390x, x86_64)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+In accordance with our versioned machine type deprecation policy, all machine
+types with version |VER_MACHINE_DEPRECATION_VERSION|, or older, have been
+deprecated.
 
 Arm ``virt`` machine ``dtb-kaslr-seed`` property (since 7.1)
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -248,34 +280,89 @@ deprecated; use the new name ``dtb-randomness`` instead. The new name
 better reflects the way this property affects all random data within
 the device tree blob, not just the ``kaslr-seed`` node.
 
-``pc-i440fx-2.4`` up to ``pc-i440fx-2.12`` (since 9.1)
-''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Arm ``ast2700a0-evb`` machine (since 10.1)
+''''''''''''''''''''''''''''''''''''''''''
 
-These old machine types are quite neglected nowadays and thus might have
-various pitfalls with regards to live migration. Use a newer machine type
-instead.
+The ``ast2700a0-evb`` machine represents the first revision of the AST2700
+and serves as the initial engineering sample rather than a production version.
+A newer revision, A1, is now supported, and the ``ast2700a1-evb`` should
+replace the older A0 version.
 
-PPC 405 ``ref405ep`` machine (since 9.1)
-''''''''''''''''''''''''''''''''''''''''
+Arm ``sonorapass-bmc`` machine (since 10.2)
+'''''''''''''''''''''''''''''''''''''''''''
 
-The ``ref405ep`` machine and PPC 405 CPU have no known users, firmware
-images are not available, OpenWRT dropped support in 2019, U-Boot in
-2017, Linux also is dropping support in 2024. It is time to let go of
-this ancient hardware and focus on newer CPUs and platforms.
+The ``sonorapass-bmc`` machine represents a lab server that never
+entered production. Since it does not rely on any specific device
+models, it can be replaced by the ``ast2500-evb`` machine using the
+``fmc-model`` option to specify the flash type. The I2C devices
+connected to the board can be defined via the QEMU command line.
 
-Arm ``tacoma-bmc`` machine (since 9.1)
-''''''''''''''''''''''''''''''''''''''''
+Arm ``qcom-dc-scm-v1-bmc`` and ``qcom-firework-bmc`` machine (since 10.2)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-The ``tacoma-bmc`` machine was a board including an AST2600 SoC based
-BMC and a witherspoon like OpenPOWER system. It was used for bring up
-of the AST2600 SoC in labs.  It can be easily replaced by the
-``rainier-bmc`` machine which is a real product.
+The ``qcom-dc-scm-v1-bmc`` and ``qcom-firework-bmc`` represent lab
+servers that never entered production. Since they do not rely on any
+specific device models, they can be replaced by the ``ast2600-evb``
+machine using the ``fmc-model`` option to specify the flash type. The
+I2C devices connected to the board can be defined via the QEMU command
+line.
 
-Big-Endian variants of MicroBlaze ``petalogix-ml605`` and ``xlnx-zynqmp-pmu`` machines (since 9.2)
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Arm ``fp5280g2-bmc`` machine (since 10.2)
+'''''''''''''''''''''''''''''''''''''''''
 
-Both ``petalogix-ml605`` and ``xlnx-zynqmp-pmu`` were added for little endian
-CPUs. Big endian support is not tested.
+The ``fp5280g2-bmc`` machine does not rely on any specific device
+models, it can be replaced by the ``ast2500-evb`` machine using the
+``fmc-model`` option to specify the flash type. The I2C devices
+connected to the board can be defined via the QEMU command line.
+
+Arm ``fby35`` machine (since 10.2)
+''''''''''''''''''''''''''''''''''
+
+The ``fby35`` machine was originally added as an example of a
+multi-SoC system, with the expectation the models would evolve over
+time in an heterogeneous system. This hasn't happened and no public
+firmware is available to boot it. It can be replaced by the
+``ast2700fc``, another multi-SoC machine based on the newer AST2700
+SoCs which are excepted to receive better support in the future.
+
+
+RISC-V default machine option (since 10.0)
+''''''''''''''''''''''''''''''''''''''''''
+
+RISC-V defines ``spike`` as the default machine if no machine option is
+given in the command line.  This happens because ``spike`` is the first
+RISC-V machine implemented in QEMU and setting it as default was
+convenient at that time.  Now we have 7 riscv64 and 6 riscv32 machines
+and having ``spike`` as a default is no longer justified.  This default
+will also promote situations where users think they're running ``virt``
+(the most used RISC-V machine type in 10.0) when in fact they're
+running ``spike``.
+
+Removing the default machine option forces users to always set the machine
+they want to use and avoids confusion.  Existing users of the ``spike``
+machine must ensure that they're setting the ``spike`` machine in the
+command line (``-M spike``).
+
+Arm ``highbank`` and ``midway`` machines (since 10.1)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+There are no known users left for these machines (if you still use it,
+please write a mail to the qemu-devel mailing list). If you just want to
+boot a Cortex-A15 or Cortex-A9 Linux, use the ``virt`` machine instead.
+
+
+System emulator binaries
+------------------------
+
+``qemu-system-microblazeel`` (since 10.1)
+'''''''''''''''''''''''''''''''''''''''''
+
+The ``qemu-system-microblaze`` binary can emulate little-endian machines
+now, too, so the separate binary ``qemu-system-microblazeel`` (with the
+``el`` suffix) for little-endian targets is not required anymore. The
+``petalogix-s3adsp1800`` machine can now be switched to little endian by
+setting its ``endianness`` property to ``little``.
+
 
 Backend options
 ---------------
@@ -294,6 +381,15 @@ Options are:
       (without persistence guaranties) with backing file on non DAX storage
     - move backing file to NVDIMM storage and keep ``pmem=on``
       (to have NVDIMM with persistence guaranties).
+
+Using an external DH (Diffie-Hellman) parameters file (since 10.2)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Loading of external Diffie-Hellman parameters from a 'dh-params.pem'
+file is deprecated and will be removed with no replacement in a
+future release. Where no 'dh-params.pem' file is provided, the DH
+parameters will be automatically negotiated in accordance with
+RFC7919.
 
 Device options
 --------------
@@ -348,12 +444,6 @@ recommending to switch to their stable counterparts:
 - "Zve64f" should be replaced with "zve64f"
 - "Zve64d" should be replaced with "zve64d"
 
-``-device sd-card,spec_version=1`` (since 9.1)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-SD physical layer specification v2.00 supersedes the v1.10 one.
-v2.00 is the default since QEMU 3.0.0.
-
 Block device options
 ''''''''''''''''''''
 
@@ -404,32 +494,9 @@ Backend ``memory`` (since 9.0)
 
 ``memory`` is a deprecated synonym for ``ringbuf``.
 
-``reconnect`` (since 9.2)
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The ``reconnect`` option only allows specifiying second granularity timeouts,
-which is not enough for all types of use cases, use ``reconnect-ms`` instead.
-
-
-Net device options
-''''''''''''''''''
-
-Stream ``reconnect`` (since 9.2)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The ``reconnect`` option only allows specifiying second granularity timeouts,
-which is not enough for all types of use cases, use ``reconnect-ms`` instead.
 
 CPU device properties
 '''''''''''''''''''''
-
-``pcommit`` on x86 (since 9.1)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The PCOMMIT instruction was never included in any physical processor.
-It was implemented as a no-op instruction in TCG up to QEMU 9.0, but
-only with ``-cpu max`` (which does not guarantee migration compatibility
-across versions).
 
 ``pmu-num=n`` on RISC-V CPUs (since 8.2)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -439,6 +506,14 @@ by a ``pmu-mask`` property. If set of counters is continuous then the mask can
 be calculated with ``((2 ^ n) - 1) << 3``. The least significant three bits
 must be left clear.
 
+
+``pcommit`` on x86 (since 9.1)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The PCOMMIT instruction was never included in any physical processor.
+It was implemented as a no-op instruction in TCG up to QEMU 9.0, but
+only with ``-cpu max`` (which does not guarantee migration compatibility
+across versions).
 
 Backwards compatibility
 -----------------------
@@ -479,6 +554,20 @@ process in Linux and the correct name ended up being
 available firmwares that are using the current (wrong) name.  The
 property is kept as is in 9.1, together with "riscv,delegation", to
 give more time for firmware developers to change their code.
+
+x86 "isapc" board use of modern x86 CPUs (since 10.2)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+The "isapc" board represents a historical x86 ISA PC and is intended for
+older 32-bit x86 CPU models, defaulting to a 486 CPU model.  Previously it
+was possible (but non-sensical) to specify a more modern x86 CPU, including
+``-cpu host`` or ``-cpu max`` even if the features were incompatible with many
+of the intended guest OSs.
+
+If the user requests a modern x86 CPU model (i.e. not one of ``486``,
+``athlon``, ``kvm32``, ``pentium``, ``pentium2``, ``pentium3``or ``qemu32``)
+a warning will be displayed until a future QEMU version when such CPUs will
+be rejected.
 
 Migration
 ---------

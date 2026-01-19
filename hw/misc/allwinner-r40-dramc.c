@@ -24,7 +24,7 @@
 #include "migration/vmstate.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
-#include "exec/address-spaces.h"
+#include "system/address-spaces.h"
 #include "hw/qdev-properties.h"
 #include "qapi/error.h"
 #include "qemu/bitops.h"
@@ -297,7 +297,7 @@ static void allwinner_r40_dramphy_write(void *opaque, hwaddr offset,
 static const MemoryRegionOps allwinner_r40_dramcom_ops = {
     .read = allwinner_r40_dramcom_read,
     .write = allwinner_r40_dramcom_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
         .max_access_size = 4,
@@ -308,7 +308,7 @@ static const MemoryRegionOps allwinner_r40_dramcom_ops = {
 static const MemoryRegionOps allwinner_r40_dramctl_ops = {
     .read = allwinner_r40_dramctl_read,
     .write = allwinner_r40_dramctl_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
         .max_access_size = 4,
@@ -319,7 +319,7 @@ static const MemoryRegionOps allwinner_r40_dramctl_ops = {
 static const MemoryRegionOps allwinner_r40_dramphy_ops = {
     .read = allwinner_r40_dramphy_read,
     .write = allwinner_r40_dramphy_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
         .max_access_size = 4,
@@ -358,7 +358,7 @@ static void allwinner_r40_detect_write(void *opaque, hwaddr offset,
 static const MemoryRegionOps allwinner_r40_detect_ops = {
     .read = allwinner_r40_detect_read,
     .write = allwinner_r40_detect_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
         .max_access_size = 4,
@@ -393,7 +393,7 @@ static uint64_t allwinner_r40_dualrank_detect_read(void *opaque, hwaddr offset,
 
 static const MemoryRegionOps allwinner_r40_dualrank_detect_ops = {
     .read = allwinner_r40_dualrank_detect_read,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
         .max_access_size = 4,
@@ -464,10 +464,9 @@ static void allwinner_r40_dramc_init(Object *obj)
     sysbus_init_mmio(sbd, &s->dramphy_iomem);
 }
 
-static Property allwinner_r40_dramc_properties[] = {
+static const Property allwinner_r40_dramc_properties[] = {
     DEFINE_PROP_UINT64("ram-addr", AwR40DramCtlState, ram_addr, 0x0),
     DEFINE_PROP_UINT32("ram-size", AwR40DramCtlState, ram_size, 256), /* MiB */
-    DEFINE_PROP_END_OF_LIST()
 };
 
 static const VMStateDescription allwinner_r40_dramc_vmstate = {
@@ -485,7 +484,7 @@ static const VMStateDescription allwinner_r40_dramc_vmstate = {
     }
 };
 
-static void allwinner_r40_dramc_class_init(ObjectClass *klass, void *data)
+static void allwinner_r40_dramc_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

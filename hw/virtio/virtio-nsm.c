@@ -444,7 +444,7 @@ static bool handle_describe_pcr(VirtIONSM *vnsm, struct iovec *request,
  *       key = String("index"),
  *       value = Uint8(pcr),
  *       key = String("data"),
- *       value = Byte_String(data),
+ *       value = Byte_String(data) || String(data),
  *     }
  *   }
  * }
@@ -504,14 +504,21 @@ static enum NSMResponseTypes get_nsm_extend_pcr_req(uint8_t *req, size_t len,
 
         if (cbor_string_length(pair[i].key) == 4 &&
             memcmp(str, "data", 4) == 0) {
-            if (!cbor_isa_bytestring(pair[i].value)) {
+            if (cbor_isa_bytestring(pair[i].value)) {
+                str = cbor_bytestring_handle(pair[i].value);
+                if (!str) {
+                    goto cleanup;
+                }
+                nsm_req->data_len = cbor_bytestring_length(pair[i].value);
+            } else if (cbor_isa_string(pair[i].value)) {
+                str = cbor_string_handle(pair[i].value);
+                if (!str) {
+                    goto cleanup;
+                }
+                nsm_req->data_len = cbor_string_length(pair[i].value);
+            } else {
                 goto cleanup;
             }
-            str = cbor_bytestring_handle(pair[i].value);
-            if (!str) {
-                goto cleanup;
-            }
-            nsm_req->data_len = cbor_bytestring_length(pair[i].value);
             /*
              * nsm_req->data_len will be smaller than NSM_REQUEST_MAX_SIZE as
              * we already check for the max request size before processing
@@ -1589,7 +1596,7 @@ static void handle_input(VirtIODevice *vdev, VirtQueue *vq)
     g_free(req.iov_base);
     g_free(res.iov_base);
     virtqueue_push(vq, out_elem, 0);
-    virtqueue_push(vq, in_elem, in_elem->in_sg->iov_len);
+    virtqueue_push(vq, in_elem, sz);
     virtio_notify(vdev, vq);
     return;
 
@@ -1602,7 +1609,6 @@ static void handle_input(VirtIODevice *vdev, VirtQueue *vq)
     if (in_elem) {
         virtqueue_detach_element(vq, in_elem, 0);
     }
-    return;
 }
 
 static uint64_t get_features(VirtIODevice *vdev, uint64_t f, Error **errp)
@@ -1698,12 +1704,11 @@ static const VMStateDescription vmstate_virtio_nsm = {
     },
 };
 
-static Property virtio_nsm_properties[] = {
+static const Property virtio_nsm_properties[] = {
     DEFINE_PROP_STRING("module-id", VirtIONSM, module_id),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void virtio_nsm_class_init(ObjectClass *klass, void *data)
+static void virtio_nsm_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     VirtioDeviceClass *vdc = VIRTIO_DEVICE_CLASS(klass);

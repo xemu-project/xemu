@@ -43,6 +43,9 @@
 #include <net/ethernet.h>
 #endif
 #ifdef CONFIG_SOLARIS
+#ifdef CONFIG_GETLOADAVG
+#include <sys/loadavg.h>
+#endif
 #include <sys/sockio.h>
 #endif
 #endif
@@ -213,9 +216,14 @@ out:
     return retcode;
 }
 
+#define POWEROFF_CMD_PATH "/sbin/poweroff"
+#define HALT_CMD_PATH "/sbin/halt"
+#define REBOOT_CMD_PATH "/sbin/reboot"
+
 void qmp_guest_shutdown(const char *mode, Error **errp)
 {
     const char *shutdown_flag;
+    const char *shutdown_cmd = NULL;
     Error *local_err = NULL;
 
 #ifdef CONFIG_SOLARIS
@@ -234,10 +242,19 @@ void qmp_guest_shutdown(const char *mode, Error **errp)
 
     slog("guest-shutdown called, mode: %s", mode);
     if (!mode || strcmp(mode, "powerdown") == 0) {
+        if (access(POWEROFF_CMD_PATH, X_OK) == 0) {
+            shutdown_cmd = POWEROFF_CMD_PATH;
+        }
         shutdown_flag = powerdown_flag;
     } else if (strcmp(mode, "halt") == 0) {
+        if (access(HALT_CMD_PATH, X_OK) == 0) {
+            shutdown_cmd = HALT_CMD_PATH;
+        }
         shutdown_flag = halt_flag;
     } else if (strcmp(mode, "reboot") == 0) {
+        if (access(REBOOT_CMD_PATH, X_OK) == 0) {
+            shutdown_cmd = REBOOT_CMD_PATH;
+        }
         shutdown_flag = reboot_flag;
     } else {
         error_setg(errp,
@@ -254,6 +271,15 @@ void qmp_guest_shutdown(const char *mode, Error **errp)
                           "-h", shutdown_flag, "+0",
 #endif
                           "hypervisor initiated shutdown", (char *) NULL};
+
+    /*
+     * If the specific command exists (poweroff, halt or reboot), use it instead
+     * of /sbin/shutdown.
+     */
+    if (shutdown_cmd != NULL) {
+        argv[0] = shutdown_cmd;
+        argv[1] = NULL;
+    }
 
     ga_run_command(argv, NULL, "shutdown", &local_err);
     if (local_err) {
@@ -503,9 +529,8 @@ int64_t qmp_guest_file_open(const char *path, const char *mode,
     /* set fd non-blocking to avoid common use cases (like reading from a
      * named pipe) from hanging the agent
      */
-    if (!g_unix_set_fd_nonblocking(fileno(fh), true, NULL)) {
+    if (!qemu_set_blocking(fileno(fh), false, errp)) {
         fclose(fh);
-        error_setg_errno(errp, errno, "Failed to set FD nonblocking");
         return -1;
     }
 
@@ -805,8 +830,10 @@ int64_t qmp_guest_fsfreeze_thaw(Error **errp)
     int ret;
 
     ret = qmp_guest_fsfreeze_do_thaw(errp);
+
     if (ret >= 0) {
         ga_unset_frozen(ga_state);
+        slog("guest-fsthaw called");
         execute_fsfreeze_hook(FSFREEZE_HOOK_THAW, errp);
     } else {
         ret = 0;
@@ -1368,3 +1395,23 @@ char *qga_get_host_name(Error **errp)
 
     return g_steal_pointer(&hostname);
 }
+
+#ifdef CONFIG_GETLOADAVG
+GuestLoadAverage *qmp_guest_get_load(Error **errp)
+{
+    double loadavg[3];
+    GuestLoadAverage *ret = NULL;
+
+    if (getloadavg(loadavg, G_N_ELEMENTS(loadavg)) < 0) {
+        error_setg_errno(errp, errno,
+                         "cannot query load average");
+        return NULL;
+    }
+
+    ret = g_new0(GuestLoadAverage, 1);
+    ret->load1m = loadavg[0];
+    ret->load5m = loadavg[1];
+    ret->load15m = loadavg[2];
+    return ret;
+}
+#endif

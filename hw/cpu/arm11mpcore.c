@@ -131,7 +131,7 @@ static void mpcore_priv_initfn(Object *obj)
     object_initialize_child(obj, "wdtimer", &s->wdtimer, TYPE_ARM_MPTIMER);
 }
 
-static Property mpcore_priv_properties[] = {
+static const Property mpcore_priv_properties[] = {
     DEFINE_PROP_UINT32("num-cpu", ARM11MPCorePriveState, num_cpu, 1),
     /* The ARM11 MPCORE TRM says the on-chip controller may have
      * anything from 0 to 224 external interrupt IRQ lines (with another
@@ -142,10 +142,9 @@ static Property mpcore_priv_properties[] = {
      * has more IRQ lines than the kernel expects.
      */
     DEFINE_PROP_UINT32("num-irq", ARM11MPCorePriveState, num_irq, 64),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void mpcore_priv_class_init(ObjectClass *klass, void *data)
+static void mpcore_priv_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -153,17 +152,14 @@ static void mpcore_priv_class_init(ObjectClass *klass, void *data)
     device_class_set_props(dc, mpcore_priv_properties);
 }
 
-static const TypeInfo mpcore_priv_info = {
-    .name          = TYPE_ARM11MPCORE_PRIV,
-    .parent        = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(ARM11MPCorePriveState),
-    .instance_init = mpcore_priv_initfn,
-    .class_init    = mpcore_priv_class_init,
+static const TypeInfo arm11mp_types[] = {
+    {
+        .name           = TYPE_ARM11MPCORE_PRIV,
+        .parent         = TYPE_SYS_BUS_DEVICE,
+        .instance_size  = sizeof(ARM11MPCorePriveState),
+        .instance_init  = mpcore_priv_initfn,
+        .class_init     = mpcore_priv_class_init,
+    },
 };
 
-static void arm11mpcore_register_types(void)
-{
-    type_register_static(&mpcore_priv_info);
-}
-
-type_init(arm11mpcore_register_types)
+DEFINE_TYPES(arm11mp_types)

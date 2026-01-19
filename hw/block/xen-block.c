@@ -16,16 +16,16 @@
 #include "qapi/qapi-visit-block-core.h"
 #include "qapi/qobject-input-visitor.h"
 #include "qapi/visitor.h"
-#include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qstring.h"
+#include "qobject/qdict.h"
+#include "qobject/qstring.h"
 #include "qom/object_interfaces.h"
 #include "hw/block/xen_blkif.h"
 #include "hw/qdev-properties.h"
 #include "hw/xen/xen-block.h"
 #include "hw/xen/xen-backend.h"
-#include "sysemu/blockdev.h"
-#include "sysemu/block-backend.h"
-#include "sysemu/iothread.h"
+#include "system/blockdev.h"
+#include "system/block-backend.h"
+#include "system/iothread.h"
 #include "dataplane/xen-block.h"
 #include "hw/xen/interface/io/xs_wire.h"
 #include "trace.h"
@@ -239,7 +239,8 @@ static void xen_block_connect(XenDevice *xendev, Error **errp)
         return;
     }
 
-    if (xen_device_frontend_scanf(xendev, "protocol", "%ms", &str) != 1) {
+    str = xen_device_frontend_read(xendev, "protocol");
+    if (!str) {
         /* x86 defaults to the 32-bit protocol even for 64-bit guests. */
         if (object_dynamic_cast(OBJECT(qdev_get_machine()), "x86-machine")) {
             protocol = BLKIF_PROTOCOL_X86_32;
@@ -407,6 +408,8 @@ static void xen_block_realize(XenDevice *xendev, Error **errp)
     }
 
     xen_device_backend_printf(xendev, "info", "%u", blockdev->info);
+    xen_device_backend_printf(xendev, "mode",
+                              (blockdev->info & VDISK_READONLY) ? "r" : "w");
 
     xen_device_frontend_printf(xendev, "virtual-device", "%lu",
                                vdev->number);
@@ -485,7 +488,7 @@ static char *disk_to_vbd_name(unsigned int disk)
 static void xen_block_get_vdev(Object *obj, Visitor *v, const char *name,
                                void *opaque, Error **errp)
 {
-    Property *prop = opaque;
+    const Property *prop = opaque;
     XenBlockVdev *vdev = object_field_prop_ptr(obj, prop);
     char *str;
 
@@ -545,7 +548,7 @@ static int vbd_name_to_disk(const char *name, const char **endp,
 static void xen_block_set_vdev(Object *obj, Visitor *v, const char *name,
                                void *opaque, Error **errp)
 {
-    Property *prop = opaque;
+    const Property *prop = opaque;
     XenBlockVdev *vdev = object_field_prop_ptr(obj, prop);
     char *str, *p;
     const char *end;
@@ -659,14 +662,14 @@ invalid:
  *
  * https://xenbits.xen.org/docs/unstable/man/xen-vbd-interface.7.html
  */
-const PropertyInfo xen_block_prop_vdev = {
-    .name  = "str",
-    .description = "Virtual Disk specifier: d*p*/xvd*/hd*/sd*",
+static const PropertyInfo xen_block_prop_vdev = {
+    .type  = "str",
+    .description = "Virtual Disk specifier (d*p*/xvd*/hd*/sd*)",
     .get = xen_block_get_vdev,
     .set = xen_block_set_vdev,
 };
 
-static Property xen_block_props[] = {
+static const Property xen_block_props[] = {
     DEFINE_PROP("vdev", XenBlockDevice, props.vdev,
                 xen_block_prop_vdev, XenBlockVdev),
     DEFINE_BLOCK_PROPERTIES(XenBlockDevice, props.conf),
@@ -674,10 +677,9 @@ static Property xen_block_props[] = {
                        props.max_ring_page_order, 4),
     DEFINE_PROP_LINK("iothread", XenBlockDevice, props.iothread,
                      TYPE_IOTHREAD, IOThread *),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void xen_block_class_init(ObjectClass *class, void *data)
+static void xen_block_class_init(ObjectClass *class, const void *data)
 {
     DeviceClass *dev_class = DEVICE_CLASS(class);
     XenDeviceClass *xendev_class = XEN_DEVICE_CLASS(class);
@@ -722,7 +724,7 @@ static void xen_disk_realize(XenBlockDevice *blockdev, Error **errp)
     blockdev->info = blk_supports_write_perm(conf->blk) ? 0 : VDISK_READONLY;
 }
 
-static void xen_disk_class_init(ObjectClass *class, void *data)
+static void xen_disk_class_init(ObjectClass *class, const void *data)
 {
     DeviceClass *dev_class = DEVICE_CLASS(class);
     XenBlockDeviceClass *blockdev_class = XEN_BLOCK_DEVICE_CLASS(class);
@@ -769,7 +771,7 @@ static void xen_cdrom_realize(XenBlockDevice *blockdev, Error **errp)
     blockdev->info = VDISK_READONLY | VDISK_CDROM;
 }
 
-static void xen_cdrom_class_init(ObjectClass *class, void *data)
+static void xen_cdrom_class_init(ObjectClass *class, const void *data)
 {
     DeviceClass *dev_class = DEVICE_CLASS(class);
     XenBlockDeviceClass *blockdev_class = XEN_BLOCK_DEVICE_CLASS(class);

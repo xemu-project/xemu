@@ -502,7 +502,7 @@ static const MemoryRegionOps allwinner_a10_spi_ops = {
     .write = allwinner_a10_spi_write,
     .valid.min_access_size = 1,
     .valid.max_access_size = 4,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
 static const VMStateDescription allwinner_a10_spi_vmstate = {
@@ -535,7 +535,7 @@ static void allwinner_a10_spi_realize(DeviceState *dev, Error **errp)
     fifo8_create(&s->rx_fifo, AW_A10_SPI_FIFO_SIZE);
 }
 
-static void allwinner_a10_spi_class_init(ObjectClass *klass, void *data)
+static void allwinner_a10_spi_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);

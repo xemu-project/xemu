@@ -13,6 +13,32 @@
 # the array type in the main schema, even if it is unused outside of the
 # storage daemon.
 
+##
+# ************
+# Introduction
+# ************
+#
+# This manual describes the commands and events supported by the QEMU
+# storage daemon QMP.
+#
+# For locating a particular item, please see the `qapi-qsd-index`.
+#
+# The following notation is used in examples:
+#
+# .. qmp-example::
+#
+#   -> ... text sent by client (commands) ...
+#   <- ... text sent by server (command responses and events) ...
+#
+# Example text is formatted for readability.  However, in real
+# protocol usage, its commonly emitted as a single line.
+#
+# Please refer to the
+# :doc:`QEMU Machine Protocol Specification </interop/qmp-spec>`
+# for the general format of commands, responses, and events.
+##
+
+
 { 'include': '../../qapi/pragma.json' }
 
 # Documentation generated with qapi-gen.py is in source order, with
@@ -27,7 +53,9 @@
 { 'include': '../../qapi/job.json' }
 
 ##
-# = Block devices
+# *************
+# Block devices
+# *************
 ##
 { 'include': '../../qapi/block-core.json' }
 { 'include': '../../qapi/block-export.json' }

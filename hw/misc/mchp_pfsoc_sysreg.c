@@ -27,7 +27,9 @@
 #include "hw/irq.h"
 #include "hw/sysbus.h"
 #include "hw/misc/mchp_pfsoc_sysreg.h"
+#include "system/runstate.h"
 
+#define MSS_RESET_CR    0x18
 #define ENVM_CR         0xb8
 #define MESSAGE_INT     0x118c
 
@@ -56,6 +58,11 @@ static void mchp_pfsoc_sysreg_write(void *opaque, hwaddr offset,
 {
     MchpPfSoCSysregState *s = opaque;
     switch (offset) {
+    case MSS_RESET_CR:
+        if (value == 0xdead) {
+            qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
+        }
+        break;
     case MESSAGE_INT:
         qemu_irq_lower(s->irq);
         break;
@@ -85,7 +92,7 @@ static void mchp_pfsoc_sysreg_realize(DeviceState *dev, Error **errp)
     sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq);
 }
 
-static void mchp_pfsoc_sysreg_class_init(ObjectClass *klass, void *data)
+static void mchp_pfsoc_sysreg_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

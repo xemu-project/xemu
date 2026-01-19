@@ -26,6 +26,7 @@ ppc_ss.add(when: 'CONFIG_PSERIES', if_true: files(
   'spapr_nvdimm.c',
   'spapr_rtas_ddw.c',
   'spapr_numa.c',
+  'spapr_fadump.c',
   'pef.c',
 ))
 ppc_ss.add(when: ['CONFIG_PSERIES', 'CONFIG_TCG'], if_true: files(
@@ -58,8 +59,7 @@ ppc_ss.add(when: 'CONFIG_POWERNV', if_true: files(
 ))
 # PowerPC 4xx boards
 ppc_ss.add(when: 'CONFIG_PPC405', if_true: files(
-  'ppc405_boards.c',
-  'ppc405_uc.c'))
+  'ppe42_machine.c'))
 ppc_ss.add(when: 'CONFIG_PPC440', if_true: files(
   'ppc440_bamboo.c',
   'ppc440_uc.c'))
@@ -87,8 +87,8 @@ ppc_ss.add(when: 'CONFIG_E500', if_true: files(
 ppc_ss.add(when: 'CONFIG_VIRTEX', if_true: files('virtex_ml507.c'))
 # AmigaOne
 ppc_ss.add(when: 'CONFIG_AMIGAONE', if_true: files('amigaone.c'))
-# Pegasos2
-ppc_ss.add(when: 'CONFIG_PEGASOS2', if_true: files('pegasos2.c'))
+# Pegasos
+ppc_ss.add(when: 'CONFIG_PEGASOS', if_true: files('pegasos.c'))
 
 ppc_ss.add(when: 'CONFIG_VOF', if_true: files('vof.c'))
 ppc_ss.add(when: ['CONFIG_VOF', 'CONFIG_PSERIES'], if_true: files('spapr_vof.c'))

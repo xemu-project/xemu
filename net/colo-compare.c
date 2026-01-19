@@ -25,7 +25,7 @@
 #include "chardev/char-fe.h"
 #include "qemu/sockets.h"
 #include "colo.h"
-#include "sysemu/iothread.h"
+#include "system/iothread.h"
 #include "net/colo-compare.h"
 #include "migration/colo.h"
 #include "util.h"
@@ -88,7 +88,7 @@ static uint32_t max_queue_size;
 typedef struct SendCo {
     Coroutine *co;
     struct CompareState *s;
-    CharBackend *chr;
+    CharFrontend *chr;
     GQueue send_list;
     bool notify_remote_frame;
     bool done;
@@ -108,10 +108,10 @@ struct CompareState {
     char *sec_indev;
     char *outdev;
     char *notify_dev;
-    CharBackend chr_pri_in;
-    CharBackend chr_sec_in;
-    CharBackend chr_out;
-    CharBackend chr_notify_dev;
+    CharFrontend chr_pri_in;
+    CharFrontend chr_sec_in;
+    CharFrontend chr_out;
+    CharFrontend chr_notify_dev;
     SocketReadState pri_rs;
     SocketReadState sec_rs;
     SocketReadState notify_rs;
@@ -1328,8 +1328,6 @@ static void colo_compare_complete(UserCreatable *uc, Error **errp)
     }
     QTAILQ_INSERT_TAIL(&net_compares, s, next);
     qemu_mutex_unlock(&colo_compare_mutex);
-
-    return;
 }
 
 static void colo_flush_packets(void *opaque, void *user_data)
@@ -1354,7 +1352,7 @@ static void colo_flush_packets(void *opaque, void *user_data)
     }
 }
 
-static void colo_compare_class_init(ObjectClass *oc, void *data)
+static void colo_compare_class_init(ObjectClass *oc, const void *data)
 {
     UserCreatableClass *ucc = USER_CREATABLE_CLASS(oc);
 
@@ -1478,7 +1476,7 @@ static const TypeInfo colo_compare_info = {
     .instance_finalize = colo_compare_finalize,
     .class_size = sizeof(CompareClass),
     .class_init = colo_compare_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_USER_CREATABLE },
         { }
     }

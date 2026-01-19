@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 config VFIO
     bool
     depends on LINUX
@@ -14,22 +16,6 @@ config VFIO_CCW
     default y
     select VFIO
     depends on LINUX && S390_CCW_VIRTIO
-
-config VFIO_PLATFORM
-    bool
-    default y
-    select VFIO
-    depends on LINUX && PLATFORM_BUS
-
-config VFIO_XGMAC
-    bool
-    default y
-    depends on VFIO_PLATFORM
-
-config VFIO_AMD_XGBE
-    bool
-    default y
-    depends on VFIO_PLATFORM
 
 config VFIO_AP
     bool

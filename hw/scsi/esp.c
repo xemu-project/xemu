@@ -242,10 +242,7 @@ static uint32_t esp_get_stc(ESPState *s)
 
 static uint8_t esp_pdma_read(ESPState *s)
 {
-    uint8_t val;
-
-    val = esp_fifo_pop(s);
-    return val;
+    return esp_fifo_pop(s);
 }
 
 static void esp_pdma_write(ESPState *s, uint8_t val)
@@ -278,6 +275,7 @@ static int esp_select(ESPState *s)
     if (!s->current_dev) {
         /* No such drive */
         s->rregs[ESP_RSTAT] = 0;
+        s->asc_mode = ESP_ASC_MODE_DIS;
         s->rregs[ESP_RINTR] = INTR_DC;
         esp_raise_irq(s);
         return -1;
@@ -287,6 +285,7 @@ static int esp_select(ESPState *s)
      * Note that we deliberately don't raise the IRQ here: this will be done
      * either in esp_transfer_data() or esp_command_complete()
      */
+    s->asc_mode = ESP_ASC_MODE_INI;
     return 0;
 }
 
@@ -311,6 +310,7 @@ static void do_command_phase(ESPState *s)
     if (!current_lun) {
         /* No such drive */
         s->rregs[ESP_RSTAT] = 0;
+        s->asc_mode = ESP_ASC_MODE_DIS;
         s->rregs[ESP_RINTR] = INTR_DC;
         s->rregs[ESP_RSEQ] = SEQ_0;
         esp_raise_irq(s);
@@ -447,7 +447,9 @@ static void write_response(ESPState *s)
 
 static bool esp_cdb_ready(ESPState *s)
 {
-    int len = fifo8_num_used(&s->cmdfifo) - s->cmdfifo_cdb_offset;
+    /* scsi_cdb_length() only reads the first byte */
+    int limit = s->cmdfifo_cdb_offset + 1;
+    int len = fifo8_num_used(&s->cmdfifo);
     const uint8_t *pbuf;
     uint32_t n;
     int cdblen;
@@ -457,7 +459,7 @@ static bool esp_cdb_ready(ESPState *s)
     }
 
     pbuf = fifo8_peek_bufptr(&s->cmdfifo, len, &n);
-    if (n < len) {
+    if (n < limit) {
         /*
          * In normal use the cmdfifo should never wrap, but include this check
          * to prevent a malicious guest from reading past the end of the
@@ -490,8 +492,10 @@ static void esp_do_dma(ESPState *s)
     case STAT_MO:
         if (s->dma_memory_read) {
             len = MIN(len, fifo8_num_free(&s->cmdfifo));
-            s->dma_memory_read(s->dma_opaque, buf, len);
-            esp_set_tc(s, esp_get_tc(s) - len);
+            if (len) {
+                s->dma_memory_read(s->dma_opaque, buf, len);
+                esp_set_tc(s, esp_get_tc(s) - len);
+            }
         } else {
             len = esp_fifo_pop_buf(s, buf, fifo8_num_used(&s->fifo));
             len = MIN(fifo8_num_free(&s->cmdfifo), len);
@@ -544,9 +548,11 @@ static void esp_do_dma(ESPState *s)
         trace_esp_do_dma(cmdlen, len);
         if (s->dma_memory_read) {
             len = MIN(len, fifo8_num_free(&s->cmdfifo));
-            s->dma_memory_read(s->dma_opaque, buf, len);
-            fifo8_push_all(&s->cmdfifo, buf, len);
-            esp_set_tc(s, esp_get_tc(s) - len);
+            if (len) {
+                s->dma_memory_read(s->dma_opaque, buf, len);
+                fifo8_push_all(&s->cmdfifo, buf, len);
+                esp_set_tc(s, esp_get_tc(s) - len);
+            }
         } else {
             len = esp_fifo_pop_buf(s, buf, fifo8_num_used(&s->fifo));
             len = MIN(fifo8_num_free(&s->cmdfifo), len);
@@ -575,8 +581,10 @@ static void esp_do_dma(ESPState *s)
         switch (s->rregs[ESP_CMD]) {
         case CMD_TI | CMD_DMA:
             if (s->dma_memory_read) {
-                s->dma_memory_read(s->dma_opaque, s->async_buf, len);
-                esp_set_tc(s, esp_get_tc(s) - len);
+                if (len) {
+                    s->dma_memory_read(s->dma_opaque, s->async_buf, len);
+                    esp_set_tc(s, esp_get_tc(s) - len);
+                }
             } else {
                 /* Copy FIFO data to device */
                 len = MIN(s->async_len, ESP_FIFO_SZ);
@@ -628,7 +636,9 @@ static void esp_do_dma(ESPState *s)
         switch (s->rregs[ESP_CMD]) {
         case CMD_TI | CMD_DMA:
             if (s->dma_memory_write) {
-                s->dma_memory_write(s->dma_opaque, s->async_buf, len);
+                if (len) {
+                    s->dma_memory_write(s->dma_opaque, s->async_buf, len);
+                }
             } else {
                 /* Copy device data to FIFO */
                 len = MIN(len, fifo8_num_free(&s->fifo));
@@ -678,6 +688,7 @@ static void esp_do_dma(ESPState *s)
                 buf[0] = s->status;
 
                 if (s->dma_memory_write) {
+                    /* Length already non-zero */
                     s->dma_memory_write(s->dma_opaque, buf, len);
                 } else {
                     esp_fifo_push_buf(s, buf, len);
@@ -712,6 +723,7 @@ static void esp_do_dma(ESPState *s)
                 buf[0] = 0;
 
                 if (s->dma_memory_write) {
+                    /* Length already non-zero */
                     s->dma_memory_write(s->dma_opaque, buf, len);
                 } else {
                     esp_fifo_push_buf(s, buf, len);
@@ -1015,6 +1027,7 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
              */
              s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
              s->rregs[ESP_RSEQ] = SEQ_CD;
+             esp_raise_irq(s);
              break;
 
         case CMD_SELATNS | CMD_DMA:
@@ -1025,20 +1038,21 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
              */
              s->rregs[ESP_RINTR] |= INTR_BS;
              s->rregs[ESP_RSEQ] = SEQ_MO;
+             esp_raise_irq(s);
              break;
 
         case CMD_TI | CMD_DMA:
         case CMD_TI:
             /*
-             * Bus service interrupt raised because of initial change to
-             * DATA phase
+             * If the final COMMAND phase data was transferred using a TI
+             * command, clear ESP_CMD to terminate the TI command and raise
+             * the completion interrupt
              */
             s->rregs[ESP_CMD] = 0;
             s->rregs[ESP_RINTR] |= INTR_BS;
+            esp_raise_irq(s);
             break;
         }
-
-        esp_raise_irq(s);
     }
 
     /*
@@ -1093,6 +1107,7 @@ void esp_hard_reset(ESPState *s)
     fifo8_reset(&s->cmdfifo);
     s->dma = 0;
     s->dma_cb = NULL;
+    s->asc_mode = ESP_ASC_MODE_DIS;
 
     s->rregs[ESP_CFG1] = 7;
 }
@@ -1114,6 +1129,38 @@ static void parent_esp_reset(ESPState *s, int irq, int level)
     if (level) {
         esp_soft_reset(s);
     }
+}
+
+static bool esp_cmd_is_valid(ESPState *s, uint8_t cmd)
+{
+    uint8_t cmd_group = (cmd & CMD_GRP_MASK) >> 4;
+
+    /* Always allow misc commands */
+    if (cmd_group == CMD_GRP_MISC) {
+        return true;
+    }
+
+    switch (s->asc_mode) {
+    case ESP_ASC_MODE_DIS:
+        /* Disconnected mode: only allow disconnected commands */
+        if (cmd_group == CMD_GRP_DISC) {
+            return true;
+        }
+        break;
+
+    case ESP_ASC_MODE_INI:
+        /* Initiator mode: allow initiator commands */
+        if (cmd_group == CMD_GRP_INIT) {
+            return true;
+        }
+        break;
+
+    default:
+        g_assert_not_reached();
+    }
+
+    trace_esp_invalid_cmd(cmd, s->asc_mode);
+    return false;
 }
 
 static void esp_run_cmd(ESPState *s)
@@ -1161,6 +1208,7 @@ static void esp_run_cmd(ESPState *s)
         break;
     case CMD_MSGACC:
         trace_esp_mem_writeb_cmd_msgacc(cmd);
+        s->asc_mode = ESP_ASC_MODE_DIS;
         s->rregs[ESP_RINTR] |= INTR_DC;
         s->rregs[ESP_RSEQ] = 0;
         s->rregs[ESP_RFLAGS] = 0;
@@ -1271,6 +1319,11 @@ void esp_reg_write(ESPState *s, uint32_t saddr, uint64_t val)
         break;
     case ESP_CMD:
         s->rregs[saddr] = val;
+        if (!esp_cmd_is_valid(s, s->rregs[saddr])) {
+            s->rregs[ESP_RSTAT] |= INTR_IL;
+            esp_raise_irq(s);
+            break;
+        }
         esp_run_cmd(s);
         break;
     case ESP_WBUSID ... ESP_WSYNO:
@@ -1328,6 +1381,14 @@ static bool esp_is_between_version_5_and_6(void *opaque, int version_id)
     return version_id >= 5 && version_id <= 6;
 }
 
+static bool esp_is_version_8(void *opaque, int version_id)
+{
+    ESPState *s = ESP(opaque);
+
+    version_id = MIN(version_id, s->mig_version_id);
+    return version_id >= 8;
+}
+
 int esp_pre_save(void *opaque)
 {
     ESPState *s = ESP(object_resolve_path_component(
@@ -1359,13 +1420,18 @@ static int esp_post_load(void *opaque, int version_id)
         }
     }
 
+    if (version_id < 8) {
+        /* Assume initiator mode to allow all commands to continue */
+        s->asc_mode = ESP_ASC_MODE_INI;
+    }
+
     s->mig_version_id = vmstate_esp.version_id;
     return 0;
 }
 
 const VMStateDescription vmstate_esp = {
     .name = "esp",
-    .version_id = 7,
+    .version_id = 8,
     .minimum_version_id = 3,
     .post_load = esp_post_load,
     .fields = (const VMStateField[]) {
@@ -1397,6 +1463,7 @@ const VMStateDescription vmstate_esp = {
                            esp_is_between_version_5_and_6),
         VMSTATE_UINT8_TEST(lun, ESPState, esp_is_version_6),
         VMSTATE_BOOL(drq_state, ESPState),
+        VMSTATE_UINT8_TEST(asc_mode, ESPState, esp_is_version_8),
         VMSTATE_END_OF_LIST()
     },
 };
@@ -1571,7 +1638,7 @@ static const VMStateDescription vmstate_sysbus_esp_scsi = {
     }
 };
 
-static void sysbus_esp_class_init(ObjectClass *klass, void *data)
+static void sysbus_esp_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -1597,7 +1664,7 @@ static void esp_init(Object *obj)
     fifo8_create(&s->cmdfifo, ESP_CMDFIFO_SZ);
 }
 
-static void esp_class_init(ObjectClass *klass, void *data)
+static void esp_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

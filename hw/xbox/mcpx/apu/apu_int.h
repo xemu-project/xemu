@@ -28,11 +28,11 @@
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_device.h"
 #include "cpu.h"
+#include "exec/target_page.h"
 #include "migration/vmstate.h"
 #include "qemu/main-loop.h"
 #include "qemu/thread.h"
-#include "sysemu/runstate.h"
-#include "audio/audio.h"
+#include "system/runstate.h"
 #include "qemu/fifo8.h"
 #include "ui/xemu-settings.h"
 

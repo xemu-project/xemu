@@ -15,7 +15,7 @@
 #include "hw/pci/msi.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
-#include "sysemu/reset.h"
+#include "system/reset.h"
 
 static uint64_t phb3_msi_ive_addr(PnvPHB3 *phb, int srcno)
 {
@@ -284,7 +284,7 @@ static void phb3_msi_instance_init(Object *obj)
     ics->offset = 0;
 }
 
-static void phb3_msi_class_init(ObjectClass *klass, void *data)
+static void phb3_msi_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ICSStateClass *isc = ICS_CLASS(klass);
