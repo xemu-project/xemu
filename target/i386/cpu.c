@@ -7897,9 +7897,9 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
                    uint32_t *ecx, uint32_t *edx)
 {
     X86CPU *cpu = env_archcpu(env);
-    CPUState *cs = env_cpu(env);
     uint32_t limit;
 #ifndef XBOX
+    CPUState *cs = env_cpu(env);
     uint32_t signature[3];
 #endif
     X86CPUTopoInfo *topo_info = &env->topo_info;
