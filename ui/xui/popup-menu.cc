@@ -42,7 +42,7 @@ void PopupMenuItemDelegate::PushFocus() {}
 void PopupMenuItemDelegate::PopFocus() {}
 bool PopupMenuItemDelegate::DidPop() { return false; }
 
-bool PopupMenuButton(std::string text, std::string icon = "")
+static bool PopupMenuButton(std::string text, std::string icon = "")
 {
     ImGui::PushFont(g_font_mgr.m_menu_font);
     auto button_text = string_format("%s %s", icon.c_str(), text.c_str());
@@ -51,7 +51,7 @@ bool PopupMenuButton(std::string text, std::string icon = "")
     return status;
 }
 
-bool PopupMenuCheck(std::string text, std::string icon = "", bool v = false)
+static bool PopupMenuCheck(std::string text, std::string icon = "", bool v = false)
 {
     bool status = PopupMenuButton(text, icon);
     if (v) {
@@ -70,7 +70,7 @@ bool PopupMenuCheck(std::string text, std::string icon = "", bool v = false)
     return status;
 }
 
-bool PopupMenuSubmenuButton(std::string text, std::string icon = "")
+static bool PopupMenuSubmenuButton(std::string text, std::string icon = "")
 {
     bool status = PopupMenuButton(text, icon);
 
@@ -88,7 +88,7 @@ bool PopupMenuSubmenuButton(std::string text, std::string icon = "")
     return status;
 }
 
-bool PopupMenuToggle(std::string text, std::string icon = "", bool *v = nullptr)
+static bool PopupMenuToggle(std::string text, std::string icon = "", bool *v = nullptr)
 {
     bool l_v = false;
     if (v == NULL) v = &l_v;
@@ -112,7 +112,7 @@ bool PopupMenuToggle(std::string text, std::string icon = "", bool *v = nullptr)
     return status;
 }
 
-bool PopupMenuSlider(std::string text, std::string icon = "", float *v = NULL)
+static bool PopupMenuSlider(std::string text, std::string icon = "", float *v = NULL)
 {
     bool status = PopupMenuButton(text, icon);
     ImVec2 p_min = ImGui::GetItemRectMin();

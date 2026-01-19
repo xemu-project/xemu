@@ -350,9 +350,9 @@ void main() {
     return s;
 }
 
-void RenderDecal(DecalShader *s, float x, float y, float w, float h,
-                 float tex_x, float tex_y, float tex_w, float tex_h,
-                 uint32_t primary, uint32_t secondary, uint32_t fill)
+static void RenderDecal(DecalShader *s, float x, float y, float w, float h,
+                        float tex_x, float tex_y, float tex_w, float tex_h,
+                        uint32_t primary, uint32_t secondary, uint32_t fill)
 {
     GLint vp[4];
     glGetIntegerv(GL_VIEWPORT, vp);
@@ -925,7 +925,7 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip, float scale[
     }
 }
 
-float GetDisplayAspectRatio(int width, int height)
+static float GetDisplayAspectRatio(int width, int height)
 {
     switch (g_config.display.ui.aspect_ratio) {
     case CONFIG_DISPLAY_UI_ASPECT_RATIO_NATIVE:
