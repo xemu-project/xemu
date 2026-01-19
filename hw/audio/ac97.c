@@ -1191,7 +1191,7 @@ static const VMStateDescription vmstate_ac97 = {
 
 static uint64_t nam_read(void *opaque, hwaddr addr, unsigned size)
 {
-    dolog("nam_read [0x%llx] (%d)\n", addr, size);
+    dolog("nam_read [0x%"HWADDR_PRIx"] (%d)\n", addr, size);
 
     if ((addr / size) > 256) {
         return -1;
@@ -1212,7 +1212,7 @@ static uint64_t nam_read(void *opaque, hwaddr addr, unsigned size)
 static void nam_write(void *opaque, hwaddr addr, uint64_t val,
                       unsigned size)
 {
-    dolog("nam_write [0x%llx] = 0x%llx (%d)\n", addr, val, size);
+    dolog("nam_write [0x%"HWADDR_PRIx"] = 0x%"PRIx64" (%d)\n", addr, val, size);
 
     if ((addr / size) > 256) {
         return;
@@ -1243,7 +1243,7 @@ const MemoryRegionOps ac97_io_nam_ops = {
 
 static uint64_t nabm_read(void *opaque, hwaddr addr, unsigned size)
 {
-    dolog("nabm_read [0x%llx] (%d)\n", addr, size);
+    dolog("nabm_read [0x%"HWADDR_PRIx"] (%d)\n", addr, size);
     // if ((addr / size) > 64) {
     //     // assert(0);
     //     return -1;
@@ -1264,7 +1264,7 @@ static uint64_t nabm_read(void *opaque, hwaddr addr, unsigned size)
 static void nabm_write(void *opaque, hwaddr addr, uint64_t val,
                        unsigned size)
 {
-    dolog("nabm_write [0x%llx] = 0x%llx (%d)\n", addr, val, size);
+    dolog("nabm_write [0x%"HWADDR_PRIx"] = 0x%"PRIx64" (%d)\n", addr, val, size);
     // if ((addr / size) > 64) {
     //     // assert(0);
     //     return;
