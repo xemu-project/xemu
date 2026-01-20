@@ -17,7 +17,7 @@ jobs:
         arch: [x86_64, arm64]
         configuration: [debug, release]
     container:
-      image: ghcr.io/xemu-project/xemu-win64-toolchain-${{ matrix.arch == 'x86_64' && 'gcc:sha-18018f1' || 'llvm:sha-18018f1' }}
+      image: ghcr.io/xemu-project/xemu-win64-toolchain${{ matrix.arch == 'x86_64' && '-gcc:sha-18018f1' || ':sha-0d06ce8' }}
     defaults:
       run:
         shell: bash
@@ -25,6 +25,8 @@ jobs:
       CCACHE_DIR: /tmp/xemu-ccache
       CCACHE_MAXSIZE: 512M
       LTO_CACHE_DIR: /tmp/xemu-lto-ccache
+      CROSSPREFIX: ${{ matrix.arch == 'arm64' && 'aarch64' || 'x86_64' }}-w64-mingw32.static-
+      CROSSAR: ${{ matrix.arch == 'arm64' && 'aarch64' || 'x86_64' }}-w64-mingw32.static-${{ matrix.arch == 'arm64' && 'ar' || 'gcc-ar' }}
     steps:
     - name: Download source package
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
