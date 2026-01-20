@@ -195,6 +195,10 @@ void MainMenuInputView::Draw()
         driver = DRIVER_DUKE_DISPLAY_NAME;
     else if (strcmp(driver, DRIVER_S) == 0)
         driver = DRIVER_S_DISPLAY_NAME;
+    else if (strcmp(driver, DRIVER_STEEL_BATTALION) == 0)
+        driver = DRIVER_STEEL_BATTALION_DISPLAY_NAME;
+    else if (strcmp(driver, DRIVER_DVD_PLAYBACK_KIT) == 0)
+        driver = DRIVER_DVD_PLAYBACK_KIT_DISPLAY_NAME;
 
     ImGui::Columns(2, "", false);
     ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.25);
@@ -206,9 +210,18 @@ void MainMenuInputView::Draw()
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("###InputDrivers", driver,
                           ImGuiComboFlags_NoArrowButton)) {
-        const char *available_drivers[] = { DRIVER_DUKE, DRIVER_S };
-        const char *driver_display_names[] = { DRIVER_DUKE_DISPLAY_NAME,
-                                               DRIVER_S_DISPLAY_NAME };
+        const char *available_drivers[] = {
+            DRIVER_DUKE,
+            DRIVER_S,
+            DRIVER_STEEL_BATTALION,
+            DRIVER_DVD_PLAYBACK_KIT
+        };
+        const char *driver_display_names[] = { 
+            DRIVER_DUKE_DISPLAY_NAME, 
+            DRIVER_S_DISPLAY_NAME, 
+            DRIVER_STEEL_BATTALION_DISPLAY_NAME,
+            DRIVER_DVD_PLAYBACK_KIT_DISPLAY_NAME
+        };
         bool is_selected = false;
         int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);
         for (int i = 0; i < num_drivers; i++) {
@@ -359,164 +372,173 @@ void MainMenuInputView::Draw()
 
     if (bound_state) {
         ImGui::PushID(active);
+        bool hasInternalHub = strcmp(bound_drivers[active], DRIVER_STEEL_BATTALION) != 0
+                           && strcmp(bound_drivers[active], DRIVER_DVD_PLAYBACK_KIT) != 0;
+        bool hasFirmware = strcmp(bound_drivers[active], DRIVER_DVD_PLAYBACK_KIT) == 0;
+        if (hasInternalHub) {
 
-        SectionTitle("Expansion Slots");
-        // Begin a 2-column layout to render the expansion slots
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
-                            g_viewport_mgr.Scale(ImVec2(0, 12)));
-        ImGui::Columns(2, "mixed", false);
+            SectionTitle("Expansion Slots");
+            // Begin a 2-column layout to render the expansion slots
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                                g_viewport_mgr.Scale(ImVec2(0, 12)));
+            ImGui::Columns(2, "mixed", false);
 
-        xmu_fbo->Target();
-        id = (ImTextureID)(intptr_t)xmu_fbo->Texture();
+            xmu_fbo->Target();
+            id = (ImTextureID)(intptr_t)xmu_fbo->Texture();
 
-        const char *img_file_filters = ".img Files\0*.img\0All Files\0*.*\0";
-        const char *comboLabels[2] = { "###ExpansionSlotA",
-                                       "###ExpansionSlotB" };
-        for (int i = 0; i < 2; i++) {
-            // Display a combo box to allow the user to choose the type of
-            // peripheral they want to use
-            enum peripheral_type selected_type =
-                bound_state->peripheral_types[i];
-            const char *peripheral_type_names[2] = { "None", "Memory Unit" };
-            const char *selected_peripheral_type =
-                peripheral_type_names[selected_type];
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::BeginCombo(comboLabels[i], selected_peripheral_type,
-                                  ImGuiComboFlags_NoArrowButton)) {
-                // Handle all available peripheral types
-                for (int j = 0; j < 2; j++) {
-                    bool is_selected = selected_type == j;
-                    ImGui::PushID(j);
-                    const char *selectable_label = peripheral_type_names[j];
+            const char *img_file_filters = ".img Files\0*.img\0All Files\0*.*\0";
+            const char *comboLabels[2] = { "###ExpansionSlotA",
+                                        "###ExpansionSlotB" };
+            for (int i = 0; i < 2; i++) {
+                // Display a combo box to allow the user to choose the type of
+                // peripheral they want to use
+                enum peripheral_type selected_type =
+                    bound_state->peripheral_types[i];
+                const char *peripheral_type_names[2] = { "None", "Memory Unit" };
+                const char *selected_peripheral_type =
+                    peripheral_type_names[selected_type];
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                if (ImGui::BeginCombo(comboLabels[i], selected_peripheral_type,
+                                    ImGuiComboFlags_NoArrowButton)) {
+                    // Handle all available peripheral types
+                    for (int j = 0; j < 2; j++) {
+                        bool is_selected = selected_type == j;
+                        ImGui::PushID(j);
+                        const char *selectable_label = peripheral_type_names[j];
 
-                    if (ImGui::Selectable(selectable_label, is_selected)) {
-                        // Free any existing peripheral
-                        if (bound_state->peripherals[i] != NULL) {
-                            if (bound_state->peripheral_types[i] ==
-                                PERIPHERAL_XMU) {
-                                // Another peripheral was already bound.
-                                // Unplugging
-                                xemu_input_unbind_xmu(active, i);
+                        if (ImGui::Selectable(selectable_label, is_selected)) {
+                            // Free any existing peripheral
+                            if (bound_state->peripherals[i] != NULL) {
+                                if (bound_state->peripheral_types[i] ==
+                                    PERIPHERAL_XMU) {
+                                    // Another peripheral was already bound.
+                                    // Unplugging
+                                    xemu_input_unbind_xmu(active, i);
+                                }
+
+                                // Free the existing state
+                                g_free((void *)bound_state->peripherals[i]);
+                                bound_state->peripherals[i] = NULL;
                             }
 
-                            // Free the existing state
-                            g_free((void *)bound_state->peripherals[i]);
-                            bound_state->peripherals[i] = NULL;
+                            // Change the peripheral type to the newly selected type
+                            bound_state->peripheral_types[i] =
+                                (enum peripheral_type)j;
+
+                            // Allocate state for the new peripheral
+                            if (j == PERIPHERAL_XMU) {
+                                bound_state->peripherals[i] =
+                                    g_malloc(sizeof(XmuState));
+                                memset(bound_state->peripherals[i], 0,
+                                    sizeof(XmuState));
+                            }
+
+                            xemu_save_peripheral_settings(
+                                active, i, bound_state->peripheral_types[i], NULL);
                         }
 
-                        // Change the peripheral type to the newly selected type
-                        bound_state->peripheral_types[i] =
-                            (enum peripheral_type)j;
-
-                        // Allocate state for the new peripheral
-                        if (j == PERIPHERAL_XMU) {
-                            bound_state->peripherals[i] =
-                                g_malloc(sizeof(XmuState));
-                            memset(bound_state->peripherals[i], 0,
-                                   sizeof(XmuState));
+                        if (is_selected) {
+                            ImGui::SetItemDefaultFocus();
                         }
 
-                        xemu_save_peripheral_settings(
-                            active, i, bound_state->peripheral_types[i], NULL);
+                        ImGui::PopID();
                     }
 
-                    if (is_selected) {
-                        ImGui::SetItemDefaultFocus();
+                    ImGui::EndCombo();
+                }
+                DrawComboChevron();
+
+                // Set an X offset to center the image button within the column
+                ImGui::SetCursorPosX(
+                    ImGui::GetCursorPosX() +
+                    (int)((ImGui::GetColumnWidth() -
+                        xmu_w * g_viewport_mgr.m_scale -
+                        2 * port_padding * g_viewport_mgr.m_scale) /
+                        2));
+
+                selected_type = bound_state->peripheral_types[i];
+                if (selected_type == PERIPHERAL_XMU) {
+                    float x = xmu_x + i * xmu_x_stride;
+                    float y = xmu_y;
+
+                    XmuState *xmu = (XmuState *)bound_state->peripherals[i];
+                    if (xmu->filename != NULL && strlen(xmu->filename) > 0) {
+                        RenderXmu(x, y, 0x81dc8a00, 0x0f0f0f00);
+
+                    } else {
+                        RenderXmu(x, y, 0x1f1f1f00, 0x0f0f0f00);
                     }
+
+                    ImVec2 xmu_display_size;
+                    if (ImGui::GetContentRegionMax().x <
+                        xmu_h * g_viewport_mgr.m_scale) {
+                        xmu_display_size.x = ImGui::GetContentRegionMax().x / 2;
+                        xmu_display_size.y = xmu_display_size.x * xmu_h / xmu_w;
+                    } else {
+                        xmu_display_size = ImVec2(xmu_w * g_viewport_mgr.m_scale,
+                                                xmu_h * g_viewport_mgr.m_scale);
+                    }
+
+                    ImGui::SetCursorPosX(
+                        ImGui::GetCursorPosX() +
+                        (int)((ImGui::GetColumnWidth() - xmu_display_size.x) /
+                            2.0));
+
+                    ImGui::Image(id, xmu_display_size, ImVec2(0.5f * i, 1),
+                                ImVec2(0.5f * (i + 1), 0));
+                    ImVec2 pos = ImGui::GetCursorPos();
+
+                    ImGui::SetCursorPos(pos);
+
+                    // Button to generate a new XMU
+                    ImGui::PushID(i);
+                    if (ImGui::Button("New Image", ImVec2(250, 0))) {
+                        int flags = NOC_FILE_DIALOG_SAVE |
+                                    NOC_FILE_DIALOG_OVERWRITE_CONFIRMATION;
+                        const char *new_path = PausedFileOpen(
+                            flags, img_file_filters, NULL, "xmu.img");
+
+                        if (new_path) {
+                            if (create_fatx_image(new_path, DEFAULT_XMU_SIZE)) {
+                                // XMU was created successfully. Bind it
+                                xemu_input_bind_xmu(active, i, new_path, false);
+                            } else {
+                                // Show alert message
+                                char *msg = g_strdup_printf(
+                                    "Unable to create XMU image at %s", new_path);
+                                xemu_queue_error_message(msg);
+                                g_free(msg);
+                            }
+                        }
+                    }
+
+                    const char *xmu_port_path = NULL;
+                    if (xmu->filename == NULL)
+                        xmu_port_path = g_strdup("");
+                    else
+                        xmu_port_path = g_strdup(xmu->filename);
+                    if (FilePicker("Image", &xmu_port_path, img_file_filters)) {
+                        if (strlen(xmu_port_path) == 0) {
+                            xemu_input_unbind_xmu(active, i);
+                        } else {
+                            xemu_input_bind_xmu(active, i, xmu_port_path, false);
+                        }
+                    }
+                    g_free((void *)xmu_port_path);
 
                     ImGui::PopID();
                 }
 
-                ImGui::EndCombo();
-            }
-            DrawComboChevron();
-
-            // Set an X offset to center the image button within the column
-            ImGui::SetCursorPosX(
-                ImGui::GetCursorPosX() +
-                (int)((ImGui::GetColumnWidth() -
-                       xmu_w * g_viewport_mgr.m_scale -
-                       2 * port_padding * g_viewport_mgr.m_scale) /
-                      2));
-
-            selected_type = bound_state->peripheral_types[i];
-            if (selected_type == PERIPHERAL_XMU) {
-                float x = xmu_x + i * xmu_x_stride;
-                float y = xmu_y;
-
-                XmuState *xmu = (XmuState *)bound_state->peripherals[i];
-                if (xmu->filename != NULL && strlen(xmu->filename) > 0) {
-                    RenderXmu(x, y, 0x81dc8a00, 0x0f0f0f00);
-
-                } else {
-                    RenderXmu(x, y, 0x1f1f1f00, 0x0f0f0f00);
-                }
-
-                ImVec2 xmu_display_size;
-                if (ImGui::GetContentRegionMax().x <
-                    xmu_h * g_viewport_mgr.m_scale) {
-                    xmu_display_size.x = ImGui::GetContentRegionMax().x / 2;
-                    xmu_display_size.y = xmu_display_size.x * xmu_h / xmu_w;
-                } else {
-                    xmu_display_size = ImVec2(xmu_w * g_viewport_mgr.m_scale,
-                                              xmu_h * g_viewport_mgr.m_scale);
-                }
-
-                ImGui::SetCursorPosX(
-                    ImGui::GetCursorPosX() +
-                    (int)((ImGui::GetColumnWidth() - xmu_display_size.x) /
-                          2.0));
-
-                ImGui::Image(id, xmu_display_size, ImVec2(0.5f * i, 1),
-                             ImVec2(0.5f * (i + 1), 0));
-
-                // Button to generate a new XMU
-                ImGui::PushID(i);
-                if (ImGui::Button("New Image", ImVec2(250, 0))) {
-                    int flags = NOC_FILE_DIALOG_SAVE |
-                                NOC_FILE_DIALOG_OVERWRITE_CONFIRMATION;
-                    const char *new_path = PausedFileOpen(
-                        flags, img_file_filters, NULL, "xmu.img");
-
-                    if (new_path) {
-                        if (create_fatx_image(new_path, DEFAULT_XMU_SIZE)) {
-                            // XMU was created successfully. Bind it
-                            xemu_input_bind_xmu(active, i, new_path, false);
-                        } else {
-                            // Show alert message
-                            char *msg = g_strdup_printf(
-                                "Unable to create XMU image at %s", new_path);
-                            xemu_queue_error_message(msg);
-                            g_free(msg);
-                        }
-                    }
-                }
-
-                const char *xmu_port_path = NULL;
-                if (xmu->filename == NULL)
-                    xmu_port_path = g_strdup("");
-                else
-                    xmu_port_path = g_strdup(xmu->filename);
-                if (FilePicker("Image", &xmu_port_path, img_file_filters)) {
-                    if (strlen(xmu_port_path) == 0) {
-                        xemu_input_unbind_xmu(active, i);
-                    } else {
-                        xemu_input_bind_xmu(active, i, xmu_port_path, false);
-                    }
-                }
-                g_free((void *)xmu_port_path);
-
-                ImGui::PopID();
+                ImGui::NextColumn();
             }
 
-            ImGui::NextColumn();
+            xmu_fbo->Restore();
+
+            ImGui::PopStyleVar(); // ItemSpacing
+            ImGui::Columns(1);
         }
 
-        xmu_fbo->Restore();
-
-        ImGui::PopStyleVar(); // ItemSpacing
-        ImGui::Columns(1);
-
+        if (!hasFirmware) {
         SectionTitle("Mapping");
         ImVec4 tc = ImGui::GetStyle().Colors[ImGuiCol_Header];
         tc.w = 0.0f;
@@ -561,7 +583,22 @@ void MainMenuInputView::Draw()
         }
 
         ImGui::PopStyleColor();
+        }
         ImGui::PopID();
+
+        if (hasFirmware) {
+            SectionTitle("Firmware");
+            const char *firmware_filters = ".bin Files\0*.bin\0All Files\0*.*\0";
+            const char *firmware_path = NULL;
+            if (bound_state->dvdKit.firmware == NULL)
+                firmware_path = g_strdup("");
+            else
+                firmware_path = g_strdup(bound_state->dvdKit.firmware);
+            if (FilePicker("DVD Kit Firmware", &firmware_path, firmware_filters)) {
+                xemu_save_dvd_firmware_settings(active, firmware_path);
+            }
+            g_free((void *)firmware_path);
+        }
     }
 
     SectionTitle("Options");
