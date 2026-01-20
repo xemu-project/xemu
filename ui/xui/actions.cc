@@ -24,6 +24,8 @@
 #include "../xemu-notifications.h"
 #include "snapshot-manager.hh"
 
+static const unsigned int MAX_RECENT_DISCS = 10;
+
 void ActionEjectDisc(void)
 {
     Error *err = NULL;
@@ -57,6 +59,49 @@ void ActionLoadDiscFile(const char *file_path)
     if (err) {
         xemu_queue_error_message(error_get_pretty(err));
         error_free(err);
+    } else {
+        if (!g_config.general.recent.discs) {
+            g_config.general.recent.discs = g_new0(const char *, 1);
+            g_config.general.recent.discs_count = 0;
+        }
+
+        // If current disc entry is already in history,
+        // collapse other entries down,
+        // then move the current entry to the slot at the top.
+        for (unsigned i = 0; i < g_config.general.recent.discs_count; i++) {
+            if (g_strcmp0(g_config.general.recent.discs[i], file_path) == 0) {
+                const char *current_path = g_config.general.recent.discs[i];
+                for (unsigned int j = i; j > 0; j--) {
+                    g_config.general.recent.discs[j] =
+                        g_config.general.recent.discs[j - 1];
+                }
+                g_config.general.recent.discs[0] = current_path;
+                return;
+            }
+        }
+        // Free a slot for our entry.
+        if (g_config.general.recent.discs_count >= MAX_RECENT_DISCS) {
+            for (unsigned i = MAX_RECENT_DISCS;
+                 i < g_config.general.recent.discs_count; i++) {
+                g_free((void *)g_config.general.recent.discs[i]);
+            }
+
+            g_free((void *)g_config.general.recent.discs[MAX_RECENT_DISCS - 1]);
+            g_config.general.recent.discs_count = MAX_RECENT_DISCS;
+        } else {
+            // Allocate new space.
+            const char **new_discs =
+                g_renew(const char *, g_config.general.recent.discs,
+                        g_config.general.recent.discs_count + 1);
+            g_config.general.recent.discs = new_discs;
+            g_config.general.recent.discs_count++;
+        }
+
+        for (unsigned i = g_config.general.recent.discs_count - 1; i > 0; i--) {
+            g_config.general.recent.discs[i] =
+                g_config.general.recent.discs[i - 1];
+        }
+        g_config.general.recent.discs[0] = g_strdup(file_path);
     }
 }
 
@@ -81,7 +126,7 @@ void ActionShutdown(void)
 
 void ActionScreenshot(void)
 {
-	g_screenshot_pending = true;
+    g_screenshot_pending = true;
 }
 
 void ActionActivateBoundSnapshot(int slot, bool save)
@@ -111,4 +156,14 @@ void ActionActivateBoundSnapshot(int slot, bool save)
 void ActionLoadSnapshotChecked(const char *name)
 {
     g_snapshot_mgr.LoadSnapshotChecked(name);
+}
+
+void ActionClearDiscRecent(void)
+{
+    for (unsigned i = 0; i < g_config.general.recent.discs_count; i++) {
+        g_free((void *)g_config.general.recent.discs[i]);
+    }
+    g_free(g_config.general.recent.discs);
+    g_config.general.recent.discs = NULL;
+    g_config.general.recent.discs_count = 0;
 }
