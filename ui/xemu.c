@@ -55,6 +55,8 @@
 
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
+#include "hw/xbox/nv2a/debug.h"
+#include "hw/xbox/nv2a/debug_gl.h"
 #include "ui/xemu-notifications.h"
 
 #include <stb_image.h>
@@ -320,7 +322,7 @@ static void handle_keydown(SDL_Event *ev)
 {
     int win;
     struct sdl2_console *scon = get_scon_from_window(ev->key.windowID);
-    if (scon == NULL) return; 
+    if (scon == NULL) return;
     int gui_key_modifier_pressed = get_mod_state();
     int gui_keysym = 0;
 
@@ -1347,6 +1349,11 @@ int main(int argc, char **argv)
     fprintf(stderr, "xemu_commit: %s\n", xemu_commit);
     fprintf(stderr, "xemu_date: %s\n", xemu_date);
 
+    gchar *fatal_error_log_path = g_build_filename(g_get_home_dir(), "xemu-fatal-error.log", NULL);
+    nv2a_set_fatal_error_log_path(fatal_error_log_path);
+    fprintf(stderr, "xemu fatal error log path: %s\n", fatal_error_log_path);
+    g_free(fatal_error_log_path);
+
     DPRINTF("Entered main()\n");
     gArgc = argc;
     gArgv = argv;
@@ -1412,7 +1419,7 @@ int main(int argc, char **argv)
 
     while (1) {
         sdl2_gl_refresh(&sdl2_console[0].dcl);
-        assert(glGetError() == GL_NO_ERROR);
+        ASSERT_NO_GL_ERROR();
     }
 
     // rcu_unregister_thread();
