@@ -34,9 +34,11 @@
 
 #define DRIVER_DUKE "usb-xbox-gamepad"
 #define DRIVER_S "usb-xbox-gamepad-s"
+#define DRIVER_LIGHT_GUN "usb-xbox-light-gun"
 
 #define DRIVER_DUKE_DISPLAY_NAME "Xbox Controller"
 #define DRIVER_S_DISPLAY_NAME "Xbox Controller S"
+#define DRIVER_LIGHT_GUN_DISPLAY_NAME "Light Gun"
 
 enum controller_state_buttons_mask {
     CONTROLLER_BUTTON_A          = (1 << 0),
@@ -80,12 +82,7 @@ typedef struct XmuState {
     void *dev;
 } XmuState;
 
-typedef struct ControllerState {
-    QTAILQ_ENTRY(ControllerState) entry;
-
-    int64_t last_input_updated_ts;
-    int64_t last_rumble_updated_ts;
-
+typedef struct GamepadState {
     // Input state
     uint16_t buttons;
     int16_t  axis[CONTROLLER_AXIS__COUNT];
@@ -96,6 +93,29 @@ typedef struct ControllerState {
 
     // Rumble state
     uint16_t rumble_l, rumble_r;
+} GamepadState;
+
+typedef struct LightGunState {
+    // Input State
+    uint16_t buttons;
+    uint8_t status;
+    int16_t axis[2];
+
+    // Calibration
+    int16_t offsetX;
+    int16_t offsetY;
+    float scaleX;
+    float scaleY;
+} LightGunState;
+
+typedef struct ControllerState {
+    QTAILQ_ENTRY(ControllerState) entry;
+
+    int64_t last_input_updated_ts;
+    int64_t last_rumble_updated_ts;
+
+    GamepadState gp;
+    LightGunState lg;
 
     enum controller_input_device_type type;
     const char         *name;
@@ -129,6 +149,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event); // SDL_CONTROLLERDEV
 void xemu_input_update_controllers(void);
 void xemu_input_update_controller(ControllerState *state);
 void xemu_input_update_sdl_kbd_controller_state(ControllerState *state);
+void xemu_input_update_sdl_mouse_controller_state(ControllerState *state);
 void xemu_input_update_sdl_controller_state(ControllerState *state);
 void xemu_input_update_rumble(ControllerState *state);
 ControllerState *xemu_input_get_bound(int index);
@@ -137,7 +158,8 @@ bool xemu_input_bind_xmu(int player_index, int peripheral_port_index,
                          const char *filename, bool is_rebind);
 void xemu_input_rebind_xmu(int port);
 void xemu_input_unbind_xmu(int player_index, int peripheral_port_index);
-int xemu_input_get_controller_default_bind_port(ControllerState *state, int start);
+int xemu_input_get_controller_default_bind_port(ControllerState *state, 
+                                                int start);
 void xemu_save_peripheral_settings(int player_index, int peripheral_index,
                                    int peripheral_type,
                                    const char *peripheral_parameter);

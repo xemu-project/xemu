@@ -13,11 +13,11 @@ InputManager::InputManager()
 
 void InputManager::Update()
 {
-    ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO &io = ImGui::GetIO();
 
     // Combine all controller states to allow any controller to navigate
     m_buttons = 0;
-    int16_t axis[CONTROLLER_AXIS__COUNT] = {0};
+    int16_t axis[CONTROLLER_AXIS__COUNT] = { 0 };
 
     // If we are rebinding a controller, prevent navigation
     if (!g_main_menu.IsInputRebinding()) {
@@ -25,11 +25,11 @@ void InputManager::Update()
         QTAILQ_FOREACH (iter, &available_controllers, entry) {
             if (iter->type != INPUT_DEVICE_SDL_GAMECONTROLLER)
                 continue;
-            m_buttons |= iter->buttons;
+            m_buttons |= iter->gp.buttons;
             // We simply take any axis that is >10 % activation
             for (int i = 0; i < CONTROLLER_AXIS__COUNT; i++) {
-                if ((iter->axis[i] > 3276) || (iter->axis[i] < -3276)) {
-                    axis[i] = iter->axis[i];
+                if ((iter->gp.axis[i] > 3276) || (iter->gp.axis[i] < -3276)) {
+                    axis[i] = iter->gp.axis[i];
                 }
             }
         }

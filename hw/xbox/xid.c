@@ -47,8 +47,8 @@ void update_output(USBXIDGamepadState *s)
 
     ControllerState *state = xemu_input_get_bound(s->device_index);
     assert(state);
-    state->rumble_l = s->out_state.left_actuator_strength;
-    state->rumble_r = s->out_state.right_actuator_strength;
+    state->gp.rumble_l = s->out_state.left_actuator_strength;
+    state->gp.rumble_r = s->out_state.right_actuator_strength;
     xemu_input_update_rumble(state);
 }
 
@@ -84,23 +84,23 @@ void update_input(USBXIDGamepadState *s)
     };
 
     for (int i = 0; i < 6; i++) {
-        int pressed = state->buttons & button_map_analog[i][1];
+        int pressed = state->gp.buttons & button_map_analog[i][1];
         s->in_state.bAnalogButtons[button_map_analog[i][0]] = pressed ? 0xff : 0;
     }
 
     s->in_state.wButtons = 0;
     for (int i = 0; i < 8; i++) {
-        if (state->buttons & button_map_binary[i][1]) {
+        if (state->gp.buttons & button_map_binary[i][1]) {
             s->in_state.wButtons |= BUTTON_MASK(button_map_binary[i][0]);
         }
     }
 
-    s->in_state.bAnalogButtons[GAMEPAD_LEFT_TRIGGER] = state->axis[CONTROLLER_AXIS_LTRIG] >> 7;
-    s->in_state.bAnalogButtons[GAMEPAD_RIGHT_TRIGGER] = state->axis[CONTROLLER_AXIS_RTRIG] >> 7;
-    s->in_state.sThumbLX = state->axis[CONTROLLER_AXIS_LSTICK_X];
-    s->in_state.sThumbLY = state->axis[CONTROLLER_AXIS_LSTICK_Y];
-    s->in_state.sThumbRX = state->axis[CONTROLLER_AXIS_RSTICK_X];
-    s->in_state.sThumbRY = state->axis[CONTROLLER_AXIS_RSTICK_Y];
+    s->in_state.bAnalogButtons[GAMEPAD_LEFT_TRIGGER] = state->gp.axis[CONTROLLER_AXIS_LTRIG] >> 7;
+    s->in_state.bAnalogButtons[GAMEPAD_RIGHT_TRIGGER] = state->gp.axis[CONTROLLER_AXIS_RTRIG] >> 7;
+    s->in_state.sThumbLX = state->gp.axis[CONTROLLER_AXIS_LSTICK_X];
+    s->in_state.sThumbLY = state->gp.axis[CONTROLLER_AXIS_LSTICK_Y];
+    s->in_state.sThumbRX = state->gp.axis[CONTROLLER_AXIS_RSTICK_X];
+    s->in_state.sThumbRY = state->gp.axis[CONTROLLER_AXIS_RSTICK_Y];
 }
 
 void usb_xid_handle_reset(USBDevice *dev)
@@ -108,8 +108,8 @@ void usb_xid_handle_reset(USBDevice *dev)
     DPRINTF("xid reset\n");
 }
 
-void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
-               int request, int value, int index, int length, uint8_t *data)
+void usb_xid_handle_control(USBDevice *dev, USBPacket *p, int request, 
+                            int value, int index, int length, uint8_t *data)
 {
     USBXIDGamepadState *s = (USBXIDGamepadState *)dev;
 
@@ -216,7 +216,7 @@ void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
 }
 
 #if 0
-static void usb_xid_handle_destroy(USBDevice *dev)
+void usb_xid_handle_destroy(USBDevice *dev)
 {
     USBXIDState *s = DO_UPCAST(USBXIDState, dev, dev);
     DPRINTF("xid handle_destroy\n");
