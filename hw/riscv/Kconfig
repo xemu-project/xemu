@@ -1,0 +1,130 @@
+config RISCV_IOMMU
+    bool
+
+config RISCV_NUMA
+    bool
+
+config IBEX
+    bool
+
+# RISC-V machines in alphabetical order
+
+config MICROCHIP_PFSOC
+    bool
+    default y
+    depends on RISCV64
+    select CADENCE_SDHCI
+    select CPU_CLUSTER
+    select DEVICE_TREE
+    select MCHP_PFSOC_DMC
+    select MCHP_PFSOC_IOSCB
+    select MCHP_PFSOC_MMUART
+    select MCHP_PFSOC_SYSREG
+    select RISCV_ACLINT
+    select SIFIVE_PDMA
+    select SIFIVE_PLIC
+    select UNIMP
+
+config MICROBLAZE_V
+    bool
+    default y
+    depends on RISCV32 || RISCV64
+    select XILINX
+    select XILINX_AXI
+    select XILINX_ETHLITE
+
+config OPENTITAN
+    bool
+    default y
+    depends on RISCV32
+    select IBEX
+    select SIFIVE_PLIC
+    select UNIMP
+
+config RISCV_VIRT
+    bool
+    default y
+    depends on RISCV32 || RISCV64
+    imply PCI_DEVICES
+    imply VIRTIO_VGA
+    imply TEST_DEVICES
+    imply TPM_TIS_SYSBUS
+    select DEVICE_TREE
+    select RISCV_NUMA
+    select GOLDFISH_RTC
+    select PCI
+    select PCI_EXPRESS_GENERIC_BRIDGE
+    select PFLASH_CFI01
+    select SERIAL_MM
+    select RISCV_ACLINT
+    select RISCV_APLIC
+    select RISCV_IOMMU
+    select RISCV_IMSIC
+    select SIFIVE_PLIC
+    select SIFIVE_TEST
+    select SMBIOS
+    select VIRTIO_MMIO
+    select FW_CFG_DMA
+    select PLATFORM_BUS
+    select ACPI
+    select ACPI_PCI
+
+config SHAKTI_C
+    bool
+    default y
+    depends on RISCV64
+    select RISCV_ACLINT
+    select SHAKTI_UART
+    select SIFIVE_PLIC
+    select UNIMP
+
+config SIFIVE_E
+    bool
+    default y
+    depends on RISCV32 || RISCV64
+    select RISCV_ACLINT
+    select SIFIVE_GPIO
+    select SIFIVE_PLIC
+    select SIFIVE_UART
+    select SIFIVE_E_PRCI
+    select SIFIVE_E_AON
+    select UNIMP
+
+config SIFIVE_U
+    bool
+    default y
+    depends on RISCV32 || RISCV64
+    select CADENCE
+    select CPU_CLUSTER
+    select DEVICE_TREE
+    select RISCV_ACLINT
+    select SIFIVE_GPIO
+    select SIFIVE_PDMA
+    select SIFIVE_PLIC
+    select SIFIVE_SPI
+    select SIFIVE_UART
+    select SIFIVE_U_OTP
+    select SIFIVE_U_PRCI
+    select SIFIVE_PWM
+    select SSI_M25P80
+    select SSI_SD
+    select UNIMP
+
+config SPIKE
+    bool
+    default y
+    depends on RISCV32 || RISCV64
+    select DEVICE_TREE
+    select RISCV_NUMA
+    select HTIF
+    select RISCV_ACLINT
+    select SIFIVE_PLIC
+
+config XIANGSHAN_KUNMINGHU
+    bool
+    default y
+    depends on RISCV64
+    select RISCV_ACLINT
+    select RISCV_APLIC
+    select RISCV_IMSIC
+    select SERIAL_MM

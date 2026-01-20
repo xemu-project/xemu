@@ -1,0 +1,6 @@
+config PPC
+    bool
+
+config PPC64
+    bool
+    select PPC

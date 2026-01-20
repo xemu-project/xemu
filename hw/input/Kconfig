@@ -1,0 +1,35 @@
+config ADB
+    bool
+
+config PCKBD
+    bool
+    select PS2
+    depends on ISA_BUS
+
+config PL050
+    bool
+    select PS2
+
+config PS2
+    bool
+
+config STELLARIS_GAMEPAD
+    bool
+
+config VIRTIO_INPUT
+    bool
+    default y
+    depends on VIRTIO
+
+config VIRTIO_INPUT_HOST
+    bool
+    default y
+    depends on VIRTIO_INPUT && LINUX
+
+config VHOST_USER_INPUT
+    bool
+    default y
+    depends on VIRTIO_INPUT && VHOST_USER
+
+config LASIPS2
+    select PS2

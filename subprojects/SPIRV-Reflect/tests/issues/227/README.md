@@ -1,0 +1,1 @@
+Note that null_node.spv and null_type.spv are not valid SPIR-V inputs, can not be decompiled into GLSL, and are solely provided to prevent regressions for a specific null pointer dereference bug (https://github.com/KhronosGroup/SPIRV-Reflect/issues/227).

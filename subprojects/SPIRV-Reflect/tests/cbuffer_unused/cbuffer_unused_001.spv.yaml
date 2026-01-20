@@ -1,0 +1,3496 @@
+%YAML 1.1
+---
+all_type_descriptions:
+  - &td0
+    id: 107
+    op: 24
+    type_name: 
+    struct_member_name: "MvpMatrix"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000308 # MATRIX VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 4, row_count: 4, stride: 16 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td1
+    id: 107
+    op: 24
+    type_name: 
+    struct_member_name: "NotUsedNormalMatrix"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000308 # MATRIX VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 4, row_count: 4, stride: 16 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td2
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "Offset"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td3
+    id: 57
+    op: 22
+    type_name: 
+    struct_member_name: "ScalarScale"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000008 # FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td4
+    id: 109
+    op: 23
+    type_name: 
+    struct_member_name: "Vector2ScaleX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td5
+    id: 109
+    op: 23
+    type_name: 
+    struct_member_name: "Vector2ScaleY"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td6
+    id: 109
+    op: 23
+    type_name: 
+    struct_member_name: "Vector2ScaleXY"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td7
+    id: 109
+    op: 23
+    type_name: 
+    struct_member_name: "Vector2ScaleXXXX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td8
+    id: 109
+    op: 23
+    type_name: 
+    struct_member_name: "Vector2ScaleXYXY"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td9
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "Vector3ScaleX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td10
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "Vector3ScaleY"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td11
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "Vector3ScaleZ"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td12
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "Vector3ScaleXZ"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td13
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "Vector3ScaleXYZ"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td14
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "Vector3ScaleXX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td15
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "Vector3ScaleYZX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td16
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "Vector3ScaleZZZZ"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td17
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: "Vector4ScaleX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td18
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: "Vector4ScaleY"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td19
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: "Vector4ScaleZ"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td20
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: "Vector4ScaleW"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td21
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: "Vector4ScaleXY"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td22
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: "Vector4ScaleXZ"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td23
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: "Vector4ScaleYZ"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td24
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: "Vector4ScaleXZW"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td25
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: "Vector4ScaleYZW"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td26
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: "Vector4ScaleXYZW"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td27
+    id: 57
+    op: 22
+    type_name: 
+    struct_member_name: "NotUsed1"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000008 # FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td28
+    id: 109
+    op: 23
+    type_name: 
+    struct_member_name: "NotUsed2"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td29
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "NotUsed3"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td30
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "MoreOffset"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td31
+    id: 109
+    op: 23
+    type_name: 
+    struct_member_name: "NotUsed4"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td32
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "NotUsed5"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td33
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "LastOffset"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td34
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "NotUsed6"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td35
+    id: 14
+    op: 28
+    type_name: 
+    struct_member_name: "ScalarArray"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000008 # ARRAY FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [4,], stride: 16 }
+    member_count: 0
+    members:
+  - &td36
+    id: 15
+    op: 28
+    type_name: 
+    struct_member_name: "Vector2Array"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [4,], stride: 16 }
+    member_count: 0
+    members:
+  - &td37
+    id: 16
+    op: 28
+    type_name: 
+    struct_member_name: "Vector3Array"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [4,], stride: 16 }
+    member_count: 0
+    members:
+  - &td38
+    id: 17
+    op: 28
+    type_name: 
+    struct_member_name: "Vector4Array"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [4,], stride: 16 }
+    member_count: 0
+    members:
+  - &td39
+    id: 15
+    op: 28
+    type_name: 
+    struct_member_name: "Vector2ArrayX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [4,], stride: 16 }
+    member_count: 0
+    members:
+  - &td40
+    id: 16
+    op: 28
+    type_name: 
+    struct_member_name: "Vector3ArrayX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [4,], stride: 16 }
+    member_count: 0
+    members:
+  - &td41
+    id: 17
+    op: 28
+    type_name: 
+    struct_member_name: "Vector4ArrayX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [4,], stride: 16 }
+    member_count: 0
+    members:
+  - &td42
+    id: 15
+    op: 28
+    type_name: 
+    struct_member_name: "NotUsedVectorArray"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [4,], stride: 16 }
+    member_count: 0
+    members:
+  - &td43
+    id: 57
+    op: 22
+    type_name: 
+    struct_member_name: "R"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000008 # FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td44
+    id: 109
+    op: 23
+    type_name: 
+    struct_member_name: "RG"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td45
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "RGB"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td46
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: "RGBA"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td47
+    id: 24
+    op: 28
+    type_name: "ColorDesc"
+    struct_member_name: "ColorArray"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x30080000 # ARRAY STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 48 }
+    member_count: 4
+    members:
+      - *td43
+      - *td44
+      - *td45
+      - *td46
+  - &td48
+    id: 31
+    op: 28
+    type_name: 
+    struct_member_name: "ScalarMultiDimArray"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000008 # ARRAY FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td49
+    id: 38
+    op: 28
+    type_name: 
+    struct_member_name: "Vector2MultiDimArray"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td50
+    id: 45
+    op: 28
+    type_name: 
+    struct_member_name: "Vector3MultiDimArray"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td51
+    id: 52
+    op: 28
+    type_name: 
+    struct_member_name: "Vector4MultiDimArray"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td52
+    id: 38
+    op: 28
+    type_name: 
+    struct_member_name: "Vector2MultiDimArrayX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td53
+    id: 45
+    op: 28
+    type_name: 
+    struct_member_name: "Vector3MultiDimArrayX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td54
+    id: 52
+    op: 28
+    type_name: 
+    struct_member_name: "Vector4MultiDimArrayX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td55
+    id: 38
+    op: 28
+    type_name: 
+    struct_member_name: "NotUsedVector2MultiDimArrayY"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td56
+    id: 45
+    op: 28
+    type_name: 
+    struct_member_name: "NotUsedVector3MultiDimArrayY"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td57
+    id: 52
+    op: 28
+    type_name: 
+    struct_member_name: "NotUsedVector4MultiDimArrayY"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td58
+    id: 45
+    op: 28
+    type_name: 
+    struct_member_name: "Vector3MultiDimArrayZ"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td59
+    id: 52
+    op: 28
+    type_name: 
+    struct_member_name: "Vector4MultiDimArrayZ"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td60
+    id: 38
+    op: 28
+    type_name: 
+    struct_member_name: "Vector2MultiDimArrayXYX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td61
+    id: 45
+    op: 28
+    type_name: 
+    struct_member_name: "Vector3MultiDimArrayXYX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td62
+    id: 52
+    op: 28
+    type_name: 
+    struct_member_name: "Vector4MultiDimArrayXYX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    member_count: 0
+    members:
+  - &td63
+    id: 4
+    op: 30
+    type_name: "type.MyParams"
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000001 # BLOCK 
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 59
+    members:
+      - *td0
+      - *td1
+      - *td2
+      - *td3
+      - *td4
+      - *td5
+      - *td6
+      - *td7
+      - *td8
+      - *td9
+      - *td10
+      - *td11
+      - *td12
+      - *td13
+      - *td14
+      - *td15
+      - *td16
+      - *td17
+      - *td18
+      - *td19
+      - *td20
+      - *td21
+      - *td22
+      - *td23
+      - *td24
+      - *td25
+      - *td26
+      - *td27
+      - *td28
+      - *td29
+      - *td30
+      - *td31
+      - *td32
+      - *td33
+      - *td34
+      - *td35
+      - *td36
+      - *td37
+      - *td38
+      - *td39
+      - *td40
+      - *td41
+      - *td42
+      - *td47
+      - *td48
+      - *td49
+      - *td50
+      - *td51
+      - *td52
+      - *td53
+      - *td54
+      - *td55
+      - *td56
+      - *td57
+      - *td58
+      - *td59
+      - *td60
+      - *td61
+      - *td62
+  - &td64
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: "PostTransformOffset"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td65
+    id: 57
+    op: 22
+    type_name: 
+    struct_member_name: "NotUsedScale"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000008 # FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td66
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "Mask"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td67
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "Position"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td68
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "NotUsedColor"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td69
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "Normal"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td70
+    id: 57
+    op: 22
+    type_name: 
+    struct_member_name: "NotUsed1"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000008 # FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td71
+    id: 109
+    op: 23
+    type_name: 
+    struct_member_name: "NotUsed2"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td72
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "NotUsed3"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td73
+    id: 9
+    op: 30
+    type_name: "NestedNotUsedParams"
+    struct_member_name: "NotUsedNested"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 3
+    members:
+      - *td70
+      - *td71
+      - *td72
+  - &td74
+    id: 57
+    op: 22
+    type_name: 
+    struct_member_name: "NotUsed"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000008 # FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td75
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "Offset"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td76
+    id: 107
+    op: 24
+    type_name: 
+    struct_member_name: "NotUsedMatrix"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000308 # MATRIX VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 4, row_count: 4, stride: 16 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td77
+    id: 10
+    op: 30
+    type_name: "NestedUsedParams"
+    struct_member_name: "UsedNested"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 3
+    members:
+      - *td74
+      - *td75
+      - *td76
+  - &td78
+    id: 57
+    op: 22
+    type_name: 
+    struct_member_name: "NotUsed1"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000008 # FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td79
+    id: 57
+    op: 22
+    type_name: 
+    struct_member_name: "R"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000008 # FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td80
+    id: 109
+    op: 23
+    type_name: 
+    struct_member_name: "RG"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td81
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "RGB"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td82
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: "RGBA"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td83
+    id: 53
+    op: 28
+    type_name: "ColorDesc"
+    struct_member_name: "ColorArray"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x30080000 # ARRAY STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [4,], stride: 48 }
+    member_count: 4
+    members:
+      - *td79
+      - *td80
+      - *td81
+      - *td82
+  - &td84
+    id: 8
+    op: 30
+    type_name: "UsedParams"
+    struct_member_name: "Used"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 7
+    members:
+      - *td67
+      - *td68
+      - *td69
+      - *td73
+      - *td77
+      - *td78
+      - *td83
+  - &td85
+    id: 57
+    op: 22
+    type_name: 
+    struct_member_name: "NotUsed1"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000008 # FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td86
+    id: 109
+    op: 23
+    type_name: 
+    struct_member_name: "NotUsed2"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td87
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "NotUsed3"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td88
+    id: 57
+    op: 22
+    type_name: 
+    struct_member_name: "NotUsed1"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000008 # FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td89
+    id: 109
+    op: 23
+    type_name: 
+    struct_member_name: "NotUsed2"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td90
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "NotUsed3"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td91
+    id: 9
+    op: 30
+    type_name: "NestedNotUsedParams"
+    struct_member_name: "NotUsedNested"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 3
+    members:
+      - *td88
+      - *td89
+      - *td90
+  - &td92
+    id: 11
+    op: 30
+    type_name: "NotUsedParams"
+    struct_member_name: "NotUsed"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 4
+    members:
+      - *td85
+      - *td86
+      - *td87
+      - *td91
+  - &td93
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: "ScaleByX"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td94
+    id: 12
+    op: 30
+    type_name: "UsedComponents"
+    struct_member_name: "Components"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 1
+    members:
+      - *td93
+  - &td95
+    id: 7
+    op: 30
+    type_name: "type.ConstantBuffer.Params2"
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000001 # BLOCK 
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 6
+    members:
+      - *td64
+      - *td65
+      - *td66
+      - *td84
+      - *td92
+      - *td94
+  - &td96
+    id: 108
+    op: 23
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td97
+    id: 106
+    op: 23
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+all_block_variables:
+  - &bv0
+    name: "MvpMatrix"
+    offset: 0
+    absolute_offset: 0
+    size: 64
+    padded_size: 64
+    decorations: 0x00000004 # ROW_MAJOR 
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 4, row_count: 4, stride: 16 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td0
+  - &bv1
+    name: "NotUsedNormalMatrix"
+    offset: 64
+    absolute_offset: 64
+    size: 64
+    padded_size: 64
+    decorations: 0x00000004 # ROW_MAJOR 
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 4, row_count: 4, stride: 16 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td1
+  - &bv2
+    name: "Offset"
+    offset: 128
+    absolute_offset: 128
+    size: 12
+    padded_size: 12
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td2
+  - &bv3
+    name: "ScalarScale"
+    offset: 140
+    absolute_offset: 140
+    size: 4
+    padded_size: 4
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td3
+  - &bv4
+    name: "Vector2ScaleX"
+    offset: 144
+    absolute_offset: 144
+    size: 8
+    padded_size: 8
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td4
+  - &bv5
+    name: "Vector2ScaleY"
+    offset: 152
+    absolute_offset: 152
+    size: 8
+    padded_size: 8
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td5
+  - &bv6
+    name: "Vector2ScaleXY"
+    offset: 160
+    absolute_offset: 160
+    size: 8
+    padded_size: 8
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td6
+  - &bv7
+    name: "Vector2ScaleXXXX"
+    offset: 168
+    absolute_offset: 168
+    size: 8
+    padded_size: 8
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td7
+  - &bv8
+    name: "Vector2ScaleXYXY"
+    offset: 176
+    absolute_offset: 176
+    size: 8
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td8
+  - &bv9
+    name: "Vector3ScaleX"
+    offset: 192
+    absolute_offset: 192
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td9
+  - &bv10
+    name: "Vector3ScaleY"
+    offset: 208
+    absolute_offset: 208
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td10
+  - &bv11
+    name: "Vector3ScaleZ"
+    offset: 224
+    absolute_offset: 224
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td11
+  - &bv12
+    name: "Vector3ScaleXZ"
+    offset: 240
+    absolute_offset: 240
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td12
+  - &bv13
+    name: "Vector3ScaleXYZ"
+    offset: 256
+    absolute_offset: 256
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td13
+  - &bv14
+    name: "Vector3ScaleXX"
+    offset: 272
+    absolute_offset: 272
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td14
+  - &bv15
+    name: "Vector3ScaleYZX"
+    offset: 288
+    absolute_offset: 288
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td15
+  - &bv16
+    name: "Vector3ScaleZZZZ"
+    offset: 304
+    absolute_offset: 304
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td16
+  - &bv17
+    name: "Vector4ScaleX"
+    offset: 320
+    absolute_offset: 320
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td17
+  - &bv18
+    name: "Vector4ScaleY"
+    offset: 336
+    absolute_offset: 336
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td18
+  - &bv19
+    name: "Vector4ScaleZ"
+    offset: 352
+    absolute_offset: 352
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td19
+  - &bv20
+    name: "Vector4ScaleW"
+    offset: 368
+    absolute_offset: 368
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td20
+  - &bv21
+    name: "Vector4ScaleXY"
+    offset: 384
+    absolute_offset: 384
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td21
+  - &bv22
+    name: "Vector4ScaleXZ"
+    offset: 400
+    absolute_offset: 400
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td22
+  - &bv23
+    name: "Vector4ScaleYZ"
+    offset: 416
+    absolute_offset: 416
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td23
+  - &bv24
+    name: "Vector4ScaleXZW"
+    offset: 432
+    absolute_offset: 432
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td24
+  - &bv25
+    name: "Vector4ScaleYZW"
+    offset: 448
+    absolute_offset: 448
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td25
+  - &bv26
+    name: "Vector4ScaleXYZW"
+    offset: 464
+    absolute_offset: 464
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td26
+  - &bv27
+    name: "NotUsed1"
+    offset: 480
+    absolute_offset: 480
+    size: 4
+    padded_size: 4
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td27
+  - &bv28
+    name: "NotUsed2"
+    offset: 484
+    absolute_offset: 484
+    size: 8
+    padded_size: 12
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td28
+  - &bv29
+    name: "NotUsed3"
+    offset: 496
+    absolute_offset: 496
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td29
+  - &bv30
+    name: "MoreOffset"
+    offset: 512
+    absolute_offset: 512
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td30
+  - &bv31
+    name: "NotUsed4"
+    offset: 528
+    absolute_offset: 528
+    size: 8
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td31
+  - &bv32
+    name: "NotUsed5"
+    offset: 544
+    absolute_offset: 544
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td32
+  - &bv33
+    name: "LastOffset"
+    offset: 560
+    absolute_offset: 560
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td33
+  - &bv34
+    name: "NotUsed6"
+    offset: 576
+    absolute_offset: 576
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td34
+  - &bv35
+    name: "ScalarArray"
+    offset: 592
+    absolute_offset: 592
+    size: 64
+    padded_size: 64
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [4,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td35
+  - &bv36
+    name: "Vector2Array"
+    offset: 656
+    absolute_offset: 656
+    size: 64
+    padded_size: 64
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [4,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td36
+  - &bv37
+    name: "Vector3Array"
+    offset: 720
+    absolute_offset: 720
+    size: 64
+    padded_size: 64
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [4,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td37
+  - &bv38
+    name: "Vector4Array"
+    offset: 784
+    absolute_offset: 784
+    size: 64
+    padded_size: 64
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [4,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td38
+  - &bv39
+    name: "Vector2ArrayX"
+    offset: 848
+    absolute_offset: 848
+    size: 64
+    padded_size: 64
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [4,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td39
+  - &bv40
+    name: "Vector3ArrayX"
+    offset: 912
+    absolute_offset: 912
+    size: 64
+    padded_size: 64
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [4,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td40
+  - &bv41
+    name: "Vector4ArrayX"
+    offset: 976
+    absolute_offset: 976
+    size: 64
+    padded_size: 64
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [4,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td41
+  - &bv42
+    name: "NotUsedVectorArray"
+    offset: 1040
+    absolute_offset: 1040
+    size: 64
+    padded_size: 64
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [4,], stride: 16 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td42
+  - &bv43
+    name: "R"
+    offset: 0
+    absolute_offset: 0
+    size: 4
+    padded_size: 4
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td43
+  - &bv44
+    name: "RG"
+    offset: 4
+    absolute_offset: 0
+    size: 8
+    padded_size: 12
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td44
+  - &bv45
+    name: "RGB"
+    offset: 16
+    absolute_offset: 0
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td45
+  - &bv46
+    name: "RGBA"
+    offset: 32
+    absolute_offset: 0
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td46
+  - &bv47
+    name: "ColorArray"
+    offset: 1104
+    absolute_offset: 1104
+    size: 1935360
+    padded_size: 1935360
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 48 }
+    flags: 0x00000000 # NONE
+    member_count: 4
+    members:
+      - *bv43
+      - *bv44
+      - *bv45
+      - *bv46
+    type_description: *td47
+  - &bv48
+    name: "ScalarMultiDimArray"
+    offset: 1936464
+    absolute_offset: 1936464
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td48
+  - &bv49
+    name: "Vector2MultiDimArray"
+    offset: 2581584
+    absolute_offset: 2581584
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td49
+  - &bv50
+    name: "Vector3MultiDimArray"
+    offset: 3226704
+    absolute_offset: 3226704
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td50
+  - &bv51
+    name: "Vector4MultiDimArray"
+    offset: 3871824
+    absolute_offset: 3871824
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td51
+  - &bv52
+    name: "Vector2MultiDimArrayX"
+    offset: 4516944
+    absolute_offset: 4516944
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td52
+  - &bv53
+    name: "Vector3MultiDimArrayX"
+    offset: 5162064
+    absolute_offset: 5162064
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td53
+  - &bv54
+    name: "Vector4MultiDimArrayX"
+    offset: 5807184
+    absolute_offset: 5807184
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td54
+  - &bv55
+    name: "NotUsedVector2MultiDimArrayY"
+    offset: 6452304
+    absolute_offset: 6452304
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td55
+  - &bv56
+    name: "NotUsedVector3MultiDimArrayY"
+    offset: 7097424
+    absolute_offset: 7097424
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td56
+  - &bv57
+    name: "NotUsedVector4MultiDimArrayY"
+    offset: 7742544
+    absolute_offset: 7742544
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td57
+  - &bv58
+    name: "Vector3MultiDimArrayZ"
+    offset: 8387664
+    absolute_offset: 8387664
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td58
+  - &bv59
+    name: "Vector4MultiDimArrayZ"
+    offset: 9032784
+    absolute_offset: 9032784
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td59
+  - &bv60
+    name: "Vector2MultiDimArrayXYX"
+    offset: 9677904
+    absolute_offset: 9677904
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td60
+  - &bv61
+    name: "Vector3MultiDimArrayXYX"
+    offset: 10323024
+    absolute_offset: 10323024
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td61
+  - &bv62
+    name: "Vector4MultiDimArrayXYX"
+    offset: 10968144
+    absolute_offset: 10968144
+    size: 645120
+    padded_size: 645120
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 7, dims: [8,7,6,5,4,3,2,], stride: 16 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td62
+  - &bv63
+    name: "MyParams"
+    offset: 0
+    absolute_offset: 0
+    size: 11613264
+    padded_size: 11613264
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 59
+    members:
+      - *bv0
+      - *bv1
+      - *bv2
+      - *bv3
+      - *bv4
+      - *bv5
+      - *bv6
+      - *bv7
+      - *bv8
+      - *bv9
+      - *bv10
+      - *bv11
+      - *bv12
+      - *bv13
+      - *bv14
+      - *bv15
+      - *bv16
+      - *bv17
+      - *bv18
+      - *bv19
+      - *bv20
+      - *bv21
+      - *bv22
+      - *bv23
+      - *bv24
+      - *bv25
+      - *bv26
+      - *bv27
+      - *bv28
+      - *bv29
+      - *bv30
+      - *bv31
+      - *bv32
+      - *bv33
+      - *bv34
+      - *bv35
+      - *bv36
+      - *bv37
+      - *bv38
+      - *bv39
+      - *bv40
+      - *bv41
+      - *bv42
+      - *bv47
+      - *bv48
+      - *bv49
+      - *bv50
+      - *bv51
+      - *bv52
+      - *bv53
+      - *bv54
+      - *bv55
+      - *bv56
+      - *bv57
+      - *bv58
+      - *bv59
+      - *bv60
+      - *bv61
+      - *bv62
+    type_description: *td63
+  - &bv64
+    name: "PostTransformOffset"
+    offset: 0
+    absolute_offset: 0
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td64
+  - &bv65
+    name: "NotUsedScale"
+    offset: 16
+    absolute_offset: 16
+    size: 4
+    padded_size: 4
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td65
+  - &bv66
+    name: "Mask"
+    offset: 20
+    absolute_offset: 20
+    size: 12
+    padded_size: 12
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td66
+  - &bv67
+    name: "Position"
+    offset: 0
+    absolute_offset: 32
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td67
+  - &bv68
+    name: "NotUsedColor"
+    offset: 16
+    absolute_offset: 48
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td68
+  - &bv69
+    name: "Normal"
+    offset: 32
+    absolute_offset: 64
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td69
+  - &bv70
+    name: "NotUsed1"
+    offset: 0
+    absolute_offset: 80
+    size: 4
+    padded_size: 4
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td70
+  - &bv71
+    name: "NotUsed2"
+    offset: 4
+    absolute_offset: 84
+    size: 8
+    padded_size: 12
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td71
+  - &bv72
+    name: "NotUsed3"
+    offset: 16
+    absolute_offset: 96
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td72
+  - &bv73
+    name: "NotUsedNested"
+    offset: 48
+    absolute_offset: 80
+    size: 32
+    padded_size: 32
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 3
+    members:
+      - *bv70
+      - *bv71
+      - *bv72
+    type_description: *td73
+  - &bv74
+    name: "NotUsed"
+    offset: 0
+    absolute_offset: 112
+    size: 4
+    padded_size: 4
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td74
+  - &bv75
+    name: "Offset"
+    offset: 4
+    absolute_offset: 116
+    size: 12
+    padded_size: 12
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td75
+  - &bv76
+    name: "NotUsedMatrix"
+    offset: 16
+    absolute_offset: 128
+    size: 64
+    padded_size: 64
+    decorations: 0x00000004 # ROW_MAJOR 
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 4, row_count: 4, stride: 16 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td76
+  - &bv77
+    name: "UsedNested"
+    offset: 80
+    absolute_offset: 112
+    size: 80
+    padded_size: 80
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 3
+    members:
+      - *bv74
+      - *bv75
+      - *bv76
+    type_description: *td77
+  - &bv78
+    name: "NotUsed1"
+    offset: 160
+    absolute_offset: 192
+    size: 4
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td78
+  - &bv79
+    name: "R"
+    offset: 0
+    absolute_offset: 0
+    size: 4
+    padded_size: 4
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td79
+  - &bv80
+    name: "RG"
+    offset: 4
+    absolute_offset: 0
+    size: 8
+    padded_size: 12
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td80
+  - &bv81
+    name: "RGB"
+    offset: 16
+    absolute_offset: 0
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td81
+  - &bv82
+    name: "RGBA"
+    offset: 32
+    absolute_offset: 0
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td82
+  - &bv83
+    name: "ColorArray"
+    offset: 176
+    absolute_offset: 208
+    size: 192
+    padded_size: 192
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [4,], stride: 48 }
+    flags: 0x00000000 # NONE
+    member_count: 4
+    members:
+      - *bv79
+      - *bv80
+      - *bv81
+      - *bv82
+    type_description: *td83
+  - &bv84
+    name: "Used"
+    offset: 32
+    absolute_offset: 32
+    size: 368
+    padded_size: 368
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 7
+    members:
+      - *bv67
+      - *bv68
+      - *bv69
+      - *bv73
+      - *bv77
+      - *bv78
+      - *bv83
+    type_description: *td84
+  - &bv85
+    name: "NotUsed1"
+    offset: 0
+    absolute_offset: 400
+    size: 4
+    padded_size: 4
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td85
+  - &bv86
+    name: "NotUsed2"
+    offset: 4
+    absolute_offset: 404
+    size: 8
+    padded_size: 12
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td86
+  - &bv87
+    name: "NotUsed3"
+    offset: 16
+    absolute_offset: 416
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td87
+  - &bv88
+    name: "NotUsed1"
+    offset: 0
+    absolute_offset: 432
+    size: 4
+    padded_size: 4
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td88
+  - &bv89
+    name: "NotUsed2"
+    offset: 4
+    absolute_offset: 436
+    size: 8
+    padded_size: 12
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td89
+  - &bv90
+    name: "NotUsed3"
+    offset: 16
+    absolute_offset: 448
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td90
+  - &bv91
+    name: "NotUsedNested"
+    offset: 32
+    absolute_offset: 432
+    size: 32
+    padded_size: 32
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 3
+    members:
+      - *bv88
+      - *bv89
+      - *bv90
+    type_description: *td91
+  - &bv92
+    name: "NotUsed"
+    offset: 400
+    absolute_offset: 400
+    size: 64
+    padded_size: 64
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 4
+    members:
+      - *bv85
+      - *bv86
+      - *bv87
+      - *bv91
+    type_description: *td92
+  - &bv93
+    name: "ScaleByX"
+    offset: 0
+    absolute_offset: 464
+    size: 12
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description: *td93
+  - &bv94
+    name: "Components"
+    offset: 464
+    absolute_offset: 464
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 1
+    members:
+      - *bv93
+    type_description: *td94
+  - &bv95
+    name: "MyParams2"
+    offset: 0
+    absolute_offset: 0
+    size: 480
+    padded_size: 480
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 6
+    members:
+      - *bv64
+      - *bv65
+      - *bv66
+      - *bv84
+      - *bv92
+      - *bv94
+    type_description: *td95
+all_descriptor_bindings:
+  - &db0
+    spirv_id: 6
+    name: "MyParams"
+    binding: 0
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 6 # VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+    resource_type: 2 # CBV
+    image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+    block: *bv63 # "MyParams"
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td63
+    word_offset: { binding: 708, set: 704 }
+  - &db1
+    spirv_id: 13
+    name: "MyParams2"
+    binding: 1
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 6 # VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+    resource_type: 2 # CBV
+    image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+    block: *bv95 # "MyParams2"
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td95
+    word_offset: { binding: 716, set: 712 }
+all_interface_variables:
+  - &iv0
+    spirv_id: 2
+    name: "in.var.Position"
+    location: 0
+    storage_class: 1 # Input
+    semantic: 
+    decoration_flags: 0x00000000 # NONE
+    built_in: -1 # ??? (-1)
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 106 # VK_FORMAT_R32G32B32_SFLOAT
+    type_description: *td96
+    word_offset: { location: 700 }
+  - &iv1
+    spirv_id: 3
+    name: 
+    location: 4294967295
+    storage_class: 3 # Output
+    semantic: 
+    decoration_flags: 0x00000010 # BUILT_IN 
+    built_in: 0 # Position
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 109 # VK_FORMAT_R32G32B32A32_SFLOAT
+    type_description: *td97
+    word_offset: { location: 0 }
+module:
+  generator: 14 # Google spiregg
+  entry_point_name: "main"
+  entry_point_id: 1
+  source_language: 5 # HLSL
+  source_language_version: 600
+  spirv_execution_model: 0 # Vertex
+  shader_stage: 0x00000001 # VS
+  descriptor_binding_count: 2
+  descriptor_bindings:
+    - *db0 # "MyParams"
+    - *db1 # "MyParams2"
+  descriptor_set_count: 1
+  descriptor_sets:
+  - set: 0
+    binding_count: 2
+    bindings:
+      - *db0 # "MyParams"
+      - *db1 # "MyParams2"
+  input_variable_count: 1,
+  input_variables:
+    - *iv0 # "in.var.Position"
+  output_variable_count: 1,
+  output_variables:
+    - *iv1 # 
+  push_constant_count: 0,
+  push_constants:
+  specialization_constant_count: 0,
+  specialization_constants:
+...

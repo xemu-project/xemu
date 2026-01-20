@@ -1,0 +1,262 @@
+%YAML 1.1
+---
+all_type_descriptions:
+  - &td0
+    id: 8
+    op: 5341
+    type_name: "accelerationStructureNV"
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00100000 # ???
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td1
+    id: 16
+    op: 23
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td2
+    id: 25
+    op: 28
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x20000108 # ARRAY VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [3,], stride: 0 }
+    member_count: 0
+    members:
+  - &td3
+    id: 28
+    op: 28
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x20000008 # ARRAY FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [4,], stride: 0 }
+    member_count: 0
+    members:
+  - &td4
+    id: 30
+    op: 28
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x20000008 # ARRAY FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [2,], stride: 0 }
+    member_count: 0
+    members:
+  - &td5
+    id: 24
+    op: 23
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+all_block_variables:
+  - &bv0
+    name: 
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description:
+all_descriptor_bindings:
+  - &db0
+    spirv_id: 2
+    name: "AccelerationStructure"
+    binding: 0
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 1000150000 # VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR
+    resource_type: 4 # SRV
+    image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+    block: *bv0 # 
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td0
+    word_offset: { binding: 104, set: 100 }
+all_interface_variables:
+  - &iv0
+    spirv_id: 3
+    name: 
+    location: 4294967295
+    storage_class: 1 # Input
+    semantic: 
+    decoration_flags: 0x00000410 # BUILT_IN PATCH 
+    built_in: 13 # TessCoord
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 106 # VK_FORMAT_R32G32B32_SFLOAT
+    type_description: *td1
+    word_offset: { location: 0 }
+  - &iv1
+    spirv_id: 4
+    name: 
+    location: 4294967295
+    storage_class: 1 # Input
+    semantic: 
+    decoration_flags: 0x00000010 # BUILT_IN 
+    built_in: 0 # Position
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [3,], stride: 0 }
+    member_count: 0
+    members:
+    format: 109 # VK_FORMAT_R32G32B32A32_SFLOAT
+    type_description: *td2
+    word_offset: { location: 0 }
+  - &iv2
+    spirv_id: 5
+    name: 
+    location: 4294967295
+    storage_class: 1 # Input
+    semantic: 
+    decoration_flags: 0x00000410 # BUILT_IN PATCH 
+    built_in: 11 # TessLevelOuter
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [4,], stride: 0 }
+    member_count: 0
+    members:
+    format: 100 # VK_FORMAT_R32_SFLOAT
+    type_description: *td3
+    word_offset: { location: 0 }
+  - &iv3
+    spirv_id: 6
+    name: 
+    location: 4294967295
+    storage_class: 1 # Input
+    semantic: 
+    decoration_flags: 0x00000410 # BUILT_IN PATCH 
+    built_in: 12 # TessLevelInner
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [2,], stride: 0 }
+    member_count: 0
+    members:
+    format: 100 # VK_FORMAT_R32_SFLOAT
+    type_description: *td4
+    word_offset: { location: 0 }
+  - &iv4
+    spirv_id: 7
+    name: 
+    location: 4294967295
+    storage_class: 3 # Output
+    semantic: 
+    decoration_flags: 0x00000010 # BUILT_IN 
+    built_in: 0 # Position
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 109 # VK_FORMAT_R32G32B32A32_SFLOAT
+    type_description: *td5
+    word_offset: { location: 0 }
+module:
+  generator: 14 # Google spiregg
+  entry_point_name: "main"
+  entry_point_id: 1
+  source_language: 5 # HLSL
+  source_language_version: 650
+  spirv_execution_model: 2 # TessellationEvaluation
+  shader_stage: 0x00000004 # DS
+  descriptor_binding_count: 1
+  descriptor_bindings:
+    - *db0 # "AccelerationStructure"
+  descriptor_set_count: 1
+  descriptor_sets:
+  - set: 0
+    binding_count: 1
+    bindings:
+      - *db0 # "AccelerationStructure"
+  input_variable_count: 4,
+  input_variables:
+    - *iv0 # 
+    - *iv1 # 
+    - *iv2 # 
+    - *iv3 # 
+  output_variable_count: 1,
+  output_variables:
+    - *iv4 # 
+  push_constant_count: 0,
+  push_constants:
+  specialization_constant_count: 0,
+  specialization_constants:
+...

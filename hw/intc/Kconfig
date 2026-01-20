@@ -1,0 +1,114 @@
+config HEATHROW_PIC
+    bool
+
+config I8259
+    bool
+    select ISA_BUS
+
+config PL190
+    bool
+
+config IOAPIC
+    bool
+    select I8259
+
+config OPENPIC
+    bool
+    select MSI_NONBROKEN
+
+config APIC
+    bool
+    select MSI_NONBROKEN
+    select I8259
+
+config ARM_GIC
+    bool
+    select ARM_GICV3 if TCG
+    select ARM_GIC_KVM if KVM
+    select MSI_NONBROKEN
+
+config ARM_GICV3
+    bool
+    depends on ARM_GIC
+
+config ARM_GIC_KVM
+    bool
+    depends on ARM_GIC && KVM
+
+config XICS
+    bool
+
+config XIVE
+    bool
+
+config ALLWINNER_A10_PIC
+    bool
+
+config S390_FLIC
+    bool
+
+config S390_FLIC_KVM
+    bool
+    depends on S390_FLIC && KVM
+
+config OMPIC
+    bool
+
+config PPC_UIC
+    bool
+
+config SH_INTC
+    bool
+
+config RX_ICU
+    bool
+
+config LOONGSON_LIOINTC
+    bool
+
+config RISCV_ACLINT
+    bool
+
+config RISCV_APLIC
+    bool
+    select MSI_NONBROKEN
+
+config RISCV_IMSIC
+    bool
+    select MSI_NONBROKEN
+
+config SIFIVE_PLIC
+    bool
+    select MSI_NONBROKEN
+
+config GOLDFISH_PIC
+    bool
+
+config M68K_IRQC
+    bool
+
+config LOONGSON_IPI_COMMON
+    bool
+
+config LOONGSON_IPI
+    bool
+    select LOONGSON_IPI_COMMON
+
+config LOONGARCH_IPI
+    bool
+    select LOONGSON_IPI_COMMON
+
+config LOONGARCH_PCH_PIC
+    bool
+    select UNIMP
+
+config LOONGARCH_PCH_MSI
+    select MSI_NONBROKEN
+    bool
+    select UNIMP
+
+config LOONGARCH_EXTIOI
+    bool
+
+config LOONGARCH_DINTC
+    bool

@@ -1,0 +1,18 @@
+config DIMM
+    bool
+    select MEM_DEVICE
+
+config MEM_DEVICE
+    bool
+
+config NVDIMM
+    bool
+    select MEM_DEVICE
+
+config SPARSE_MEM
+    bool
+
+config CXL_MEM_DEVICE
+    bool
+    default y if CXL
+    select MEM_DEVICE

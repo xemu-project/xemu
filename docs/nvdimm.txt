@@ -1,0 +1,265 @@
+QEMU Virtual NVDIMM
+===================
+
+This document explains the usage of virtual NVDIMM (vNVDIMM) feature
+which is available since QEMU v2.6.0.
+
+The current QEMU only implements the persistent memory mode of vNVDIMM
+device and not the block window mode.
+
+Basic Usage
+-----------
+
+The storage of a vNVDIMM device in QEMU is provided by the memory
+backend (i.e. memory-backend-file and memory-backend-ram). A simple
+way to create a vNVDIMM device at startup time is done via the
+following command line options:
+
+ -machine pc,nvdimm=on
+ -m $RAM_SIZE,slots=$N,maxmem=$MAX_SIZE
+ -object memory-backend-file,id=mem1,share=on,mem-path=$PATH,size=$NVDIMM_SIZE,readonly=off
+ -device nvdimm,id=nvdimm1,memdev=mem1,unarmed=off
+
+Where,
+
+ - the "nvdimm" machine option enables vNVDIMM feature.
+
+ - "slots=$N" should be equal to or larger than the total amount of
+   normal RAM devices and vNVDIMM devices, e.g. $N should be >= 2 here.
+
+ - "maxmem=$MAX_SIZE" should be equal to or larger than the total size
+   of normal RAM devices and vNVDIMM devices, e.g. $MAX_SIZE should be
+   >= $RAM_SIZE + $NVDIMM_SIZE here.
+
+ - "object memory-backend-file,id=mem1,share=on,mem-path=$PATH,
+   size=$NVDIMM_SIZE,readonly=off" creates a backend storage of size
+   $NVDIMM_SIZE on a file $PATH. All accesses to the virtual NVDIMM device go
+   to the file $PATH.
+
+   "share=on/off" controls the visibility of guest writes. If
+   "share=on", then guest writes will be applied to the backend
+   file. If another guest uses the same backend file with option
+   "share=on", then above writes will be visible to it as well. If
+   "share=off", then guest writes won't be applied to the backend
+   file and thus will be invisible to other guests.
+
+   "readonly=on/off" controls whether the file $PATH is opened read-only or
+   read/write (default).
+
+ - "device nvdimm,id=nvdimm1,memdev=mem1,unarmed=off" creates a read/write
+   virtual NVDIMM device whose storage is provided by above memory backend
+   device.
+
+   "unarmed" controls the ACPI NFIT NVDIMM Region Mapping Structure "NVDIMM
+   State Flags" Bit 3 indicating that the device is "unarmed" and cannot accept
+   persistent writes. Linux guest drivers set the device to read-only when this
+   bit is present. Set unarmed to on when the memdev has readonly=on.
+
+Multiple vNVDIMM devices can be created if multiple pairs of "-object"
+and "-device" are provided.
+
+For above command line options, if the guest OS has the proper NVDIMM
+driver (e.g. "CONFIG_ACPI_NFIT=y" under Linux), it should be able to
+detect a NVDIMM device which is in the persistent memory mode and whose
+size is $NVDIMM_SIZE.
+
+Note:
+
+1. Prior to QEMU v2.8.0, if memory-backend-file is used and the actual
+   backend file size is not equal to the size given by "size" option,
+   QEMU will truncate the backend file by ftruncate(2), which will
+   corrupt the existing data in the backend file, especially for the
+   shrink case.
+
+   QEMU v2.8.0 and later check the backend file size and the "size"
+   option. If they do not match, QEMU will report errors and abort in
+   order to avoid the data corruption.
+
+2. QEMU v2.6.0 only puts a basic alignment requirement on the "size"
+   option of memory-backend-file, e.g. 4KB alignment on x86.  However,
+   QEMU v.2.7.0 puts an additional alignment requirement, which may
+   require a larger value than the basic one, e.g. 2MB on x86. This
+   change breaks the usage of memory-backend-file that only satisfies
+   the basic alignment.
+
+   QEMU v2.8.0 and later remove the additional alignment on non-s390x
+   architectures, so the broken memory-backend-file can work again.
+
+Label
+-----
+
+QEMU v2.7.0 and later implement the label support for vNVDIMM devices.
+To enable label on vNVDIMM devices, users can simply add
+"label-size=$SZ" option to "-device nvdimm", e.g.
+
+ -device nvdimm,id=nvdimm1,memdev=mem1,label-size=128K
+
+Note:
+
+1. The minimal label size is 128KB.
+
+2. QEMU v2.7.0 and later store labels at the end of backend storage.
+   If a memory backend file, which was previously used as the backend
+   of a vNVDIMM device without labels, is now used for a vNVDIMM
+   device with label, the data in the label area at the end of file
+   will be inaccessible to the guest. If any useful data (e.g. the
+   meta-data of the file system) was stored there, the latter usage
+   may result guest data corruption (e.g. breakage of guest file
+   system).
+
+Hotplug
+-------
+
+QEMU v2.8.0 and later implement the hotplug support for vNVDIMM
+devices. Similarly to the RAM hotplug, the vNVDIMM hotplug is
+accomplished by two monitor commands "object_add" and "device_add".
+
+For example, the following commands add another 4GB vNVDIMM device to
+the guest:
+
+ (qemu) object_add memory-backend-file,id=mem2,share=on,mem-path=new_nvdimm.img,size=4G
+ (qemu) device_add nvdimm,id=nvdimm2,memdev=mem2
+
+Note:
+
+1. Each hotplugged vNVDIMM device consumes one memory slot. Users
+   should always ensure the memory option "-m ...,slots=N" specifies
+   enough number of slots, i.e.
+     N >= number of RAM devices +
+          number of statically plugged vNVDIMM devices +
+          number of hotplugged vNVDIMM devices
+
+2. The similar is required for the memory option "-m ...,maxmem=M", i.e.
+     M >= size of RAM devices +
+          size of statically plugged vNVDIMM devices +
+          size of hotplugged vNVDIMM devices
+
+Alignment
+---------
+
+QEMU uses mmap(2) to maps vNVDIMM backends and aligns the mapping
+address to the page size (getpagesize(2)) by default. However, some
+types of backends may require an alignment different than the page
+size. In that case, QEMU v2.12.0 and later provide 'align' option to
+memory-backend-file to allow users to specify the proper alignment.
+For device dax (e.g., /dev/dax0.0), this alignment needs to match the
+alignment requirement of the device dax. The NUM of 'align=NUM' option
+must be larger than or equal to the 'align' of device dax.
+We can use one of the following commands to show the 'align' of device dax.
+
+    ndctl list -X
+    daxctl list -R
+
+In order to get the proper 'align' of device dax, you need to install
+the library 'libdaxctl'.
+
+For example, device dax require the 2 MB alignment, so we can use
+following QEMU command line options to use it (/dev/dax0.0) as the
+backend of vNVDIMM:
+
+ -object memory-backend-file,id=mem1,share=on,mem-path=/dev/dax0.0,size=4G,align=2M
+ -device nvdimm,id=nvdimm1,memdev=mem1
+
+Guest Data Persistence
+----------------------
+
+Though QEMU supports multiple types of vNVDIMM backends on Linux,
+the only backend that can guarantee the guest write persistence is:
+
+A. DAX device (e.g., /dev/dax0.0, ) or
+B. DAX file(mounted with dax option)
+
+When using B (A file supporting direct mapping of persistent memory)
+as a backend, write persistence is guaranteed if the host kernel has
+support for the MAP_SYNC flag in the mmap system call (available
+since Linux 4.15 and on certain distro kernels) and additionally
+both 'pmem' and 'share' flags are set to 'on' on the backend.
+
+If these conditions are not satisfied i.e. if either 'pmem' or 'share'
+are not set, if the backend file does not support DAX or if MAP_SYNC
+is not supported by the host kernel, write persistence is not
+guaranteed after a system crash. For compatibility reasons, these
+conditions are ignored if not satisfied. Currently, no way is
+provided to test for them.
+For more details, please reference mmap(2) man page:
+http://man7.org/linux/man-pages/man2/mmap.2.html.
+
+When using other types of backends, it's suggested to set 'unarmed'
+option of '-device nvdimm' to 'on', which sets the unarmed flag of the
+guest NVDIMM region mapping structure.  This unarmed flag indicates
+guest software that this vNVDIMM device contains a region that cannot
+accept persistent writes. In result, for example, the guest Linux
+NVDIMM driver, marks such vNVDIMM device as read-only.
+
+Backend File Setup Example
+--------------------------
+
+Here are two examples showing how to setup these persistent backends on
+linux using the tool ndctl [3].
+
+A. DAX device
+
+Use the following command to set up /dev/dax0.0 so that the entirety of
+namespace0.0 can be exposed as an emulated NVDIMM to the guest:
+
+    ndctl create-namespace -f -e namespace0.0 -m devdax
+
+The /dev/dax0.0 could be used directly in "mem-path" option.
+
+B. DAX file
+
+Individual files on a DAX host file system can be exposed as emulated
+NVDIMMS.  First an fsdax block device is created, partitioned, and then
+mounted with the "dax" mount option:
+
+    ndctl create-namespace -f -e namespace0.0 -m fsdax
+    (partition /dev/pmem0 with name pmem0p1)
+    mount -o dax /dev/pmem0p1 /mnt
+    (create or copy a disk image file with qemu-img(1), cp(1), or dd(1)
+     in /mnt)
+
+Then the new file in /mnt could be used in "mem-path" option.
+
+NVDIMM Persistence
+------------------
+
+ACPI 6.2 Errata A added support for a new Platform Capabilities Structure
+which allows the platform to communicate what features it supports related to
+NVDIMM data persistence.  Users can provide a persistence value to a guest via
+the optional "nvdimm-persistence" machine command line option:
+
+    -machine pc,accel=kvm,nvdimm,nvdimm-persistence=cpu
+
+There are currently two valid values for this option:
+
+"mem-ctrl" - The platform supports flushing dirty data from the memory
+             controller to the NVDIMMs in the event of power loss.
+
+"cpu"      - The platform supports flushing dirty data from the CPU cache to
+             the NVDIMMs in the event of power loss.  This implies that the
+             platform also supports flushing dirty data through the memory
+             controller on power loss.
+
+If the vNVDIMM backend is in host persistent memory that can be accessed in
+SNIA NVM Programming Model [1] (e.g., Intel NVDIMM), it's suggested to set
+the 'pmem' option of memory-backend-file to 'on'. When 'pmem' is 'on' and QEMU
+is built with libpmem [2] support (configured with --enable-libpmem), QEMU
+will take necessary operations to guarantee the persistence of its own writes
+to the vNVDIMM backend(e.g., in vNVDIMM label emulation and live migration).
+If 'pmem' is 'on' while there is no libpmem support, qemu will exit and report
+a "lack of libpmem support" message to ensure the persistence is available.
+For example, if we want to ensure the persistence for some backend file,
+use the QEMU command line:
+
+    -object memory-backend-file,id=nv_mem,mem-path=/XXX/yyy,size=4G,pmem=on
+
+References
+----------
+
+[1] NVM Programming Model (NPM)
+	Version 1.2
+    https://www.snia.org/sites/default/files/technical_work/final/NVMProgrammingModel_v1.2.pdf
+[2] Persistent Memory Development Kit (PMDK), formerly known as NVML project, home page:
+    http://pmem.io/pmdk/
+[3] ndctl-create-namespace - provision or reconfigure a namespace
+    http://pmem.io/ndctl/ndctl-create-namespace.html

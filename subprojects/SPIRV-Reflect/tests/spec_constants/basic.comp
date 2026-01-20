@@ -1,0 +1,13 @@
+#version 450
+
+layout(constant_id = 3) const int SIZE = 2;
+
+layout(set = 0, binding = 0, std430) buffer SSBO {
+    float val[SIZE];
+    float dummy;
+} ssbo;
+
+void main() {
+    ssbo.val[0] = 0.0;
+}
+

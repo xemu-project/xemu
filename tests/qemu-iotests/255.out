@@ -1,0 +1,32 @@
+Finishing a commit job with background reads
+============================================
+
+=== Create backing chain and start VM ===
+
+=== Start background read requests ===
+
+=== Run a commit job ===
+
+{"execute": "block-commit", "arguments": {"auto-finalize": false, "device": "overlay", "job-id": "job0", "top-node": "mid"}}
+{"return": {}}
+{"execute": "job-finalize", "arguments": {"id": "job0"}}
+{"return": {}}
+{"data": {"id": "job0", "type": "commit"}, "event": "BLOCK_JOB_PENDING", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
+{"data": {"device": "job0", "len": 134217728, "offset": 134217728, "speed": 0, "type": "commit"}, "event": "BLOCK_JOB_COMPLETED", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
+
+Closing the VM while a job is being cancelled
+=============================================
+
+=== Create images and start VM ===
+
+wrote 1048576/1048576 bytes at offset 0
+1 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+
+=== Start a mirror job ===
+
+{"execute": "blockdev-mirror", "arguments": {"device": "src-throttled", "job-id": "job0", "sync": "full", "target": "dst"}}
+{"return": {}}
+{"execute": "block-job-cancel", "arguments": {"device": "job0"}}
+{"return": {}}
+{"execute": "quit", "arguments": {}}
+{"return": {}}

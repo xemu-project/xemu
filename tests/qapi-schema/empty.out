@@ -1,0 +1,11 @@
+module ./builtin
+object q_empty
+enum QType
+    member none
+    member qnull
+    member qnum
+    member qstring
+    member qdict
+    member qlist
+    member qbool
+module empty.json

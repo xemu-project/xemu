@@ -1,0 +1,38 @@
+# See docs/devel/tracing.rst for syntax documentation.
+
+# kvm.c
+kvm_failed_spr_set(int spr, const char *msg) "Warning: Unable to set SPR %d to KVM: %s"
+kvm_failed_spr_get(int spr, const char *msg) "Warning: Unable to retrieve SPR %d from KVM: %s"
+kvm_failed_fpscr_set(const char *msg) "Unable to set FPSCR to KVM: %s"
+kvm_failed_fp_set(const char *fpname, int fpnum, const char *msg) "Unable to set %s%d to KVM: %s"
+kvm_failed_vscr_set(const char *msg) "Unable to set VSCR to KVM: %s"
+kvm_failed_vr_set(int vr, const char *msg) "Unable to set VR%d to KVM: %s"
+kvm_failed_fpscr_get(const char *msg) "Unable to get FPSCR from KVM: %s"
+kvm_failed_fp_get(const char *fpname, int fpnum, const char *msg) "Unable to get %s%d from KVM: %s"
+kvm_failed_vscr_get(const char *msg) "Unable to get VSCR from KVM: %s"
+kvm_failed_vr_get(int vr, const char *msg) "Unable to get VR%d from KVM: %s"
+kvm_failed_vpa_addr_get(const char *msg) "Unable to get VPA address from KVM: %s"
+kvm_failed_slb_get(const char *msg) "Unable to get SLB shadow state from KVM: %s"
+kvm_failed_dtl_get(const char *msg) "Unable to get dispatch trace log state from KVM: %s"
+kvm_failed_vpa_addr_set(const char *msg) "Unable to set VPA address to KVM: %s"
+kvm_failed_slb_set(const char *msg) "Unable to set SLB shadow state to KVM: %s"
+kvm_failed_dtl_set(const char *msg) "Unable to set dispatch trace log state to KVM: %s"
+kvm_failed_null_vpa_addr_set(const char *msg) "Unable to set VPA address to KVM: %s"
+kvm_failed_put_vpa(void) "Warning: Unable to set VPA information to KVM"
+kvm_failed_get_vpa(void) "Warning: Unable to get VPA information from KVM"
+kvm_handle_dcr_write(void) "handle dcr write"
+kvm_handle_dcr_read(void) "handle dcr read"
+kvm_handle_halt(void) "handle halt"
+kvm_handle_papr_hcall(uint64_t hcall) "0x%" PRIx64
+kvm_handle_epr(void) "handle epr"
+kvm_handle_watchdog_expiry(void) "handle watchdog expiry"
+kvm_handle_debug_exception(void) "handle debug exception"
+kvm_handle_nmi_exception(void) "handle NMI exception"
+
+# excp_helper.c
+ppc_excp_rfi(uint64_t nip, uint64_t msr) "Return from exception at 0x%" PRIx64 " with flags 0x%016" PRIx64
+ppc_excp_dsi(uint64_t dsisr, uint64_t dar) "DSI exception: DSISR=0x%" PRIx64 " DAR=0x%" PRIx64
+ppc_excp_isi(uint64_t msr, uint64_t nip) "ISI exception: msr=0x%016" PRIx64 " nip=0x%" PRIx64
+ppc_excp_fp_ignore(void) "Ignore floating point exception"
+ppc_excp_inval(uint64_t nip) "Invalid instruction at 0x%" PRIx64
+ppc_excp_print(const char *excp) "%s exception"

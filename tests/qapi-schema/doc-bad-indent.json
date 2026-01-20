@@ -1,0 +1,9 @@
+# Multiline doc comments should have consistent indentation
+
+##
+# @foo:
+# @a: line one
+#   line two
+# line three is wrongly indented
+##
+{ 'command': 'foo', 'data': { 'a': 'int' } }

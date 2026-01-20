@@ -1,0 +1,93 @@
+/*
+ * This model describes the interaction between ctx->notify_me
+ * and aio_notify().
+ *
+ * Author: Paolo Bonzini <pbonzini@redhat.com>
+ *
+ * This file is in the public domain.  If you really want a license,
+ * the WTFPL will do.
+ *
+ * To simulate it:
+ *     spin -p docs/aio_notify.promela
+ *
+ * To verify it:
+ *     spin -a docs/aio_notify.promela
+ *     gcc -O2 pan.c
+ *     ./a.out -a
+ *
+ * To verify it (with a bug planted in the model):
+ *     spin -a -DBUG docs/aio_notify.promela
+ *     gcc -O2 pan.c
+ *     ./a.out -a
+ */
+
+#define MAX   4
+#define LAST  (1 << (MAX - 1))
+#define FINAL ((LAST << 1) - 1)
+
+bool notify_me;
+bool event;
+
+int req;
+int done;
+
+active proctype waiter()
+{
+    int fetch;
+
+    do
+        :: true -> {
+            notify_me++;
+
+            if
+#ifndef BUG
+                :: (req > 0) -> skip;
+#endif
+                :: else ->
+                    // Wait for a nudge from the other side
+                    do
+                        :: event == 1 -> { event = 0; break; }
+                    od;
+            fi;
+
+            notify_me--;
+
+            atomic { fetch = req; req = 0; }
+            done = done | fetch;
+        }
+    od
+}
+
+active proctype notifier()
+{
+    int next = 1;
+
+    do
+        :: next <= LAST -> {
+            // generate a request
+            req = req | next;
+            next = next << 1;
+
+            // aio_notify
+            if
+                :: notify_me == 1 -> event = 1;
+                :: else           -> printf("Skipped event_notifier_set\n"); skip;
+            fi;
+
+            // Test both synchronous and asynchronous delivery
+            if
+                :: 1 -> do
+                            :: req == 0 -> break;
+                        od;
+                :: 1 -> skip;
+            fi;
+        }
+    od;
+}
+
+never { /* [] done < FINAL */
+accept_init:
+        do
+        :: done < FINAL -> skip;
+        od;
+}

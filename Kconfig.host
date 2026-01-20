@@ -1,0 +1,66 @@
+# These are "proxy" symbols used to pass config-host.mak values
+# down to Kconfig.  See also kconfig_external_symbols in
+# meson.build: these two need to be kept in sync.
+
+config LINUX
+    bool
+
+config LIBCBOR
+    bool
+
+config GNUTLS
+    bool
+
+config OPENGL
+    bool
+
+config X11
+    bool
+
+config PIXMAN
+    bool
+
+config SPICE
+    bool
+
+config IVSHMEM
+    bool
+
+config TPM
+    bool
+
+config FDT
+    bool
+
+config VHOST_USER
+    bool
+
+config VHOST_VDPA
+    bool
+
+config VHOST_KERNEL
+    bool
+
+config VIRTFS
+    bool
+
+config MULTIPROCESS_ALLOWED
+    bool
+    imply MULTIPROCESS
+
+config FUZZ
+    bool
+    select SPARSE_MEM
+
+config VFIO_USER_SERVER_ALLOWED
+    bool
+    imply VFIO_USER_SERVER
+
+config HV_BALLOON_POSSIBLE
+    bool
+
+config HAVE_RUST
+    bool
+
+config MAC_PVG
+    bool

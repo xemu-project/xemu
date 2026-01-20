@@ -1,0 +1,38 @@
+*                  text         eol=lf      encoding=UTF-8
+*.hlsl             text         eol=crlf    encoding=UTF-8
+*.rc               text         eol=crlf    encoding=UTF-8
+*.sln              text         eol=crlf    encoding=UTF-8-BOM
+*.vcxproj          text         eol=crlf    encoding=UTF-8-BOM
+*.vcxproj.filters  text         eol=crlf    encoding=UTF-8-BOM
+
+*.cs                eol=lf diff=csharp
+
+*.dot               diff=astextplain
+*.DOT               diff=astextplain
+*.rtf               diff=astextplain
+*.RTF               diff=astextplain
+
+*.doc               binary
+*.DOC               binary
+*.docx              binary
+*.DOCX              binary
+*.pdf               binary
+*.PDF               binary
+*.ai                binary
+*.bin               binary
+*.bmp               binary
+*.dat               binary
+*.gif               binary
+*.ico               binary
+*.jpeg              binary
+*.jpg               binary
+*.otf               binary
+*.png               binary
+*.psd               binary
+*.rc                binary
+*.ttf               binary
+*.woff              binary
+*.woff2             binary
+*.xlsx              binary
+
+vendor/* linguist-vendored

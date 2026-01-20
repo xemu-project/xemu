@@ -1,0 +1,51 @@
+#
+# This is the email aliases file, mapping secondary addresses onto a
+# single, canonical address. It duplicates some info from .mailmap so
+# if you are adding something here also consider if the .mailmap needs
+# updating.
+#
+# If you just want to avoid gitdm complaining about author fields
+# which are actually email addresses with the message:
+#
+#   "...is an author name, probably not what you want"
+#
+# you can just apply --use-mailmap to you git-log command, e.g:
+#
+#   git log --use-mailmap --numstat --since "last 2 years" | $GITDM
+#
+# however that will have the effect of squashing multiple addresses to
+# a canonical address which will distort the stats of those who
+# contribute in both personal and professional capacities from
+# different addresses.
+#
+
+# weird commits
+balrog@c046a42c-6fe2-441c-8c8c-71466251a162 balrogg@gmail.com
+aliguori@c046a42c-6fe2-441c-8c8c-71466251a162 anthony@codemonkey.ws
+aurel32@c046a42c-6fe2-441c-8c8c-71466251a162 aurelien@aurel32.net
+blueswir1@c046a42c-6fe2-441c-8c8c-71466251a162 blauwirbel@gmail.com
+edgar_igl@c046a42c-6fe2-441c-8c8c-71466251a162 edgar.iglesias@gmail.com
+bellard@c046a42c-6fe2-441c-8c8c-71466251a162 fabrice@bellard.org
+j_mayer@c046a42c-6fe2-441c-8c8c-71466251a162 l_indien@magic.fr
+pbrook@c046a42c-6fe2-441c-8c8c-71466251a162 paul@codesourcery.com
+ths@c046a42c-6fe2-441c-8c8c-71466251a162 ths@networkno.de
+malc@c046a42c-6fe2-441c-8c8c-71466251a162 av1474@comtv.ru
+
+# canonical emails
+liq3ea@163.com liq3ea@gmail.com
+
+# some broken DCO tags
+yuval.shaia.ml.gmail.com yuval.shaia.ml@gmail.com
+jasowang jasowang@redhat.com
+nicta.com.au peter.chubb@nicta.com.au
+
+# There is also a:
+#    (no author) <(no author)@c046a42c-6fe2-441c-8c8c-71466251a162>
+# for the cvs2svn initialization commit e63c3dc74bf.
+
+# Next, translate a few commits where mailman rewrote the From: line due
+# to strict SPF, although we prefer to avoid adding more entries like that.
+"Ed Swierk via Qemu-devel" eswierk@skyportsystems.com
+"Ian McKellar via Qemu-devel" ianloic@google.com
+"Julia Suvorova via Qemu-devel" jusual@mail.ru
+"Justin Terry (VM) via Qemu-devel" juterry@microsoft.com

@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+# group: meta
+#
+# Copyright (C) 2020 Red Hat, Inc.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import os
+import subprocess
+import sys
+from typing import List
+
+import iotests
+import linters
+
+
+# Looking for something?
+#
+#  List of files to exclude from linting: linters.py
+#  mypy configuration:                    mypy.ini
+#  pylint configuration:                  pylintrc
+
+
+def check_linter(linter: str) -> bool:
+    try:
+        linters.run_linter(linter, ['--version'], suppress_output=True)
+    except subprocess.CalledProcessError:
+        iotests.case_notrun(f"'{linter}' not found")
+        return False
+    return True
+
+
+def test_pylint(files: List[str]) -> None:
+    print('=== pylint ===')
+    sys.stdout.flush()
+
+    if not check_linter('pylint'):
+        return
+
+    linters.run_linter('pylint', files)
+
+
+def test_mypy(files: List[str]) -> None:
+    print('=== mypy ===')
+    sys.stdout.flush()
+
+    if not check_linter('mypy'):
+        return
+
+    env = os.environ.copy()
+    env['MYPYPATH'] = env['PYTHONPATH']
+
+    linters.run_linter('mypy', files, env=env, suppress_output=True)
+
+
+def main() -> None:
+    files = linters.get_test_files()
+
+    iotests.logger.debug('Files to be checked:')
+    iotests.logger.debug(', '.join(sorted(files)))
+
+    for test in (test_pylint, test_mypy):
+        try:
+            test(files)
+        except subprocess.CalledProcessError as exc:
+            # Linter failure will be caught by diffing the IO.
+            if exc.output:
+                print(exc.output)
+
+
+iotests.script_main(main)

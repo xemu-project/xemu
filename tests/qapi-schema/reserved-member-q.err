@@ -1,0 +1,2 @@
+reserved-member-q.json: In struct 'Foo':
+reserved-member-q.json:4: 'data' member 'q-unix' has an invalid name

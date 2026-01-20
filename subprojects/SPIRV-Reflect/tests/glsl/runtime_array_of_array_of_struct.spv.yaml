@@ -1,0 +1,380 @@
+%YAML 1.1
+---
+all_type_descriptions:
+  - &td0
+    id: 17
+    op: 21
+    type_name: 
+    struct_member_name: "a"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000004 # INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 1 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td1
+    id: 17
+    op: 21
+    type_name: 
+    struct_member_name: "b"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000004 # INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 1 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td2
+    id: 28
+    op: 29
+    type_name: "Foo"
+    struct_member_name: "input_values"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x30080000 # ARRAY STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 2, dims: [0,3,], stride: 8 }
+    member_count: 2
+    members:
+      - *td0
+      - *td1
+  - &td3
+    id: 29
+    op: 30
+    type_name: "InutBuffer"
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000002 # BUFFER_BLOCK 
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 1
+    members:
+      - *td2
+  - &td4
+    id: 17
+    op: 21
+    type_name: 
+    struct_member_name: "a"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000004 # INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 1 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td5
+    id: 17
+    op: 21
+    type_name: 
+    struct_member_name: "b"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000004 # INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 1 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td6
+    id: 21
+    op: 29
+    type_name: "Foo"
+    struct_member_name: "output_values"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x30080000 # ARRAY STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 2, dims: [0,3,], stride: 8 }
+    member_count: 2
+    members:
+      - *td4
+      - *td5
+  - &td7
+    id: 22
+    op: 30
+    type_name: "OutputBuffer"
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000002 # BUFFER_BLOCK 
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 1
+    members:
+      - *td6
+  - &td8
+    id: 10
+    op: 23
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00000104 # VECTOR INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+all_block_variables:
+  - &bv0
+    name: "a"
+    offset: 0
+    absolute_offset: 0
+    size: 4
+    padded_size: 4
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 1 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td0
+  - &bv1
+    name: "b"
+    offset: 4
+    absolute_offset: 0
+    size: 4
+    padded_size: 4
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 1 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td1
+  - &bv2
+    name: "input_values"
+    offset: 0
+    absolute_offset: 0
+    size: 8
+    padded_size: 8
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 2
+    members:
+      - *bv0
+      - *bv1
+    type_description: *td2
+  - &bv3
+    name: ""
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 1
+    members:
+      - *bv2
+    type_description: *td3
+  - &bv4
+    name: "a"
+    offset: 0
+    absolute_offset: 0
+    size: 4
+    padded_size: 4
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 1 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td4
+  - &bv5
+    name: "b"
+    offset: 4
+    absolute_offset: 0
+    size: 4
+    padded_size: 4
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 1 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000001 # UNUSED 
+    member_count: 0
+    members:
+    type_description: *td5
+  - &bv6
+    name: "output_values"
+    offset: 0
+    absolute_offset: 0
+    size: 8
+    padded_size: 8
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 2
+    members:
+      - *bv4
+      - *bv5
+    type_description: *td6
+  - &bv7
+    name: ""
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 1
+    members:
+      - *bv6
+    type_description: *td7
+all_descriptor_bindings:
+  - &db0
+    spirv_id: 31
+    name: ""
+    binding: 0
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 7 # VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+    resource_type: 8 # UAV
+    image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+    block: *bv3 # ""
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td3
+    word_offset: { binding: 349, set: 345 }
+  - &db1
+    spirv_id: 24
+    name: ""
+    binding: 1
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 7 # VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+    resource_type: 8 # UAV
+    image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+    block: *bv7 # ""
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td7
+    word_offset: { binding: 325, set: 321 }
+all_interface_variables:
+  - &iv0
+    spirv_id: 12
+    name: "gl_GlobalInvocationID"
+    location: 4294967295
+    storage_class: 1 # Input
+    semantic: 
+    decoration_flags: 0x00000010 # BUILT_IN 
+    built_in: 28 # GlobalInvocationId
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 104 # VK_FORMAT_R32G32B32_UINT
+    type_description: *td8
+    word_offset: { location: 0 }
+module:
+  generator: 13 # Google Shaderc over Glslang
+  entry_point_name: "main"
+  entry_point_id: 5
+  source_language: 2 # GLSL
+  source_language_version: 450
+  spirv_execution_model: 5 # GLCompute
+  shader_stage: 0x00000020 # CS
+  descriptor_binding_count: 2
+  descriptor_bindings:
+    - *db0 # ""
+    - *db1 # ""
+  descriptor_set_count: 1
+  descriptor_sets:
+  - set: 0
+    binding_count: 2
+    bindings:
+      - *db0 # ""
+      - *db1 # ""
+  input_variable_count: 1,
+  input_variables:
+    - *iv0 # "gl_GlobalInvocationID"
+  output_variable_count: 0,
+  output_variables:
+  push_constant_count: 0,
+  push_constants:
+  specialization_constant_count: 0,
+  specialization_constants:
+...

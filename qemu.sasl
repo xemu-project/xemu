@@ -1,0 +1,41 @@
+# If you want to use VNC remotely without TLS, then you *must*
+# pick a mechanism which provides session encryption as well
+# as authentication.
+#
+# If you are only using TLS, then you can turn on any mechanisms
+# you like for authentication, because TLS provides the encryption
+#
+# If you are only using UNIX sockets then encryption is not
+# required at all.
+#
+# NB, previously DIGEST-MD5 was set as the default mechanism for
+# QEMU VNC. Per RFC 6331 this is vulnerable to many serious security
+# flaws as should no longer be used. Thus GSSAPI is now the default.
+#
+# To use GSSAPI requires that a QEMU service principal is
+# added to the Kerberos server for each host running QEMU.
+# This principal needs to be exported to the keytab file listed below
+mech_list: gssapi
+
+# If using TLS with VNC, or a UNIX socket only, it is possible to
+# enable plugins which don't provide session encryption. The
+# 'scram-sha-256' plugin allows plain username/password authentication
+# to be performed
+#
+#mech_list: scram-sha-256
+
+# You can also list many mechanisms at once, and the VNC server will
+# negotiate which to use by considering the list enabled on the VNC
+# client.
+#mech_list: scram-sha-256 gssapi
+
+# This file needs to be populated with the service principal that
+# was created on the Kerberos v5 server. If switching to a non-gssapi
+# mechanism this can be commented out.
+keytab: /etc/qemu/krb5.tab
+
+# If using scram-sha-256 for username/passwds, then this is the file
+# containing the passwds. Use 'saslpasswd2 -a qemu [username]'
+# to add entries, and 'sasldblistusers2 -f [sasldb_path]' to browse it.
+# Note that this file stores passwords in clear text.
+#sasldb_path: /etc/qemu/passwd.db

@@ -1,0 +1,1148 @@
+
+<HTML>
+
+<HEAD>
+<TITLE>Berkeley TestFloat General Documentation</TITLE>
+</HEAD>
+
+<BODY>
+
+<H1>Berkeley TestFloat Release 3e: General Documentation</H1>
+
+<P>
+John R. Hauser<BR>
+2018 January 20<BR>
+</P>
+
+
+<H2>Contents</H2>
+
+<BLOCKQUOTE>
+<TABLE BORDER=0 CELLSPACING=0 CELLPADDING=0>
+<COL WIDTH=25>
+<COL WIDTH=*>
+<TR><TD COLSPAN=2>1. Introduction</TD></TR>
+<TR><TD COLSPAN=2>2. Limitations</TD></TR>
+<TR><TD COLSPAN=2>3. Acknowledgments and License</TD></TR>
+<TR><TD COLSPAN=2>4. What TestFloat Does</TD></TR>
+<TR><TD COLSPAN=2>5. Executing TestFloat</TD></TR>
+<TR><TD COLSPAN=2>6. Operations Tested by TestFloat</TD></TR>
+<TR><TD></TD><TD>6.1. Conversion Operations</TD></TR>
+<TR><TD></TD><TD>6.2. Basic Arithmetic Operations</TD></TR>
+<TR><TD></TD><TD>6.3. Fused Multiply-Add Operations</TD></TR>
+<TR><TD></TD><TD>6.4. Remainder Operations</TD></TR>
+<TR><TD></TD><TD>6.5. Round-to-Integer Operations</TD></TR>
+<TR><TD></TD><TD>6.6. Comparison Operations</TD></TR>
+<TR><TD COLSPAN=2>7. Interpreting TestFloat Output</TD></TR>
+<TR>
+  <TD COLSPAN=2>8. Variations Allowed by the IEEE Floating-Point Standard</TD>
+</TR>
+<TR><TD></TD><TD>8.1. Underflow</TD></TR>
+<TR><TD></TD><TD>8.2. NaNs</TD></TR>
+<TR><TD></TD><TD>8.3. Conversions to Integer</TD></TR>
+<TR><TD COLSPAN=2>9. Contact Information</TD></TR>
+</TABLE>
+</BLOCKQUOTE>
+
+
+<H2>1. Introduction</H2>
+
+<P>
+Berkeley TestFloat is a small collection of programs for testing that an
+implementation of binary floating-point conforms to the IEEE Standard for
+Floating-Point Arithmetic.
+All operations required by the original 1985 version of the IEEE Floating-Point
+Standard can be tested, except for conversions to and from decimal.
+With the current release, the following binary formats can be tested:
+<NOBR>16-bit</NOBR> half-precision, <NOBR>32-bit</NOBR> single-precision,
+<NOBR>64-bit</NOBR> double-precision, <NOBR>80-bit</NOBR>
+double-extended-precision, and/or <NOBR>128-bit</NOBR> quadruple-precision.
+TestFloat cannot test decimal floating-point.
+</P>
+
+<P>
+Included in the TestFloat package are the <CODE>testsoftfloat</CODE> and
+<CODE>timesoftfloat</CODE> programs for testing the Berkeley SoftFloat software
+implementation of floating-point and for measuring its speed.
+Information about SoftFloat can be found at the SoftFloat Web page,
+<A HREF="http://www.jhauser.us/arithmetic/SoftFloat.html"><NOBR><CODE>http://www.jhauser.us/arithmetic/SoftFloat.html</CODE></NOBR></A>.
+The <CODE>testsoftfloat</CODE> and <CODE>timesoftfloat</CODE> programs are
+expected to be of interest only to people compiling the SoftFloat sources.
+</P>
+
+<P>
+This document explains how to use the TestFloat programs.
+It does not attempt to define or explain much of the IEEE Floating-Point
+Standard.
+Details about the standard are available elsewhere.
+</P>
+
+<P>
+The current version of TestFloat is <NOBR>Release 3e</NOBR>.
+This version differs from earlier releases 3b through 3d in only minor ways.
+Compared to the original <NOBR>Release 3</NOBR>:
+<UL>
+<LI>
+<NOBR>Release 3b</NOBR> added the ability to test the <NOBR>16-bit</NOBR>
+half-precision format.
+<LI>
+<NOBR>Release 3c</NOBR> added the ability to test a rarely used rounding mode,
+<I>round to odd</I>, also known as <I>jamming</I>.
+<LI>
+<NOBR>Release 3d</NOBR> modified the code for testing C arithmetic to
+potentially include testing newer library functions <CODE>sqrtf</CODE>,
+<CODE>sqrtl</CODE>, <CODE>fmaf</CODE>, <CODE>fma</CODE>, and <CODE>fmal</CODE>.
+</UL>
+This release adds a few more small improvements, including modifying the
+expected behavior of rounding mode <CODE>odd</CODE> and fixing a minor bug in
+the all-in-one <CODE>testfloat</CODE> program.
+</P>
+
+<P>
+Compared to Release 2c and earlier, the set of TestFloat programs, as well as
+the programs&rsquo; arguments and behavior, changed some with
+<NOBR>Release 3</NOBR>.
+For more about the evolution of TestFloat releases, see
+<A HREF="TestFloat-history.html"><NOBR><CODE>TestFloat-history.html</CODE></NOBR></A>.
+</P>
+
+
+<H2>2. Limitations</H2>
+
+<P>
+TestFloat output is not always easily interpreted.
+Detailed knowledge of the IEEE Floating-Point Standard and its vagaries is
+needed to use TestFloat responsibly.
+</P>
+
+<P>
+TestFloat performs relatively simple tests designed to check the fundamental
+soundness of the floating-point under test.
+TestFloat may also at times manage to find rarer and more subtle bugs, but it
+will probably only find such bugs by chance.
+Software that purposefully seeks out various kinds of subtle floating-point
+bugs can be found through links posted on the TestFloat Web page,
+<A HREF="http://www.jhauser.us/arithmetic/TestFloat.html"><NOBR><CODE>http://www.jhauser.us/arithmetic/TestFloat.html</CODE></NOBR></A>.
+</P>
+
+
+<H2>3. Acknowledgments and License</H2>
+
+<P>
+The TestFloat package was written by me, <NOBR>John R.</NOBR> Hauser.
+<NOBR>Release 3</NOBR> of TestFloat was a completely new implementation
+supplanting earlier releases.
+The project to create <NOBR>Release 3</NOBR> (now <NOBR>through 3e</NOBR>) was
+done in the employ of the University of California, Berkeley, within the
+Department of Electrical Engineering and Computer Sciences, first for the
+Parallel Computing Laboratory (Par Lab) and then for the ASPIRE Lab.
+The work was officially overseen by Prof. Krste Asanovic, with funding provided
+by these sources:
+<BLOCKQUOTE>
+<TABLE>
+<COL>
+<COL WIDTH=10>
+<COL>
+<TR>
+<TD VALIGN=TOP><NOBR>Par Lab:</NOBR></TD>
+<TD></TD>
+<TD>
+Microsoft (Award #024263), Intel (Award #024894), and U.C. Discovery
+(Award #DIG07-10227), with additional support from Par Lab affiliates Nokia,
+NVIDIA, Oracle, and Samsung.
+</TD>
+</TR>
+<TR>
+<TD VALIGN=TOP><NOBR>ASPIRE Lab:</NOBR></TD>
+<TD></TD>
+<TD>
+DARPA PERFECT program (Award #HR0011-12-2-0016), with additional support from
+ASPIRE industrial sponsor Intel and ASPIRE affiliates Google, Nokia, NVIDIA,
+Oracle, and Samsung.
+</TD>
+</TR>
+</TABLE>
+</BLOCKQUOTE>
+</P>
+
+<P>
+The following applies to the whole of TestFloat <NOBR>Release 3e</NOBR> as well
+as to each source file individually.
+</P>
+
+<P>
+Copyright 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018 The Regents of the
+University of California.
+All rights reserved.
+</P>
+
+<P>
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+<OL>
+
+<LI>
+<P>
+Redistributions of source code must retain the above copyright notice, this
+list of conditions, and the following disclaimer.
+</P>
+
+<LI>
+<P>
+Redistributions in binary form must reproduce the above copyright notice, this
+list of conditions, and the following disclaimer in the documentation and/or
+other materials provided with the distribution.
+</P>
+
+<LI>
+<P>
+Neither the name of the University nor the names of its contributors may be
+used to endorse or promote products derived from this software without specific
+prior written permission.
+</P>
+
+</OL>
+</P>
+
+<P>
+THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS &ldquo;AS IS&rdquo;,
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE, ARE
+DISCLAIMED.
+IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+</P>
+
+
+<H2>4. What TestFloat Does</H2>
+
+<P>
+TestFloat is designed to test a floating-point implementation by comparing its
+behavior with that of TestFloat&rsquo;s own internal floating-point implemented
+in software.
+For each operation to be tested, the TestFloat programs can generate a large
+number of test cases, made up of simple pattern tests intermixed with weighted
+random inputs.
+The cases generated should be adequate for testing carry chain propagations,
+and the rounding of addition, subtraction, multiplication, and simple
+operations like conversions.
+TestFloat makes a point of checking all boundary cases of the arithmetic,
+including underflows, overflows, invalid operations, subnormal inputs, zeros
+(positive and negative), infinities, and NaNs.
+For the interesting operations like addition and multiplication, millions of
+test cases may be checked.
+</P>
+
+<P>
+TestFloat is not remarkably good at testing difficult rounding cases for
+division and square root.
+It also makes no attempt to find bugs specific to SRT division and the like
+(such as the infamous Pentium division bug).
+Software that tests for such failures can be found through links on the
+TestFloat Web page,
+<A HREF="http://www.jhauser.us/arithmetic/TestFloat.html"><NOBR><CODE>http://www.jhauser.us/arithmetic/TestFloat.html</CODE></NOBR></A>.
+</P>
+
+<P>
+NOTE!<BR>
+It is the responsibility of the user to verify that the discrepancies TestFloat
+finds actually represent faults in the implementation being tested.
+Advice to help with this task is provided later in this document.
+Furthermore, even if TestFloat finds no fault with a floating-point
+implementation, that in no way guarantees that the implementation is bug-free.
+</P>
+
+<P>
+For each operation, TestFloat can test all five rounding modes defined by the
+IEEE Floating-Point Standard, plus possibly a sixth mode, <I>round to odd</I>
+(depending on the options selected when TestFloat was built).
+TestFloat verifies not only that the numeric results of an operation are
+correct, but also that the proper floating-point exception flags are raised.
+All five exception flags are tested, including the <I>inexact</I> flag.
+TestFloat does not attempt to verify that the floating-point exception flags
+are actually implemented as sticky flags.
+</P>
+
+<P>
+For the <NOBR>80-bit</NOBR> double-extended-precision format, TestFloat can
+test the addition, subtraction, multiplication, division, and square root
+operations at all three of the standard rounding precisions.
+The rounding precision can be set to <NOBR>32 bits</NOBR>, equivalent to
+single-precision, to <NOBR>64 bits</NOBR>, equivalent to double-precision, or
+to the full <NOBR>80 bits</NOBR> of the double-extended-precision.
+Rounding precision control can be applied only to the double-extended-precision
+format and only for the five basic arithmetic operations:  addition,
+subtraction, multiplication, division, and square root.
+Other operations can be tested only at full precision.
+</P>
+
+<P>
+As a rule, TestFloat is not particular about the bit patterns of NaNs that
+appear as operation results.
+Any NaN is considered as good a result as another.
+This laxness can be overridden so that TestFloat checks for particular bit
+patterns within NaN results.
+See <NOBR>section 8</NOBR> below, <I>Variations Allowed by the IEEE
+Floating-Point Standard</I>, plus the <CODE>-checkNaNs</CODE> and
+<CODE>-checkInvInts</CODE> options documented for programs
+<CODE>testfloat_ver</CODE> and <CODE>testfloat</CODE>.
+</P>
+
+<P>
+TestFloat normally compares an implementation of floating-point against the
+Berkeley SoftFloat software implementation of floating-point, also created by
+me.
+The SoftFloat functions are linked into each TestFloat program&rsquo;s
+executable.
+Information about SoftFloat can be found at the Web page
+<A HREF="http://www.jhauser.us/arithmetic/SoftFloat.html"><NOBR><CODE>http://www.jhauser.us/arithmetic/SoftFloat.html</CODE></NOBR></A>.
+</P>
+
+<P>
+For testing SoftFloat itself, the TestFloat package includes a
+<CODE>testsoftfloat</CODE> program that compares SoftFloat&rsquo;s
+floating-point against <EM>another</EM> software floating-point implementation.
+The second software floating-point is simpler and slower than SoftFloat, and is
+completely independent of SoftFloat.
+Although the second software floating-point cannot be guaranteed to be
+bug-free, the chance that it would mimic any of SoftFloat&rsquo;s bugs is low.
+Consequently, an error in one or the other floating-point version should appear
+as an unexpected difference between the two implementations.
+Note that testing SoftFloat should be necessary only when compiling a new
+TestFloat executable or when compiling SoftFloat for some other reason.
+</P>
+
+
+<H2>5. Executing TestFloat</H2>
+
+<P>
+The TestFloat package consists of five programs, all intended to be executed
+from a command-line interpreter:
+<BLOCKQUOTE>
+<TABLE>
+<TR>
+<TD>
+<A HREF="testfloat_gen.html"><CODE>testfloat_gen</CODE></A><CODE>&nbsp;&nbsp;&nbsp;</CODE>
+</TD>
+<TD>
+Generates test cases for a specific floating-point operation.
+</TD>
+</TR>
+<TR>
+<TD>
+<A HREF="testfloat_ver.html"><CODE>testfloat_ver</CODE></A>
+</TD>
+<TD>
+Verifies whether the results from executing a floating-point operation are as
+expected.
+</TD>
+</TR>
+<TR>
+<TD>
+<A HREF="testfloat.html"><CODE>testfloat</CODE></A>
+</TD>
+<TD>
+An all-in-one program that generates test cases, executes floating-point
+operations, and verifies whether the results match expectations.
+</TD>
+</TR>
+<TR>
+<TD>
+<A HREF="testsoftfloat.html"><CODE>testsoftfloat</CODE></A><CODE>&nbsp;&nbsp;&nbsp;</CODE>
+</TD>
+<TD>
+Like <CODE>testfloat</CODE>, but for testing SoftFloat.
+</TD>
+</TR>
+<TR>
+<TD>
+<A HREF="timesoftfloat.html"><CODE>timesoftfloat</CODE></A><CODE>&nbsp;&nbsp;&nbsp;</CODE>
+</TD>
+<TD>
+A program for measuring the speed of SoftFloat (included in the TestFloat
+package for convenience).
+</TD>
+</TR>
+</TABLE>
+</BLOCKQUOTE>
+Each program has its own page of documentation that can be opened through the
+links in the table above.
+</P>
+
+<P>
+To test a floating-point implementation other than SoftFloat, one of three
+different methods can be used.
+The first method pipes output from <CODE>testfloat_gen</CODE> to a program
+that:
+<NOBR>(a) reads</NOBR> the incoming test cases, <NOBR>(b) invokes</NOBR> the
+floating-point operation being tested, and <NOBR>(c) writes</NOBR> the
+operation results to output.
+These results can then be piped to <CODE>testfloat_ver</CODE> to be checked for
+correctness.
+Assuming a vertical bar (<CODE>|</CODE>) indicates a pipe between programs, the
+complete process could be written as a single command like so:
+<BLOCKQUOTE>
+<PRE>
+testfloat_gen ... &lt;<I>type</I>&gt; | &lt;<I>program-that-invokes-op</I>&gt; | testfloat_ver ... &lt;<I>function</I>&gt;
+</PRE>
+</BLOCKQUOTE>
+The program in the middle is not supplied by TestFloat but must be created
+independently.
+If for some reason this program cannot take command-line arguments, the
+<CODE>-prefix</CODE> option of <CODE>testfloat_gen</CODE> can communicate
+parameters through the pipe.
+</P>
+
+<P>
+A second method for running TestFloat is similar but has
+<CODE>testfloat_gen</CODE> supply not only the test inputs but also the
+expected results for each case.
+With this additional information, the job done by <CODE>testfloat_ver</CODE>
+can be folded into the invoking program to give the following command:
+<BLOCKQUOTE>
+<PRE>
+testfloat_gen ... &lt;<I>function</I>&gt; | &lt;<I>program-that-invokes-op-and-compares-results</I>&gt;
+</PRE>
+</BLOCKQUOTE>
+Again, the program that actually invokes the floating-point operation is not
+supplied by TestFloat but must be created independently.
+Depending on circumstance, it may be preferable either to let
+<CODE>testfloat_ver</CODE> check and report suspected errors (first method) or
+to include this step in the invoking program (second method).
+</P>
+
+<P>
+The third way to use TestFloat is the all-in-one <CODE>testfloat</CODE>
+program.
+This program can perform all the steps of creating test cases, invoking the
+floating-point operation, checking the results, and reporting suspected errors.
+However, for this to be possible, <CODE>testfloat</CODE> must be compiled to
+contain the method for invoking the floating-point operations to test.
+Each build of <CODE>testfloat</CODE> is therefore capable of testing
+<EM>only</EM> the floating-point implementation it was built to invoke.
+To test a new implementation of floating-point, a new <CODE>testfloat</CODE>
+must be created, linked to that specific implementation.
+By comparison, the <CODE>testfloat_gen</CODE> and <CODE>testfloat_ver</CODE>
+programs are entirely generic;
+one instance is usable for testing any floating-point implementation, because
+implementation-specific details are segregated in the custom program that
+follows <CODE>testfloat_gen</CODE>.
+</P>
+
+<P>
+Program <CODE>testsoftfloat</CODE> is another all-in-one program specifically
+for testing SoftFloat.
+</P>
+
+<P>
+Programs <CODE>testfloat_ver</CODE>, <CODE>testfloat</CODE>, and
+<CODE>testsoftfloat</CODE> all report status and error information in a common
+way.
+As it executes, each of these programs writes status information to the
+standard error output, which should be the screen by default.
+In order for this status to be displayed properly, the standard error stream
+should not be redirected to a file.
+Any discrepancies that are found are written to the standard output stream,
+which is easily redirected to a file if desired.
+Unless redirected, reported errors will appear intermixed with the ongoing
+status information in the output.
+</P>
+
+
+<H2>6. Operations Tested by TestFloat</H2>
+
+<P>
+TestFloat can test all operations required by the original 1985 IEEE
+Floating-Point Standard except for conversions to and from decimal.
+These operations are:
+<UL>
+<LI>
+conversions among the supported floating-point formats, and also between
+integers (<NOBR>32-bit</NOBR> and <NOBR>64-bit</NOBR>, signed and unsigned) and
+any of the floating-point formats;
+<LI>
+for each floating-point format, the usual addition, subtraction,
+multiplication, division, and square root operations;
+<LI>
+for each format, the floating-point remainder operation defined by the IEEE
+Standard;
+<LI>
+for each format, a &ldquo;round to integer&rdquo; operation that rounds to the
+nearest integer value in the same format; and
+<LI>
+comparisons between two values in the same floating-point format.
+</UL>
+In addition, TestFloat can also test
+<UL>
+<LI>
+for each floating-point format except <NOBR>80-bit</NOBR>
+double-extended-precision, the fused multiply-add operation defined by the 2008
+IEEE Standard.
+</UL>
+</P>
+
+<P>
+More information about all these operations is given below.
+In the operation names used by TestFloat, <NOBR>16-bit</NOBR> half-precision is
+called <CODE>f16</CODE>, <NOBR>32-bit</NOBR> single-precision is
+<CODE>f32</CODE>, <NOBR>64-bit</NOBR> double-precision is <CODE>f64</CODE>,
+<NOBR>80-bit</NOBR> double-extended-precision is <CODE>extF80</CODE>, and
+<NOBR>128-bit</NOBR> quadruple-precision is <CODE>f128</CODE>.
+TestFloat generally uses the same names for operations as Berkeley SoftFloat,
+except that TestFloat&rsquo;s names never include the <CODE>M</CODE> that
+SoftFloat uses to indicate that values are passed through pointers.
+</P>
+
+<H3>6.1. Conversion Operations</H3>
+
+<P>
+All conversions among the floating-point formats and all conversions between a
+floating-point format and <NOBR>32-bit</NOBR> and <NOBR>64-bit</NOBR> integers
+can be tested.
+The conversion operations are:
+<BLOCKQUOTE>
+<PRE>
+ui32_to_f16      ui64_to_f16      i32_to_f16       i64_to_f16
+ui32_to_f32      ui64_to_f32      i32_to_f32       i64_to_f32
+ui32_to_f64      ui64_to_f64      i32_to_f64       i64_to_f64
+ui32_to_extF80   ui64_to_extF80   i32_to_extF80    i64_to_extF80
+ui32_to_f128     ui64_to_f128     i32_to_f128      i64_to_f128
+
+f16_to_ui32      f32_to_ui32      f64_to_ui32      extF80_to_ui32    f128_to_ui32
+f16_to_ui64      f32_to_ui64      f64_to_ui64      extF80_to_ui64    f128_to_ui64
+f16_to_i32       f32_to_i32       f64_to_i32       extF80_to_i32     f128_to_i32
+f16_to_i64       f32_to_i64       f64_to_i64       extF80_to_i64     f128_to_i64
+
+f16_to_f32       f32_to_f16       f64_to_f16       extF80_to_f16     f128_to_f16
+f16_to_f64       f32_to_f64       f64_to_f32       extF80_to_f32     f128_to_f32
+f16_to_extF80    f32_to_extF80    f64_to_extF80    extF80_to_f64     f128_to_f64
+f16_to_f128      f32_to_f128      f64_to_f128      extF80_to_f128    f128_to_extF80
+</PRE>
+</BLOCKQUOTE>
+Abbreviations <CODE>ui32</CODE> and <CODE>ui64</CODE> indicate
+<NOBR>32-bit</NOBR> and <NOBR>64-bit</NOBR> unsigned integer types, while
+<CODE>i32</CODE> and <CODE>i64</CODE> indicate their signed counterparts.
+These conversions all round according to the current rounding mode as relevant.
+Conversions from a smaller to a larger floating-point format are always exact
+and so require no rounding.
+Likewise, conversions from <NOBR>32-bit</NOBR> integers to <NOBR>64-bit</NOBR>
+double-precision or to any larger floating-point format are also exact, as are
+conversions from <NOBR>64-bit</NOBR> integers to <NOBR>80-bit</NOBR>
+double-extended-precision and <NOBR>128-bit</NOBR> quadruple-precision.
+</P>
+
+<P>
+For the all-in-one <CODE>testfloat</CODE> program, this list of conversion
+operations requires amendment.
+For <CODE>testfloat</CODE> only, conversions to an integer type have names that
+explicitly specify the rounding mode and treatment of inexactness.
+Thus, instead of
+<BLOCKQUOTE>
+<PRE>
+&lt;<I>float</I>&gt;_to_&lt;<I>int</I>&gt;
+</PRE>
+</BLOCKQUOTE>
+as listed above, operations converting to integer type have names of these
+forms:
+<BLOCKQUOTE>
+<PRE>
+&lt;<I>float</I>&gt;_to_&lt;<I>int</I>&gt;_r_&lt;<I>round</I>&gt;
+&lt;<I>float</I>&gt;_to_&lt;<I>int</I>&gt;_rx_&lt;<I>round</I>&gt;
+</PRE>
+</BLOCKQUOTE>
+The <CODE>&lt;<I>round</I>&gt;</CODE> component is one of
+&lsquo;<CODE>near_even</CODE>&rsquo;, &lsquo;<CODE>near_maxMag</CODE>&rsquo;,
+&lsquo;<CODE>minMag</CODE>&rsquo;, &lsquo;<CODE>min</CODE>&rsquo;, or
+&lsquo;<CODE>max</CODE>&rsquo;, choosing the rounding mode.
+Any other indication of rounding mode is ignored.
+The operations with &lsquo;<CODE>_r_</CODE>&rsquo; in their names never raise
+the <I>inexact</I> exception, while those with &lsquo;<CODE>_rx_</CODE>&rsquo;
+raise the <I>inexact</I> exception whenever the result is not exact.
+</P>
+
+<P>
+TestFloat assumes that conversions from floating-point to an integer type
+should raise the <I>invalid</I> exception if the input cannot be rounded to an
+integer representable in the result format.
+In such a circumstance:
+<UL>
+
+<LI>
+<P>
+If the result type is an unsigned integer, TestFloat normally expects the
+result of the operation to be the type&rsquo;s largest integer value.
+In the case that the input is a negative number (not a NaN), a zero result may
+also be accepted.
+</P>
+
+<LI>
+<P>
+If the result type is a signed integer and the input is a number (not a NaN),
+TestFloat expects the result to be the largest-magnitude integer with the same
+sign as the input.
+When a NaN is converted to a signed integer type, TestFloat allows either the
+largest postive or largest-magnitude negative integer to be returned.
+</P>
+
+</UL>
+Conversions to integer types are expected never to raise the <I>overflow</I>
+exception.
+</P>
+
+<H3>6.2. Basic Arithmetic Operations</H3>
+
+<P>
+The following standard arithmetic operations can be tested:
+<BLOCKQUOTE>
+<PRE>
+f16_add      f16_sub      f16_mul      f16_div      f16_sqrt
+f32_add      f32_sub      f32_mul      f32_div      f32_sqrt
+f64_add      f64_sub      f64_mul      f64_div      f64_sqrt
+extF80_add   extF80_sub   extF80_mul   extF80_div   extF80_sqrt
+f128_add     f128_sub     f128_mul     f128_div     f128_sqrt
+</PRE>
+</BLOCKQUOTE>
+The double-extended-precision (<CODE>extF80</CODE>) operations can be rounded
+to reduced precision under rounding precision control.
+</P>
+
+<H3>6.3. Fused Multiply-Add Operations</H3>
+
+<P>
+For all floating-point formats except <NOBR>80-bit</NOBR>
+double-extended-precision, TestFloat can test the fused multiply-add operation
+defined by the 2008 IEEE Floating-Point Standard.
+The fused multiply-add operations are:
+<BLOCKQUOTE>
+<PRE>
+f16_mulAdd
+f32_mulAdd
+f64_mulAdd
+f128_mulAdd
+</PRE>
+</BLOCKQUOTE>
+</P>
+
+<P>
+If one of the multiplication operands is infinite and the other is zero,
+TestFloat expects the fused multiply-add operation to raise the <I>invalid</I>
+exception even if the third operand is a quiet NaN.
+</P>
+
+<H3>6.4. Remainder Operations</H3>
+
+<P>
+For each format, TestFloat can test the IEEE Standard&rsquo;s remainder
+operation.
+These operations are:
+<BLOCKQUOTE>
+<PRE>
+f16_rem
+f32_rem
+f64_rem
+extF80_rem
+f128_rem
+</PRE>
+</BLOCKQUOTE>
+The remainder operations are always exact and so require no rounding.
+</P>
+
+<H3>6.5. Round-to-Integer Operations</H3>
+
+<P>
+For each format, TestFloat can test the IEEE Standard&rsquo;s round-to-integer
+operation.
+For most TestFloat programs, these operations are:
+<BLOCKQUOTE>
+<PRE>
+f16_roundToInt
+f32_roundToInt
+f64_roundToInt
+extF80_roundToInt
+f128_roundToInt
+</PRE>
+</BLOCKQUOTE>
+</P>
+
+<P>
+Just as for conversions to integer types (<NOBR>section 6.1</NOBR> above), the
+all-in-one <CODE>testfloat</CODE> program is again an exception.
+For <CODE>testfloat</CODE> only, the round-to-integer operations have names of
+these forms:
+<BLOCKQUOTE>
+<PRE>
+&lt;<I>float</I>&gt;_roundToInt_r_&lt;<I>round</I>&gt;
+&lt;<I>float</I>&gt;_roundToInt_x
+</PRE>
+</BLOCKQUOTE>
+For the &lsquo;<CODE>_r_</CODE>&rsquo; versions, the <I>inexact</I> exception
+is never raised, and the <CODE>&lt;<I>round</I>&gt;</CODE> component specifies
+the rounding mode as one of &lsquo;<CODE>near_even</CODE>&rsquo;,
+&lsquo;<CODE>near_maxMag</CODE>&rsquo;, &lsquo;<CODE>minMag</CODE>&rsquo;,
+&lsquo;<CODE>min</CODE>&rsquo;, or &lsquo;<CODE>max</CODE>&rsquo;.
+The usual indication of rounding mode is ignored.
+In contrast, the &lsquo;<CODE>_x</CODE>&rsquo; versions accept the usual
+indication of rounding mode and raise the <I>inexact</I> exception whenever the
+result is not exact.
+This irregular system follows the IEEE Standard&rsquo;s particular
+specification for the round-to-integer operations.
+</P>
+
+<H3>6.6. Comparison Operations</H3>
+
+<P>
+The following floating-point comparison operations can be tested:
+<BLOCKQUOTE>
+<PRE>
+f16_eq      f16_le      f16_lt
+f32_eq      f32_le      f32_lt
+f64_eq      f64_le      f64_lt
+extF80_eq   extF80_le   extF80_lt
+f128_eq     f128_le     f128_lt
+</PRE>
+</BLOCKQUOTE>
+The abbreviation <CODE>eq</CODE> stands for &ldquo;equal&rdquo; (=),
+<CODE>le</CODE> stands for &ldquo;less than or equal&rdquo; (&le;), and
+<CODE>lt</CODE> stands for &ldquo;less than&rdquo; (&lt;).
+</P>
+
+<P>
+The IEEE Standard specifies that, by default, the less-than-or-equal and
+less-than comparisons raise the <I>invalid</I> exception if either input is any
+kind of NaN.
+The equality comparisons, on the other hand, are defined by default to raise
+the <I>invalid</I> exception only for signaling NaNs, not for quiet NaNs.
+For completeness, the following additional operations can be tested if
+supported:
+<BLOCKQUOTE>
+<PRE>
+f16_eq_signaling      f16_le_quiet      f16_lt_quiet
+f32_eq_signaling      f32_le_quiet      f32_lt_quiet
+f64_eq_signaling      f64_le_quiet      f64_lt_quiet
+extF80_eq_signaling   extF80_le_quiet   extF80_lt_quiet
+f128_eq_signaling     f128_le_quiet     f128_lt_quiet
+</PRE>
+</BLOCKQUOTE>
+The <CODE>signaling</CODE> equality comparisons are identical to the standard
+operations except that the <I>invalid</I> exception should be raised for any
+NaN input.
+Similarly, the <CODE>quiet</CODE> comparison operations should be identical to
+their counterparts except that the <I>invalid</I> exception is not raised for
+quiet NaNs.
+</P>
+
+<P>
+Obviously, no comparison operations ever require rounding.
+Any rounding mode is ignored.
+</P>
+
+
+<H2>7. Interpreting TestFloat Output</H2>
+
+<P>
+The &ldquo;errors&rdquo; reported by TestFloat programs may or may not really
+represent errors in the system being tested.
+For each test case tried, the results from the floating-point implementation
+being tested could differ from the expected results for several reasons:
+<UL>
+<LI>
+The IEEE Floating-Point Standard allows for some variation in how conforming
+floating-point behaves.
+Two implementations can sometimes give different results without either being
+incorrect.
+<LI>
+The trusted floating-point emulation could be faulty.
+This could be because there is a bug in the way the emulation is coded, or
+because a mistake was made when the code was compiled for the current system.
+<LI>
+The TestFloat program may not work properly, reporting differences that do not
+exist.
+<LI>
+Lastly, the floating-point being tested could actually be faulty.
+</UL>
+It is the responsibility of the user to determine the causes for the
+discrepancies that are reported.
+Making this determination can require detailed knowledge about the IEEE
+Standard.
+Assuming TestFloat is working properly, any differences found will be due to
+either the first or last of the reasons above.
+Variations in the IEEE Standard that could lead to false error reports are
+discussed in <NOBR>section 8</NOBR>, <I>Variations Allowed by the IEEE
+Floating-Point Standard</I>.
+</P>
+
+<P>
+For each reported error (or apparent error), a line of text is written to the
+default output.
+If a line would be longer than 79 characters, it is divided.
+The first part of each error line begins in the leftmost column, and any
+subsequent &ldquo;continuation&rdquo; lines are indented with a tab.
+</P>
+
+<P>
+Each error reported is of the form:
+<BLOCKQUOTE>
+<PRE>
+&lt;<I>inputs</I>&gt;  => &lt;<I>observed-output</I>&gt;  expected: &lt;<I>expected-output</I>&gt;
+</PRE>
+</BLOCKQUOTE>
+The <CODE>&lt;<I>inputs</I>&gt;</CODE> are the inputs to the operation.
+Each output (observed or expected) is shown as a pair:  the result value first,
+followed by the exception flags.
+</P>
+
+<P>
+For example, two typical error lines could be
+<BLOCKQUOTE>
+<PRE>
+-00.7FFF00  -7F.000100  => +01.000000 ...ux  expected: +01.000000 ....x
++81.000004  +00.1FFFFF  => +01.000000 ...ux  expected: +01.000000 ....x
+</PRE>
+</BLOCKQUOTE>
+In the first line, the inputs are <CODE>-00.7FFF00</CODE> and
+<CODE>-7F.000100</CODE>, and the observed result is <CODE>+01.000000</CODE>
+with flags <CODE>...ux</CODE>.
+The trusted emulation result is the same but with different flags,
+<CODE>....x</CODE>.
+Items such as <CODE>-00.7FFF00</CODE> composed of a sign character
+<NOBR>(<CODE>+</CODE>/<CODE>-</CODE>)</NOBR>, hexadecimal digits, and a single
+period represent floating-point values (here <NOBR>32-bit</NOBR>
+single-precision).
+The two instances above were reported as errors because the exception flag
+results differ.
+</P>
+
+<P>
+Aside from the exception flags, there are ten data types that may be
+represented.
+Five are floating-point types:  <NOBR>16-bit</NOBR> half-precision,
+<NOBR>32-bit</NOBR> single-precision, <NOBR>64-bit</NOBR> double-precision,
+<NOBR>80-bit</NOBR> double-extended-precision, and <NOBR>128-bit</NOBR>
+quadruple-precision.
+The remaining five types are <NOBR>32-bit</NOBR> and <NOBR>64-bit</NOBR>
+unsigned integers, <NOBR>32-bit</NOBR> and <NOBR>64-bit</NOBR>
+two&rsquo;s-complement signed integers, and Boolean values (the results of
+comparison operations).
+Boolean values are represented as a single character, either a <CODE>0</CODE>
+(false) or a <CODE>1</CODE> (true).
+A <NOBR>32-bit</NOBR> integer is represented as 8 hexadecimal digits.
+Thus, for a signed <NOBR>32-bit</NOBR> integer, <CODE>FFFFFFFF</CODE> is
+&minus;1, and <CODE>7FFFFFFF</CODE> is the largest positive value.
+<NOBR>64-bit</NOBR> integers are the same except with 16 hexadecimal digits.
+</P>
+
+<P>
+Floating-point values are written decomposed into their sign, encoded exponent,
+and encoded significand.
+First is the sign character <NOBR>(<CODE>+</CODE> or <CODE>-</CODE>),</NOBR>
+followed by the encoded exponent in hexadecimal, then a period
+(<CODE>.</CODE>), and lastly the encoded significand in hexadecimal.
+</P>
+
+<P>
+For <NOBR>16-bit</NOBR> half-precision, notable values include:
+<BLOCKQUOTE>
+<TABLE CELLSPACING=0 CELLPADDING=0>
+<TR><TD><CODE>+00.000&nbsp;&nbsp;&nbsp;&nbsp;</CODE></TD><TD>+0</TD></TR>
+<TR><TD><CODE>+0F.000</CODE></TD><TD>&nbsp;1</TD></TR>
+<TR><TD><CODE>+10.000</CODE></TD><TD>&nbsp;2</TD></TR>
+<TR><TD><CODE>+1E.3FF</CODE></TD><TD>maximum finite value</TD></TR>
+<TR><TD><CODE>+1F.000</CODE></TD><TD>+infinity</TD></TR>
+<TR><TD>&nbsp;</TD></TR>
+<TR><TD><CODE>-00.000</CODE></TD><TD>&minus;0</TD></TR>
+<TR><TD><CODE>-0F.000</CODE></TD><TD>&minus;1</TD></TR>
+<TR><TD><CODE>-10.000</CODE></TD><TD>&minus;2</TD></TR>
+<TR>
+  <TD><CODE>-1E.3FF</CODE></TD>
+  <TD>minimum finite value (largest magnitude, but negative)</TD>
+</TR>
+<TR><TD><CODE>-1F.000</CODE></TD><TD>&minus;infinity</TD></TR>
+</TABLE>
+</BLOCKQUOTE>
+Certain categories are easily distinguished (assuming the <CODE>x</CODE>s are
+not all 0):
+<BLOCKQUOTE>
+<TABLE CELLSPACING=0 CELLPADDING=0>
+<TR>
+  <TD><CODE>+00.xxx&nbsp;&nbsp;&nbsp;&nbsp;</CODE></TD>
+  <TD>positive subnormal numbers</TD>
+</TR>
+<TR><TD><CODE>+1F.xxx</CODE></TD><TD>positive NaNs</TD></TR>
+<TR><TD><CODE>-00.xxx</CODE></TD><TD>negative subnormal numbers</TD></TR>
+<TR><TD><CODE>-1F.xxx</CODE></TD><TD>negative NaNs</TD></TR>
+</TABLE>
+</BLOCKQUOTE>
+</P>
+
+<P>
+Likewise for other formats:
+<BLOCKQUOTE>
+<TABLE CELLSPACING=0 CELLPADDING=0>
+<TR><TD>32-bit single</TD><TD>64-bit double</TD><TD>128-bit quadruple</TD></TR>
+<TR><TD>&nbsp;</TD></TR>
+<TR>
+<TD><CODE>+00.000000&nbsp;&nbsp;&nbsp;&nbsp;</CODE></TD>
+<TD><CODE>+000.0000000000000&nbsp;&nbsp;&nbsp;&nbsp;</CODE></TD>
+<TD><CODE>+0000.0000000000000000000000000000&nbsp;&nbsp;&nbsp;&nbsp;</CODE></TD>
+<TD>+0</TD>
+</TR>
+<TR>
+<TD><CODE>+7F.000000</CODE></TD>
+<TD><CODE>+3FF.0000000000000</CODE></TD>
+<TD><CODE>+3FFF.0000000000000000000000000000</CODE></TD>
+<TD>&nbsp;1</TD>
+</TR>
+<TR>
+<TD><CODE>+80.000000</CODE></TD>
+<TD><CODE>+400.0000000000000</CODE></TD>
+<TD><CODE>+4000.0000000000000000000000000000</CODE></TD>
+<TD>&nbsp;2</TD>
+</TR>
+<TR>
+<TD><CODE>+FE.7FFFFF</CODE></TD>
+<TD><CODE>+7FE.FFFFFFFFFFFFF</CODE></TD>
+<TD><CODE>+7FFE.FFFFFFFFFFFFFFFFFFFFFFFFFFFF</CODE></TD>
+<TD>maximum finite value</TD>
+</TR>
+<TR>
+<TD><CODE>+FF.000000</CODE></TD>
+<TD><CODE>+7FF.0000000000000</CODE></TD>
+<TD><CODE>+7FFF.0000000000000000000000000000</CODE></TD>
+<TD>+infinity</TD>
+</TR>
+<TR><TD>&nbsp;</TD></TR>
+<TR>
+<TD><CODE>-00.000000&nbsp;&nbsp;&nbsp;&nbsp;</CODE></TD>
+<TD><CODE>-000.0000000000000&nbsp;&nbsp;&nbsp;&nbsp;</CODE></TD>
+<TD><CODE>-0000.0000000000000000000000000000&nbsp;&nbsp;&nbsp;&nbsp;</CODE></TD>
+<TD>&minus;0</TD>
+</TR>
+<TR>
+<TD><CODE>-7F.000000</CODE></TD>
+<TD><CODE>-3FF.0000000000000</CODE></TD>
+<TD><CODE>-3FFF.0000000000000000000000000000</CODE></TD>
+<TD>&minus;1</TD>
+</TR>
+<TR>
+<TD><CODE>-80.000000</CODE></TD>
+<TD><CODE>-400.0000000000000</CODE></TD>
+<TD><CODE>-4000.0000000000000000000000000000</CODE></TD>
+<TD>&minus;2</TD>
+</TR>
+<TR>
+<TD><CODE>-FE.7FFFFF</CODE></TD>
+<TD><CODE>-7FE.FFFFFFFFFFFFF</CODE></TD>
+<TD><CODE>-7FFE.FFFFFFFFFFFFFFFFFFFFFFFFFFFF</CODE></TD>
+<TD>minimum finite value</TD>
+</TR>
+<TR>
+<TD><CODE>-FF.000000</CODE></TD>
+<TD><CODE>-7FF.0000000000000</CODE></TD>
+<TD><CODE>-7FFF.0000000000000000000000000000</CODE></TD>
+<TD>&minus;infinity</TD>
+</TR>
+<TR><TD>&nbsp;</TD></TR>
+<TR>
+<TD><CODE>+00.xxxxxx</CODE></TD>
+<TD><CODE>+000.xxxxxxxxxxxxx</CODE></TD>
+<TD><CODE>+0000.xxxxxxxxxxxxxxxxxxxxxxxxxxxx</CODE></TD>
+<TD>positive subnormals</TD>
+</TR>
+<TR>
+<TD><CODE>+FF.xxxxxx</CODE></TD>
+<TD><CODE>+7FF.xxxxxxxxxxxxx</CODE></TD>
+<TD><CODE>+7FFF.xxxxxxxxxxxxxxxxxxxxxxxxxxxx</CODE></TD>
+<TD>positive NaNs</TD>
+</TR>
+<TR>
+<TD><CODE>-00.xxxxxx</CODE></TD>
+<TD><CODE>-000.xxxxxxxxxxxxx</CODE></TD>
+<TD><CODE>-0000.xxxxxxxxxxxxxxxxxxxxxxxxxxxx</CODE></TD>
+<TD>negative subnormals</TD>
+</TR>
+<TR>
+<TD><CODE>-FF.xxxxxx</CODE></TD>
+<TD><CODE>-7FF.xxxxxxxxxxxxx</CODE></TD>
+<TD><CODE>-7FFF.xxxxxxxxxxxxxxxxxxxxxxxxxxxx</CODE></TD>
+<TD>negative NaNs</TD>
+</TR>
+</TABLE>
+</BLOCKQUOTE>
+</P>
+
+<P>
+The <NOBR>80-bit</NOBR> double-extended-precision values are a little unusual
+in that the leading bit of precision is not hidden as with other formats.
+When canonically encoded, the leading significand bit of an <NOBR>80-bit</NOBR>
+double-extended-precision value will be 0 if the value is zero or subnormal,
+and will be 1 otherwise.
+Hence, the same values listed above appear in <NOBR>80-bit</NOBR>
+double-extended-precision as follows (note the leading <CODE>8</CODE> digit in
+the significands):
+<BLOCKQUOTE>
+<TABLE CELLSPACING=0 CELLPADDING=0>
+<TR>
+  <TD><CODE>+0000.0000000000000000&nbsp;&nbsp;&nbsp;&nbsp;</CODE></TD>
+  <TD>+0</TD>
+</TR>
+<TR><TD><CODE>+3FFF.8000000000000000</CODE></TD><TD>&nbsp;1</TD></TR>
+<TR><TD><CODE>+4000.8000000000000000</CODE></TD><TD>&nbsp;2</TD></TR>
+<TR>
+  <TD><CODE>+7FFE.FFFFFFFFFFFFFFFF</CODE></TD>
+  <TD>maximum finite value</TD>
+</TR>
+<TR><TD><CODE>+7FFF.8000000000000000</CODE></TD><TD>+infinity</TD></TR>
+<TR><TD>&nbsp;</TD></TR>
+<TR><TD><CODE>-0000.0000000000000000</CODE></TD><TD>&minus;0</TD></TR>
+<TR><TD><CODE>-3FFF.8000000000000000</CODE></TD><TD>&minus;1</TD></TR>
+<TR><TD><CODE>-4000.8000000000000000</CODE></TD><TD>&minus;2</TD></TR>
+<TR>
+  <TD><CODE>-7FFE.FFFFFFFFFFFFFFFF</CODE></TD>
+  <TD>minimum finite value</TD>
+</TR>
+<TR><TD><CODE>-7FFF.8000000000000000</CODE></TD><TD>&minus;infinity</TD></TR>
+</TABLE>
+</BLOCKQUOTE>
+</P>
+
+<P>
+Lastly, exception flag values are represented by five characters, one character
+per flag.
+Each flag is written as either a letter or a period (<CODE>.</CODE>) according
+to whether the flag was set or not by the operation.
+A period indicates the flag was not set.
+The letter used to indicate a set flag depends on the flag:
+<BLOCKQUOTE>
+<TABLE CELLSPACING=0 CELLPADDING=0>
+<TR>
+  <TD><CODE>v&nbsp;&nbsp;&nbsp;&nbsp;</CODE></TD>
+  <TD><I>invalid</I> exception</TD>
+</TR>
+<TR>
+  <TD><CODE>i</CODE></TD>
+  <TD><I>infinite</I> exception (&ldquo;divide by zero&rdquo;)</TD>
+</TR>
+<TR><TD><CODE>o</CODE></TD><TD><I>overflow</I> exception</TD></TR>
+<TR><TD><CODE>u</CODE></TD><TD><I>underflow</I> exception</TD></TR>
+<TR><TD><CODE>x</CODE></TD><TD><I>inexact</I> exception</TD></TR>
+</TABLE>
+</BLOCKQUOTE>
+For example, the notation <CODE>...ux</CODE> indicates that the
+<I>underflow</I> and <I>inexact</I> exception flags were set and that the other
+three flags (<I>invalid</I>, <I>infinite</I>, and <I>overflow</I>) were not
+set.
+The exception flags are always written following the value returned as the
+result of the operation.
+</P>
+
+
+<H2>8. Variations Allowed by the IEEE Floating-Point Standard</H2>
+
+<P>
+The IEEE Floating-Point Standard admits some variation among conforming
+implementations.
+Because TestFloat expects the two implementations being compared to deliver
+bit-for-bit identical results under most circumstances, this leeway in the
+standard can result in false errors being reported if the two implementations
+do not make the same choices everywhere the standard provides an option.
+</P>
+
+<H3>8.1. Underflow</H3>
+
+<P>
+The standard specifies that the <I>underflow</I> exception flag is to be raised
+when two conditions are met simultaneously:
+<NOBR>(1) <I>tininess</I></NOBR> and <NOBR>(2) <I>loss of accuracy</I></NOBR>.
+</P>
+
+<P>
+A result is tiny when its magnitude is nonzero yet smaller than any normalized
+floating-point number.
+The standard allows tininess to be determined either before or after a result
+is rounded to the destination precision.
+If tininess is detected before rounding, some borderline cases will be flagged
+as underflows even though the result after rounding actually lies within the
+normal floating-point range.
+By detecting tininess after rounding, a system can avoid some unnecessary
+signaling of underflow.
+All the TestFloat programs support options <CODE>-tininessbefore</CODE> and
+<CODE>-tininessafter</CODE> to control whether TestFloat expects tininess on
+underflow to be detected before or after rounding.
+One or the other is selected as the default when TestFloat is compiled, but
+these command options allow the default to be overridden.
+</P>
+
+<P>
+Loss of accuracy occurs when the subnormal format is not sufficient to
+represent an underflowed result accurately.
+The original 1985 version of the IEEE Standard allowed loss of accuracy to be
+detected either as an <I>inexact result</I> or as a
+<I>denormalization loss</I>;
+however, few if any systems ever chose the latter.
+The latest standard requires that loss of accuracy be detected as an inexact
+result, and TestFloat can test only for this case.
+</P>
+
+<H3>8.2. NaNs</H3>
+
+<P>
+The IEEE Standard gives the floating-point formats a large number of NaN
+encodings and specifies that NaNs are to be returned as results under certain
+conditions.
+However, the standard allows an implementation almost complete freedom over
+<EM>which</EM> NaN to return in each situation.
+</P>
+
+<P>
+By default, TestFloat does not check the bit patterns of NaN results.
+When the result of an operation should be a NaN, any NaN is considered as good
+as another.
+This laxness can be overridden with the <CODE>-checkNaNs</CODE> option of
+programs <CODE>testfloat_ver</CODE> and <CODE>testfloat</CODE>.
+In order for this option to be sensible, TestFloat must have been compiled so
+that its internal floating-point implementation (SoftFloat) generates the
+proper NaN results for the system being tested.
+</P>
+
+<H3>8.3. Conversions to Integer</H3>
+
+<P>
+Conversion of a floating-point value to an integer format will fail if the
+source value is a NaN or if it is too large.
+The IEEE Standard does not specify what value should be returned as the integer
+result in these cases.
+Moreover, according to the standard, the <I>invalid</I> exception can be raised
+or an unspecified alternative mechanism may be used to signal such cases.
+</P>
+
+<P>
+TestFloat assumes that conversions to integer will raise the <I>invalid</I>
+exception if the source value cannot be rounded to a representable integer.
+In such cases, TestFloat expects the result value to be the largest-magnitude
+positive or negative integer or zero, as detailed earlier in
+<NOBR>section 6.1</NOBR>, <I>Conversion Operations</I>.
+If option <CODE>-checkInvInts</CODE> is selected with programs
+<CODE>testfloat_ver</CODE> and <CODE>testfloat</CODE>, integer results of
+invalid operations are checked for an exact match.
+In order for this option to be sensible, TestFloat must have been compiled so
+that its internal floating-point implementation (SoftFloat) generates the
+proper integer results for the system being tested.
+</P>
+
+
+<H2>9. Contact Information</H2>
+
+<P>
+At the time of this writing, the most up-to-date information about TestFloat
+and the latest release can be found at the Web page
+<A HREF="http://www.jhauser.us/arithmetic/TestFloat.html"><NOBR><CODE>http://www.jhauser.us/arithmetic/TestFloat.html</CODE></NOBR></A>.
+</P>
+
+
+</BODY>
+

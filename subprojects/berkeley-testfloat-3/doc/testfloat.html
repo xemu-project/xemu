@@ -1,0 +1,286 @@
+
+<HTML>
+
+<HEAD>
+<TITLE>testfloat</TITLE>
+</HEAD>
+
+<BODY>
+
+<H1>Berkeley TestFloat Release 3e: <CODE>testfloat</CODE></H1>
+
+<P>
+John R. Hauser<BR>
+2018 January 20<BR>
+</P>
+
+
+<H2>Overview</H2>
+
+<P>
+The <CODE>testfloat</CODE> program tests an implementation of floating-point
+arithmetic for conformity to the IEEE Standard for Binary Floating-Point
+Arithmetic.
+<CODE>testfloat</CODE> is part of the Berkeley TestFloat package, a small
+collection of programs for performing such tests.
+For general information about TestFloat, see file
+<A HREF="TestFloat-general.html"><NOBR><CODE>TestFloat-general.html</CODE></NOBR></A>.
+</P>
+
+<P>
+The <CODE>testfloat</CODE> program is an all-in-one tool for testing
+floating-point arithmetic.
+It generates test operand values, invokes a floating-point operation with the
+generated operands, and examines the corresponding computed results, reporting
+unexpected results as likely errors.
+While the processes of generating inputs and examining results are generic, a
+particular build of <CODE>testfloat</CODE> is limited to testing only the one
+implementation of floating-point it has been compiled to invoke.
+For example, while one instance of <CODE>testfloat</CODE> might be compiled to
+execute a computer&rsquo;s hardware instruction for floating-point addition, a
+different version might be compiled to call a subroutine called
+<CODE>myAddFloat</CODE> that is linked into the <CODE>testfloat</CODE> program.
+To test a new implementation of floating-point (a new set of machine
+instructions or a new set of subroutines), a new <CODE>testfloat</CODE> must be
+compiled containing the code needed to invoke the new floating-point.
+</P>
+
+<P>
+The default build of <CODE>testfloat</CODE> assumes that C types
+<CODE>float</CODE> and <CODE>double</CODE> are <NOBR>32-bit</NOBR> and
+<NOBR>64-bit</NOBR> binary floating-point types conforming to the IEEE
+Standard, and tests the C operations of <CODE>+</CODE>, <CODE>-</CODE>,
+<CODE>*</CODE>, <CODE>/</CODE>, type conversions, etc.
+This tests the floating-point arithmetic seen by C programs.
+Depending on the compiler and the options selected during compilation, this may
+or may not be the same as the computer&rsquo;s floating-point hardware, if any.
+</P>
+
+<P>
+The <CODE>testfloat</CODE> program will ordinarily test an operation for all
+five rounding modes defined by the IEEE Floating-Point Standard, one after the
+other, plus possibly a sixth mode, <I>round to odd</I> (depending on the
+options selected when <CODE>testfloat</CODE> was compiled).
+If the rounding mode is not supposed to have any affect on the
+results&mdash;for instance, some operations do not require rounding&mdash;only
+the nearest/even rounding mode is checked.
+For double-extended-precision operations affected by rounding precision
+control, <CODE>testfloat</CODE> also tests all three rounding precision modes,
+one after the other.
+Testing can be limited to a single rounding mode and/or rounding precision with
+appropriate command-line options.
+</P>
+
+<P>
+For more about the operation of <CODE>testfloat</CODE> and how to interpret its
+output, refer to
+<A HREF="TestFloat-general.html"><NOBR><CODE>TestFloat-general.html</CODE></NOBR></A>.
+</P>
+
+
+<H2>Command Syntax</H2>
+
+<P>
+The <CODE>testfloat</CODE> program is executed as a command with this syntax:
+<BLOCKQUOTE>
+<PRE>
+testfloat [&lt;<I>option</I>&gt;...] &lt;<I>function</I>&gt;
+</PRE>
+</BLOCKQUOTE>
+Square brackets (<CODE>[ ]</CODE>) denote optional arguments,
+<CODE>&lt;<I>option</I>&gt;</CODE> is a supported option, and
+<CODE>&lt;<I>function</I>&gt;</CODE> is the name of either a testable operation
+or a function set.
+The available options and function sets are documented below.
+The <CODE>-list</CODE> option can be used to obtain a list of all testable
+operations for a given build of <CODE>testfloat</CODE>.
+If <CODE>testfloat</CODE> is executed without any arguments, a summary of usage
+is written.
+</P>
+
+
+<H2>Options</H2>
+
+<P>
+The <CODE>testfloat</CODE> program accepts several command options.
+If mutually contradictory options are given, the last one has priority.
+</P>
+
+<H3><CODE>-help</CODE></H3>
+
+<P>
+The <CODE>-help</CODE> option causes a summary of program usage to be written,
+after which the program exits.
+</P>
+
+<H3><CODE>-list</CODE></H3>
+
+<P>
+The <CODE>-list</CODE> option causes a list of testable operations to be
+written, after which the program exits.
+An operation is testable by <CODE>testfloat</CODE> if the program knows some
+way to invoke the operation.
+</P>
+
+<H3><CODE>-seed &lt;<I>num</I>&gt;</CODE></H3>
+
+<P>
+The <CODE>-seed</CODE> option sets the seed for the pseudo-random number
+generator used for generating test cases.
+The argument to <CODE>-seed</CODE> is a nonnegative integer.
+Executing the same compiled <CODE>testfloat</CODE> program with the same
+arguments (including the same pseudo-random number seed) should always perform
+the same sequence of tests, whereas changing the pseudo-random number seed
+should result in a different sequence of tests.
+The default seed number <NOBR>is 1</NOBR>.
+</P>
+
+<H3><CODE>-level &lt;<I>num</I>&gt;</CODE></H3>
+
+<P>
+The <CODE>-level</CODE> option sets the level of testing.
+The argument to <CODE>-level</CODE> can be either 1 <NOBR>or 2</NOBR>.
+The default is <NOBR>level 1</NOBR>.
+Level 2 performs many more tests than <NOBR>level 1</NOBR> and thus can reveal
+bugs not found by <NOBR>level 1</NOBR>.
+</P>
+
+<H3><CODE>-errors &lt;<I>num</I>&gt;</CODE></H3>
+
+<P>
+The <CODE>-errors</CODE> option instructs <CODE>testfloat</CODE> to report no
+more than the specified number of errors for any combination of operation,
+rounding mode, etc.
+The argument to <CODE>-errors</CODE> must be a nonnegative decimal integer.
+Once the specified number of error reports has been generated,
+<CODE>testfloat</CODE> ends the current test and begins the next one, if any.
+The default is <NOBR><CODE>-errors</CODE> <CODE>20</CODE></NOBR>.
+</P>
+
+<P>
+Against intuition, <NOBR><CODE>-errors</CODE> <CODE>0</CODE></NOBR> causes
+<CODE>testfloat</CODE> to report every error it finds.
+</P>
+
+<H3><CODE>-errorstop</CODE></H3>
+
+<P>
+The <CODE>-errorstop</CODE> option causes the program to exit after the first
+operation for which any errors are reported.
+</P>
+
+<H3><CODE>-forever</CODE></H3>
+
+<P>
+The <CODE>-forever</CODE> option causes a single operation to be repeatedly
+tested.
+Only one rounding mode and/or rounding precision can be tested in a single
+execution.
+If not specified, the rounding mode defaults to nearest/even.
+For <NOBR>80-bit</NOBR> double-extended-precision operations, the rounding
+precision defaults to full double-extended precision.
+The testing level is set to 2 by this option.
+</P>
+
+<H3><CODE>-checkNaNs</CODE></H3>
+
+<P>
+The <CODE>-checkNaNs</CODE> option causes <CODE>testfloat</CODE> to verify the
+bitwise correctness of NaN results.
+In order for this option to be sensible, <CODE>testfloat</CODE> must have been
+compiled so that its internal reference implementation of floating-point
+(Berkeley SoftFloat) generates the proper NaN results for the system being
+tested.
+</P>
+
+<H3><CODE>-checkInvInts</CODE></H3>
+
+<P>
+The <CODE>-checkInvInts</CODE> option causes <CODE>testfloat</CODE> to verify
+the bitwise correctness of integer results of invalid operations.
+In order for this option to be sensible, <CODE>testfloat</CODE> must have been
+compiled so that its internal reference implementation of floating-point
+(Berkeley SoftFloat) generates the proper integer results for the system being
+tested.
+</P>
+
+<H3><CODE>-checkAll</CODE></H3>
+
+<P>
+Enables both <CODE>-checkNaNs</CODE> and <CODE>-checkInvInts</CODE>.
+</P>
+
+<H3><CODE>-precision32, -precision64, -precision80</CODE></H3>
+
+<P>
+For <NOBR>80-bit</NOBR> double-extended-precision operations affected by
+rounding precision control, the <CODE>-precision32</CODE> option restricts
+testing to only the cases in which the rounding precision is
+<NOBR>32 bits</NOBR>, equivalent to <NOBR>32-bit</NOBR> single-precision.
+The other rounding precision choices are not tested.
+Likewise, <CODE>-precision64</CODE> fixes the rounding precision to
+<NOBR>64 bits</NOBR>, equivalent to <NOBR>64-bit</NOBR> double-precision, and
+<CODE>-precision80</CODE> fixes the rounding precision to the full
+<NOBR>80 bits</NOBR> of the double-extended-precision format.
+All these options are ignored for operations not affected by rounding precision
+control.
+</P>
+
+<P>
+The precision-control options may not be supported at all if no
+double-extended-precision operations are testable.
+</P>
+
+<H3><CODE>-rnear_even, -rnear_maxMag, -rminMag, -rmin, -rmax, -rodd</CODE></H3>
+
+<P>
+The <CODE>-rnear_even</CODE> option restricts testing to only the cases in
+which the rounding mode is nearest/even.
+The other rounding mode choices are not tested.
+Likewise, <CODE>-rnear_maxMag</CODE> forces rounding to nearest/maximum
+magnitude (nearest-away), <CODE>-rminMag</CODE> forces rounding to minimum
+magnitude (toward zero), <CODE>-rmin</CODE> forces rounding to minimum (down,
+toward negative infinity), <CODE>-rmax</CODE> forces rounding to maximum (up,
+toward positive infinity), and <CODE>-rodd</CODE>, if supported, forces
+rounding to odd.
+These options are ignored for operations that are exact and thus do not round,
+or that have the rounding mode included in the function name (such as
+<CODE>f32_to_i32_r_near_maxMag</CODE>).
+</P>
+
+<H3><CODE>-tininessbefore, -tininessafter</CODE></H3>
+
+<P>
+The <CODE>-tininessbefore</CODE> option indicates that the floating-point
+implementation being tested detects tininess on underflow before rounding.
+The <CODE>-tininessafter</CODE> option indicates that tininess is detected
+after rounding.
+The <CODE>testfloat</CODE> program alters its expectations accordingly.
+These options override the default selected when <CODE>testfloat</CODE> was
+compiled.
+Choosing the wrong one of these two options should cause error reports for some
+(but not all) operations.
+</P>
+
+
+<H2>Function Sets</H2>
+
+<P>
+Just as <CODE>testfloat</CODE> can test an operation for all five or six
+rounding modes in sequence, multiple operations can be tested with a single
+execution of <CODE>testfloat</CODE>.
+Two sets are recognized:  <CODE>-all1</CODE> and <CODE>-all2</CODE>.
+The set <CODE>-all1</CODE> is all one-operand operations, while
+<CODE>-all2</CODE> is all two-operand operations.
+A function set is used in place of an operation name in the
+<CODE>testfloat</CODE> command line, such as
+<BLOCKQUOTE>
+<PRE>
+testfloat [&lt;<I>option</I>&gt;...] -all1
+</PRE>
+</BLOCKQUOTE>
+</P>
+
+
+</BODY>
+

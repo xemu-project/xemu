@@ -1,0 +1,196 @@
+
+<HTML>
+
+<HEAD>
+<TITLE>timesoftfloat</TITLE>
+</HEAD>
+
+<BODY>
+
+<H1>Berkeley TestFloat Release 3e: <CODE>timesoftfloat</CODE></H1>
+
+<P>
+John R. Hauser<BR>
+2018 January 20<BR>
+</P>
+
+
+<H2>Overview</H2>
+
+<P>
+The <CODE>timesoftfloat</CODE> program provides a simple way to evaluate the
+speed of the floating-point operations of the Berkeley SoftFloat library.
+Program <CODE>timesoftfloat</CODE> is included with the Berkeley TestFloat
+package, a small collection of programs for testing that an implementation of
+floating-point conforms to the IEEE Standard for Binary Floating-Point
+Arithmetic.
+Although <CODE>timesoftfloat</CODE> does not test floating-point correctness
+like the other TestFloat programs, nevertheless <CODE>timesoftfloat</CODE> is a
+partner to TestFloat&rsquo;s <CODE>testsoftfloat</CODE> program.
+For more about TestFloat generally and <CODE>testsoftfloat</CODE> specifically,
+see file
+<A HREF="TestFloat-general.html"><NOBR><CODE>TestFloat-general.html</CODE></NOBR></A>.
+</P>
+
+<P>
+Ordinarily, <CODE>timesoftfloat</CODE> will measure a function&rsquo;s speed
+separately for each of the five rounding modes defined by the IEEE
+Floating-Point Standard, one after the other, plus possibly a sixth mode,
+<I>round to odd</I> (depending on the options selected when
+<CODE>timesoftfloat</CODE> was compiled).
+If an operation is not supposed to require rounding, it will by default be
+timed only with the rounding mode set to <CODE>near_even</CODE> (nearest/even).
+In the same way, if an operation is affected by the way in which underflow
+tininess is detected, <CODE>timesoftfloat</CODE> times the function with
+tininess detected both before rounding and after rounding.
+For <NOBR>80-bit</NOBR> double-extended-precision operations affected by
+rounding precision control, <CODE>timesoftfloat</CODE> also times the function
+for each of the three rounding precision modes, one after the other.
+Evaluation of a function can be limited to a single rounding mode, a single
+tininess mode, and/or a single rounding precision with appropriate command-line
+options.
+</P>
+
+<P>
+For each function and mode evaluated, <CODE>timesoftfloat</CODE> reports the
+measured speed of the function in Mop/s, or &ldquo;millions of operations per
+second&rdquo;.
+The speeds reported by <CODE>timesoftfloat</CODE> may be affected somewhat by
+other software executing at the same time as <CODE>timesoftfloat</CODE>.
+Be aware also that the exact execution time of any SoftFloat function depends
+partly on the values of arguments and the state of the processor&rsquo;s caches
+at the time the function is called.
+Your actual experience with SoftFloat may differ from the speeds reported by
+<CODE>timesoftfloat</CODE> for all these reasons.
+</P>
+
+<P>
+Note that the remainder operations for larger formats (<CODE>f64_rem</CODE>,
+<CODE>extF80_rem</CODE>, and <CODE>f128_rem</CODE>) can be markedly slower than
+other operations, particularly for double-extended-precision
+(<CODE>extF80_rem</CODE>) and quadruple precision (<CODE>f128_rem</CODE>).
+This is inherent to the remainder operation itself and is not a failing of the
+SoftFloat implementation.
+</P>
+
+
+<H2>Command Syntax</H2>
+
+<P>
+The <CODE>timesoftfloat</CODE> program is executed as a command with this
+syntax:
+<BLOCKQUOTE>
+<PRE>
+timesoftfloat [&lt;<I>option</I>&gt;...] &lt;<I>function</I>&gt;
+</PRE>
+</BLOCKQUOTE>
+Square brackets (<CODE>[ ]</CODE>) denote optional arguments,
+<CODE>&lt;<I>option</I>&gt;</CODE> is a supported option, and
+<CODE>&lt;<I>function</I>&gt;</CODE> is the name of either a testable function
+or a function set.
+The available options and function sets are documented below.
+If <CODE>timesoftfloat</CODE> is executed without any arguments, a summary of
+usage is written.
+</P>
+
+
+<H2>Options</H2>
+
+<P>
+The <CODE>timesoftfloat</CODE> program accepts several command options.
+If mutually contradictory options are given, the last one has priority.
+</P>
+
+<H3><CODE>-help</CODE></H3>
+
+<P>
+The <CODE>-help</CODE> option causes a summary of program usage to be written,
+after which the program exits.
+</P>
+
+<H3><CODE>-precision32, -precision64, -precision80</CODE></H3>
+
+<P>
+For <NOBR>80-bit</NOBR> double-extended-precision funcions affected by
+rounding precision control, the <CODE>-precision32</CODE> option restricts
+timing of an operation to only the cases in which the rounding precision is
+<NOBR>32 bits</NOBR>, equivalent to <NOBR>32-bit</NOBR> single-precision.
+Other rounding precision choices are not timed.
+Likewise, <CODE>-precision64</CODE> fixes the rounding precision to
+<NOBR>64 bits</NOBR>, equivalent to <NOBR>64-bit</NOBR> double-precision;
+and <CODE>-precision80</CODE> fixes the rounding precision to the full
+<NOBR>80 bits</NOBR> of the double-extended-precision format.
+All these options are ignored for operations not affected by rounding precision
+control.
+</P>
+
+<H3><CODE>-rnear_even, -rnear_maxMag, -rminMag, -rmin, -rmax, -rodd</CODE></H3>
+
+<P>
+The <CODE>-rnear_even</CODE> option restricts timing of an operation to only
+the cases in which the rounding mode is nearest/even.
+Other rounding mode choices are not timed.
+Likewise, <CODE>-rnear_maxMag</CODE> forces rounding to nearest/maximum
+magnitude (nearest-away), <CODE>-rminMag</CODE> forces rounding to minimum
+magnitude (toward zero), <CODE>-rmin</CODE> forces rounding to minimum (down,
+toward negative infinity), <CODE>-rmax</CODE> forces rounding to maximum (up,
+toward positive infinity), and <CODE>-rodd</CODE>, if supported, forces
+rounding to odd.
+These options are ignored for operations that are exact and thus do not round.
+</P>
+
+<H3><CODE>-tininessbefore, -tininessafter</CODE></H3>
+
+<P>
+The <CODE>-tininessbefore</CODE> option restricts timing of an operation to
+only the cases in which tininess on underflow is detected before rounding.
+Likewise, <CODE>-tininessafter</CODE> restricts measurement to only the cases
+in which tininess on underflow is detected after rounding.
+</P>
+
+<H3><CODE>-notexact, -exact</CODE></H3>
+
+<P>
+For functions that round to an integer (conversions to integer types and the
+<CODE>roundToInt</CODE> functions), the <CODE>-notexact</CODE> option restricts
+timing of an operation to only the cases for which the
+<CODE><I>exact</I></CODE> operand (specifying whether the <I>inexact</I>
+exception flag may be raised) is <CODE>false</CODE>.
+Likewise, the <CODE>-exact</CODE> option restricts measurement to only the
+cases for which the <CODE><I>exact</I></CODE> operand is <CODE>true</CODE>.
+</P>
+
+
+<H2>Function Sets</H2>
+
+<P>
+Just as <CODE>timesoftfloat</CODE> can time a function for all five or six
+rounding modes in sequence, multiple functions can be timed with a single
+execution of <CODE>timesoftfloat</CODE>.
+Three sets are recognized:
+<CODE>-all1</CODE>, <CODE>-all2</CODE>, and <CODE>-all</CODE>.
+The set <CODE>-all1</CODE> is all one-operand operations, <CODE>-all2</CODE> is
+all two-operand operations, and <CODE>-all</CODE> is obviously all operations.
+A function set is used in place of a function name in the
+<CODE>timesoftfloat</CODE> command line, such as
+<BLOCKQUOTE>
+<PRE>
+timesoftfloat [&lt;<I>option</I>&gt;...] -all1
+</PRE>
+</BLOCKQUOTE>
+</P>
+
+<P>
+For the purpose of deciding the number of operands of an operation, any
+<CODE><I>roundingMode</I></CODE> and <CODE><I>exact</I></CODE> arguments are
+ignored.
+(Such arguments specify the rounding mode and whether the <I>inexact</I>
+exception flag may be raised, respectively.)
+Thus, functions that convert to integer type and the <CODE>roundToInt</CODE>
+functions are included in the set of one-operand operations timed by
+<CODE>-all1</CODE>.
+</P>
+
+
+</BODY>
+

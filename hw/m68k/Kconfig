@@ -1,0 +1,48 @@
+config AN5206
+    bool
+    default y
+    depends on M68K
+    select COLDFIRE
+    select PTIMER
+
+config MCF5208
+    bool
+    default y
+    depends on M68K
+    select COLDFIRE
+    select PTIMER
+
+config NEXTCUBE
+    bool
+    default y
+    depends on M68K
+    select FRAMEBUFFER
+    select ESCC
+    select EMPTY_SLOT
+
+config Q800
+    bool
+    default y
+    depends on M68K
+    select MAC_VIA
+    select NUBUS
+    select MACFB
+    select SWIM
+    select ESCC
+    select ESP
+    select DP8393X
+    select OR_IRQ
+    select DJMEMC
+    select IOSB
+    select ASC
+
+config M68K_VIRT
+    bool
+    default y
+    depends on M68K
+    select M68K_IRQC
+    select VIRT_CTRL
+    select GOLDFISH_PIC
+    select GOLDFISH_TTY
+    select GOLDFISH_RTC
+    select VIRTIO_MMIO

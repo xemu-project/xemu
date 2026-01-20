@@ -1,0 +1,5 @@
+# Additional packages that are required to build the code in qga/vss-win32/
+---
+packages:
+ - g++
+ - mingw-w64-tools

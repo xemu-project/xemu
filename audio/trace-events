@@ -1,0 +1,32 @@
+# See docs/devel/tracing.rst for syntax documentation.
+
+# alsaaudio.c
+alsa_revents(int revents) "revents = %d"
+alsa_pollout(int i, int fd) "i = %d fd = %d"
+alsa_set_handler(int events, int index, int fd, int err) "events=0x%x index=%d fd=%d err=%d"
+alsa_wrote_zero(int len) "Failed to write %d frames (wrote zero)"
+alsa_read_zero(long len) "Failed to read %ld frames (read zero)"
+alsa_xrun_out(void) "Recovering from playback xrun"
+alsa_xrun_in(void) "Recovering from capture xrun"
+alsa_resume_out(void) "Resuming suspended output stream"
+
+# ossaudio.c
+oss_version(int version) "OSS version = 0x%x"
+
+# dbusaudio.c
+dbus_audio_register(const char *s, const char *dir) "sender = %s, dir = %s"
+dbus_audio_put_buffer_out(size_t pos, size_t size) "buf_pos = %zu, buf_size = %zu"
+dbus_audio_read(size_t len) "len = %zu"
+
+# pwaudio.c
+pw_state_changed(int nodeid, const char *s) "node id: %d stream state: %s"
+pw_read(int32_t avail, uint32_t index, size_t len) "avail=%d index=%u len=%zu"
+pw_write(int32_t filled, int32_t avail, uint32_t index, size_t len) "filled=%d avail=%d index=%u len=%zu"
+pw_vol(const char *ret) "set volume: %s"
+pw_period(uint64_t quantum, uint32_t rate) "period =%" PRIu64 "/%u"
+pw_audio_init(void) "Initialize PipeWire context"
+
+# audio.c
+audio_timer_start(int interval) "interval %d ms"
+audio_timer_stop(void) ""
+audio_timer_delayed(int interval) "interval %d ms"

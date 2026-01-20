@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+#
+# Centos aarch64 image
+#
+# Copyright 2020 Linaro
+#
+# Authors:
+#  Robert Foley <robert.foley@linaro.org>
+#  Originally based on ubuntu.aarch64
+#
+# This code is licensed under the GPL version 2 or later.  See
+# the COPYING file in the top-level directory.
+#
+
+import os
+import sys
+import subprocess
+import basevm
+import time
+import traceback
+import aarch64vm
+
+
+DEFAULT_CONFIG = {
+    'cpu'          : "max",
+    'machine'      : "virt,gic-version=max",
+    'install_cmds' : (
+        "dnf config-manager --enable crb, "
+        "dnf config-manager --add-repo=https://download.docker.com/linux/centos/docker-ce.repo, "
+        "dnf install -y make ninja-build git python3 gcc gcc-c++ flex bison "\
+            "glib2-devel pixman-devel zlib-devel docker-ce.aarch64, "
+        "systemctl enable docker, "
+    ),
+    # We increase beyond the default time since during boot
+    # it can take some time (many seconds) to log into the VM.
+    'ssh_timeout'  : 60,
+}
+
+
+class CentosAarch64VM(basevm.BaseVM):
+    name = "centos9.aarch64"
+    arch = "aarch64"
+    image_name = "CentOS-Stream-GenericCloud-9-20230501.0.aarch64.qcow2"
+    image_link = "https://cloud.centos.org/centos/9-stream/aarch64/images/"
+    image_link += image_name
+    BUILD_SCRIPT = """
+        set -e;
+        cd $(mktemp -d);
+        export SRC_ARCHIVE=/dev/vdb;
+        sudo chmod a+r $SRC_ARCHIVE;
+        tar -xf $SRC_ARCHIVE;
+        ./configure {configure_opts};
+        make --output-sync {target} -j{jobs} {verbose};
+    """
+
+    def boot(self, img, extra_args=None):
+        aarch64vm.create_flash_images(self._tmpdir, self._efi_aarch64)
+        default_args = aarch64vm.get_pflash_args(self._tmpdir)
+        if extra_args:
+            extra_args.extend(default_args)
+        else:
+            extra_args = default_args
+        # We always add these performance tweaks
+        # because without them, we boot so slowly that we
+        # can time out finding the boot efi device.
+        if '-smp' not in extra_args and \
+           '-smp' not in self._config['extra_args'] and \
+           '-smp' not in self._args:
+            # Only add if not already there to give caller option to change it.
+            extra_args.extend(["-smp", "8"])
+        # We have overridden boot() since aarch64 has additional parameters.
+        # Call down to the base class method.
+        super(CentosAarch64VM, self).boot(img, extra_args=extra_args)
+
+    def build_image(self, img):
+        cimg = self._download_with_cache(self.image_link)
+        img_tmp = img + ".tmp"
+        subprocess.run(['cp', '-f', cimg, img_tmp])
+        self.exec_qemu_img("resize", img_tmp, "50G")
+        self.boot(img_tmp, extra_args = ["-cdrom", self.gen_cloud_init_iso()])
+        self.wait_ssh(wait_root=True)
+        self.ssh_root_check("touch /etc/cloud/cloud-init.disabled")
+
+        # If the user chooses *not* to do the second phase,
+        # then we will jump right to the graceful shutdown
+        if self._config['install_cmds'] != "":
+            install_cmds = self._config['install_cmds'].split(',')
+            for cmd in install_cmds:
+                self.ssh_root_check(cmd)
+
+        self.ssh_root("poweroff")
+        self.wait()
+        os.rename(img_tmp, img)
+        print("image creation complete: {}".format(img))
+        return 0
+
+
+if __name__ == "__main__":
+    defaults = aarch64vm.get_config_defaults(CentosAarch64VM, DEFAULT_CONFIG)
+    sys.exit(basevm.main(CentosAarch64VM, defaults))

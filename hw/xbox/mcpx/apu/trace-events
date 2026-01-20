@@ -1,0 +1,6 @@
+# See docs/devel/tracing.rst for syntax documentation.
+
+# apu.c
+mcpx_apu_method(uint32_t addr, uint32_t parameter) "0x%04"PRIx32" 0x%"PRIx32
+mcpx_apu_reg_read(uint32_t addr, unsigned int size, uint64_t val) "addr 0x%"PRIx32" size %d val 0x%"PRIx64
+mcpx_apu_reg_write(uint32_t addr, unsigned int size, uint64_t val) "addr 0x%"PRIx32" size %d val 0x%"PRIx64

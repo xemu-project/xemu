@@ -1,0 +1,8 @@
+[section1]
+key2="value3"
+
+[section1.child1]
+foo="bar"
+
+[section1.child2]
+foo2="bar2"

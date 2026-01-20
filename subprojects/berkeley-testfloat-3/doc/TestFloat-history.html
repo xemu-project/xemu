@@ -1,0 +1,272 @@
+
+<HTML>
+
+<HEAD>
+<TITLE>Berkeley TestFloat History</TITLE>
+</HEAD>
+
+<BODY>
+
+<H1>History of Berkeley TestFloat, to Release 3e</H1>
+
+<P>
+John R. Hauser<BR>
+2018 January 20<BR>
+</P>
+
+
+<P>
+Releases of Berkeley TestFloat normally parallel those of Berkeley SoftFloat,
+on which TestFloat is based.
+Each TestFloat release necessarily incorporates all bug fixes from the
+corresponding release of SoftFloat.
+</P>
+
+
+<H3>Release 3e (2018 January)</H3>
+
+<UL>
+
+<LI>
+Fixed a problem with the all-in-one <CODE>testfloat</CODE> program whereby
+function set <CODE>-all1</CODE> incorrectly also tested the three-operand fused
+multiply-add operations.
+
+<LI>
+Modified the expected behavior of rounding mode <CODE>odd</CODE> (jamming) when
+rounding to an integer value (either conversion to an integer format or a
+&lsquo;<CODE>roundToInt</CODE>&rsquo; function).
+Previously, for those cases only, rounding mode <CODE>odd</CODE> was expected
+to act the same as rounding to minimum magnitude.
+Now, when rounding to an integer value, the nearest odd integer is expected,
+consistent with the round-to-odd result of other operations.
+
+<LI>
+Added options <CODE>-checkInvInts</CODE> and <CODE>-checkAll</CODE> to programs
+<CODE>testfloat_ver</CODE> and <CODE>testfloat</CODE>.
+
+<LI>
+Improved the checking of integer results of invalid operations.
+
+</UL>
+
+
+<H3>Release 3d (2017 August)</H3>
+
+<UL>
+
+<LI>
+When the all-in-one <CODE>testfloat</CODE> program is compiled to test the C
+language&rsquo;s arithmetic, added the ability to test library functions
+<CODE>sqrtf</CODE>, <CODE>sqrtl</CODE>, <CODE>fmaf</CODE>, <CODE>fma</CODE>,
+and <CODE>fmal</CODE>, which were added to the <NOBR>C Standard</NOBR> in 1999.
+
+</UL>
+
+
+<H3>Release 3c (2017 February)</H3>
+
+<UL>
+
+<LI>
+Added support for testing rounding mode <CODE>odd</CODE> (jamming).
+
+<LI>
+Made support for testing <NOBR>64-bit</NOBR> double-precistion floating-point
+be subject to macro <CODE>FLOAT64</CODE> (akin to macros <CODE>FLOAT16</CODE>,
+<CODE>EXTFLOAT80</CODE>, and <CODE>FLOAT128</CODE> from before).
+
+<LI>
+Fixed some bugs that caused compilation to fail with certain combinations of
+option macro settings.
+
+<LI>
+Corrected the types of two internal variables to be <CODE>sig_atomic_t</CODE>
+instead of <CODE>bool</CODE>.
+
+<LI>
+Improved the formatting of some error reports (concerning where lines are
+broken when they exceed 79 characters in length).
+
+</UL>
+
+
+<H3>Release 3b (2016 July)</H3>
+
+<UL>
+
+<LI>
+Added the ability to test the common <NOBR>16-bit</NOBR>
+&ldquo;half-precision&rdquo; floating-point format.
+
+<LI>
+Added a <CODE>-seed</CODE> option to programs <CODE>testfloat_gen</CODE>,
+<CODE>testfloat</CODE>, and <CODE>testsoftfloat</CODE> for setting the seed for
+the pseudo-random number generator used to generate test cases.
+
+<LI>
+Where a specific choice is needed for how tininess is detected on underflow,
+changed the default to be the detection of tininess after rounding
+(<CODE>-tininessafter</CODE>) instead of before rounding
+(<CODE>-tininessbefore</CODE>).
+
+<LI>
+Modified the format of reported discrepancies to show the signs of
+floating-point values using <CODE>+</CODE> and <CODE>-</CODE> characters.
+
+<LI>
+Documented the use of the <CODE>INLINE</CODE> macro, and fixed the sources for
+the case that function inlining is not supported by the C compiler.
+
+<LI>
+Documented the possible need to define macro <CODE>THREAD_LOCAL</CODE> to match
+how the SoftFloat library was built.
+
+<LI>
+Modified the provided Makefiles to allow some options to be overridden from the
+<CODE>make</CODE> command.
+
+</UL>
+
+
+<H3>Release 3a (2015 October)</H3>
+
+<UL>
+
+<LI>
+Replaced the license text supplied by the University of California, Berkeley,
+and fixed some minor build problems.
+
+</UL>
+
+
+<H3>Release 3 (2015 February)</H3>
+
+<UL>
+
+<LI>
+Complete rewrite, funded by the University of California, Berkeley, and
+consequently having a different use license than earlier releases.
+Visible changes included different names for testable functions and command
+options.
+
+<LI>
+Reinstated separate programs for generating test cases
+(<CODE>testfloat_ver</CODE>) and verifying test results
+(<CODE>testfloat_gen</CODE>), as alternatives to the all-in-one
+<CODE>testfloat</CODE> program (which remained supported).
+
+<LI>
+Added support for testing conversions between floating-point and unsigned
+integers, both <NOBR>32-bit</NOBR> and <NOBR>64-bit</NOBR>.
+
+<LI>
+Added support for testing a fused multiply-add operation, for all testable
+floating-point formats except <NOBR>80-bit</NOBR> double-extended-precision.
+
+<LI>
+Added support for testing a fifth rounding mode, <CODE>near_maxMag</CODE>
+(round to nearest, with ties to maximum magnitude, away from zero).
+
+<LI>
+Added <CODE>timesoftfloat</CODE> (previously found in the Berkeley SoftFloat
+package).
+
+</UL>
+
+
+<H3>Release 2c (2015 January)</H3>
+
+<UL>
+
+<LI>
+Fixed mistakes affecting some <NOBR>64-bit</NOBR> processors.
+
+<LI>
+Made minor updates to the documentation, including improved wording for the
+legal restrictions on using TestFloat releases <NOBR>through 2c</NOBR> (not
+applicable to <NOBR>Release 3</NOBR> or later).
+
+</UL>
+
+
+<P>
+There was never a <NOBR>Release 2b</NOBR>.
+</P>
+
+
+<H3>Release 2a (1998 December)</H3>
+
+<UL>
+
+<LI>
+Added support for testing conversions between floating-point and
+<NOBR>64-bit</NOBR> signed integers.
+
+<LI>
+Improved the Makefiles.
+
+</UL>
+
+
+<H3>Release 2 (1997 June)</H3>
+
+<UL>
+
+<LI>
+Integrated the generation of test cases and the checking of system results into
+a single program.
+(Before they were separate programs, normally joined by explicit command-line
+pipes.)
+
+<LI>
+Improved the sequence of test cases.
+
+<LI>
+Added support for testing <NOBR>80-bit</NOBR> double-extended-precision and
+<NOBR>128-bit</NOBR> quadruple precision.
+
+<LI>
+Made program output more readable, and added new command arguments.
+
+<LI>
+Reduced dependence on the quality of the standard <CODE>rand</CODE> function
+for generating test cases.
+(Previously naively expected <CODE>rand</CODE> to be able to generate good
+random bits for the entire machine word width.)
+
+<LI>
+Created <CODE>testsoftfloat</CODE>, with its own simpler complete software
+floating-point (&ldquo;slowfloat&rdquo;) for comparison purposes.
+
+<LI>
+Made some changes to the source file structure, including renaming
+<CODE>environment.h</CODE> to <CODE>milieu.h</CODE> (to avoid confusion with
+environment variables).
+
+</UL>
+
+
+<H3>Release 1a (1996 July)</H3>
+
+<UL>
+
+<LI>
+Added the <CODE>-tininessbefore</CODE> and <CODE>-tininessafter</CODE> options
+to control whether tininess should be detected before or after rounding.
+
+</UL>
+
+
+<H3>Release 1 (1996 July)</H3>
+
+<UL>
+
+<LI>
+Original release.
+
+</UL>
+
+
+</BODY>
+

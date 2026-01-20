@@ -1,0 +1,133 @@
+config VIRTIO
+    bool
+
+config VIRTIO_RNG
+    bool
+    default y
+    depends on VIRTIO
+
+config VIRTIO_NSM
+   bool
+   depends on LIBCBOR && VIRTIO
+
+config VIRTIO_IOMMU
+    bool
+    default y
+    depends on PCI && VIRTIO
+
+config VIRTIO_PCI
+    bool
+    default y if PCI_DEVICES
+    depends on PCI
+    select VIRTIO
+    select VIRTIO_MD_SUPPORTED
+
+config VIRTIO_MMIO
+    bool
+    select VIRTIO
+
+config VIRTIO_CCW
+    bool
+    select VIRTIO
+    select VIRTIO_MD_SUPPORTED
+
+config VIRTIO_BALLOON
+    bool
+    default y
+    depends on VIRTIO
+
+config VIRTIO_CRYPTO
+    bool
+    default y
+    depends on VIRTIO
+
+# not all virtio transports support memory devices; if none does,
+# no need to include the code
+config VIRTIO_MD_SUPPORTED
+    bool
+
+config VIRTIO_MD
+    bool
+    depends on VIRTIO_MD_SUPPORTED
+    select MEM_DEVICE
+
+# selected by the board if it has the required support code
+config VIRTIO_PMEM_SUPPORTED
+    bool
+
+config VIRTIO_PMEM
+    bool
+    default y
+    depends on VIRTIO
+    depends on VIRTIO_MD_SUPPORTED
+    depends on VIRTIO_PMEM_SUPPORTED
+    select VIRTIO_MD
+
+# selected by the board if it has the required support code
+config VIRTIO_MEM_SUPPORTED
+    bool
+
+config VIRTIO_MEM
+    bool
+    default y
+    depends on VIRTIO
+    depends on LINUX
+    depends on VIRTIO_MD_SUPPORTED
+    depends on VIRTIO_MEM_SUPPORTED
+    select VIRTIO_MD
+
+config VHOST_VSOCK_COMMON
+    bool
+    depends on VIRTIO
+
+config VHOST_VSOCK
+    bool
+    default y
+    select VHOST_VSOCK_COMMON
+    depends on VIRTIO && VHOST_KERNEL
+
+config VHOST_USER_VSOCK
+    bool
+    default y
+    select VHOST_VSOCK_COMMON
+    depends on VIRTIO && VHOST_USER
+
+config VHOST_USER_I2C
+    bool
+    default y
+    depends on VIRTIO && VHOST_USER
+
+config VHOST_USER_RNG
+    bool
+    default y
+    depends on VIRTIO && VHOST_USER
+
+config VHOST_USER_FS
+    bool
+    default y
+    depends on VIRTIO && VHOST_USER
+
+config VHOST_USER_GPIO
+    bool
+    default y
+    depends on VIRTIO && VHOST_USER
+
+config VHOST_VDPA_DEV
+    bool
+    default y
+    depends on VIRTIO && VHOST_VDPA && LINUX
+
+config VHOST_USER_SND
+    bool
+    default y
+    depends on VIRTIO && VHOST_USER
+
+config VHOST_USER_SCMI
+    bool
+    default y
+    depends on VIRTIO && VHOST_USER && ARM
+
+config VHOST_USER_TEST
+    bool
+    default y
+    depends on VIRTIO && VHOST_USER
