@@ -87,6 +87,19 @@ void AutoUpdateWindow::Draw()
         ImGui::Text("%s", status_msg[updater.get_status()]);
     }
 
+    if (updater.is_update_available()) {
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+
+        ImGui::Text("Current version: %s", xemu_version);
+        ImGui::Text("Latest version: %s", updater.get_release_version().c_str());
+
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y));
+
+        if (ImGui::SmallButton("Release notes...")) {
+            SDL_OpenURL(updater.get_release_url().c_str());
+        }
+    }
+
     if (updater.is_updating()) {
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y));
         ImGui::ProgressBar(updater.get_update_progress_percentage()/100.0f,
