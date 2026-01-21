@@ -198,6 +198,52 @@ void ShowMainMenu()
                 nv2a_set_surface_scale_factor(rendering_scale + 1);
             }
 
+
+// Define the string array used for fps selection in the menu bar
+// Split the string into a set and custom region, since we will have
+// to format a section of the string, but can't format the whole string
+// due to the null terminations.
+//
+// We need to both allocate a string beginning with the base options
+// and track the substring size, so just use a macro.
+#ifndef FPS_BASE_OPTIONS_STR
+#define FPS_BASE_OPTIONS_STR \
+    "None\0"                 \
+    "15fps\0"                \
+    "30fps\0"                \
+    "60fps\0"                \
+    "120fps\0"               \
+    "144fps"
+#endif
+
+            // Allocate the fps options buffer
+            char fps_options[64] = FPS_BASE_OPTIONS_STR;
+            // Split into regions
+            const size_t fps_options_set_region_size =
+                sizeof(FPS_BASE_OPTIONS_STR);
+            char *fps_options_custom_region =
+                fps_options + fps_options_set_region_size;
+            size_t fps_options_custom_region_size =
+                sizeof(fps_options) - fps_options_set_region_size;
+// Clean up the macro (kinda gross we that we need one, but better than a magic
+// number)
+#undef FPS_BASE_OPTIONS_STR
+
+            // Format the custom region to specifc the custom FPS.
+            // Clear the custom region first! If the custom FPS jumps by over a
+            // digit and the custom region is not cleared, an additional
+            // selection option may be created.
+            memset(fps_options_custom_region, '\0',
+                   fps_options_custom_region_size);
+            snprintf(fps_options_custom_region, fps_options_custom_region_size,
+                     "Custom (%dfps)",
+                     (int)g_config.display.window.custom_fps_cap);
+
+            if (ImGui::Combo("Frame Rate Cap", &g_config.display.window.fps_cap,
+                             fps_options)) {
+                xemu_update_frame_rate_cap();
+            }
+
             ImGui::Combo("Display Mode", &g_config.display.ui.fit,
                          "Center\0Scale\0Stretch\0");
             ImGui::SameLine();

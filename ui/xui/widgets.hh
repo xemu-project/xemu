@@ -34,7 +34,9 @@ float GetSliderValueForMousePos(ImVec2 mouse, ImVec2 pos, ImVec2 size);
 void DrawSlider(float v, bool hovered, ImVec2 pos, ImVec2 size);
 void DrawToggle(bool enabled, bool hovered, ImVec2 pos, ImVec2 size);
 bool Toggle(const char *str_id, bool *v, const char *description = nullptr);
-void Slider(const char *str_id, float *v, const char *description = nullptr);
+bool Slider(const char *str_id, float *v, const char *description = nullptr);
+bool Slider(const char *str_id, float *v, float min, float max,
+            const char *description = nullptr);
 bool FilePicker(const char *str_id, const char **buf, const char *filters,
                 bool dir = false);
 void DrawComboChevron();

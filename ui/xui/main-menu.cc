@@ -787,8 +787,33 @@ void MainMenuDisplayView::Draw()
                      "3840x2160\0",
                      "Select preferred startup window size")) {
     }
+
     Toggle("Vertical refresh sync", &g_config.display.window.vsync,
            "Sync to screen vertical refresh to reduce tearing artifacts");
+
+    if (ChevronCombo("Frame rate cap", &g_config.display.window.fps_cap,
+                     "None\0"
+                     "15fps\0"
+                     "30fps\0"
+                     "60fps\0"
+                     "120fps\0"
+                     "144fps\0"
+                     "Custom\0",
+                     "Limit the maximum frames per second")) {
+        xemu_update_frame_rate_cap();
+    }
+
+    char custom_refresh_rate[32];
+    snprintf(custom_refresh_rate, sizeof(custom_refresh_rate),
+             "Limit refresh rate to %dfps\0",
+             (int)g_config.display.window.custom_fps_cap);
+    if (g_config.display.window.fps_cap ==
+        CONFIG_DISPLAY_WINDOW_FPS_CAP_CUSTOM) {
+        if (Slider("Custom FPS Limit", &g_config.display.window.custom_fps_cap,
+                   10, 300, custom_refresh_rate)) {
+            xemu_update_frame_rate_cap();
+        }
+    }
 
     SectionTitle("Interface");
     Toggle("Show main menu bar", &g_config.display.ui.show_menubar,
