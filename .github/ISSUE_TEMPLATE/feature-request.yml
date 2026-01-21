@@ -1,6 +1,7 @@
 name: Feature Request
 description: Request a new feature for xemu
 labels: [enhancement]
+type: feature
 body:
   - type: markdown
     attributes:

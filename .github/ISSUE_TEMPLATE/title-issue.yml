@@ -2,6 +2,7 @@ name: Title Issue
 description: Report a specific issue with a title/game in xemu
 title: "Title Name: Short Description"
 labels: [bug, triage]
+type: bug
 body:
   - type: markdown
     attributes:

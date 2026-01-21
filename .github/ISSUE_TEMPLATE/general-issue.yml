@@ -1,6 +1,7 @@
 name: General Issue
 description: Report a general issue with xemu, not specific to one or more particular titles
 labels: [bug, triage]
+type: bug
 body:
   - type: markdown
     attributes:
