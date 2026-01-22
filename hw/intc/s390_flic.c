@@ -190,7 +190,7 @@ static void qemu_s390_flic_notify(uint32_t type)
     CPU_FOREACH(cs) {
         S390CPU *cpu = S390_CPU(cs);
 
-        cs->interrupt_request |= CPU_INTERRUPT_HARD;
+        cpu_set_interrupt(cs, CPU_INTERRUPT_HARD);
 
         /* ignore CPUs that are not sleeping */
         if (s390_cpu_get_state(cpu) != S390_CPU_STATE_OPERATING &&
@@ -445,13 +445,12 @@ static void qemu_s390_flic_instance_init(Object *obj)
     }
 }
 
-static Property qemu_s390_flic_properties[] = {
+static const Property qemu_s390_flic_properties[] = {
     DEFINE_PROP_BOOL("migrate-all-state", QEMUS390FLICState,
                      migrate_all_state, true),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void qemu_s390_flic_class_init(ObjectClass *oc, void *data)
+static void qemu_s390_flic_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     S390FLICStateClass *fsc = S390_FLIC_COMMON_CLASS(oc);
@@ -471,33 +470,17 @@ static void qemu_s390_flic_class_init(ObjectClass *oc, void *data)
     fsc->inject_crw_mchk = qemu_s390_inject_crw_mchk;
 }
 
-static Property s390_flic_common_properties[] = {
-    DEFINE_PROP_UINT32("adapter_routes_max_batch", S390FLICState,
-                       adapter_routes_max_batch, ADAPTER_ROUTES_MAX_GSI),
-    DEFINE_PROP_BOOL("migration-enabled", S390FLICState,
-                     migration_enabled, true),
-    DEFINE_PROP_END_OF_LIST(),
-};
-
 static void s390_flic_common_realize(DeviceState *dev, Error **errp)
 {
     S390FLICState *fs = S390_FLIC_COMMON(dev);
-    uint32_t max_batch = fs->adapter_routes_max_batch;
-
-    if (max_batch > ADAPTER_ROUTES_MAX_GSI) {
-        error_setg(errp, "flic property adapter_routes_max_batch too big"
-                   " (%d > %d)", max_batch, ADAPTER_ROUTES_MAX_GSI);
-        return;
-    }
 
     fs->ais_supported = s390_has_feat(S390_FEAT_ADAPTER_INT_SUPPRESSION);
 }
 
-static void s390_flic_class_init(ObjectClass *oc, void *data)
+static void s390_flic_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
-    device_class_set_props(dc, s390_flic_common_properties);
     dc->realize = s390_flic_common_realize;
 }
 
@@ -526,18 +509,10 @@ static void qemu_s390_flic_register_types(void)
 
 type_init(qemu_s390_flic_register_types)
 
-static bool adapter_info_so_needed(void *opaque)
-{
-    S390FLICState *fs = s390_get_flic();
-
-    return fs->migration_enabled;
-}
-
 const VMStateDescription vmstate_adapter_info_so = {
     .name = "s390_adapter_info/summary_offset",
     .version_id = 1,
     .minimum_version_id = 1,
-    .needed = adapter_info_so_needed,
     .fields = (const VMStateField[]) {
         VMSTATE_UINT32(summary_offset, AdapterInfo),
         VMSTATE_END_OF_LIST()

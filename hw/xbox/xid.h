@@ -29,7 +29,7 @@
 #include "hw/usb.h"
 #include "hw/usb/desc.h"
 #include "migration/vmstate.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "ui/console.h"
 #include "ui/xemu-input.h"
 

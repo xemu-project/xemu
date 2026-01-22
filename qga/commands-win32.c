@@ -27,6 +27,7 @@
 #include <lm.h>
 #include <wtsapi32.h>
 #include <wininet.h>
+#include <pdh.h>
 
 #include "guest-agent-core.h"
 #include "vss-win32.h"
@@ -118,6 +119,28 @@ static OpenFlags guest_file_open_modes[] = {
     {"ab+", FILE_GENERIC_APPEND | GENERIC_READ, OPEN_ALWAYS  },
     {"a+b", FILE_GENERIC_APPEND | GENERIC_READ, OPEN_ALWAYS  }
 };
+
+/*
+ * We use an exponentially weighted moving average, just like Unix systems do
+ * https://en.wikipedia.org/wiki/Load_(computing)#Unix-style_load_calculation
+ *
+ * These constants serve as the damping factor and are calculated with
+ * 1 / exp(sampling interval in seconds / window size in seconds)
+ *
+ * This formula comes from linux's include/linux/sched/loadavg.h
+ * https://github.com/torvalds/linux/blob/345671ea0f9258f410eb057b9ced9cefbbe5dc78/include/linux/sched/loadavg.h#L20-L23
+ */
+#define LOADAVG_FACTOR_1F  0.9200444146293232478931553241
+#define LOADAVG_FACTOR_5F  0.9834714538216174894737477501
+#define LOADAVG_FACTOR_15F 0.9944598480048967508795473394
+/*
+ * The time interval in seconds between taking load counts, same as Linux
+ */
+#define LOADAVG_SAMPLING_INTERVAL 5
+
+double load_avg_1m;
+double load_avg_5m;
+double load_avg_15m;
 
 #define debug_error(msg) do { \
     char *suffix = g_win32_error_message(GetLastError()); \
@@ -826,8 +849,6 @@ static void get_disk_properties(HANDLE vol_h, GuestDiskAddress *disk,
     }
 out_free:
     g_free(dev_desc);
-
-    return;
 }
 
 static void get_single_disk_info(int disk_number,
@@ -891,7 +912,6 @@ static void get_single_disk_info(int disk_number,
 
 err_close:
     CloseHandle(disk_h);
-    return;
 }
 
 /* VSS provider works with volumes, thus there is no difference if
@@ -1144,15 +1164,15 @@ static GuestFilesystemInfo *build_guest_fsinfo(char *guid, Error **errp)
         fs->mountpoint = g_strdup("System Reserved");
     } else {
         fs->mountpoint = g_strndup(mnt_point, len);
-        if (GetDiskFreeSpaceEx(fs->mountpoint,
-                               (PULARGE_INTEGER) & i64FreeBytesToCaller,
-                               (PULARGE_INTEGER) & i64TotalBytes,
-                               (PULARGE_INTEGER) & i64FreeBytes)) {
-            fs->used_bytes = i64TotalBytes - i64FreeBytes;
-            fs->total_bytes = i64TotalBytes;
-            fs->has_total_bytes = true;
-            fs->has_used_bytes = true;
-        }
+    }
+    if (GetDiskFreeSpaceEx(fs->name,
+                            (PULARGE_INTEGER) & i64FreeBytesToCaller,
+                            (PULARGE_INTEGER) & i64TotalBytes,
+                            (PULARGE_INTEGER) & i64FreeBytes)) {
+        fs->used_bytes = i64TotalBytes - i64FreeBytes;
+        fs->total_bytes = i64TotalBytes;
+        fs->has_total_bytes = true;
+        fs->has_used_bytes = true;
     }
     wcstombs(fs_name, wfs_name, sizeof(wfs_name));
     fs->type = g_strdup(fs_name);
@@ -1273,6 +1293,9 @@ int64_t qmp_guest_fsfreeze_thaw(Error **errp)
     qga_vss_fsfreeze(&i, false, NULL, errp);
 
     ga_unset_frozen(ga_state);
+
+    slog("guest-fsthaw called");
+
     return i;
 }
 
@@ -2088,7 +2111,7 @@ static const ga_win_10_0_t WIN_10_0_SERVER_VERSION_MATRIX[] = {
     {14393, "Microsoft Windows Server 2016",    "2016"},
     {17763, "Microsoft Windows Server 2019",    "2019"},
     {20344, "Microsoft Windows Server 2022",    "2022"},
-    {26040, "MIcrosoft Windows Server 2025",    "2025"},
+    {26040, "Microsoft Windows Server 2025",    "2025"},
     { }
 };
 
@@ -2114,7 +2137,6 @@ static void ga_get_win_version(RTL_OSVERSIONINFOEXW *info, Error **errp)
 
     rtl_get_version_t rtl_get_version = (rtl_get_version_t)fun;
     rtl_get_version(info);
-    return;
 }
 
 static char *ga_get_win_name(const OSVERSIONINFOEXW *os_version, bool id)
@@ -2444,4 +2466,129 @@ char *qga_get_host_name(Error **errp)
     }
 
     return g_utf16_to_utf8(tmp, size, NULL, NULL, NULL);
+}
+
+
+static VOID CALLBACK load_avg_callback(PVOID hCounter, BOOLEAN timedOut)
+{
+    PDH_FMT_COUNTERVALUE displayValue;
+    double currentLoad;
+    PDH_STATUS err;
+
+    err = PdhGetFormattedCounterValue(
+        (PDH_HCOUNTER)hCounter, PDH_FMT_DOUBLE, 0, &displayValue);
+    /* Skip updating the load if we can't get the value successfully */
+    if (err != ERROR_SUCCESS) {
+        slog("PdhGetFormattedCounterValue failed to get load value with 0x%lx",
+             err);
+        return;
+    }
+    currentLoad = displayValue.doubleValue;
+
+    load_avg_1m = load_avg_1m * LOADAVG_FACTOR_1F + currentLoad * \
+        (1.0 - LOADAVG_FACTOR_1F);
+    load_avg_5m = load_avg_5m * LOADAVG_FACTOR_5F + currentLoad * \
+        (1.0 - LOADAVG_FACTOR_5F);
+    load_avg_15m = load_avg_15m * LOADAVG_FACTOR_15F + currentLoad * \
+        (1.0 - LOADAVG_FACTOR_15F);
+}
+
+static BOOL init_load_avg_counter(Error **errp)
+{
+    CONST WCHAR *szCounterPath = L"\\System\\Processor Queue Length";
+    PDH_STATUS status;
+    BOOL ret;
+    HQUERY hQuery;
+    HCOUNTER hCounter;
+    HANDLE event;
+    HANDLE waitHandle;
+
+    status = PdhOpenQueryW(NULL, 0, &hQuery);
+    if (status != ERROR_SUCCESS) {
+        /*
+         * If the function fails, the return value is a system error code or
+         * a PDH error code. error_setg_win32 cant translate PDH error code
+         * properly, so just report it as is.
+         */
+        error_setg_win32(errp, (DWORD)status,
+                         "PdhOpenQueryW failed with 0x%lx", status);
+        return FALSE;
+    }
+
+    status = PdhAddEnglishCounterW(hQuery, szCounterPath, 0, &hCounter);
+    if (status != ERROR_SUCCESS) {
+        error_setg_win32(errp, (DWORD)status,
+            "PdhAddEnglishCounterW failed with 0x%lx. Performance counters may be disabled.",
+            status);
+        PdhCloseQuery(hQuery);
+        return FALSE;
+    }
+
+    event = CreateEventW(NULL, FALSE, FALSE, L"LoadUpdateEvent");
+    if (event == NULL) {
+        error_setg_win32(errp, GetLastError(), "Create LoadUpdateEvent failed");
+        PdhCloseQuery(hQuery);
+        return FALSE;
+    }
+
+    status = PdhCollectQueryDataEx(hQuery, LOADAVG_SAMPLING_INTERVAL, event);
+    if (status != ERROR_SUCCESS) {
+        error_setg_win32(errp, (DWORD)status,
+                         "PdhCollectQueryDataEx failed with 0x%lx", status);
+        CloseHandle(event);
+        PdhCloseQuery(hQuery);
+        return FALSE;
+    }
+
+    ret = RegisterWaitForSingleObject(
+        &waitHandle,
+        event,
+        (WAITORTIMERCALLBACK)load_avg_callback,
+        (PVOID)hCounter,
+        INFINITE,
+        WT_EXECUTEDEFAULT);
+
+    if (ret == 0) {
+        error_setg_win32(errp, GetLastError(),
+                         "RegisterWaitForSingleObject failed");
+        CloseHandle(event);
+        PdhCloseQuery(hQuery);
+        return FALSE;
+    }
+
+    ga_set_load_avg_wait_handle(ga_state, waitHandle);
+    ga_set_load_avg_event(ga_state, event);
+    ga_set_load_avg_pdh_query(ga_state, hQuery);
+
+    return TRUE;
+}
+
+GuestLoadAverage *qmp_guest_get_load(Error **errp)
+{
+    /*
+     * The load average logic calls PerformaceCounterAPI, which can result
+     * in a performance penalty. This avoids running the load average logic
+     * until a management application actually requests it. The load average
+     * will not initially be very accurate, but assuming that any interested
+     * management application will request it repeatedly throughout the lifetime
+     * of the VM, this seems like a good mitigation.
+     */
+    if (ga_get_load_avg_pdh_query(ga_state) == NULL) {
+        /* set initial values */
+        load_avg_1m = 0;
+        load_avg_5m = 0;
+        load_avg_15m = 0;
+
+        if (init_load_avg_counter(errp) == false) {
+            return NULL;
+        }
+    }
+
+    GuestLoadAverage *ret = NULL;
+
+    ret = g_new0(GuestLoadAverage, 1);
+    ret->load1m = load_avg_1m;
+    ret->load5m = load_avg_5m;
+    ret->load15m = load_avg_15m;
+    return ret;
 }

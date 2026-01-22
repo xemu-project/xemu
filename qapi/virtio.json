@@ -3,7 +3,9 @@
 #
 
 ##
-# = Virtio devices
+# **************
+# Virtio devices
+# **************
 ##
 
 ##
@@ -24,7 +26,7 @@
 ##
 # @x-query-virtio:
 #
-# Returns a list of all realized VirtIODevices
+# Return a list of all realized VirtIODevices
 #
 # Features:
 #
@@ -135,7 +137,7 @@
 # @num-vqs: VirtIODevice virtqueue count.  This is the number of
 #     active virtqueues being used by the VirtIODevice.
 #
-# @status: VirtIODevice configuration status (VirtioDeviceStatus)
+# @status: VirtIODevice configuration status (`VirtioDeviceStatus`)
 #
 # @isr: VirtIODevice ISR
 #
@@ -199,7 +201,7 @@
 #
 # @unstable: This command is meant for debugging.
 #
-# Returns: VirtioStatus of the virtio device
+# Returns: Status of the virtio device
 #
 # Since: 7.2
 #
@@ -245,6 +247,7 @@
 #              },
 #              "host-features": {
 #                  "unknown-dev-features": 1073741824,
+#                  "unknown-dev-features2": 0,
 #                  "dev-features": [],
 #                  "transports": [
 #                      "VIRTIO_RING_F_EVENT_IDX: Used & avail. event fields enabled",
@@ -488,14 +491,18 @@
 #     unique features)
 #
 # @unknown-dev-features: Virtio device features bitmap that have not
-#     been decoded
+#     been decoded (bits 0-63)
+#
+# @unknown-dev-features2: Virtio device features bitmap that have not
+#     been decoded (bits 64-127) (since 10.2)
 #
 # Since: 7.2
 ##
 { 'struct': 'VirtioDeviceFeatures',
   'data': { 'transports': [ 'str' ],
             '*dev-features': [ 'str' ],
-            '*unknown-dev-features': 'uint64' } }
+            '*unknown-dev-features': 'uint64',
+            '*unknown-dev-features2': 'uint64' } }
 
 ##
 # @VirtQueueStatus:
@@ -563,7 +570,7 @@
 #
 # @unstable: This command is meant for debugging.
 #
-# Returns: VirtQueueStatus of the VirtQueue
+# Returns: Status of the queue
 #
 # .. note:: last_avail_idx will not be displayed in the case where the
 #    selected VirtIODevice has a running vhost device and the
@@ -577,7 +584,7 @@
 # .. qmp-example::
 #    :annotated:
 #
-#    Get VirtQueueStatus for virtio-vsock (vhost-vsock running)
+#    Get `VirtQueueStatus` for virtio-vsock (vhost-vsock running)
 #    ::
 #
 #     -> { "execute": "x-query-virtio-queue-status",
@@ -604,7 +611,7 @@
 # .. qmp-example::
 #    :annotated:
 #
-#    Get VirtQueueStatus for virtio-serial (no vhost)
+#    Get `VirtQueueStatus` for virtio-serial (no vhost)
 #    ::
 #
 #     -> { "execute": "x-query-virtio-queue-status",
@@ -698,7 +705,7 @@
 #
 # @unstable: This command is meant for debugging.
 #
-# Returns: VirtVhostQueueStatus of the vhost_virtqueue
+# Returns: Status of the vhost_virtqueue
 #
 # Since: 7.2
 #
@@ -816,7 +823,7 @@
 #
 # @index: Index of the element in the queue
 #
-# @descs: List of descriptors (VirtioRingDesc)
+# @descs: List of descriptors (`VirtioRingDesc`)
 #
 # @avail: VRingAvail info
 #
@@ -846,8 +853,6 @@
 # Features:
 #
 # @unstable: This command is meant for debugging.
-#
-# Returns: VirtioQueueElement information
 #
 # Since: 7.2
 #
@@ -959,21 +964,33 @@
 #
 # Since: 9.0
 ##
-
 { 'struct': 'IOThreadVirtQueueMapping',
   'data': { 'iothread': 'str', '*vqs': ['uint16'] } }
 
 ##
+# @VirtIOGPUOutput:
+#
+# Describes configuration of a VirtIO GPU output.
+#
+# @name: the name of the output
+#
+# Since: 10.1
+##
+
+{ 'struct': 'VirtIOGPUOutput',
+  'data': { 'name': 'str' } }
+
+##
 # @DummyVirtioForceArrays:
 #
-# Not used by QMP; hack to let us use IOThreadVirtQueueMappingList
-# internally
+# Not used by QMP; hack to let us use IOThreadVirtQueueMappingList and
+# VirtIOGPUOutputList internally
 #
 # Since: 9.0
 ##
-
 { 'struct': 'DummyVirtioForceArrays',
-  'data': { 'unused-iothread-vq-mapping': ['IOThreadVirtQueueMapping'] } }
+  'data': { 'unused-iothread-vq-mapping': ['IOThreadVirtQueueMapping'],
+            'unused-virtio-gpu-output': ['VirtIOGPUOutput'] } }
 
 ##
 # @GranuleMode:
@@ -992,3 +1009,17 @@
 ##
 { 'enum': 'GranuleMode',
   'data': [ '4k', '8k', '16k', '64k', 'host' ] }
+
+##
+# @VMAppleVirtioBlkVariant:
+#
+# @unspecified: The default, not a valid setting.
+#
+# @root: Block device holding the root volume
+#
+# @aux: Block device holding auxiliary data required for boot
+#
+# Since: 9.2
+##
+{ 'enum': 'VMAppleVirtioBlkVariant',
+  'data': [ 'unspecified', 'root', 'aux' ] }

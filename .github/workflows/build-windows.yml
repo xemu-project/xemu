@@ -17,7 +17,7 @@ jobs:
         arch: [x86_64, arm64]
         configuration: [debug, release]
     container:
-      image: ghcr.io/xemu-project/xemu-win64-toolchain-${{ matrix.arch == 'x86_64' && 'gcc:sha-18018f1' || 'llvm:sha-18018f1' }}
+      image: ghcr.io/xemu-project/xemu-win64-toolchain${{ matrix.arch == 'x86_64' && '-gcc:sha-18018f1' || ':sha-0d06ce8' }}
     defaults:
       run:
         shell: bash
@@ -25,16 +25,21 @@ jobs:
       CCACHE_DIR: /tmp/xemu-ccache
       CCACHE_MAXSIZE: 512M
       LTO_CACHE_DIR: /tmp/xemu-lto-ccache
+      CROSSPREFIX: ${{ matrix.arch == 'arm64' && 'aarch64' || 'x86_64' }}-w64-mingw32.static-
+      CROSSAR: ${{ matrix.arch == 'arm64' && 'aarch64' || 'x86_64' }}-w64-mingw32.static-${{ matrix.arch == 'arm64' && 'ar' || 'gcc-ar' }}
     steps:
     - name: Download source package
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
         name: src
+    - name: Install zstd
+      if: ${{ matrix.arch == 'arm64' }}
+      run: apt-get install zstd
     - name: Extract source package
       run: tar -xf xemu-${{ inputs.pkg_version }}.tar.zst --strip-components=2
     - name: Initialize compiler cache
       id: cache
-      uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
+      uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
       with:
         path: |
           ${{ env.CCACHE_DIR }}

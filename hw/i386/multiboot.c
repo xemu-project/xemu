@@ -29,7 +29,8 @@
 #include "multiboot.h"
 #include "hw/loader.h"
 #include "elf.h"
-#include "sysemu/sysemu.h"
+#include "exec/target_page.h"
+#include "system/system.h"
 #include "qemu/error-report.h"
 
 /* Show multiboot debug output */
@@ -202,8 +203,8 @@ int load_multiboot(X86MachineState *x86ms,
         }
 
         kernel_size = load_elf(kernel_filename, NULL, NULL, NULL, &elf_entry,
-                               &elf_low, &elf_high, NULL, 0, I386_ELF_MACHINE,
-                               0, 0);
+                               &elf_low, &elf_high, NULL,
+                               ELFDATA2LSB, I386_ELF_MACHINE, 0, 0);
         if (kernel_size < 0) {
             error_report("Error while loading elf kernel");
             exit(1);
@@ -336,7 +337,7 @@ int load_multiboot(X86MachineState *x86ms,
                 *next_space = '\0';
             }
             mb_debug("multiboot loading module: %s", one_file);
-            mb_mod_length = get_image_size(one_file);
+            mb_mod_length = get_image_size(one_file, NULL);
             if (mb_mod_length < 0) {
                 error_report("Failed to open file '%s'", one_file);
                 exit(1);

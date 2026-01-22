@@ -22,8 +22,8 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "hw/arm/fsl-imx31.h"
-#include "sysemu/sysemu.h"
-#include "exec/address-spaces.h"
+#include "system/system.h"
+#include "system/address-spaces.h"
 #include "hw/qdev-properties.h"
 #include "chardev/char.h"
 #include "target/arm/cpu-qom.h"
@@ -218,7 +218,7 @@ static void fsl_imx31_realize(DeviceState *dev, Error **errp)
                                 &s->iram_alias);
 }
 
-static void fsl_imx31_class_init(ObjectClass *oc, void *data)
+static void fsl_imx31_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 

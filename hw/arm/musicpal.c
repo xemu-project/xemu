@@ -15,8 +15,9 @@
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/arm/boot.h"
+#include "hw/arm/machines-qom.h"
 #include "net/net.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "hw/boards.h"
 #include "hw/char/serial-mm.h"
 #include "qemu/timer.h"
@@ -29,14 +30,14 @@
 #include "hw/irq.h"
 #include "hw/or-irq.h"
 #include "hw/audio/wm8750.h"
-#include "sysemu/block-backend.h"
-#include "sysemu/runstate.h"
-#include "sysemu/dma.h"
+#include "system/block-backend.h"
+#include "system/runstate.h"
+#include "system/dma.h"
 #include "ui/pixel_ops.h"
 #include "qemu/cutils.h"
 #include "qom/object.h"
 #include "hw/net/mv88w8618_eth.h"
-#include "audio/audio.h"
+#include "qemu/audio.h"
 #include "qemu/error-report.h"
 #include "target/arm/cpu-qom.h"
 
@@ -286,7 +287,7 @@ static const VMStateDescription musicpal_lcd_vmsd = {
     }
 };
 
-static void musicpal_lcd_class_init(ObjectClass *klass, void *data)
+static void musicpal_lcd_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -407,7 +408,7 @@ static const VMStateDescription mv88w8618_pic_vmsd = {
     }
 };
 
-static void mv88w8618_pic_class_init(ObjectClass *klass, void *data)
+static void mv88w8618_pic_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -601,7 +602,7 @@ static const VMStateDescription mv88w8618_pit_vmsd = {
     }
 };
 
-static void mv88w8618_pit_class_init(ObjectClass *klass, void *data)
+static void mv88w8618_pit_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -687,7 +688,7 @@ static const VMStateDescription mv88w8618_flashcfg_vmsd = {
     }
 };
 
-static void mv88w8618_flashcfg_class_init(ObjectClass *klass, void *data)
+static void mv88w8618_flashcfg_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -1026,7 +1027,7 @@ static const VMStateDescription musicpal_gpio_vmsd = {
     }
 };
 
-static void musicpal_gpio_class_init(ObjectClass *klass, void *data)
+static void musicpal_gpio_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -1171,7 +1172,7 @@ static const VMStateDescription musicpal_key_vmsd = {
     }
 };
 
-static void musicpal_key_class_init(ObjectClass *klass, void *data)
+static void musicpal_key_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -1238,7 +1239,7 @@ static void musicpal_init(MachineState *machine)
                           qdev_get_gpio_in(pic, MP_TIMER4_IRQ), NULL);
 
     /* Logically OR both UART IRQs together */
-    uart_orgate = DEVICE(object_new(TYPE_OR_IRQ));
+    uart_orgate = qdev_new(TYPE_OR_IRQ);
     object_property_set_int(OBJECT(uart_orgate), "num-lines", 2, &error_fatal);
     qdev_realize_and_unref(uart_orgate, NULL, &error_fatal);
     qdev_connect_gpio_out(uart_orgate, 0,
@@ -1346,9 +1347,9 @@ static void musicpal_machine_init(MachineClass *mc)
     machine_add_audiodev_property(mc);
 }
 
-DEFINE_MACHINE("musicpal", musicpal_machine_init)
+DEFINE_MACHINE_ARM("musicpal", musicpal_machine_init)
 
-static void mv88w8618_wlan_class_init(ObjectClass *klass, void *data)
+static void mv88w8618_wlan_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

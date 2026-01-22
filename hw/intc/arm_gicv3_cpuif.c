@@ -22,8 +22,9 @@
 #include "cpu.h"
 #include "target/arm/cpregs.h"
 #include "target/arm/cpu-features.h"
-#include "sysemu/tcg.h"
-#include "sysemu/qtest.h"
+#include "target/arm/internals.h"
+#include "system/tcg.h"
+#include "system/qtest.h"
 
 /*
  * Special case return value from hppvi_index(); must be larger than
@@ -583,7 +584,6 @@ static void icv_ap_write(CPUARMState *env, const ARMCPRegInfo *ri,
     }
 
     gicv3_cpuif_virt_irq_fiq_update(cs);
-    return;
 }
 
 static uint64_t icv_bpr_read(CPUARMState *env, const ARMCPRegInfo *ri)
@@ -2291,7 +2291,7 @@ static CPAccessResult gicv3_irqfiq_access(CPUARMState *env,
             r = CP_ACCESS_TRAP_EL3;
             break;
         case 3:
-            if (!is_a64(env) && !arm_is_el3_or_mon(env)) {
+            if (!arm_is_el3_or_mon(env)) {
                 r = CP_ACCESS_TRAP_EL3;
             }
             break;
@@ -2300,9 +2300,6 @@ static CPAccessResult gicv3_irqfiq_access(CPUARMState *env,
         }
     }
 
-    if (r == CP_ACCESS_TRAP_EL3 && !arm_el_is_aa64(env, 3)) {
-        r = CP_ACCESS_TRAP;
-    }
     return r;
 }
 
@@ -2356,7 +2353,7 @@ static CPAccessResult gicv3_fiq_access(CPUARMState *env,
             r = CP_ACCESS_TRAP_EL3;
             break;
         case 3:
-            if (!is_a64(env) && !arm_is_el3_or_mon(env)) {
+            if (!arm_is_el3_or_mon(env)) {
                 r = CP_ACCESS_TRAP_EL3;
             }
             break;
@@ -2365,9 +2362,6 @@ static CPAccessResult gicv3_fiq_access(CPUARMState *env,
         }
     }
 
-    if (r == CP_ACCESS_TRAP_EL3 && !arm_el_is_aa64(env, 3)) {
-        r = CP_ACCESS_TRAP;
-    }
     return r;
 }
 
@@ -2395,7 +2389,7 @@ static CPAccessResult gicv3_irq_access(CPUARMState *env,
             r = CP_ACCESS_TRAP_EL3;
             break;
         case 3:
-            if (!is_a64(env) && !arm_is_el3_or_mon(env)) {
+            if (!arm_is_el3_or_mon(env)) {
                 r = CP_ACCESS_TRAP_EL3;
             }
             break;
@@ -2404,9 +2398,6 @@ static CPAccessResult gicv3_irq_access(CPUARMState *env,
         }
     }
 
-    if (r == CP_ACCESS_TRAP_EL3 && !arm_el_is_aa64(env, 3)) {
-        r = CP_ACCESS_TRAP;
-    }
     return r;
 }
 
@@ -3033,7 +3024,7 @@ void gicv3_init_cpuif(GICv3State *s)
     int i;
 
     for (i = 0; i < s->num_cpu; i++) {
-        ARMCPU *cpu = ARM_CPU(qemu_get_cpu(i));
+        ARMCPU *cpu = ARM_CPU(qemu_get_cpu(s->first_cpu_idx + i));
         GICv3CPUState *cs = &s->cpu[i];
 
         /*
@@ -3046,15 +3037,7 @@ void gicv3_init_cpuif(GICv3State *s)
          *  cpu->gic_pribits
          */
 
-        /* Note that we can't just use the GICv3CPUState as an opaque pointer
-         * in define_arm_cp_regs_with_opaque(), because when we're called back
-         * it might be with code translated by CPU 0 but run by CPU 1, in
-         * which case we'd get the wrong value.
-         * So instead we define the regs with no ri->opaque info, and
-         * get back to the GICv3CPUState from the CPUARMState.
-         *
-         * These CP regs callbacks can be called from either TCG or HVF code.
-         */
+        /* These CP regs callbacks can be called from either TCG or HVF. */
         define_arm_cp_regs(cpu, gicv3_cpuif_reginfo);
 
         /*

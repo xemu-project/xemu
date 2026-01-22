@@ -20,7 +20,7 @@
 #include "qemu/osdep.h"
 #include "qemu.h"
 #include "user-internals.h"
-#include "cpu_loop-common.h"
+#include "user/cpu_loop.h"
 #include "signal-common.h"
 
 
@@ -64,7 +64,7 @@ void cpu_loop(CPUS390XState *env)
         cpu_exec_start(cs);
         trapnr = cpu_exec(cs);
         cpu_exec_end(cs);
-        process_queued_cpu_work(cs);
+        qemu_process_cpu_events(cs);
 
         switch (trapnr) {
         case EXCP_INTERRUPT:
@@ -180,12 +180,13 @@ void cpu_loop(CPUS390XState *env)
     }
 }
 
-void target_cpu_copy_regs(CPUArchState *env, struct target_pt_regs *regs)
+void init_main_thread(CPUState *cs, struct image_info *info)
 {
-    int i;
-    for (i = 0; i < 16; i++) {
-        env->regs[i] = regs->gprs[i];
-    }
-    env->psw.mask = regs->psw.mask;
-    env->psw.addr = regs->psw.addr;
+    CPUArchState *env = cpu_env(cs);
+
+    env->psw.addr = info->entry;
+    env->psw.mask = PSW_MASK_DAT | PSW_MASK_IO | PSW_MASK_EXT |
+                    PSW_MASK_MCHECK | PSW_MASK_PSTATE | PSW_MASK_64 |
+                    PSW_MASK_32;
+    env->regs[15] = info->start_stack;
 }

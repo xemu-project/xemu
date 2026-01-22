@@ -30,7 +30,7 @@ Snapshot mode
 If you use the option ``-snapshot``, all disk images are considered as
 read only. When sectors in written, they are written in a temporary file
 created in ``/tmp``. You can however force the write back to the raw
-disk images by using the ``commit`` monitor command (or C-a s in the
+disk images by using the ``commit`` monitor command (or :kbd:`Ctrl+a s` in the
 serial console).
 
 .. _vm_005fsnapshots:
@@ -81,5 +81,7 @@ VM snapshots currently have the following known limitations:
 
 -  A few device drivers still have incomplete snapshot support so their
    state is not saved or restored properly (in particular USB).
+
+.. _block-drivers:
 
 .. include:: qemu-block-drivers.rst.inc

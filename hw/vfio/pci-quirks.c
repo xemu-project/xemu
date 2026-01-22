@@ -25,6 +25,7 @@
 #include "hw/nvram/fw_cfg.h"
 #include "hw/qdev-properties.h"
 #include "pci.h"
+#include "pci-quirks.h"
 #include "trace.h"
 
 /*
@@ -66,40 +67,6 @@ bool vfio_opt_rom_in_denylist(VFIOPCIDevice *vdev)
  * Device specific region quirks (mostly backdoors to PCI config space)
  */
 
-/*
- * The generic window quirks operate on an address and data register,
- * vfio_generic_window_address_quirk handles the address register and
- * vfio_generic_window_data_quirk handles the data register.  These ops
- * pass reads and writes through to hardware until a value matching the
- * stored address match/mask is written.  When this occurs, the data
- * register access emulated PCI config space for the device rather than
- * passing through accesses.  This enables devices where PCI config space
- * is accessible behind a window register to maintain the virtualization
- * provided through vfio.
- */
-typedef struct VFIOConfigWindowMatch {
-    uint32_t match;
-    uint32_t mask;
-} VFIOConfigWindowMatch;
-
-typedef struct VFIOConfigWindowQuirk {
-    struct VFIOPCIDevice *vdev;
-
-    uint32_t address_val;
-
-    uint32_t address_offset;
-    uint32_t data_offset;
-
-    bool window_enabled;
-    uint8_t bar;
-
-    MemoryRegion *addr_mem;
-    MemoryRegion *data_mem;
-
-    uint32_t nr_matches;
-    VFIOConfigWindowMatch matches[];
-} VFIOConfigWindowQuirk;
-
 static uint64_t vfio_generic_window_quirk_address_read(void *opaque,
                                                        hwaddr addr,
                                                        unsigned size)
@@ -135,7 +102,7 @@ static void vfio_generic_window_quirk_address_write(void *opaque, hwaddr addr,
     }
 }
 
-static const MemoryRegionOps vfio_generic_window_address_quirk = {
+const MemoryRegionOps vfio_generic_window_address_quirk = {
     .read = vfio_generic_window_quirk_address_read,
     .write = vfio_generic_window_quirk_address_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
@@ -146,6 +113,7 @@ static uint64_t vfio_generic_window_quirk_data_read(void *opaque,
 {
     VFIOConfigWindowQuirk *window = opaque;
     VFIOPCIDevice *vdev = window->vdev;
+    PCIDevice *pdev = PCI_DEVICE(vdev);
     uint64_t data;
 
     /* Always read data reg, discard if window enabled */
@@ -153,7 +121,7 @@ static uint64_t vfio_generic_window_quirk_data_read(void *opaque,
                             addr + window->data_offset, size);
 
     if (window->window_enabled) {
-        data = vfio_pci_read_config(&vdev->pdev, window->address_val, size);
+        data = vfio_pci_read_config(pdev, window->address_val, size);
         trace_vfio_quirk_generic_window_data_read(vdev->vbasedev.name,
                                     memory_region_name(window->data_mem), data);
     }
@@ -166,9 +134,10 @@ static void vfio_generic_window_quirk_data_write(void *opaque, hwaddr addr,
 {
     VFIOConfigWindowQuirk *window = opaque;
     VFIOPCIDevice *vdev = window->vdev;
+    PCIDevice *pdev = PCI_DEVICE(vdev);
 
     if (window->window_enabled) {
-        vfio_pci_write_config(&vdev->pdev, window->address_val, data, size);
+        vfio_pci_write_config(pdev, window->address_val, data, size);
         trace_vfio_quirk_generic_window_data_write(vdev->vbasedev.name,
                                     memory_region_name(window->data_mem), data);
         return;
@@ -178,38 +147,26 @@ static void vfio_generic_window_quirk_data_write(void *opaque, hwaddr addr,
                       addr + window->data_offset, data, size);
 }
 
-static const MemoryRegionOps vfio_generic_window_data_quirk = {
+const MemoryRegionOps vfio_generic_window_data_quirk = {
     .read = vfio_generic_window_quirk_data_read,
     .write = vfio_generic_window_quirk_data_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
-
-/*
- * The generic mirror quirk handles devices which expose PCI config space
- * through a region within a BAR.  When enabled, reads and writes are
- * redirected through to emulated PCI config space.  XXX if PCI config space
- * used memory regions, this could just be an alias.
- */
-typedef struct VFIOConfigMirrorQuirk {
-    struct VFIOPCIDevice *vdev;
-    uint32_t offset;
-    uint8_t bar;
-    MemoryRegion *mem;
-    uint8_t data[];
-} VFIOConfigMirrorQuirk;
 
 static uint64_t vfio_generic_quirk_mirror_read(void *opaque,
                                                hwaddr addr, unsigned size)
 {
     VFIOConfigMirrorQuirk *mirror = opaque;
     VFIOPCIDevice *vdev = mirror->vdev;
+    PCIDevice *pdev = PCI_DEVICE(vdev);
     uint64_t data;
 
     /* Read and discard in case the hardware cares */
     (void)vfio_region_read(&vdev->bars[mirror->bar].region,
                            addr + mirror->offset, size);
 
-    data = vfio_pci_read_config(&vdev->pdev, addr, size);
+    addr += mirror->config_offset;
+    data = vfio_pci_read_config(pdev, addr, size);
     trace_vfio_quirk_generic_mirror_read(vdev->vbasedev.name,
                                          memory_region_name(mirror->mem),
                                          addr, data);
@@ -221,14 +178,16 @@ static void vfio_generic_quirk_mirror_write(void *opaque, hwaddr addr,
 {
     VFIOConfigMirrorQuirk *mirror = opaque;
     VFIOPCIDevice *vdev = mirror->vdev;
+    PCIDevice *pdev = PCI_DEVICE(vdev);
 
-    vfio_pci_write_config(&vdev->pdev, addr, data, size);
+    addr += mirror->config_offset;
+    vfio_pci_write_config(pdev, addr, data, size);
     trace_vfio_quirk_generic_mirror_write(vdev->vbasedev.name,
                                           memory_region_name(mirror->mem),
                                           addr, data);
 }
 
-static const MemoryRegionOps vfio_generic_mirror_quirk = {
+const MemoryRegionOps vfio_generic_mirror_quirk = {
     .read = vfio_generic_quirk_mirror_read,
     .write = vfio_generic_quirk_mirror_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
@@ -256,7 +215,8 @@ static uint64_t vfio_ati_3c3_quirk_read(void *opaque,
                                         hwaddr addr, unsigned size)
 {
     VFIOPCIDevice *vdev = opaque;
-    uint64_t data = vfio_pci_read_config(&vdev->pdev,
+    PCIDevice *pdev = PCI_DEVICE(vdev);
+    uint64_t data = vfio_pci_read_config(pdev,
                                          PCI_BASE_ADDRESS_4 + 1, size);
 
     trace_vfio_quirk_ati_3c3_read(vdev->vbasedev.name, data);
@@ -448,7 +408,7 @@ static void vfio_probe_ati_bar4_quirk(VFIOPCIDevice *vdev, int nr)
 
     /* This windows doesn't seem to be used except by legacy VGA code */
     if (!vfio_pci_is(vdev, PCI_VENDOR_ID_ATI, PCI_ANY_ID) ||
-        !vdev->vga || nr != 4) {
+        !vdev->vga || nr != 4 || !vdev->bars[4].ioport) {
         return;
     }
 
@@ -608,6 +568,7 @@ static uint64_t vfio_nvidia_3d0_quirk_read(void *opaque,
 {
     VFIONvidia3d0Quirk *quirk = opaque;
     VFIOPCIDevice *vdev = quirk->vdev;
+    PCIDevice *pdev = PCI_DEVICE(vdev);
     VFIONvidia3d0State old_state = quirk->state;
     uint64_t data = vfio_vga_read(&vdev->vga->region[QEMU_PCI_VGA_IO_HI],
                                   addr + 0x10, size);
@@ -618,7 +579,7 @@ static uint64_t vfio_nvidia_3d0_quirk_read(void *opaque,
         (quirk->offset & ~(PCI_CONFIG_SPACE_SIZE - 1)) == 0x1800) {
         uint8_t offset = quirk->offset & (PCI_CONFIG_SPACE_SIZE - 1);
 
-        data = vfio_pci_read_config(&vdev->pdev, offset, size);
+        data = vfio_pci_read_config(pdev, offset, size);
         trace_vfio_quirk_nvidia_3d0_read(vdev->vbasedev.name,
                                          offset, size, data);
     }
@@ -631,6 +592,7 @@ static void vfio_nvidia_3d0_quirk_write(void *opaque, hwaddr addr,
 {
     VFIONvidia3d0Quirk *quirk = opaque;
     VFIOPCIDevice *vdev = quirk->vdev;
+    PCIDevice *pdev = PCI_DEVICE(vdev);
     VFIONvidia3d0State old_state = quirk->state;
 
     quirk->state = NONE;
@@ -644,7 +606,7 @@ static void vfio_nvidia_3d0_quirk_write(void *opaque, hwaddr addr,
         if ((quirk->offset & ~(PCI_CONFIG_SPACE_SIZE - 1)) == 0x1800) {
             uint8_t offset = quirk->offset & (PCI_CONFIG_SPACE_SIZE - 1);
 
-            vfio_pci_write_config(&vdev->pdev, offset, data, size);
+            vfio_pci_write_config(pdev, offset, data, size);
             trace_vfio_quirk_nvidia_3d0_write(vdev->vbasedev.name,
                                               offset, data, size);
             return;
@@ -860,7 +822,7 @@ static void vfio_nvidia_quirk_mirror_write(void *opaque, hwaddr addr,
 {
     VFIOConfigMirrorQuirk *mirror = opaque;
     VFIOPCIDevice *vdev = mirror->vdev;
-    PCIDevice *pdev = &vdev->pdev;
+    PCIDevice *pdev = PCI_DEVICE(vdev);
     LastDataSet *last = (LastDataSet *)&mirror->data;
 
     vfio_generic_quirk_mirror_write(opaque, addr, data, size);
@@ -1050,6 +1012,7 @@ static void vfio_rtl8168_quirk_address_write(void *opaque, hwaddr addr,
 {
     VFIOrtl8168Quirk *rtl = opaque;
     VFIOPCIDevice *vdev = rtl->vdev;
+    PCIDevice *pdev = PCI_DEVICE(vdev);
 
     rtl->enabled = false;
 
@@ -1058,7 +1021,7 @@ static void vfio_rtl8168_quirk_address_write(void *opaque, hwaddr addr,
         rtl->addr = (uint32_t)data;
 
         if (data & 0x80000000U) { /* Do write */
-            if (vdev->pdev.cap_present & QEMU_PCI_CAP_MSIX) {
+            if (pdev->cap_present & QEMU_PCI_CAP_MSIX) {
                 hwaddr offset = data & 0xfff;
                 uint64_t val = rtl->data;
 
@@ -1066,7 +1029,7 @@ static void vfio_rtl8168_quirk_address_write(void *opaque, hwaddr addr,
                                                     (uint16_t)offset, val);
 
                 /* Write to the proper guest MSI-X table instead */
-                memory_region_dispatch_write(&vdev->pdev.msix_table_mmio,
+                memory_region_dispatch_write(&pdev->msix_table_mmio,
                                              offset, val,
                                              size_memop(size) | MO_LE,
                                              MEMTXATTRS_UNSPECIFIED);
@@ -1094,11 +1057,12 @@ static uint64_t vfio_rtl8168_quirk_data_read(void *opaque,
 {
     VFIOrtl8168Quirk *rtl = opaque;
     VFIOPCIDevice *vdev = rtl->vdev;
+    PCIDevice *pdev = PCI_DEVICE(vdev);
     uint64_t data = vfio_region_read(&vdev->bars[2].region, addr + 0x70, size);
 
-    if (rtl->enabled && (vdev->pdev.cap_present & QEMU_PCI_CAP_MSIX)) {
+    if (rtl->enabled && (pdev->cap_present & QEMU_PCI_CAP_MSIX)) {
         hwaddr offset = rtl->addr & 0xfff;
-        memory_region_dispatch_read(&vdev->pdev.msix_table_mmio, offset,
+        memory_region_dispatch_read(&pdev->msix_table_mmio, offset,
                                     &data, size_memop(size) | MO_LE,
                                     MEMTXATTRS_UNSPECIFIED);
         trace_vfio_quirk_rtl8168_msix_read(vdev->vbasedev.name, offset, data);
@@ -1159,59 +1123,19 @@ static void vfio_probe_rtl8168_bar2_quirk(VFIOPCIDevice *vdev, int nr)
     trace_vfio_quirk_rtl8168_probe(vdev->vbasedev.name);
 }
 
-#define IGD_ASLS 0xfc /* ASL Storage Register */
-
-/*
- * The OpRegion includes the Video BIOS Table, which seems important for
- * telling the driver what sort of outputs it has.  Without this, the device
- * may work in the guest, but we may not get output.  This also requires BIOS
- * support to reserve and populate a section of guest memory sufficient for
- * the table and to write the base address of that memory to the ASLS register
- * of the IGD device.
- */
-bool vfio_pci_igd_opregion_init(VFIOPCIDevice *vdev,
-                                struct vfio_region_info *info, Error **errp)
-{
-    int ret;
-
-    vdev->igd_opregion = g_malloc0(info->size);
-    ret = pread(vdev->vbasedev.fd, vdev->igd_opregion,
-                info->size, info->offset);
-    if (ret != info->size) {
-        error_setg(errp, "failed to read IGD OpRegion");
-        g_free(vdev->igd_opregion);
-        vdev->igd_opregion = NULL;
-        return false;
-    }
-
-    /*
-     * Provide fw_cfg with a copy of the OpRegion which the VM firmware is to
-     * allocate 32bit reserved memory for, copy these contents into, and write
-     * the reserved memory base address to the device ASLS register at 0xFC.
-     * Alignment of this reserved region seems flexible, but using a 4k page
-     * alignment seems to work well.  This interface assumes a single IGD
-     * device, which may be at VM address 00:02.0 in legacy mode or another
-     * address in UPT mode.
-     *
-     * NB, there may be future use cases discovered where the VM should have
-     * direct interaction with the host OpRegion, in which case the write to
-     * the ASLS register would trigger MemoryRegion setup to enable that.
-     */
-    fw_cfg_add_file(fw_cfg_find(), "etc/igd-opregion",
-                    vdev->igd_opregion, info->size);
-
-    trace_vfio_pci_igd_opregion_enabled(vdev->vbasedev.name);
-
-    pci_set_long(vdev->pdev.config + IGD_ASLS, 0);
-    pci_set_long(vdev->pdev.wmask + IGD_ASLS, ~0);
-    pci_set_long(vdev->emulated_config_bits + IGD_ASLS, ~0);
-
-    return true;
-}
-
 /*
  * Common quirk probe entry points.
  */
+bool vfio_config_quirk_setup(VFIOPCIDevice *vdev, Error **errp)
+{
+#ifdef CONFIG_VFIO_IGD
+    if (!vfio_probe_igd_config_quirk(vdev, errp)) {
+        return false;
+    }
+#endif
+    return true;
+}
+
 void vfio_vga_quirk_setup(VFIOPCIDevice *vdev)
 {
     vfio_vga_probe_ati_3c3_quirk(vdev);
@@ -1235,15 +1159,12 @@ void vfio_vga_quirk_exit(VFIOPCIDevice *vdev)
 
 void vfio_vga_quirk_finalize(VFIOPCIDevice *vdev)
 {
-    int i, j;
+    int i;
 
     for (i = 0; i < ARRAY_SIZE(vdev->vga->region); i++) {
         while (!QLIST_EMPTY(&vdev->vga->region[i].quirks)) {
             VFIOQuirk *quirk = QLIST_FIRST(&vdev->vga->region[i].quirks);
             QLIST_REMOVE(quirk, next);
-            for (j = 0; j < quirk->nr_mem; j++) {
-                object_unparent(OBJECT(&quirk->mem[j]));
-            }
             g_free(quirk->mem);
             g_free(quirk->data);
             g_free(quirk);
@@ -1260,7 +1181,6 @@ void vfio_bar_quirk_setup(VFIOPCIDevice *vdev, int nr)
     vfio_probe_rtl8168_bar2_quirk(vdev, nr);
 #ifdef CONFIG_VFIO_IGD
     vfio_probe_igd_bar0_quirk(vdev, nr);
-    vfio_probe_igd_bar4_quirk(vdev, nr);
 #endif
 }
 
@@ -1284,14 +1204,10 @@ void vfio_bar_quirk_exit(VFIOPCIDevice *vdev, int nr)
 void vfio_bar_quirk_finalize(VFIOPCIDevice *vdev, int nr)
 {
     VFIOBAR *bar = &vdev->bars[nr];
-    int i;
 
     while (!QLIST_EMPTY(&bar->quirks)) {
         VFIOQuirk *quirk = QLIST_FIRST(&bar->quirks);
         QLIST_REMOVE(quirk, next);
-        for (i = 0; i < quirk->nr_mem; i++) {
-            object_unparent(OBJECT(&quirk->mem[i]));
-        }
         g_free(quirk->mem);
         g_free(quirk->data);
         g_free(quirk);
@@ -1383,7 +1299,7 @@ static void vfio_radeon_set_gfx_only_reset(VFIOPCIDevice *vdev)
 
 static int vfio_radeon_reset(VFIOPCIDevice *vdev)
 {
-    PCIDevice *pdev = &vdev->pdev;
+    PCIDevice *pdev = PCI_DEVICE(vdev);
     int i, ret = 0;
     uint32_t data;
 
@@ -1499,7 +1415,7 @@ static void get_nv_gpudirect_clique_id(Object *obj, Visitor *v,
                                        const char *name, void *opaque,
                                        Error **errp)
 {
-    Property *prop = opaque;
+    const Property *prop = opaque;
     uint8_t *ptr = object_field_prop_ptr(obj, prop);
 
     visit_type_uint8(v, name, ptr, errp);
@@ -1509,7 +1425,7 @@ static void set_nv_gpudirect_clique_id(Object *obj, Visitor *v,
                                        const char *name, void *opaque,
                                        Error **errp)
 {
-    Property *prop = opaque;
+    const Property *prop = opaque;
     uint8_t value, *ptr = object_field_prop_ptr(obj, prop);
 
     if (!visit_type_uint8(v, name, &value, errp)) {
@@ -1525,7 +1441,7 @@ static void set_nv_gpudirect_clique_id(Object *obj, Visitor *v,
 }
 
 const PropertyInfo qdev_prop_nv_gpudirect_clique = {
-    .name = "uint4",
+    .type = "uint8",
     .description = "NVIDIA GPUDirect Clique ID (0 - 15)",
     .get = get_nv_gpudirect_clique_id,
     .set = set_nv_gpudirect_clique_id,
@@ -1540,7 +1456,7 @@ static bool is_valid_std_cap_offset(uint8_t pos)
 static bool vfio_add_nv_gpudirect_cap(VFIOPCIDevice *vdev, Error **errp)
 {
     ERRP_GUARD();
-    PCIDevice *pdev = &vdev->pdev;
+    PCIDevice *pdev = PCI_DEVICE(vdev);
     int ret, pos;
     bool c8_conflict = false, d4_conflict = false;
     uint8_t tmp;
@@ -1633,6 +1549,7 @@ static bool vfio_add_nv_gpudirect_cap(VFIOPCIDevice *vdev, Error **errp)
 static bool vfio_add_vmd_shadow_cap(VFIOPCIDevice *vdev, Error **errp)
 {
     ERRP_GUARD();
+    PCIDevice *pdev = PCI_DEVICE(vdev);
     uint8_t membar_phys[16];
     int ret, pos = 0xE8;
 
@@ -1651,7 +1568,7 @@ static bool vfio_add_vmd_shadow_cap(VFIOPCIDevice *vdev, Error **errp)
         return false;
     }
 
-    ret = pci_add_capability(&vdev->pdev, PCI_CAP_ID_VNDR, pos,
+    ret = pci_add_capability(pdev, PCI_CAP_ID_VNDR, pos,
                              VMD_SHADOW_CAP_LEN, errp);
     if (ret < 0) {
         error_prepend(errp, "Failed to add VMD MEMBAR Shadow cap: ");
@@ -1660,10 +1577,10 @@ static bool vfio_add_vmd_shadow_cap(VFIOPCIDevice *vdev, Error **errp)
 
     memset(vdev->emulated_config_bits + pos, 0xFF, VMD_SHADOW_CAP_LEN);
     pos += PCI_CAP_FLAGS;
-    pci_set_byte(vdev->pdev.config + pos++, VMD_SHADOW_CAP_LEN);
-    pci_set_byte(vdev->pdev.config + pos++, VMD_SHADOW_CAP_VER);
-    pci_set_long(vdev->pdev.config + pos, 0x53484457); /* SHDW */
-    memcpy(vdev->pdev.config + pos + 4, membar_phys, 16);
+    pci_set_byte(pdev->config + pos++, VMD_SHADOW_CAP_LEN);
+    pci_set_byte(pdev->config + pos++, VMD_SHADOW_CAP_VER);
+    pci_set_long(pdev->config + pos, 0x53484457); /* SHDW */
+    memcpy(pdev->config + pos + 4, membar_phys, 16);
 
     return true;
 }

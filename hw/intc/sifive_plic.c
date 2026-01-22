@@ -30,7 +30,7 @@
 #include "target/riscv/cpu.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
-#include "sysemu/kvm.h"
+#include "system/kvm.h"
 
 static bool addr_between(uint32_t addr, uint32_t base, uint32_t num)
 {
@@ -430,7 +430,7 @@ static const VMStateDescription vmstate_sifive_plic = {
         }
 };
 
-static Property sifive_plic_properties[] = {
+static const Property sifive_plic_properties[] = {
     DEFINE_PROP_STRING("hart-config", SiFivePLICState, hart_config),
     DEFINE_PROP_UINT32("hartid-base", SiFivePLICState, hartid_base, 0),
     /* number of interrupt sources including interrupt source 0 */
@@ -444,10 +444,9 @@ static Property sifive_plic_properties[] = {
     DEFINE_PROP_UINT32("context-base", SiFivePLICState, context_base, 0),
     DEFINE_PROP_UINT32("context-stride", SiFivePLICState, context_stride, 0),
     DEFINE_PROP_UINT32("aperture-size", SiFivePLICState, aperture_size, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void sifive_plic_class_init(ObjectClass *klass, void *data)
+static void sifive_plic_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

@@ -27,9 +27,9 @@
 #include "qemu/error-report.h"
 #include "hw/virtio/vhost-user.h"
 #include "standard-headers/linux/virtio_crypto.h"
-#include "sysemu/cryptodev-vhost.h"
+#include "system/cryptodev-vhost.h"
 #include "chardev/char-fe.h"
-#include "sysemu/cryptodev-vhost-user.h"
+#include "system/cryptodev-vhost-user.h"
 #include "qom/object.h"
 
 
@@ -46,7 +46,7 @@ struct CryptoDevBackendVhostUser {
     CryptoDevBackend parent_obj;
 
     VhostUserState vhost_user;
-    CharBackend chr;
+    CharFrontend chr;
     char *chr_name;
     bool opened;
     CryptoDevBackendVhost *vhost_crypto[MAX_CRYPTO_QUEUE_NUM];
@@ -393,7 +393,7 @@ static void cryptodev_vhost_user_finalize(Object *obj)
 }
 
 static void
-cryptodev_vhost_user_class_init(ObjectClass *oc, void *data)
+cryptodev_vhost_user_class_init(ObjectClass *oc, const void *data)
 {
     CryptoDevBackendClass *bc = CRYPTODEV_BACKEND_CLASS(oc);
 

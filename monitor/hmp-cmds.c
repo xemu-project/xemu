@@ -14,8 +14,8 @@
  */
 
 #include "qemu/osdep.h"
-#include "exec/address-spaces.h"
-#include "exec/ioport.h"
+#include "system/address-spaces.h"
+#include "system/ioport.h"
 #include "exec/gdbstub.h"
 #include "gdbstub/enums.h"
 #include "monitor/hmp.h"
@@ -25,10 +25,10 @@
 #include "qapi/qapi-commands-control.h"
 #include "qapi/qapi-commands-machine.h"
 #include "qapi/qapi-commands-misc.h"
-#include "qapi/qmp/qdict.h"
+#include "qobject/qdict.h"
 #include "qemu/cutils.h"
 #include "qemu/log.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 
 bool hmp_handle_error(Monitor *mon, Error *err)
 {
@@ -280,14 +280,15 @@ void hmp_log(Monitor *mon, const QDict *qdict)
 
 void hmp_gdbserver(Monitor *mon, const QDict *qdict)
 {
+    Error *err = NULL;
     const char *device = qdict_get_try_str(qdict, "device");
+
     if (!device) {
         device = "tcp::" DEFAULT_GDBSTUB_PORT;
     }
 
-    if (gdbserver_start(device) < 0) {
-        monitor_printf(mon, "Could not open gdbserver on device '%s'\n",
-                       device);
+    if (!gdbserver_start(device, &err)) {
+        error_report_err(err);
     } else if (strcmp(device, "none") == 0) {
         monitor_printf(mon, "Disabled gdbserver\n");
     } else {
@@ -431,6 +432,6 @@ void hmp_dumpdtb(Monitor *mon, const QDict *qdict)
         return;
     }
 
-    monitor_printf(mon, "dtb dumped to %s", filename);
+    monitor_printf(mon, "DTB dumped to '%s'\n", filename);
 }
 #endif

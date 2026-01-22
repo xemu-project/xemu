@@ -55,10 +55,16 @@ event EVT_BOXED Object
     feature feat3
 doc freeform
     body=
-= Section
+*******
+Section
+*******
 doc freeform
     body=
-== Subsection
+Just text, no heading.
+doc freeform
+    body=
+Subsection
+==========
 
 *with emphasis*
 @var {in braces}
@@ -110,7 +116,7 @@ The _one_ {and only}, description on the same line
 Also _one_ {and only}
     feature=enum-member-feat
 a member feature
-    section=None
+    section=Plain
 @two is undocumented
 doc symbol=Base
     body=
@@ -152,7 +158,8 @@ description starts on the same line
 a feature
 doc freeform
     body=
-== Another subsection
+Another subsection
+==================
 doc symbol=cmd
     body=
 
@@ -168,15 +175,15 @@ description starts on the same line
 a feature
     feature=cmd-feat2
 another feature
-    section=None
+    section=Plain
 .. note:: @arg3 is undocumented
     section=Returns
 @Object
     section=Errors
 some
-    section=TODO
+    section=Todo
 frobnicate
-    section=None
+    section=Plain
 .. admonition:: Notes
 
  - Lorem ipsum dolor sit amet
@@ -209,12 +216,12 @@ If you're bored enough to read this, go see a video of boxed cats
 a feature
     feature=cmd-feat2
 another feature
-    section=None
+    section=Plain
 .. qmp-example::
 
    -> "this example"
 
-   <- "has no title"
+   <- ... has no title ...
 doc symbol=EVT_BOXED
     body=
 

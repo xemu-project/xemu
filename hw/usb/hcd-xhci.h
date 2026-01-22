@@ -25,7 +25,7 @@
 
 #include "hw/usb.h"
 #include "hw/usb/xhci.h"
-#include "sysemu/dma.h"
+#include "system/dma.h"
 
 OBJECT_DECLARE_SIMPLE_TYPE(XHCIState, XHCI)
 
@@ -193,6 +193,11 @@ typedef struct XHCIState {
     uint32_t max_pstreams_mask;
     void (*intr_update)(XHCIState *s, int n, bool enable);
     bool (*intr_raise)(XHCIState *s, int n, bool level);
+    /*
+     * Callback for special-casing interrupter mapping support. NULL for most
+     * implementations, for defaulting to enabled mapping unless numintrs == 1.
+     */
+    bool (*intr_mapping_supported)(XHCIState *s);
     DeviceState *hostOpaque;
 
     /* Operational Registers */

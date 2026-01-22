@@ -17,7 +17,7 @@
 #include "hw/sysbus.h"
 #include "qapi/error.h"
 #include "qemu/units.h"
-#include "sysemu/qtest.h"
+#include "system/qtest.h"
 #include "hw/mem/sparse-mem.h"
 
 #define SPARSE_MEM(obj) OBJECT_CHECK(SparseMemState, (obj), TYPE_SPARSE_MEM)
@@ -82,7 +82,6 @@ static void sparse_mem_enter_reset(Object *obj, ResetType type)
 {
     SparseMemState *s = SPARSE_MEM(obj);
     g_hash_table_remove_all(s->mapped);
-    return;
 }
 
 static const MemoryRegionOps sparse_mem_ops = {
@@ -96,14 +95,13 @@ static const MemoryRegionOps sparse_mem_ops = {
         },
 };
 
-static Property sparse_mem_properties[] = {
+static const Property sparse_mem_properties[] = {
     /* The base address of the memory */
     DEFINE_PROP_UINT64("baseaddr", SparseMemState, baseaddr, 0x0),
     /* The length of the sparse memory region */
     DEFINE_PROP_UINT64("length", SparseMemState, length, UINT64_MAX),
     /* Max amount of actual memory that can be used to back the sparse memory */
     DEFINE_PROP_UINT64("maxsize", SparseMemState, maxsize, 10 * MiB),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 MemoryRegion *sparse_mem_init(uint64_t addr, uint64_t length)
@@ -138,7 +136,7 @@ static void sparse_mem_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(sbd, &s->mmio);
 }
 
-static void sparse_mem_class_init(ObjectClass *klass, void *data)
+static void sparse_mem_class_init(ObjectClass *klass, const void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);

@@ -23,16 +23,16 @@
 
 #include "qemu/osdep.h"
 #include <math.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_device.h"
 #include "cpu.h"
+#include "exec/target_page.h"
 #include "migration/vmstate.h"
 #include "qemu/main-loop.h"
 #include "qemu/thread.h"
-#include "sysemu/runstate.h"
-#include "audio/audio.h"
+#include "system/runstate.h"
 #include "qemu/fifo8.h"
 #include "ui/xemu-settings.h"
 
@@ -103,6 +103,7 @@ typedef struct MCPXAPUState {
         int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes), 8 buffered
         QemuSpin fifo_lock;
         Fifo8 fifo;
+        SDL_AudioStream *stream;
     } monitor;
 } MCPXAPUState;
 

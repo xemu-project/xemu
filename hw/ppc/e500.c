@@ -18,7 +18,9 @@
 #include "qemu/datadir.h"
 #include "qemu/units.h"
 #include "qemu/guest-random.h"
+#include "exec/target_page.h"
 #include "qapi/error.h"
+#include "cpu-models.h"
 #include "e500.h"
 #include "e500-ccsr.h"
 #include "net/net.h"
@@ -26,13 +28,13 @@
 #include "hw/block/flash.h"
 #include "hw/char/serial-mm.h"
 #include "hw/pci/pci.h"
-#include "sysemu/block-backend-io.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/kvm.h"
-#include "sysemu/reset.h"
-#include "sysemu/runstate.h"
+#include "system/block-backend-io.h"
+#include "system/system.h"
+#include "system/kvm.h"
+#include "system/reset.h"
+#include "system/runstate.h"
 #include "kvm_ppc.h"
-#include "sysemu/device_tree.h"
+#include "system/device_tree.h"
 #include "hw/ppc/openpic.h"
 #include "hw/ppc/openpic_kvm.h"
 #include "hw/ppc/ppc.h"
@@ -78,8 +80,6 @@
 #define MPC85XX_ESDHC_IRQ          72
 #define RTC_REGS_OFFSET            0x68
 
-#define PLATFORM_CLK_FREQ_HZ       (400 * 1000 * 1000)
-
 struct boot_info
 {
     uint32_t dt_base;
@@ -119,7 +119,7 @@ static uint32_t *pci_map_create(void *fdt, uint32_t mpic, int first_slot,
 }
 
 static void dt_serial_create(void *fdt, unsigned long long offset,
-                             const char *soc, const char *mpic,
+                             const char *soc, uint32_t freq, const char *mpic,
                              const char *alias, int idx, bool defcon)
 {
     char *ser;
@@ -130,7 +130,7 @@ static void dt_serial_create(void *fdt, unsigned long long offset,
     qemu_fdt_setprop_string(fdt, ser, "compatible", "ns16550");
     qemu_fdt_setprop_cells(fdt, ser, "reg", offset, 0x100);
     qemu_fdt_setprop_cell(fdt, ser, "cell-index", idx);
-    qemu_fdt_setprop_cell(fdt, ser, "clock-frequency", PLATFORM_CLK_FREQ_HZ);
+    qemu_fdt_setprop_cell(fdt, ser, "clock-frequency", freq);
     qemu_fdt_setprop_cells(fdt, ser, "interrupts", 42, 2);
     qemu_fdt_setprop_phandle(fdt, ser, "interrupt-parent", mpic);
     qemu_fdt_setprop_string(fdt, "/aliases", alias, ser);
@@ -381,8 +381,7 @@ static int ppce500_load_device_tree(PPCE500MachineState *pms,
     int fdt_size;
     void *fdt;
     uint8_t hypercall[16];
-    uint32_t clock_freq = PLATFORM_CLK_FREQ_HZ;
-    uint32_t tb_freq = PLATFORM_CLK_FREQ_HZ;
+    uint32_t clock_freq, tb_freq;
     int i;
     char compatible_sb[] = "fsl,mpc8544-immr\0simple-bus";
     char *soc;
@@ -410,7 +409,7 @@ static int ppce500_load_device_tree(PPCE500MachineState *pms,
 
     if (dtb_file) {
         char *filename;
-        filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, dtb_file);
+        filename = qemu_find_file(QEMU_FILE_TYPE_DTB, dtb_file);
         if (!filename) {
             goto out;
         }
@@ -483,6 +482,9 @@ static int ppce500_load_device_tree(PPCE500MachineState *pms,
         if (kvmppc_get_hasidle(env)) {
             qemu_fdt_setprop(fdt, "/hypervisor", "has-idle", NULL, 0);
         }
+    } else {
+        clock_freq = pmc->clock_freq;
+        tb_freq = pmc->tb_freq;
     }
 
     /* Create CPU nodes */
@@ -563,12 +565,12 @@ static int ppce500_load_device_tree(PPCE500MachineState *pms,
      */
     if (serial_hd(1)) {
         dt_serial_create(fdt, MPC8544_SERIAL1_REGS_OFFSET,
-                         soc, mpic, "serial1", 1, false);
+                         soc, pmc->clock_freq, mpic, "serial1", 1, false);
     }
 
     if (serial_hd(0)) {
         dt_serial_create(fdt, MPC8544_SERIAL0_REGS_OFFSET,
-                         soc, mpic, "serial0", 0, true);
+                         soc, pmc->clock_freq, mpic, "serial0", 0, true);
     }
 
     /* i2c */
@@ -658,7 +660,6 @@ static int ppce500_load_device_tree(PPCE500MachineState *pms,
 
 done:
     if (!dry_run) {
-        qemu_fdt_dumpdtb(fdt, fdt_size);
         cpu_physical_memory_write(addr, fdt, fdt_size);
 
         /* Set machine->fdt for 'dumpdtb' QMP/HMP command */
@@ -931,7 +932,6 @@ void ppce500_init(MachineState *machine)
     CPUPPCState *firstenv = NULL;
     MemoryRegion *ccsr_addr_space;
     SysBusDevice *s;
-    PPCE500CCSRState *ccsr;
     I2CBus *i2c;
 
     irqs = g_new0(IrqLines, smp_cpus);
@@ -943,9 +943,8 @@ void ppce500_init(MachineState *machine)
         env = &cpu->env;
         cs = CPU(cpu);
 
-        if (env->mmu_model != POWERPC_MMU_BOOKE206) {
-            error_report("MMU model %i not supported by this machine",
-                         env->mmu_model);
+        if (!(POWERPC_CPU_GET_CLASS(cpu)->svr & POWERPC_SVR_E500)) {
+            error_report("This machine needs a CPU from the e500 family");
             exit(1);
         }
 
@@ -968,7 +967,7 @@ void ppce500_init(MachineState *machine)
         env->spr_cb[SPR_BOOKE_PIR].default_value = cs->cpu_index = i;
         env->mpic_iack = pmc->ccsrbar_base + MPC8544_MPIC_REGS_OFFSET + 0xa0;
 
-        ppc_booke_timers_init(cpu, PLATFORM_CLK_FREQ_HZ, PPC_TIMER_E500);
+        ppc_booke_timers_init(cpu, pmc->tb_freq, PPC_TIMER_E500);
 
         /* Register reset handler */
         if (!i) {
@@ -993,10 +992,10 @@ void ppce500_init(MachineState *machine)
     memory_region_add_subregion(address_space_mem, 0, machine->ram);
 
     dev = qdev_new("e500-ccsr");
+    s = SYS_BUS_DEVICE(dev);
     object_property_add_child(OBJECT(machine), "e500-ccsr", OBJECT(dev));
-    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
-    ccsr = CCSR(dev);
-    ccsr_addr_space = &ccsr->ccsr_space;
+    sysbus_realize_and_unref(s, &error_fatal);
+    ccsr_addr_space = sysbus_mmio_get_region(s, 0);
     memory_region_add_subregion(address_space_mem, pmc->ccsrbar_base,
                                 ccsr_addr_space);
 
@@ -1044,6 +1043,7 @@ void ppce500_init(MachineState *machine)
         dev = qdev_new(TYPE_SYSBUS_SDHCI);
         qdev_prop_set_uint8(dev, "sd-spec-version", 2);
         qdev_prop_set_uint8(dev, "endianness", DEVICE_BIG_ENDIAN);
+        qdev_prop_set_uint8(dev, "vendor", SDHCI_VENDOR_FSL);
         s = SYS_BUS_DEVICE(dev);
         sysbus_realize_and_unref(s, &error_fatal);
         sysbus_connect_irq(s, 0, qdev_get_gpio_in(mpicdev, MPC85XX_ESDHC_IRQ));
@@ -1194,7 +1194,7 @@ void ppce500_init(MachineState *machine)
 
     payload_size = load_elf(filename, NULL, NULL, NULL,
                             &bios_entry, &loadaddr, NULL, NULL,
-                            1, PPC_ELF_MACHINE, 0, 0);
+                            ELFDATA2MSB, PPC_ELF_MACHINE, 0, 0);
     if (payload_size < 0) {
         /*
          * Hrm. No ELF image? Try a uImage, maybe someone is giving us an
@@ -1226,14 +1226,8 @@ void ppce500_init(MachineState *machine)
     if (machine->kernel_filename && !kernel_as_payload) {
         kernel_base = cur_base;
         kernel_size = load_image_targphys(machine->kernel_filename,
-                                          cur_base,
-                                          machine->ram_size - cur_base);
-        if (kernel_size < 0) {
-            error_report("could not load kernel '%s'",
-                         machine->kernel_filename);
-            exit(1);
-        }
-
+                                      cur_base, machine->ram_size - cur_base,
+                                      &error_fatal);
         cur_base += kernel_size;
     }
 
@@ -1241,14 +1235,8 @@ void ppce500_init(MachineState *machine)
     if (machine->initrd_filename) {
         initrd_base = (cur_base + INITRD_LOAD_PAD) & ~INITRD_PAD_MASK;
         initrd_size = load_image_targphys(machine->initrd_filename, initrd_base,
-                                          machine->ram_size - initrd_base);
-
-        if (initrd_size < 0) {
-            error_report("could not load initial ram disk '%s'",
-                         machine->initrd_filename);
-            exit(1);
-        }
-
+                                          machine->ram_size - initrd_base,
+                                          &error_fatal);
         cur_base = initrd_base + initrd_size;
     }
 
@@ -1283,6 +1271,7 @@ static void e500_ccsr_initfn(Object *obj)
     PPCE500CCSRState *ccsr = CCSR(obj);
     memory_region_init(&ccsr->ccsr_space, obj, "e500-ccsr",
                        MPC8544_CCSRBAR_SIZE);
+    sysbus_init_mmio(SYS_BUS_DEVICE(ccsr), &ccsr->ccsr_space);
 }
 
 static const TypeInfo e500_ccsr_info = {

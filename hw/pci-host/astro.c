@@ -35,6 +35,7 @@
 #include "target/hppa/cpu.h"
 #include "trace.h"
 #include "qom/object.h"
+#include "exec/target_page.h"
 
 /*
  * Helper functions
@@ -423,22 +424,23 @@ static void elroy_reset(DeviceState *dev)
     }
 }
 
-static void elroy_pcihost_init(Object *obj)
+static void elroy_pcihost_realize(DeviceState *dev, Error **errp)
 {
-    ElroyState *s = ELROY_PCI_HOST_BRIDGE(obj);
-    PCIHostState *phb = PCI_HOST_BRIDGE(obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    ElroyState *s = ELROY_PCI_HOST_BRIDGE(dev);
+    PCIHostState *phb = PCI_HOST_BRIDGE(dev);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
+    Object *obj = OBJECT(s);
 
     /* Elroy config access from CPU.  */
-    memory_region_init_io(&s->this_mem, OBJECT(s), &elroy_chip_ops,
+    memory_region_init_io(&s->this_mem, obj, &elroy_chip_ops,
                           s, "elroy", 0x2000);
 
     /* Elroy PCI config. */
-    memory_region_init_io(&phb->conf_mem, OBJECT(phb),
-                          &elroy_config_addr_ops, DEVICE(s),
+    memory_region_init_io(&phb->conf_mem, obj,
+                          &elroy_config_addr_ops, dev,
                           "pci-conf-idx", 8);
-    memory_region_init_io(&phb->data_mem, OBJECT(phb),
-                          &elroy_config_data_ops, DEVICE(s),
+    memory_region_init_io(&phb->data_mem, obj,
+                          &elroy_config_data_ops, dev,
                           "pci-conf-data", 8);
     memory_region_add_subregion(&s->this_mem, 0x40,
                                 &phb->conf_mem);
@@ -446,8 +448,8 @@ static void elroy_pcihost_init(Object *obj)
                                 &phb->data_mem);
 
     /* Elroy PCI bus memory.  */
-    memory_region_init(&s->pci_mmio, OBJECT(s), "pci-mmio", UINT64_MAX);
-    memory_region_init_io(&s->pci_io, OBJECT(s), &unassigned_io_ops, obj,
+    memory_region_init(&s->pci_mmio, obj, "pci-mmio", UINT64_MAX);
+    memory_region_init_io(&s->pci_io, obj, &unassigned_io_ops, obj,
                             "pci-isa-mmio",
                             ((uint32_t) IOS_DIST_BASE_SIZE) / ROPES_PER_IOC);
 
@@ -458,12 +460,8 @@ static void elroy_pcihost_init(Object *obj)
 
     sysbus_init_mmio(sbd, &s->this_mem);
 
-    qdev_init_gpio_in(DEVICE(obj), elroy_set_irq, ELROY_IRQS);
+    qdev_init_gpio_in(dev, elroy_set_irq, ELROY_IRQS);
 }
-
-static Property elroy_pcihost_properties[] = {
-    DEFINE_PROP_END_OF_LIST(),
-};
 
 static const VMStateDescription vmstate_elroy = {
     .name = "Elroy",
@@ -485,12 +483,12 @@ static const VMStateDescription vmstate_elroy = {
     }
 };
 
-static void elroy_pcihost_class_init(ObjectClass *klass, void *data)
+static void elroy_pcihost_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     device_class_set_legacy_reset(dc, elroy_reset);
-    device_class_set_props(dc, elroy_pcihost_properties);
+    dc->realize = elroy_pcihost_realize;
     dc->vmsd = &vmstate_elroy;
     dc->user_creatable = false;
 }
@@ -498,7 +496,6 @@ static void elroy_pcihost_class_init(ObjectClass *klass, void *data)
 static const TypeInfo elroy_pcihost_info = {
     .name          = TYPE_ELROY_PCI_HOST_BRIDGE,
     .parent        = TYPE_PCI_HOST_BRIDGE,
-    .instance_init = elroy_pcihost_init,
     .instance_size = sizeof(ElroyState),
     .class_init    = elroy_pcihost_class_init,
 };
@@ -525,6 +522,53 @@ static ElroyState *elroy_init(int num)
 /*
  * Astro Runway chip.
  */
+
+static void adjust_LMMIO_DIRECT_mapping(AstroState *s, unsigned int reg_index)
+{
+    MemoryRegion *lmmio_alias;
+    unsigned int lmmio_index, map_route;
+    hwaddr map_addr;
+    uint32_t map_size;
+    struct ElroyState *elroy;
+
+    /* pointer to LMMIO_DIRECT entry */
+    lmmio_index = reg_index / 3;
+    lmmio_alias = &s->lmmio_direct[lmmio_index];
+
+    map_addr  = s->ioc_ranges[3 * lmmio_index + 0];
+    map_size  = s->ioc_ranges[3 * lmmio_index + 1];
+    map_route = s->ioc_ranges[3 * lmmio_index + 2];
+
+    /* find elroy to which this address is routed */
+    map_route &= (ELROY_NUM - 1);
+    elroy = s->elroy[map_route];
+
+    if (lmmio_alias->enabled) {
+        memory_region_set_enabled(lmmio_alias, false);
+    }
+
+    map_addr = F_EXTEND(map_addr);
+    map_addr &= TARGET_PAGE_MASK;
+    map_size = (~map_size) + 1;
+    map_size &= TARGET_PAGE_MASK;
+
+    /* exit if disabled or zero map size */
+    if (!(map_addr & 1) || !map_size) {
+        return;
+    }
+
+    if (!memory_region_size(lmmio_alias)) {
+        memory_region_init_alias(lmmio_alias, OBJECT(elroy),
+                        "pci-lmmmio-alias", &elroy->pci_mmio,
+                        (uint32_t) map_addr, map_size);
+        memory_region_add_subregion(get_system_memory(), map_addr,
+                                 lmmio_alias);
+    } else {
+        memory_region_set_alias_offset(lmmio_alias, map_addr);
+        memory_region_set_size(lmmio_alias, map_size);
+        memory_region_set_enabled(lmmio_alias, true);
+    }
+}
 
 static MemTxResult astro_chip_read_with_attrs(void *opaque, hwaddr addr,
                                              uint64_t *data, unsigned size,
@@ -633,6 +677,11 @@ static MemTxResult astro_chip_write_with_attrs(void *opaque, hwaddr addr,
         break;
     case 0x0300 ... 0x03d8 - 1: /* LMMIO_DIRECT0_BASE... */
         put_val_in_arrary(s->ioc_ranges, 0x300, addr, size, val);
+        unsigned int index = (addr - 0x300) / 8;
+        /* check if one of the 4 LMMIO_DIRECT regs, each using 3 entries. */
+        if (index < LMMIO_DIRECT_RANGES * 3) {
+            adjust_LMMIO_DIRECT_mapping(s, index);
+        }
         break;
     case 0x10200:
     case 0x10220:
@@ -861,7 +910,7 @@ static void astro_realize(DeviceState *obj, Error **errp)
     }
 }
 
-static void astro_class_init(ObjectClass *klass, void *data)
+static void astro_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -884,7 +933,7 @@ static const TypeInfo astro_chip_info = {
 };
 
 static void astro_iommu_memory_region_class_init(ObjectClass *klass,
-                                                   void *data)
+                                                 const void *data)
 {
     IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_CLASS(klass);
 

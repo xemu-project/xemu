@@ -21,10 +21,9 @@
 
 #include "qemu/osdep.h"
 #include "hw/hw.h"
-#include "hw/audio/soundhw.h"
-#include "audio/audio.h"
+#include "qemu/audio.h"
 #include "hw/pci/pci.h"
-#include "sysemu/dma.h"
+#include "system/dma.h"
 
 enum {
     PI_INDEX = 0,   /* PCM in */
@@ -57,7 +56,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(AC97LinkState, AC97)
 struct AC97LinkState {
     PCIDevice *pci_dev;
     AddressSpace *as;
-    QEMUSoundCard card;
+    AudioBackend *audio_be;
     uint32_t glob_cnt;
     uint32_t glob_sta;
     uint32_t cas; /* Codec Access Semaphore Register */

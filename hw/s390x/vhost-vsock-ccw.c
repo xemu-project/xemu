@@ -22,10 +22,9 @@ struct VHostVSockCCWState {
     VHostVSock vdev;
 };
 
-static Property vhost_vsock_ccw_properties[] = {
+static const Property vhost_vsock_ccw_properties[] = {
     DEFINE_PROP_UINT32("max_revision", VirtioCcwDevice, max_rev,
                        VIRTIO_CCW_MAX_REV),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void vhost_vsock_ccw_realize(VirtioCcwDevice *ccw_dev, Error **errp)
@@ -36,7 +35,7 @@ static void vhost_vsock_ccw_realize(VirtioCcwDevice *ccw_dev, Error **errp)
     qdev_realize(vdev, BUS(&ccw_dev->bus), errp);
 }
 
-static void vhost_vsock_ccw_class_init(ObjectClass *klass, void *data)
+static void vhost_vsock_ccw_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     VirtIOCCWDeviceClass *k = VIRTIO_CCW_DEVICE_CLASS(klass);

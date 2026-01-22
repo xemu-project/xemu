@@ -1662,7 +1662,7 @@ const rv_opcode_data rvi_opcode_data[] = {
     { "aes32esi", rv_codec_k_bs, rv_fmt_rs1_rs2_bs, NULL, 0, 0, 0 },
     { "aes32dsmi", rv_codec_k_bs, rv_fmt_rs1_rs2_bs, NULL, 0, 0, 0 },
     { "aes32dsi", rv_codec_k_bs, rv_fmt_rs1_rs2_bs, NULL, 0, 0, 0 },
-    { "aes64ks1i", rv_codec_k_rnum,  rv_fmt_rd_rs1_rnum, NULL, 0, 0, 0 },
+    { "aes64ks1i", rv_codec_k_rnum, rv_fmt_rd_rs1_rnum, NULL, 0, 0, 0 },
     { "aes64ks2", rv_codec_r, rv_fmt_rd_rs1_rs2, NULL, 0, 0, 0 },
     { "aes64im", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0 },
     { "aes64esm", rv_codec_r, rv_fmt_rd_rs1_rs2, NULL, 0, 0, 0 },
@@ -2214,11 +2214,11 @@ const rv_opcode_data rvi_opcode_data[] = {
     { "mop.rr.5", rv_codec_r, rv_fmt_rd_rs1_rs2, NULL, 0, 0, 0 },
     { "mop.rr.6", rv_codec_r, rv_fmt_rd_rs1_rs2, NULL, 0, 0, 0 },
     { "mop.rr.7", rv_codec_r, rv_fmt_rd_rs1_rs2, NULL, 0, 0, 0 },
-    { "c.mop.1",  rv_codec_ci_none, rv_fmt_none, NULL, 0, 0, 0 },
-    { "c.mop.3",  rv_codec_ci_none, rv_fmt_none, NULL, 0, 0, 0 },
-    { "c.mop.5",  rv_codec_ci_none, rv_fmt_none, NULL, 0, 0, 0 },
-    { "c.mop.7",  rv_codec_ci_none, rv_fmt_none, NULL, 0, 0, 0 },
-    { "c.mop.9",  rv_codec_ci_none, rv_fmt_none, NULL, 0, 0, 0 },
+    { "c.mop.1", rv_codec_ci_none, rv_fmt_none, NULL, 0, 0, 0 },
+    { "c.mop.3", rv_codec_ci_none, rv_fmt_none, NULL, 0, 0, 0 },
+    { "c.mop.5", rv_codec_ci_none, rv_fmt_none, NULL, 0, 0, 0 },
+    { "c.mop.7", rv_codec_ci_none, rv_fmt_none, NULL, 0, 0, 0 },
+    { "c.mop.9", rv_codec_ci_none, rv_fmt_none, NULL, 0, 0, 0 },
     { "c.mop.11", rv_codec_ci_none, rv_fmt_none, NULL, 0, 0, 0 },
     { "c.mop.13", rv_codec_ci_none, rv_fmt_none, NULL, 0, 0, 0 },
     { "c.mop.15", rv_codec_ci_none, rv_fmt_none, NULL, 0, 0, 0 },
@@ -2438,9 +2438,11 @@ static const char *csr_name(int csrno)
     case 0x07a1: return "tdata1";
     case 0x07a2: return "tdata2";
     case 0x07a3: return "tdata3";
+    case 0x07a4: return "tinfo";
     case 0x07b0: return "dcsr";
     case 0x07b1: return "dpc";
-    case 0x07b2: return "dscratch";
+    case 0x07b2: return "dscratch0";
+    case 0x07b3: return "dscratch1";
     case 0x0b00: return "mcycle";
     case 0x0b01: return "mtime";
     case 0x0b02: return "minstret";
@@ -2611,7 +2613,7 @@ static void decode_inst_opcode(rv_decode *dec, rv_isa isa)
             break;
         case 2: op = rv_op_c_li; break;
         case 3:
-            if (dec->cfg->ext_zcmop) {
+            if (dec->cfg && dec->cfg->ext_zcmop) {
                 if ((((inst >> 2) & 0b111111) == 0b100000) &&
                     (((inst >> 11) & 0b11) == 0b0)) {
                     unsigned int cmop_code = 0;
@@ -2712,7 +2714,7 @@ static void decode_inst_opcode(rv_decode *dec, rv_isa isa)
                 op = rv_op_c_sqsp;
             } else {
                 op = rv_op_c_fsdsp;
-                if (dec->cfg->ext_zcmp && ((inst >> 12) & 0b01)) {
+                if (dec->cfg && dec->cfg->ext_zcmp && ((inst >> 12) & 0b01)) {
                     switch ((inst >> 8) & 0b01111) {
                     case 8:
                         if (((inst >> 4) & 0b01111) >= 4) {
@@ -2738,7 +2740,7 @@ static void decode_inst_opcode(rv_decode *dec, rv_isa isa)
                 } else {
                     switch ((inst >> 10) & 0b011) {
                     case 0:
-                        if (!dec->cfg->ext_zcmt) {
+                        if (dec->cfg && !dec->cfg->ext_zcmt) {
                             break;
                         }
                         if (((inst >> 2) & 0xFF) >= 32) {
@@ -2748,7 +2750,7 @@ static void decode_inst_opcode(rv_decode *dec, rv_isa isa)
                         }
                         break;
                     case 3:
-                        if (!dec->cfg->ext_zcmp) {
+                        if (dec->cfg && !dec->cfg->ext_zcmp) {
                             break;
                         }
                         switch ((inst >> 5) & 0b011) {
@@ -2956,7 +2958,7 @@ static void decode_inst_opcode(rv_decode *dec, rv_isa isa)
             break;
         case 5:
             op = rv_op_auipc;
-            if (dec->cfg->ext_zicfilp &&
+            if (dec->cfg && dec->cfg->ext_zicfilp &&
                 (((inst >> 7) & 0b11111) == 0b00000)) {
                 op = rv_op_lpad;
             }
@@ -4058,7 +4060,7 @@ static void decode_inst_opcode(rv_decode *dec, rv_isa isa)
             case 2: op = rv_op_csrrs; break;
             case 3: op = rv_op_csrrc; break;
             case 4:
-                if (dec->cfg->ext_zimop) {
+                if (dec->cfg && dec->cfg->ext_zimop) {
                     int imm_mop5, imm_mop3, reg_num;
                     if ((extract32(inst, 22, 10) & 0b1011001111)
                         == 0b1000000111) {
@@ -5112,28 +5114,28 @@ static GString *format_inst(size_t tab, rv_decode *dec)
             g_string_append(buf, rv_ireg_name_sym[dec->rs2]);
             break;
         case '3':
-            if (dec->cfg->ext_zfinx) {
+            if (dec->cfg && dec->cfg->ext_zfinx) {
                 g_string_append(buf, rv_ireg_name_sym[dec->rd]);
             } else {
                 g_string_append(buf, rv_freg_name_sym[dec->rd]);
             }
             break;
         case '4':
-            if (dec->cfg->ext_zfinx) {
+            if (dec->cfg && dec->cfg->ext_zfinx) {
                 g_string_append(buf, rv_ireg_name_sym[dec->rs1]);
             } else {
                 g_string_append(buf, rv_freg_name_sym[dec->rs1]);
             }
             break;
         case '5':
-            if (dec->cfg->ext_zfinx) {
+            if (dec->cfg && dec->cfg->ext_zfinx) {
                 g_string_append(buf, rv_ireg_name_sym[dec->rs2]);
             } else {
                 g_string_append(buf, rv_freg_name_sym[dec->rs2]);
             }
             break;
         case '6':
-            if (dec->cfg->ext_zfinx) {
+            if (dec->cfg && dec->cfg->ext_zfinx) {
                 g_string_append(buf, rv_ireg_name_sym[dec->rs3]);
             } else {
                 g_string_append(buf, rv_freg_name_sym[dec->rs3]);
@@ -5439,7 +5441,8 @@ static GString *disasm_inst(rv_isa isa, uint64_t pc, rv_inst inst,
         const rv_opcode_data *opcode_data = decoders[i].opcode_data;
         void (*decode_func)(rv_decode *, rv_isa) = decoders[i].decode_func;
 
-        if (guard_func(cfg)) {
+        /* always_true_p don't dereference cfg */
+        if (((i == 0) || cfg) && guard_func(cfg)) {
             dec.opcode_data = opcode_data;
             decode_func(&dec, isa);
             if (dec.op != rv_op_illegal)
