@@ -785,7 +785,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
         title, window_width, window_height,
         window_flags);
     if (m_window == NULL) {
-        fprintf(stderr, "Failed to create main window\n");
+        fprintf(stderr, "Failed to create main window: %s\n", SDL_GetError());
         SDL_Quit();
         exit(1);
     }
