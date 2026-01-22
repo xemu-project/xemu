@@ -1,15 +1,14 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
-#include "exec/exec-all.h"
-#include "sysemu/kvm.h"
-#include "sysemu/tcg.h"
+#include "system/kvm.h"
+#include "system/tcg.h"
 #include "helper_regs.h"
 #include "mmu-hash64.h"
 #include "migration/cpu.h"
 #include "qapi/error.h"
 #include "kvm_ppc.h"
 #include "power8-pmu.h"
-#include "sysemu/replay.h"
+#include "system/replay.h"
 
 static void post_load_update_msr(CPUPPCState *env)
 {
@@ -264,7 +263,8 @@ static int cpu_post_load(void *opaque, int version_id)
         /* Re-set breaks based on regs */
 #if defined(TARGET_PPC64)
         ppc_update_ciabr(env);
-        ppc_update_daw0(env);
+        ppc_update_daw(env, 0);
+        ppc_update_daw(env, 1);
 #endif
         /*
          * TCG needs to re-start the decrementer timer and/or raise the

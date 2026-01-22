@@ -9,10 +9,9 @@
 #include "hw/sysbus.h"
 #include "hw/intc/loongson_ipi_common.h"
 #include "hw/irq.h"
-#include "hw/qdev-properties.h"
-#include "qapi/error.h"
 #include "qemu/log.h"
 #include "migration/vmstate.h"
+#include "system/kvm.h"
 #include "trace.h"
 
 MemTxResult loongson_ipi_core_readl(void *opaque, hwaddr addr, uint64_t *data,
@@ -105,16 +104,17 @@ static MemTxResult mail_send(LoongsonIPICommonState *ipi,
     uint32_t cpuid;
     hwaddr addr;
     CPUState *cs;
+    int cpu, ret;
 
     cpuid = extract32(val, 16, 10);
-    cs = licc->cpu_by_arch_id(cpuid);
-    if (cs == NULL) {
+    ret = licc->cpu_by_arch_id(ipi, cpuid, &cpu, &cs);
+    if (ret != MEMTX_OK) {
         return MEMTX_DECODE_ERROR;
     }
 
     /* override requester_id */
     addr = SMP_IPI_MAILBOX + CORE_BUF_20 + (val & 0x1c);
-    attrs.requester_id = cs->cpu_index;
+    attrs.requester_id = cpu;
     return send_ipi_data(ipi, cs, val, addr, attrs);
 }
 
@@ -125,16 +125,17 @@ static MemTxResult any_send(LoongsonIPICommonState *ipi,
     uint32_t cpuid;
     hwaddr addr;
     CPUState *cs;
+    int cpu, ret;
 
     cpuid = extract32(val, 16, 10);
-    cs = licc->cpu_by_arch_id(cpuid);
-    if (cs == NULL) {
+    ret = licc->cpu_by_arch_id(ipi, cpuid, &cpu, &cs);
+    if (ret != MEMTX_OK) {
         return MEMTX_DECODE_ERROR;
     }
 
     /* override requester_id */
     addr = val & 0xffff;
-    attrs.requester_id = cs->cpu_index;
+    attrs.requester_id = cpu;
     return send_ipi_data(ipi, cs, val, addr, attrs);
 }
 
@@ -148,6 +149,7 @@ MemTxResult loongson_ipi_core_writel(void *opaque, hwaddr addr, uint64_t val,
     uint32_t cpuid;
     uint8_t vector;
     CPUState *cs;
+    int cpu, ret;
 
     addr &= 0xff;
     trace_loongson_ipi_write(size, (uint64_t)addr, val);
@@ -178,11 +180,11 @@ MemTxResult loongson_ipi_core_writel(void *opaque, hwaddr addr, uint64_t val,
         cpuid = extract32(val, 16, 10);
         /* IPI status vector */
         vector = extract8(val, 0, 5);
-        cs = licc->cpu_by_arch_id(cpuid);
-        if (cs == NULL || cs->cpu_index >= ipi->num_cpu) {
+        ret = licc->cpu_by_arch_id(ipi, cpuid, &cpu, &cs);
+        if (ret != MEMTX_OK || cpu >= ipi->num_cpu) {
             return MEMTX_DECODE_ERROR;
         }
-        loongson_ipi_core_writel(&ipi->cpu[cs->cpu_index], CORE_SET_OFF,
+        loongson_ipi_core_writel(&ipi->cpu[cpu], CORE_SET_OFF,
                                  BIT(vector), 4, attrs);
         break;
     default:
@@ -253,10 +255,8 @@ static void loongson_ipi_common_realize(DeviceState *dev, Error **errp)
 {
     LoongsonIPICommonState *s = LOONGSON_IPI_COMMON(dev);
     SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
-    int i;
 
-    if (s->num_cpu == 0) {
-        error_setg(errp, "num-cpu must be at least 1");
+    if (kvm_irqchip_in_kernel()) {
         return;
     }
 
@@ -273,13 +273,6 @@ static void loongson_ipi_common_realize(DeviceState *dev, Error **errp)
                           &loongson_ipi64_ops,
                           s, "loongson_ipi64_iocsr", 0x118);
     sysbus_init_mmio(sbd, &s->ipi64_iocsr_mem);
-
-    s->cpu = g_new0(IPICore, s->num_cpu);
-    for (i = 0; i < s->num_cpu; i++) {
-        s->cpu[i].ipi = s;
-
-        qdev_init_gpio_out(dev, &s->cpu[i].irq, 1);
-    }
 }
 
 static void loongson_ipi_common_unrealize(DeviceState *dev)
@@ -289,10 +282,38 @@ static void loongson_ipi_common_unrealize(DeviceState *dev)
     g_free(s->cpu);
 }
 
+static int loongson_ipi_common_pre_save(void *opaque)
+{
+    IPICore *ipicore = (IPICore *)opaque;
+    LoongsonIPICommonState *s = ipicore->ipi;
+    LoongsonIPICommonClass *licc = LOONGSON_IPI_COMMON_GET_CLASS(s);
+
+    if (licc->pre_save) {
+        return licc->pre_save(s);
+    }
+
+    return 0;
+}
+
+static int loongson_ipi_common_post_load(void *opaque, int version_id)
+{
+    IPICore *ipicore = (IPICore *)opaque;
+    LoongsonIPICommonState *s = ipicore->ipi;
+    LoongsonIPICommonClass *licc = LOONGSON_IPI_COMMON_GET_CLASS(s);
+
+    if (licc->post_load) {
+        return licc->post_load(s, version_id);
+    }
+
+    return 0;
+}
+
 static const VMStateDescription vmstate_ipi_core = {
     .name = "ipi-single",
     .version_id = 2,
     .minimum_version_id = 2,
+    .pre_save  = loongson_ipi_common_pre_save,
+    .post_load = loongson_ipi_common_post_load,
     .fields = (const VMStateField[]) {
         VMSTATE_UINT32(status, IPICore),
         VMSTATE_UINT32(en, IPICore),
@@ -315,12 +336,7 @@ static const VMStateDescription vmstate_loongson_ipi_common = {
     }
 };
 
-static Property ipi_common_properties[] = {
-    DEFINE_PROP_UINT32("num-cpu", LoongsonIPICommonState, num_cpu, 1),
-    DEFINE_PROP_END_OF_LIST(),
-};
-
-static void loongson_ipi_common_class_init(ObjectClass *klass, void *data)
+static void loongson_ipi_common_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     LoongsonIPICommonClass *licc = LOONGSON_IPI_COMMON_CLASS(klass);
@@ -329,7 +345,6 @@ static void loongson_ipi_common_class_init(ObjectClass *klass, void *data)
                                     &licc->parent_realize);
     device_class_set_parent_unrealize(dc, loongson_ipi_common_unrealize,
                                       &licc->parent_unrealize);
-    device_class_set_props(dc, ipi_common_properties);
     dc->vmsd = &vmstate_loongson_ipi_common;
 }
 

@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to build and release"
+        required: true
+        type: string
+      tag:
+        description: "Tag name for the release"
+        required: true
+        type: string
+      pre-release:
+        description: "Create as published pre-release instead of draft release"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    name: Build
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ inputs.ref }}
+
+  delete_prerelease:
+    name: Delete pre-release
+    needs: build
+    if: ${{ inputs.pre-release }}
+    uses: ./.github/workflows/delete-prerelease.yml
+
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    needs: [build, delete_prerelease]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    steps:
+    - name: Clone tree
+      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.ref }}
+    - name: Generate release notes
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: python3 .github/scripts/gen-changelog.py --ref ${{ inputs.ref }} -o CHANGELOG.md
+    - name: Download artifacts
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+      with:
+        path: dist
+        merge-multiple: true
+    - name: Add transitionary package aliases
+      if: ${{ !inputs.pre-release }}
+      run: |
+        pushd dist
+        cp xemu-${{ needs.build.outputs.pkg_version }}-windows-x86_64.zip xemu-win-x86_64-release.zip
+        cp xemu-${{ needs.build.outputs.pkg_version }}-windows-arm64.zip xemu-win-aarch64-release.zip
+    - name: Create release
+      uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+      with:
+        name: ${{ inputs.pre-release && 'Latest Development Build' || inputs.tag }}
+        tag_name: ${{ inputs.tag }}
+        target_commitish: ${{ inputs.pre-release && inputs.ref || '' }}
+        body_path: CHANGELOG.md
+        draft: ${{ !inputs.pre-release }}
+        prerelease: ${{ inputs.pre-release }}
+        files: |
+          dist/xemu*.tar.zst
+          dist/xemu*-win*.zip
+          dist/xemu*-macos-universal*.zip
+          dist/xemu*.AppImage

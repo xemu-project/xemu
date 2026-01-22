@@ -157,7 +157,7 @@ static void usb_xid_gamepad_handle_data(USBDevice *dev, USBPacket *p)
     }
 }
 
-static void usb_xid_gamepad_class_initfn(ObjectClass *klass, void *data)
+static void usb_xid_gamepad_class_init(ObjectClass *klass, const void *data)
 {
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
@@ -216,9 +216,8 @@ static void usb_xbox_gamepad_s_realize(USBDevice *dev, Error **errp)
     s->out_state_capabilities.report_id = 0;
 }
 
-static Property xid_properties[] = {
+static const Property xid_properties[] = {
     DEFINE_PROP_UINT8("index", USBXIDGamepadState, device_index, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const VMStateDescription vmstate_usb_xbox = {
@@ -232,13 +231,14 @@ static const VMStateDescription vmstate_usb_xbox = {
 
 static const VMStateDescription vmstate_usb_xbox_s = {
     .name = TYPE_USB_XID_GAMEPAD_S,
-    .minimum_version_id = 1,
+    .version_id = 0,
+    .minimum_version_id = 0,
     .fields = (VMStateField[]){ VMSTATE_USB_DEVICE(dev, USBXIDGamepadState),
                                 // FIXME
                                 VMSTATE_END_OF_LIST() },
 };
 
-static void usb_xbox_gamepad_class_initfn(ObjectClass *klass, void *data)
+static void usb_xbox_gamepad_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
@@ -247,14 +247,14 @@ static void usb_xbox_gamepad_class_initfn(ObjectClass *klass, void *data)
     uc->usb_desc = &desc_xbox_gamepad;
     uc->realize = usb_xbox_gamepad_realize;
     uc->unrealize = usb_xbox_gamepad_unrealize;
-    usb_xid_gamepad_class_initfn(klass, data);
+    usb_xid_gamepad_class_init(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd = &vmstate_usb_xbox;
     device_class_set_props(dc, xid_properties);
     dc->desc = "Microsoft Xbox Controller";
 }
 
-static void usb_xbox_gamepad_s_class_initfn(ObjectClass *klass, void *data)
+static void usb_xbox_gamepad_s_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
@@ -263,7 +263,7 @@ static void usb_xbox_gamepad_s_class_initfn(ObjectClass *klass, void *data)
     uc->usb_desc = &desc_xbox_gamepad_s;
     uc->realize = usb_xbox_gamepad_s_realize;
     uc->unrealize = usb_xbox_gamepad_unrealize;
-    usb_xid_gamepad_class_initfn(klass, data);
+    usb_xid_gamepad_class_init(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd = &vmstate_usb_xbox_s;
     device_class_set_props(dc, xid_properties);
@@ -274,14 +274,14 @@ static const TypeInfo usb_xbox_gamepad_info = {
     .name = TYPE_USB_XID_GAMEPAD,
     .parent = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBXIDGamepadState),
-    .class_init = usb_xbox_gamepad_class_initfn,
+    .class_init = usb_xbox_gamepad_class_init,
 };
 
 static const TypeInfo usb_xbox_gamepad_s_info = {
     .name = TYPE_USB_XID_GAMEPAD_S,
     .parent = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBXIDGamepadState),
-    .class_init = usb_xbox_gamepad_s_class_initfn,
+    .class_init = usb_xbox_gamepad_s_class_init,
 };
 
 static void usb_xid_register_types(void)

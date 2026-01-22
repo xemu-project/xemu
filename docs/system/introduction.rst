@@ -23,6 +23,9 @@ Tiny Code Generator (TCG) capable of emulating many CPUs.
   * - Xen
     - Linux (as dom0)
     - Arm, x86
+  * - MSHV
+    - Linux (as dom0)
+    - x86
   * - Hypervisor Framework (hvf)
     - MacOS
     - x86 (64 bit only), Arm (64 bit only)
@@ -81,7 +84,7 @@ may not be optimal for modern systems.
 
 For a non-x86 system where we emulate a broad range of machine types,
 the command lines are generally more explicit in defining the machine
-and boot behaviour. You will find often find example command lines in
+and boot behaviour. You will often find example command lines in
 the :ref:`system-targets-ref` section of the manual.
 
 While the project doesn't want to discourage users from using the
@@ -169,7 +172,7 @@ would default to it anyway.
 
 .. code::
 
- -cpu max,pauth-impdef=on \
+ -cpu max \
  -smp 4 \
  -accel tcg \
 

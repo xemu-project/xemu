@@ -22,7 +22,8 @@
 #include "hw/virtio/virtio.h"
 #include "hw/scsi/scsi.h"
 #include "chardev/char-fe.h"
-#include "sysemu/iothread.h"
+#include "qapi/qapi-types-virtio.h"
+#include "system/iothread.h"
 
 #define TYPE_VIRTIO_SCSI_COMMON "virtio-scsi-common"
 OBJECT_DECLARE_SIMPLE_TYPE(VirtIOSCSICommon, VIRTIO_SCSI_COMMON)
@@ -57,9 +58,10 @@ struct VirtIOSCSIConf {
     uint32_t cmd_per_lun;
     char *vhostfd;
     char *wwpn;
-    CharBackend chardev;
+    CharFrontend chardev;
     uint32_t boot_tpgt;
     IOThread *iothread;
+    IOThreadVirtQueueMappingList *iothread_vq_mapping_list;
 };
 
 struct VirtIOSCSI;
@@ -82,18 +84,14 @@ struct VirtIOSCSI {
 
     SCSIBus bus;
     int resetting; /* written from main loop thread, read from any thread */
+
+    QemuMutex event_lock; /* protects event_vq and events_dropped */
     bool events_dropped;
 
-    /*
-     * TMFs deferred to main loop BH. These fields are protected by
-     * tmf_bh_lock.
-     */
-    QemuMutex tmf_bh_lock;
-    QEMUBH *tmf_bh;
-    QTAILQ_HEAD(, VirtIOSCSIReq) tmf_bh_list;
+    QemuMutex ctrl_lock; /* protects ctrl_vq */
 
     /* Fields for dataplane below */
-    AioContext *ctx; /* one iothread per virtio-scsi-pci for now */
+    AioContext **vq_aio_context; /* per-virtqueue AioContext pointer */
 
     bool dataplane_started;
     bool dataplane_starting;
@@ -111,6 +109,7 @@ void virtio_scsi_common_realize(DeviceState *dev,
 void virtio_scsi_common_unrealize(DeviceState *dev);
 
 void virtio_scsi_dataplane_setup(VirtIOSCSI *s, Error **errp);
+void virtio_scsi_dataplane_cleanup(VirtIOSCSI *s);
 int virtio_scsi_dataplane_start(VirtIODevice *s);
 void virtio_scsi_dataplane_stop(VirtIODevice *s);
 

@@ -150,6 +150,10 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    if (!surface->width || !surface->height) {
+        return;
+    }
+
     nv2a_profile_inc_counter(NV2A_PROF_SURF_DOWNLOAD);
 
     bool use_compute_to_convert_depth_stencil_format =
@@ -469,7 +473,8 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
 
 static void download_surface(NV2AState *d, SurfaceBinding *surface, bool force)
 {
-    if (!(surface->download_pending || force)) {
+    if (!(surface->download_pending || force) || !surface->width ||
+        !surface->height) {
         return;
     }
 
@@ -577,9 +582,13 @@ static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
 static void register_cpu_access_callback(NV2AState *d, SurfaceBinding *surface)
 {
     if (tcg_enabled()) {
-        surface->access_cb = mem_access_callback_insert(
-            qemu_get_cpu(0), d->vram, surface->vram_addr, surface->size,
-            &surface_access_callback, d);
+        if (surface->width && surface->height) {
+            surface->access_cb = mem_access_callback_insert(
+                qemu_get_cpu(0), d->vram, surface->vram_addr, surface->size,
+                &surface_access_callback, d);
+        } else {
+            surface->access_cb = NULL;
+        }
     }
 }
 
@@ -754,7 +763,8 @@ static void create_surface_image(PGRAPHState *pg, SurfaceBinding *surface)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    unsigned int width = surface->width, height = surface->height;
+    unsigned int width = surface->width ? surface->width : 1;
+    unsigned int height = surface->height ? surface->height : 1;
     pgraph_apply_scaling_factor(pg, &width, &height);
 
     assert(!surface->image);
@@ -955,6 +965,11 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
 
     surface->upload_pending = false;
     surface->draw_time = pg->draw_time;
+
+    if (!surface->width || !surface->height) {
+        surface->initialized = true;
+        return;
+    }
 
     uint8_t *data = d->vram_ptr;
     uint8_t *buf = data + surface->vram_addr;

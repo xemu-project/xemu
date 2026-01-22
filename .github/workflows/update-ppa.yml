@@ -1,0 +1,46 @@
+# Sync archive version of source (including submodule code) to the
+# ppa-snapshot branch to work around limitations of the Launchpad platform,
+# namely: no network egress on package build, no custom scripting in source
+# package creation.
+
+name: Update PPA Snapshot
+
+on:
+  workflow_call:
+    inputs:
+      release:
+        description: "Release to use for snapshot"
+        required: true
+        type: string
+
+jobs:
+  push_to_ppa:
+    name: Push to PPA Snapshot Branch
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download release source
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh release download "${{ inputs.release }}" --repo="${GITHUB_REPOSITORY}" -p 'xemu-*.tar.zst'
+    - name: Extract source package
+      run: |
+        mkdir src
+        tar -C src -xf xemu-*.tar.zst --strip-components=2
+
+        # Ensure subprojects are uploaded
+        find src/subprojects -name "*.gitignore" -exec rm {} \;
+    - name: Create minimal changelog
+      run: |
+        pushd src
+        echo -e "\
+        xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
+          Built from $(cat XEMU_VERSION)\n\
+         -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" > debian/changelog
+        popd
+    - name: Deploy source archive to branch
+      uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e # v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./src
+        publish_branch: ppa-snapshot
+        force_orphan: true

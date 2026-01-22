@@ -294,7 +294,12 @@ static ssize_t tcp_chr_recv(Chardev *chr, char *buf, size_t len)
     }
 
     if (msgfds_num) {
-        /* close and clean read_msgfds */
+        /*
+         * Close and clean previous read_msgfds, they are obsolete at
+         * this point, regardless result of new call to
+         * qio_channel_readv_full().
+         */
+
         for (i = 0; i < s->read_msgfds_num; i++) {
             close(s->read_msgfds[i]);
         }
@@ -305,20 +310,6 @@ static ssize_t tcp_chr_recv(Chardev *chr, char *buf, size_t len)
 
         s->read_msgfds = msgfds;
         s->read_msgfds_num = msgfds_num;
-    }
-
-    for (i = 0; i < s->read_msgfds_num; i++) {
-        int fd = s->read_msgfds[i];
-        if (fd < 0) {
-            continue;
-        }
-
-        /* O_NONBLOCK is preserved across SCM_RIGHTS so reset it */
-        qemu_socket_set_block(fd);
-
-#ifndef MSG_CMSG_CLOEXEC
-        qemu_set_cloexec(fd);
-#endif
     }
 
     if (ret == QIO_CHANNEL_ERR_BLOCK) {
@@ -497,7 +488,7 @@ static gboolean tcp_chr_read(QIOChannel *chan, GIOCondition cond, void *opaque)
 {
     Chardev *chr = CHARDEV(opaque);
     SocketChardev *s = SOCKET_CHARDEV(opaque);
-    uint8_t buf[CHR_READ_BUF_LEN];
+    QEMU_UNINITIALIZED uint8_t buf[CHR_READ_BUF_LEN];
     int len, size;
 
     if ((s->state != TCP_CHARDEV_STATE_CONNECTED) ||
@@ -539,16 +530,24 @@ static int tcp_chr_sync_read(Chardev *chr, const uint8_t *buf, int len)
     SocketChardev *s = SOCKET_CHARDEV(chr);
     int size;
     int saved_errno;
+    Error *local_err = NULL;
 
     if (s->state != TCP_CHARDEV_STATE_CONNECTED) {
         return 0;
     }
 
-    qio_channel_set_blocking(s->ioc, true, NULL);
+    if (!qio_channel_set_blocking(s->ioc, true, &local_err)) {
+        error_report_err(local_err);
+        return -1;
+    }
     size = tcp_chr_recv(chr, (void *) buf, len);
     saved_errno = errno;
     if (s->state != TCP_CHARDEV_STATE_DISCONNECTED) {
-        qio_channel_set_blocking(s->ioc, false, NULL);
+        if (!qio_channel_set_blocking(s->ioc, false, &local_err)) {
+            error_report_err(local_err);
+            /* failed to recover non-blocking state */
+            tcp_chr_disconnect(chr);
+        }
     }
     if (size == 0) {
         /* connection closed */
@@ -571,9 +570,13 @@ static char *qemu_chr_compute_filename(SocketChardev *s)
 
     switch (ss->ss_family) {
     case AF_UNIX:
-        return g_strdup_printf("unix:%s%s",
-                               ((struct sockaddr_un *)(ss))->sun_path,
-                               s->is_listen ? ",server=on" : "");
+        if (s->is_listen) {
+            return g_strdup_printf("unix:%s,server=on",
+                                   ((struct sockaddr_un *)(ss))->sun_path);
+        } else {
+            return g_strdup_printf("unix:%s",
+                                   ((struct sockaddr_un *)(ps))->sun_path);
+        }
     case AF_INET6:
         left  = "[";
         right = "]";
@@ -889,8 +892,14 @@ static void tcp_chr_set_client_ioc_name(Chardev *chr,
 static int tcp_chr_new_client(Chardev *chr, QIOChannelSocket *sioc)
 {
     SocketChardev *s = SOCKET_CHARDEV(chr);
+    Error *local_err = NULL;
 
     if (s->state != TCP_CHARDEV_STATE_CONNECTING) {
+        return -1;
+    }
+
+    if (!qio_channel_set_blocking(QIO_CHANNEL(sioc), false, &local_err)) {
+        error_report_err(local_err);
         return -1;
     }
 
@@ -898,8 +907,6 @@ static int tcp_chr_new_client(Chardev *chr, QIOChannelSocket *sioc)
     object_ref(OBJECT(sioc));
     s->sioc = sioc;
     object_ref(OBJECT(sioc));
-
-    qio_channel_set_blocking(s->ioc, false, NULL);
 
     if (s->do_nodelay) {
         qio_channel_set_delay(s->ioc, false);
@@ -1248,7 +1255,7 @@ static int qmp_chardev_open_socket_server(Chardev *chr,
     }
 
     qapi_free_SocketAddress(s->addr);
-    s->addr = socket_local_address(s->listener->sioc[0]->fd, errp);
+    s->addr = qio_net_listener_get_local_address(s->listener, 0, errp);
 
 skip_listen:
     update_disconnected_filename(s);
@@ -1289,9 +1296,9 @@ static bool qmp_chardev_validate_socket(ChardevSocket *sock,
     /* Validate any options which have a dependency on address type */
     switch (addr->type) {
     case SOCKET_ADDRESS_TYPE_FD:
-        if (sock->has_reconnect) {
+        if (sock->has_reconnect_ms) {
             error_setg(errp,
-                       "'reconnect' option is incompatible with "
+                       "'reconnect-ms' option is incompatible with "
                        "'fd' address type");
             return false;
         }
@@ -1335,9 +1342,9 @@ static bool qmp_chardev_validate_socket(ChardevSocket *sock,
 
     /* Validate any options which have a dependency on client vs server */
     if (!sock->has_server || sock->server) {
-        if (sock->has_reconnect) {
+        if (sock->has_reconnect_ms) {
             error_setg(errp,
-                       "'reconnect' option is incompatible with "
+                       "'reconnect-ms' option is incompatible with "
                        "socket in server listen mode");
             return false;
         }
@@ -1352,12 +1359,6 @@ static bool qmp_chardev_validate_socket(ChardevSocket *sock,
                        "socket in client connect mode");
             return false;
         }
-    }
-
-    if (sock->has_reconnect_ms && sock->has_reconnect) {
-        error_setg(errp,
-            "'reconnect' and 'reconnect-ms' are mutually exclusive");
-        return false;
     }
 
     return true;
@@ -1377,7 +1378,7 @@ static void qmp_chardev_open_socket(Chardev *chr,
     bool is_tn3270      = sock->has_tn3270  ? sock->tn3270  : false;
     bool is_waitconnect = sock->has_wait    ? sock->wait    : false;
     bool is_websock     = sock->has_websocket ? sock->websocket : false;
-    int64_t reconnect_ms = 0;
+    int64_t reconnect_ms = sock->has_reconnect_ms ? sock->reconnect_ms : 0;
     SocketAddress *addr;
 
     s->is_listen = is_listen;
@@ -1449,12 +1450,6 @@ static void qmp_chardev_open_socket(Chardev *chr,
             return;
         }
     } else {
-        if (sock->has_reconnect) {
-            reconnect_ms = sock->reconnect * 1000ULL;
-        } else if (sock->has_reconnect_ms) {
-            reconnect_ms = sock->reconnect_ms;
-        }
-
         if (qmp_chardev_open_socket_client(chr, reconnect_ms, errp) < 0) {
             return;
         }
@@ -1519,8 +1514,6 @@ static void qemu_chr_parse_socket(QemuOpts *opts, ChardevBackend *backend,
      */
     sock->has_wait = qemu_opt_find(opts, "wait") || sock->server;
     sock->wait = qemu_opt_get_bool(opts, "wait", true);
-    sock->has_reconnect = qemu_opt_find(opts, "reconnect");
-    sock->reconnect = qemu_opt_get_number(opts, "reconnect", 0);
     sock->has_reconnect_ms = qemu_opt_find(opts, "reconnect-ms");
     sock->reconnect_ms = qemu_opt_get_number(opts, "reconnect-ms", 0);
 
@@ -1577,7 +1570,7 @@ char_socket_get_connected(Object *obj, Error **errp)
     return s->state == TCP_CHARDEV_STATE_CONNECTED;
 }
 
-static void char_socket_class_init(ObjectClass *oc, void *data)
+static void char_socket_class_init(ObjectClass *oc, const void *data)
 {
     ChardevClass *cc = CHARDEV_CLASS(oc);
 

@@ -18,15 +18,16 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/audio/model.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "hw/hw.h"
 #include "ui/console.h"
 #include "hw/usb.h"
 #include "hw/usb/desc.h"
 #include "ui/xemu-input.h"
-#include "audio/audio.h"
+#include "qemu/audio.h"
 #include "qemu/fifo8.h"
 
 //#define DEBUG_XBLC
@@ -63,7 +64,7 @@ typedef struct USBXBLCState {
     uint8_t   auto_gain_control;
     uint16_t  sample_rate;
 
-    QEMUSoundCard card;
+    AudioBackend *audio_be;
     struct audsettings as;
 
     struct {
@@ -232,10 +233,10 @@ static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
     s->as.fmt = AUDIO_FORMAT_S16;
     s->as.endianness = 0;
 
-    s->out.voice = AUD_open_out(&s->card, s->out.voice, TYPE_USB_XBLC "-speaker",
+    s->out.voice = AUD_open_out(s->audio_be, s->out.voice, TYPE_USB_XBLC "-speaker",
                                 s, output_callback, &s->as);
 
-    s->in.voice = AUD_open_in(&s->card, s->in.voice, TYPE_USB_XBLC "-microphone",
+    s->in.voice = AUD_open_in(s->audio_be, s->in.voice, TYPE_USB_XBLC "-microphone",
                                 s, input_callback, &s->as);
 
     AUD_set_active_out(s->out.voice, TRUE);
@@ -330,12 +331,11 @@ static void usb_xbox_communicator_unrealize(USBDevice *dev)
     fifo8_destroy(&s->out.fifo);
     fifo8_destroy(&s->in.fifo);
 
-    AUD_close_out(&s->card, s->out.voice);
-    AUD_close_in(&s->card, s->in.voice);
-    AUD_remove_card(&s->card);
+    AUD_close_out(s->audio_be, s->out.voice);
+    AUD_close_in(s->audio_be, s->in.voice);
 }
 
-static void usb_xblc_class_initfn(ObjectClass *klass, void *data)
+static void usb_xblc_class_init(ObjectClass *klass, const void *data)
 {
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
     uc->handle_reset   = usb_xblc_handle_reset;
@@ -349,15 +349,17 @@ static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
     USBXBLCState *s = USB_XBLC(dev);
     usb_desc_create_serial(dev);
     usb_desc_init(dev);
-    AUD_register_card(TYPE_USB_XBLC, &s->card, errp);
+
+    if (!AUD_backend_check(&s->audio_be, errp)) {
+        return;
+    }
 
     fifo8_create(&s->in.fifo, XBLC_FIFO_SIZE);
     fifo8_create(&s->out.fifo, XBLC_FIFO_SIZE);
 }
 
-static Property xblc_properties[] = {
+static const Property xblc_properties[] = {
     DEFINE_PROP_UINT8("index", USBXBLCState, device_index, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const VMStateDescription usb_xblc_vmstate = {
@@ -371,7 +373,7 @@ static const VMStateDescription usb_xblc_vmstate = {
     },
 };
 
-static void usb_xbox_communicator_class_initfn(ObjectClass *klass, void *data)
+static void usb_xbox_communicator_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
@@ -380,7 +382,7 @@ static void usb_xbox_communicator_class_initfn(ObjectClass *klass, void *data)
     uc->usb_desc       = &desc_xblc;
     uc->realize        = usb_xbox_communicator_realize;
     uc->unrealize      = usb_xbox_communicator_unrealize;
-    usb_xblc_class_initfn(klass, data);
+    usb_xblc_class_init(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd  = &usb_xblc_vmstate;
     device_class_set_props(dc, xblc_properties);
@@ -391,12 +393,13 @@ static const TypeInfo info_xblc = {
     .name          = TYPE_USB_XBLC,
     .parent        = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBXBLCState),
-    .class_init    = usb_xbox_communicator_class_initfn,
+    .class_init    = usb_xbox_communicator_class_init,
 };
 
 static void usb_xblc_register_types(void)
 {
     type_register_static(&info_xblc);
+    audio_register_model("xblc", XBLC_STR, TYPE_USB_XBLC);
 }
 
 type_init(usb_xblc_register_types)

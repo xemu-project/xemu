@@ -85,7 +85,7 @@ static void smbus_xcalibur_realize(DeviceState *dev, Error **errp)
     cx->cmd = 0;
 }
 
-static void smbus_xcalibur_class_initfn(ObjectClass *klass, void *data)
+static void smbus_xcalibur_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     SMBusDeviceClass *sc = SMBUS_DEVICE_CLASS(klass);
@@ -100,7 +100,7 @@ static TypeInfo smbus_xcalibur_info = {
     .name = TYPE_SMBUS_xcalibur,
     .parent = TYPE_SMBUS_DEVICE,
     .instance_size = sizeof(SMBusxcaliburDevice),
-    .class_init = smbus_xcalibur_class_initfn,
+    .class_init = smbus_xcalibur_class_init,
 };
 
 static void smbus_xcalibur_register_devices(void)

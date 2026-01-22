@@ -9,7 +9,7 @@
 #ifndef KVM_PPC_H
 #define KVM_PPC_H
 
-#include "sysemu/kvm.h"
+#include "system/kvm.h"
 #include "exec/hwaddr.h"
 #include "cpu.h"
 
@@ -21,8 +21,6 @@
 
 uint32_t kvmppc_get_tbfreq(void);
 uint64_t kvmppc_get_clockfreq(void);
-bool kvmppc_get_host_model(char **buf);
-bool kvmppc_get_host_serial(char **buf);
 int kvmppc_get_hasidle(CPUPPCState *env);
 int kvmppc_get_hypercall(CPUPPCState *env, uint8_t *buf, int buf_len);
 int kvmppc_set_interrupt(PowerPCCPU *cpu, int irq, int level);
@@ -68,6 +66,8 @@ bool kvmppc_has_cap_htm(void);
 bool kvmppc_has_cap_mmu_radix(void);
 bool kvmppc_has_cap_mmu_hash_v3(void);
 bool kvmppc_has_cap_xive(void);
+bool kvmppc_has_cap_dawr1(void);
+int kvmppc_set_cap_dawr1(int enable);
 int kvmppc_get_cap_safe_cache(void);
 int kvmppc_get_cap_safe_bounds_check(void);
 int kvmppc_get_cap_safe_indirect_branch(void);
@@ -125,16 +125,6 @@ static inline void kvmppc_icbi_range(PowerPCCPU *cpu, uint8_t *addr, int len)
 static inline uint32_t kvmppc_get_tbfreq(void)
 {
     return 0;
-}
-
-static inline bool kvmppc_get_host_model(char **buf)
-{
-    return false;
-}
-
-static inline bool kvmppc_get_host_serial(char **buf)
-{
-    return false;
 }
 
 static inline uint64_t kvmppc_get_clockfreq(void)
@@ -219,7 +209,6 @@ static inline int kvmppc_smt_threads(void)
 
 static inline void kvmppc_error_append_smt_possible_hint(Error *const *errp)
 {
-    return;
 }
 
 static inline int kvmppc_set_smt_threads(int smt)
@@ -257,7 +246,6 @@ static inline target_ulong kvmppc_configure_v3_mmu(PowerPCCPU *cpu,
 static inline void kvmppc_set_reg_ppc_online(PowerPCCPU *cpu,
                                              unsigned int online)
 {
-    return;
 }
 
 static inline void kvmppc_set_reg_tb_offset(PowerPCCPU *cpu, int64_t tb_offset)
@@ -377,6 +365,16 @@ static inline bool kvmppc_has_cap_xive(void)
     return false;
 }
 
+static inline bool kvmppc_has_cap_dawr1(void)
+{
+    return false;
+}
+
+static inline int kvmppc_set_cap_dawr1(int enable)
+{
+    abort();
+}
+
 static inline int kvmppc_get_cap_safe_cache(void)
 {
     return 0;
@@ -444,7 +442,6 @@ static inline PowerPCCPUClass *kvm_ppc_get_host_cpu_class(void)
 
 static inline void kvmppc_check_papr_resize_hpt(Error **errp)
 {
-    return;
 }
 
 static inline int kvmppc_resize_hpt_prepare(PowerPCCPU *cpu,

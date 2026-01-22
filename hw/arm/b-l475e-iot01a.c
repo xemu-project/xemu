@@ -29,6 +29,7 @@
 #include "qemu/error-report.h"
 #include "hw/arm/boot.h"
 #include "hw/core/split-irq.h"
+#include "hw/arm/machines-qom.h"
 #include "hw/arm/stm32l4x5_soc.h"
 #include "hw/gpio/stm32l4x5_gpio.h"
 #include "hw/display/dm163.h"
@@ -82,7 +83,7 @@ static void bl475e_init(MachineState *machine)
     sysbus_realize(SYS_BUS_DEVICE(&s->soc), &error_fatal);
 
     sc = STM32L4X5_SOC_GET_CLASS(&s->soc);
-    armv7m_load_kernel(ARM_CPU(first_cpu), machine->kernel_filename, 0,
+    armv7m_load_kernel(s->soc.armv7m.cpu, machine->kernel_filename, 0,
                        sc->flash_size);
 
     if (object_class_by_name(TYPE_DM163)) {
@@ -110,7 +111,7 @@ static void bl475e_init(MachineState *machine)
     }
 }
 
-static void bl475e_machine_init(ObjectClass *oc, void *data)
+static void bl475e_machine_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     static const char *machine_valid_cpu_types[] = {
@@ -131,6 +132,7 @@ static const TypeInfo bl475e_machine_type[] = {
         .parent         = TYPE_MACHINE,
         .instance_size  = sizeof(Bl475eMachineState),
         .class_init     = bl475e_machine_init,
+        .interfaces     = arm_machine_interfaces,
     }
 };
 

@@ -177,25 +177,22 @@ static int socket_error(void)
     }
 }
 
-void qemu_socket_set_block(int fd)
+bool qemu_set_blocking(int fd, bool block, Error **errp)
 {
-    unsigned long opt = 0;
-    qemu_socket_unselect(fd, NULL);
-    ioctlsocket(fd, FIONBIO, &opt);
-}
+    unsigned long opt = block ? 0 : 1;
 
-int qemu_socket_try_set_nonblock(int fd)
-{
-    unsigned long opt = 1;
-    if (ioctlsocket(fd, FIONBIO, &opt) != NO_ERROR) {
-        return -socket_error();
+    if (block) {
+        qemu_socket_unselect_nofail(fd);
     }
-    return 0;
-}
 
-void qemu_socket_set_nonblock(int fd)
-{
-    (void)qemu_socket_try_set_nonblock(fd);
+    if (ioctlsocket(fd, FIONBIO, &opt) != NO_ERROR) {
+        error_setg_errno(errp, socket_error(),
+                         "Can't set file descriptor %d %s", fd,
+                         block ? "blocking" : "non-blocking");
+        return false;
+    }
+
+    return true;
 }
 
 int socket_set_fast_reuse(int fd)
@@ -219,6 +216,10 @@ int inet_aton(const char *cp, struct in_addr *ia)
 }
 
 void qemu_set_cloexec(int fd)
+{
+}
+
+void qemu_clear_cloexec(int fd)
 {
 }
 
@@ -296,10 +297,6 @@ bool qemu_socket_select(int sockfd, WSAEVENT hEventObject,
 {
     SOCKET s = _get_osfhandle(sockfd);
 
-    if (errp == NULL) {
-        errp = &error_warn;
-    }
-
     if (s == INVALID_SOCKET) {
         error_setg(errp, "invalid socket fd=%d", sockfd);
         return false;
@@ -316,6 +313,25 @@ bool qemu_socket_select(int sockfd, WSAEVENT hEventObject,
 bool qemu_socket_unselect(int sockfd, Error **errp)
 {
     return qemu_socket_select(sockfd, NULL, 0, errp);
+}
+
+void qemu_socket_select_nofail(int sockfd, WSAEVENT hEventObject,
+                               long lNetworkEvents)
+{
+    Error *err = NULL;
+
+    if (!qemu_socket_select(sockfd, hEventObject, lNetworkEvents, &err)) {
+        warn_report_err(err);
+    }
+}
+
+void qemu_socket_unselect_nofail(int sockfd)
+{
+    Error *err = NULL;
+
+    if (!qemu_socket_unselect(sockfd, &err)) {
+        warn_report_err(err);
+    }
 }
 
 int qemu_socketpair(int domain, int type, int protocol, int sv[2])
@@ -925,4 +941,10 @@ void qemu_win32_map_free(void *ptr, HANDLE h, Error **errp)
         error_setg_win32(errp, GetLastError(), "Failed to UnmapViewOfFile");
     }
     CloseHandle(h);
+}
+
+int qemu_shm_alloc(size_t size, Error **errp)
+{
+    error_setg(errp, "Shared memory is not supported.");
+    return -1;
 }

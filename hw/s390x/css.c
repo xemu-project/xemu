@@ -14,7 +14,7 @@
 #include "qapi/visitor.h"
 #include "qemu/bitops.h"
 #include "qemu/error-report.h"
-#include "exec/address-spaces.h"
+#include "system/address-spaces.h"
 #include "hw/s390x/ioinst.h"
 #include "hw/qdev-properties.h"
 #include "hw/s390x/css.h"
@@ -22,8 +22,6 @@
 #include "hw/s390x/s390_flic.h"
 #include "hw/s390x/s390-virtio-ccw.h"
 #include "hw/s390x/s390-ccw.h"
-
-bool css_migration_enabled = true;
 
 typedef struct CrwContainer {
     CRW crw;
@@ -180,16 +178,10 @@ static const VMStateDescription vmstate_orb = {
     }
 };
 
-static bool vmstate_schdev_orb_needed(void *opaque)
-{
-    return css_migration_enabled;
-}
-
 static const VMStateDescription vmstate_schdev_orb = {
     .name = "s390_subch_dev/orb",
     .version_id = 1,
     .minimum_version_id = 1,
-    .needed = vmstate_schdev_orb_needed,
     .fields = (const VMStateField[]) {
         VMSTATE_STRUCT(orb, SubchDev, 1, vmstate_orb, ORB),
         VMSTATE_END_OF_LIST()
@@ -390,33 +382,12 @@ static int subch_dev_post_load(void *opaque, int version_id)
         css_subch_assign(s->cssid, s->ssid, s->schid, s->devno, s);
     }
 
-    if (css_migration_enabled) {
-        /* No compat voodoo to do ;) */
-        return 0;
-    }
-    /*
-     * Hack alert. If we don't migrate the channel subsystem status
-     * we still need to find out if the guest enabled mss/mcss-e.
-     * If the subchannel is enabled, it certainly was able to access it,
-     * so adjust the max_ssid/max_cssid values for relevant ssid/cssid
-     * values. This is not watertight, but better than nothing.
-     */
-    if (s->curr_status.pmcw.flags & PMCW_FLAGS_MASK_ENA) {
-        if (s->ssid) {
-            channel_subsys.max_ssid = MAX_SSID;
-        }
-        if (s->cssid != channel_subsys.default_cssid) {
-            channel_subsys.max_cssid = MAX_CSSID;
-        }
-    }
     return 0;
 }
 
 void css_register_vmstate(void)
 {
-    if (css_migration_enabled) {
-        vmstate_register(NULL, 0, &vmstate_css, &channel_subsys);
-    }
+    vmstate_register(NULL, 0, &vmstate_css, &channel_subsys);
 }
 
 IndAddr *get_indicator(hwaddr ind_addr, int len)
@@ -2463,7 +2434,7 @@ void css_reset(void)
 static void get_css_devid(Object *obj, Visitor *v, const char *name,
                           void *opaque, Error **errp)
 {
-    Property *prop = opaque;
+    const Property *prop = opaque;
     CssDevId *dev_id = object_field_prop_ptr(obj, prop);
     char buffer[] = "xx.x.xxxx";
     char *p = buffer;
@@ -2492,7 +2463,7 @@ static void get_css_devid(Object *obj, Visitor *v, const char *name,
 static void set_css_devid(Object *obj, Visitor *v, const char *name,
                           void *opaque, Error **errp)
 {
-    Property *prop = opaque;
+    const Property *prop = opaque;
     CssDevId *dev_id = object_field_prop_ptr(obj, prop);
     char *str;
     int num, n1, n2;
@@ -2523,7 +2494,7 @@ out:
 }
 
 const PropertyInfo css_devid_propinfo = {
-    .name = "str",
+    .type = "str",
     .description = "Identifier of an I/O device in the channel "
                    "subsystem, example: fe.1.23ab",
     .get = get_css_devid,
@@ -2531,7 +2502,7 @@ const PropertyInfo css_devid_propinfo = {
 };
 
 const PropertyInfo css_devid_ro_propinfo = {
-    .name = "str",
+    .type = "str",
     .description = "Read-only identifier of an I/O device in the channel "
                    "subsystem, example: fe.1.23ab",
     .get = get_css_devid,

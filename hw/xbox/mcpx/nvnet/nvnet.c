@@ -1048,12 +1048,11 @@ static const VMStateDescription vmstate_nvnet = {
     // clang-format on
 };
 
-static Property nvnet_properties[] = {
+static const Property nvnet_properties[] = {
     DEFINE_NIC_PROPERTIES(NvNetState, conf),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void nvnet_class_init(ObjectClass *klass, void *data)
+static void nvnet_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);

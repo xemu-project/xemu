@@ -10,10 +10,11 @@
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
 #include "hw/boards.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "hw/xen/arch_hvm.h"
 #include <xen/hvm/hvm_info_table.h>
 #include "hw/xen/xen-pvh-common.h"
+#include "target/i386/cpu.h"
 
 #define TYPE_XEN_PVH_X86  MACHINE_TYPE_NAME("xenpvh")
 OBJECT_DECLARE_SIMPLE_TYPE(XenPVHx86State, XEN_PVH_X86)
@@ -75,7 +76,7 @@ static void xen_pvh_set_pci_intx_irq(void *opaque, int irq, int level)
     }
 }
 
-static void xen_pvh_machine_class_init(ObjectClass *oc, void *data)
+static void xen_pvh_machine_class_init(ObjectClass *oc, const void *data)
 {
     XenPVHMachineClass *xpc = XEN_PVH_MACHINE_CLASS(oc);
     MachineClass *mc = MACHINE_CLASS(oc);

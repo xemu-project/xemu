@@ -1,489 +1,78 @@
 name: Build
 
 on:
-  push:
-    paths-ignore:
-      - '.github/**'
-      - '!.github/workflows/build.yml'
-      - 'README.md'
-      - 'ubuntu-win64-cross/**'
-  pull_request:
-    paths-ignore:
-      - '.github/**'
-      - '!.github/workflows/build.yml'
-      - 'README.md'
-      - 'ubuntu-win64-cross/**'
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref (commit, branch, or tag) to build
+        required: true
+        type: string
+    outputs:
+      pkg_version:
+        description: Build version
+        value: ${{ jobs.source.outputs.pkg_version }}
 
 jobs:
-  Init:
+  source:
     name: Create source package
     runs-on: ubuntu-latest
+    outputs:
+      pkg_version: ${{ steps.version.outputs.pkg_version }}
     steps:
     - name: Clone tree
       uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
       with:
         fetch-depth: 0
+        ref: ${{ inputs.ref }}
     - name: Install dependencies
       run: sudo apt-get install meson
-    # On push to master, increment patch version and create a new tag on release
-    - name: Increment patch version
-      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    - name: Determine release version
+      id: version
       run: |
-        git config user.name "nobody"
-        git config user.email "nobody@nowhere"
-        VERSION=$(git describe --tags --match 'v*' --abbrev=0 | xargs ./scripts/increment-semver.py)
-        git tag -a $VERSION -m $VERSION
-        echo "Generated new release version: $VERSION"
-    # GitHub treats the new tag as lightweight, so older tags will shadow the
-    # new tag. Recreate it as an annotated tag now so the version script picks
-    # it up properly.
-    - name: Annotate release tag
-      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-      run: |
-        git config user.name "nobody"
-        git config user.email "nobody@nowhere"
-        VERSION=${GITHUB_REF/refs\/tags\//}
-        git tag -a -f $VERSION $VERSION -m $VERSION
-        echo "Recreated release tag: $VERSION"
+        if TAG=$(git describe --tags --match 'v*' 2>/dev/null); then
+          echo "pkg_version=${TAG#v}" >> $GITHUB_OUTPUT
+        else
+          SHORT_HASH=$(git rev-parse --short HEAD)
+          echo "pkg_version=0.0.0-0-unofficial-${SHORT_HASH}" >> $GITHUB_OUTPUT
+        fi
     - name: Create source package
+      id: package
       run: |
-        ./scripts/archive-source.sh src.tar
-        gzip -1 src.tar
+        pkg_name="xemu-${{ steps.version.outputs.pkg_version }}"
+        tar_filename="${pkg_name}.tar"
+        tar_prefix="./${pkg_name}/"
+        ./scripts/archive-source.sh ${tar_filename} ${tar_prefix}
+
+        echo -n ${{ github.sha }} > XEMU_COMMIT
+        echo -n ${{ steps.version.outputs.pkg_version }} > XEMU_VERSION
+        tar -r --file "${tar_filename}" --transform "s,^./,${tar_prefix}," ./XEMU_COMMIT ./XEMU_VERSION
+
+        zstd "${tar_filename}"
+        echo "pkg_filename=${tar_filename}.zst" >> $GITHUB_OUTPUT
     - name: Upload source package artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
-        name: src.tar.gz
-        path: src.tar.gz
+        name: src
+        path: ${{ steps.package.outputs.pkg_filename }}
+        compression-level: 0
 
-  Windows:
-    name: Build for Windows (${{ matrix.arch }}, ${{ matrix.configuration }}) on Ubuntu
-    runs-on: ubuntu-latest
-    needs: Init
-    strategy:
-      matrix:
-        include:
-        - configuration: Debug
-          build_param: --debug
-          artifact_name: xemu-win-x86_64-debug
-          arch: x86_64
-        - configuration: Release
-          build_param:
-          artifact_name: xemu-win-x86_64-release
-          arch: x86_64
-        - configuration: Debug
-          build_param: --debug
-          artifact_name: xemu-win-aarch64-debug
-          arch: aarch64
-        - configuration: Release
-          build_param:
-          artifact_name: xemu-win-aarch64-release
-          arch: aarch64
-    env:
-      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-0d06ce8
+  linux:
+    name: Linux
+    needs: source
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      pkg_version: ${{ needs.source.outputs.pkg_version }}
 
-    steps:
-    - name: Download source package
-      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
-      with:
-        name: src.tar.gz
-    - name: Extract source package
-      run: tar xf src.tar.gz
-    - name: Initialize compiler cache
-      id: cache
-      uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
-      with:
-        path: /tmp/xemu-ccache
-        key: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
-        restore-keys: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
-    - name: Pull Docker image
-      run: docker pull $DOCKER_IMAGE_NAME
-    - name: Compile
-      run: |
-        mkdir -p /tmp/xemu-ccache
-        docker run --rm \
-          -v $PWD:/xemu -w /xemu \
-          -v /tmp/xemu-ccache:/tmp/xemu-ccache \
-          -e CCACHE_DIR=/tmp/xemu-ccache \
-          -e CCACHE_MAXSIZE=512M \
-          -e CROSSPREFIX=${{ matrix.arch }}-w64-mingw32.static- \
-          -e CROSSAR=${{ matrix.arch }}-w64-mingw32.static-ar \
-          -u $(id -u):$(id -g) \
-          $DOCKER_IMAGE_NAME \
-            bash -c "ccache -z; ./build.sh -p win64-cross ${{ matrix.build_param }} && ccache -s"
-    - name: Upload build artifact
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
-      with:
-        name: ${{ matrix.artifact_name }}
-        path: dist
+  macos:
+    name: macOS
+    needs: source
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      pkg_version: ${{ needs.source.outputs.pkg_version }}
 
-  # Generate a symbols package for Windows. Use cv2pdb to generate PDBs from
-  # DWARF and update + strip the executable. Re-package the original release
-  # and create symbols package.
-  WindowsPdb:
-    name: Generate PDB for Windows (${{ matrix.arch }}, ${{ matrix.configuration }})
-    runs-on: windows-latest
-    needs: Windows
-    strategy:
-      matrix:
-        include:
-        - configuration: Debug
-          artifact_name: xemu-win-x86_64-debug
-          arch: x86_64
-        - configuration: Release
-          artifact_name: xemu-win-x86_64-release
-          arch: x86_64
-        - configuration: Debug
-          artifact_name: xemu-win-aarch64-debug
-          arch: aarch64
-        - configuration: Release
-          artifact_name: xemu-win-aarch64-release
-          arch: aarch64
-    steps:
-    - name: Download artifacts
-      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
-      with:
-        name: ${{ matrix.artifact_name }}
-        path: ${{ matrix.artifact_name }}
-    - name: Generate PDB
-      run: |
-        Invoke-WebRequest -Uri "https://github.com/rainers/cv2pdb/releases/download/v0.52/cv2pdb-0.52.zip" -OutFile "cv2pdb.zip"
-        Invoke-WebRequest -Uri "https://github.com/mstorsjo/llvm-mingw/releases/download/20241217/llvm-mingw-20241217-ucrt-x86_64.zip" -OutFile "llvm-mingw.zip"
-        7z x -ocv2pdb -y cv2pdb.zip
-        7z x -y llvm-mingw.zip
-        cd ${{ matrix.artifact_name }}
-        ../cv2pdb/cv2pdb64.exe xemu.exe
-        ../llvm-mingw-20241217-ucrt-x86_64/bin/${{ matrix.arch }}-w64-mingw32-strip.exe xemu.exe
-        mkdir ../dist
-        7z a -tzip ../dist/${{ matrix.artifact_name }}.zip * "-xr!*.pdb"
-        7z a -tzip ../dist/${{ matrix.artifact_name }}-pdb.zip "-ir!*.pdb"
-    - name: Upload build artifact
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
-      with:
-        name: ${{ matrix.artifact_name }}-pdb
-        path: dist
-
-  Ubuntu:
-    name: Build for Ubuntu (${{matrix.arch}}, ${{ matrix.configuration }})
-    runs-on: ${{ matrix.runs-on }}
-    needs: Init
-    strategy:
-      matrix:
-        include:
-        - arch: x86_64
-          configuration: Debug
-          build_param: --debug
-          artifact_name: xemu-ubuntu-x86_64-debug
-          artifact_filename: xemu-ubuntu-x86_64-debug.tgz
-          runs-on: ubuntu-22.04
-        - arch: x86_64
-          configuration: Release
-          build_param:
-          artifact_name: xemu-ubuntu-x86_64-release
-          artifact_filename: xemu-ubuntu-x86_64-release.tgz
-          runs-on: ubuntu-22.04
-        - arch: aarch64
-          configuration: Debug
-          build_param: --debug
-          artifact_name: xemu-ubuntu-aarch64-debug
-          artifact_filename: xemu-ubuntu-aarch64-debug.tgz
-          runs-on: ubuntu-22.04-arm
-        - arch: aarch64
-          configuration: Release
-          build_param:
-          artifact_name: xemu-ubuntu-aarch64-release
-          artifact_filename: xemu-ubuntu-aarch64-release.tgz
-          runs-on: ubuntu-22.04-arm
-    steps:
-    - name: Initialize compiler cache
-      id: cache
-      uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
-      with:
-        path: /tmp/xemu-ccache
-        key: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
-        restore-keys: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
-    - name: Download source package
-      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
-      with:
-        name: src.tar.gz
-    - name: Extract source package
-      run: |
-        mkdir src
-        tar -C src -xf src.tar.gz
-    - name: Create debian changelog
-      run: |
-        pushd src
-        echo -e "\
-        xemu (1:0.0.0-0) unstable; urgency=medium\n\
-          Built from $(cat XEMU_VERSION)\n\
-         -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" > debian/changelog
-        popd
-    - name: Install dependencies
-      run: |
-        export DEBIAN_FRONTEND=noninteractive
-        sudo apt-get -qy update
-        sudo apt-get install ccache libfuse2 libusb-1.0-0-dev
-        pushd src
-        sudo apt-get -qy build-dep .
-    - name: Compile
-      run: |
-        export CCACHE_DIR=/tmp/xemu-ccache
-        export CCACHE_MAXSIZE=512M
-        export PATH="/usr/lib/ccache:$PATH"
-        export XEMU_BUILD_OPTIONS="${{ matrix.build_param }}"
-        ccache -z
-
-        # XXX: dpkg-genbuildinfo takes two minutes on GH runners. Nuke it for now.
-        sudo rm /usr/bin/dpkg-genbuildinfo
-        sudo ln -s /bin/true /usr/bin/dpkg-genbuildinfo
-
-        pushd src
-        dpkg-buildpackage --no-sign -b
-        popd
-
-        mkdir -p dist
-        mv *.deb *.ddeb dist
-
-        echo -e "\n\nCompiler Cache Stats:"
-        ccache -s
-    - name: Test
-      run: |
-        pushd src/build
-        ./pyvenv/bin/meson test --suite xbox
-        popd
-    - name: Generate AppImage
-      run: |
-        wget --no-verbose https://github.com/linuxdeploy/linuxdeploy/releases/latest/download/linuxdeploy-${{ matrix.arch }}.AppImage
-        chmod +x linuxdeploy-${{ matrix.arch }}.AppImage
-
-        ar x dist/*.deb
-        mkdir appimage
-        tar -C appimage -xf data.tar*
-        install -DT src/xemu.metainfo.xml appimage/usr/share/metainfo/xemu.metainfo.xml
-
-        export VERSION=v$(cat src/XEMU_VERSION)
-        if [[ "${{ matrix.configuration }}" == "Debug" ]]; then
-          export VERSION=$VERSION-dbg
-        fi
-
-        ./linuxdeploy-${{ matrix.arch }}.AppImage --output appimage --appdir appimage
-        mv xemu-*.AppImage dist
-    - name: Bundle artifacts
-      run: |
-        tar -czvf ${{ matrix.artifact_filename }} --transform "s#^dist#xemu#" dist
-    - name: Upload build artifact
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
-      with:
-        name: ${{ matrix.artifact_name }}
-        path: ${{ matrix.artifact_filename }}
-
-  macOS:
-    name: Build for macOS (${{ matrix.arch }}, ${{ matrix.configuration }})
-    runs-on: macOS-14
-    needs: Init
-    strategy:
-      matrix:
-        include:
-        - arch: x86_64
-          configuration: Debug
-          build_param: --debug -a x86_64
-          artifact_name: xemu-macos-x86_64-debug
-          artifact_filename: xemu-macos-x86_64-debug.zip
-        - arch: x86_64
-          configuration: Release
-          build_param: -a x86_64
-          artifact_name: xemu-macos-x86_64-release
-          artifact_filename: xemu-macos-x86_64-release.zip
-        - arch: arm64
-          configuration: Debug
-          build_param: --debug -a arm64
-          artifact_name: xemu-macos-arm64-debug
-          artifact_filename: xemu-macos-arm64-debug.zip
-        - arch: arm64
-          configuration: Release
-          build_param: -a arm64
-          artifact_name: xemu-macos-arm64-release
-          artifact_filename: xemu-macos-arm64-release.zip
-    steps:
-    - name: Download source package
-      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
-      with:
-        name: src.tar.gz
-    - name: Extract source package
-      run: tar xf src.tar.gz
-    - uses: actions/setup-python@v6.1.0
-      with:
-        python-version: '3.12'
-    - name: Install dependencies
-      run: |
-        export HOMEBREW_NO_AUTO_UPDATE=1
-        export HOMEBREW_NO_INSTALL_CLEANUP=1
-        brew install \
-          ccache \
-          coreutils \
-          dylibbundler
-        pip install pyyaml requests
-    - name: Initialize compiler, library cache
-      id: cache
-      uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
-      with:
-        path: |
-          xemu-ccache
-          macos-pkgs
-        key: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
-        restore-keys: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
-    - name: Compile
-      run: |
-        export CCACHE_DIR=${GITHUB_WORKSPACE}/xemu-ccache
-        export CCACHE_MAXSIZE=512M
-        export PATH="/usr/local/opt/ccache/libexec:$PATH"
-        ccache -z
-        ./build.sh ${{ matrix.build_param }}
-        echo -e "\nCompiler Cache Stats:"
-        ccache -s
-        pushd dist
-        zip -r ../${{ matrix.artifact_filename }} *
-        popd
-    - name: Upload build artifact
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
-      with:
-        name: ${{ matrix.artifact_name }}
-        path: ${{ matrix.artifact_filename }}
-
-  macOSUniversal:
-    name: Build macOS Universal Bundle (${{ matrix.configuration }})
-    runs-on: macOS-14
-    needs: [macOS]
-    strategy:
-      matrix:
-        configuration: ["debug", "release"]
-    steps:
-    - name: Download x86_64 build
-      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
-      with:
-        name: xemu-macos-x86_64-${{ matrix.configuration }}
-        path: xemu-macos-x86_64-${{ matrix.configuration }}
-    - name: Download arm64 build
-      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
-      with:
-        name: xemu-macos-arm64-${{ matrix.configuration }}
-        path: xemu-macos-arm64-${{ matrix.configuration }}
-    - name: Build Universal bundle
-      run: |
-        mkdir dist
-        for arch in x86_64 arm64; do
-          pushd xemu-macos-${arch}-${{ matrix.configuration }}
-          unzip xemu-macos-${arch}-${{ matrix.configuration }}.zip
-          popd
-          pushd dist
-          unzip -o ../xemu-macos-${arch}-${{ matrix.configuration }}/xemu-macos-${arch}-${{ matrix.configuration }}.zip
-          popd
-        done
-        pushd dist
-        rm xemu.app/Contents/MacOS/xemu
-        lipo -create -output xemu.app/Contents/MacOS/xemu \
-          ../xemu-macos-x86_64-${{ matrix.configuration }}/xemu.app/Contents/MacOS/xemu \
-          ../xemu-macos-arm64-${{ matrix.configuration }}/xemu.app/Contents/MacOS/xemu
-        codesign --force --deep --preserve-metadata=entitlements,requirements,flags,runtime --sign - xemu.app/Contents/MacOS/xemu
-        zip -r ../xemu-macos-universal-${{ matrix.configuration }}.zip *
-        popd
-    - name: Upload build artifact
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
-      with:
-        name: xemu-macos-universal-${{ matrix.configuration }}
-        path: xemu-macos-universal-${{ matrix.configuration }}.zip
-
-  Release:
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-latest
-    needs: [Ubuntu, macOSUniversal, Windows, WindowsPdb]
-    steps:
-    - name: Download artifacts
-      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
-      with:
-        path: dist
-    - name: Extract source package
-      run: tar xf dist/src.tar.gz/src.tar.gz
-    - name: Get release info
-      run: |
-        echo "XEMU_VERSION=$(cat XEMU_VERSION)" >> $GITHUB_ENV
-    - name: Extract Ubuntu artifacts
-      run: |
-        for arch in x86_64 aarch64; do
-          for config in release debug; do
-            pushd dist/xemu-ubuntu-$arch-$config
-            tar xvf xemu-ubuntu-$arch-$config.tgz
-            popd
-          done
-        done
-    # Architecture tags were recently added to the Windows release path. Provide an alias with the former name for a while.
-    - name: Add transitionary package alias
-      run: |
-        cp dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release.zip dist/xemu-win-x86_64-release-pdb/xemu-win-release.zip
-    - name: Publish release
-      uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
-      with:
-        tag_name: v${{ env.XEMU_VERSION }}
-        name: v${{ env.XEMU_VERSION }}
-        prerelease: false
-        draft: false
-        files: |
-          dist/src.tar.gz/src.tar.gz
-          dist/xemu-win-aarch64-debug-pdb/xemu-win-aarch64-debug.zip
-          dist/xemu-win-aarch64-debug-pdb/xemu-win-aarch64-debug-pdb.zip
-          dist/xemu-win-aarch64-release-pdb/xemu-win-aarch64-release.zip
-          dist/xemu-win-aarch64-release-pdb/xemu-win-aarch64-release-pdb.zip
-          dist/xemu-win-x86_64-debug-pdb/xemu-win-x86_64-debug.zip
-          dist/xemu-win-x86_64-debug-pdb/xemu-win-x86_64-debug-pdb.zip
-          dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release.zip
-          dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release-pdb.zip
-          dist/xemu-win-x86_64-release-pdb/xemu-win-release.zip
-          dist/xemu-macos-universal-release/xemu-macos-universal-release.zip
-          dist/xemu-macos-universal-debug/xemu-macos-universal-debug.zip
-          dist/xemu-ubuntu-x86_64-debug/xemu/xemu-v${{ env.XEMU_VERSION }}-dbg-x86_64.AppImage
-          dist/xemu-ubuntu-x86_64-release/xemu/xemu-v${{ env.XEMU_VERSION }}-x86_64.AppImage
-          dist/xemu-ubuntu-aarch64-debug/xemu/xemu-v${{ env.XEMU_VERSION }}-dbg-aarch64.AppImage
-          dist/xemu-ubuntu-aarch64-release/xemu/xemu-v${{ env.XEMU_VERSION }}-aarch64.AppImage
-    - name: Trigger website update
-      uses: benc-uk/workflow-dispatch@e2e5e9a103e331dad343f381a29e654aea3cf8fc # v1.2.4
-      with:
-        workflow: build.yml
-        repo: xemu-project/xemu-website
-        token: ${{ secrets.XEMU_ROBOT_TOKEN }}
-        ref: master
-
-  # Sync archive version of source (including submodule code) to the
-  # ppa-snapshot branch to work around limitations of the Launchpad platform,
-  # namely: no network egress on package build, no custom scripting in source
-  # package creation.
-  PushToPPA:
-    name: Push to PPA Snapshot Branch
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [Ubuntu, macOSUniversal, Windows, WindowsPdb]
-    runs-on: ubuntu-latest
-    steps:
-    - name: Download source package
-      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
-      with:
-        name: src.tar.gz
-    - name: Extract source package
-      run: |
-        mkdir src
-        tar -C src -xf src.tar.gz
-
-        # Ensure subprojects are uploaded
-        find src/subprojects -name "*.gitignore" -exec rm {} \;
-    - name: Integrate Debian packaging
-      run: |
-        pushd src
-        echo -e "\
-        xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
-          Built from $(cat XEMU_VERSION)\n\
-         -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" > debian/changelog
-        popd
-    - name: Deploy source archive to branch
-      uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e # v3
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./src
-        publish_branch: ppa-snapshot
-        force_orphan: true
+  windows:
+    name: Windows
+    needs: source
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      pkg_version: ${{ needs.source.outputs.pkg_version }}

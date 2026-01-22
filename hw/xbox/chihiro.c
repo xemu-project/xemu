@@ -152,7 +152,7 @@ static void chihiro_lpc_realize(DeviceState *dev, Error **errp)
     isa_register_ioport(isa, &s->ioport, 0x4000);
 }
 
-static void chihiro_lpc_class_initfn(ObjectClass *klass, void *data)
+static void chihiro_lpc_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     dc->realize = chihiro_lpc_realize;
@@ -163,7 +163,7 @@ static const TypeInfo chihiro_lpc_info = {
     .name          = "chihiro-lpc",
     .parent        = TYPE_ISA_DEVICE,
     .instance_size = sizeof(ChihiroLPCState),
-    .class_init    = chihiro_lpc_class_initfn,
+    .class_init    = chihiro_lpc_class_init,
 };
 
 static void chihiro_register_types(void)
@@ -381,7 +381,7 @@ static const TypeInfo pc_machine_type_chihiro = {
 
 static void pc_machine_init_chihiro(void)
 {
-    type_register(&pc_machine_type_chihiro);
+    type_register_static(&pc_machine_type_chihiro);
 }
 
 type_init(pc_machine_init_chihiro)

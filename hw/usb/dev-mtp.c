@@ -123,10 +123,12 @@ typedef struct {
 
 /* ----------------------------------------------------------------------- */
 
-typedef struct MTPState MTPState;
 typedef struct MTPControl MTPControl;
 typedef struct MTPData MTPData;
 typedef struct MTPObject MTPObject;
+
+#define TYPE_USB_MTP "usb-mtp"
+OBJECT_DECLARE_SIMPLE_TYPE(MTPState, USB_MTP)
 
 enum {
     EP_DATA_IN = 1,
@@ -235,9 +237,6 @@ typedef struct {
     char keywords[0]; /*unused*/
     /* string and other data follows */
 } QEMU_PACKED ObjectInfo;
-
-#define TYPE_USB_MTP "usb-mtp"
-OBJECT_DECLARE_SIMPLE_TYPE(MTPState, USB_MTP)
 
 #define QEMU_STORAGE_ID 0x00010001
 
@@ -1234,8 +1233,6 @@ static void usb_mtp_object_delete(MTPState *s, uint32_t handle,
     default:
         g_assert_not_reached();
     }
-
-    return;
 }
 
 static void usb_mtp_command(MTPState *s, MTPControl *c)
@@ -2078,14 +2075,13 @@ static const VMStateDescription vmstate_usb_mtp = {
     }
 };
 
-static Property mtp_properties[] = {
+static const Property mtp_properties[] = {
     DEFINE_PROP_STRING("rootdir", MTPState, root),
     DEFINE_PROP_STRING("desc", MTPState, desc),
     DEFINE_PROP_BOOL("readonly", MTPState, readonly, true),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void usb_mtp_class_initfn(ObjectClass *klass, void *data)
+static void usb_mtp_class_initfn(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);

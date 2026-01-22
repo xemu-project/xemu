@@ -17,6 +17,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "exec/target_page.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
 #include "hw/pci/pci_bus.h"
@@ -31,6 +32,7 @@
 #include "cpu_bits.h"
 #include "riscv-iommu.h"
 #include "riscv-iommu-bits.h"
+#include "trace.h"
 
 /* RISC-V IOMMU PCI Device Emulation */
 #define RISCV_PCI_CLASS_SYSTEM_IOMMU     0x0806
@@ -155,21 +157,34 @@ static void riscv_iommu_pci_init(Object *obj)
     qdev_alias_all_properties(DEVICE(iommu), obj);
 
     iommu->icvec_avail_vectors = RISCV_IOMMU_PCI_ICVEC_VECTORS;
+    riscv_iommu_set_cap_igs(iommu, RISCV_IOMMU_CAP_IGS_MSI);
 }
 
-static Property riscv_iommu_pci_properties[] = {
+static const Property riscv_iommu_pci_properties[] = {
     DEFINE_PROP_UINT16("vendor-id", RISCVIOMMUStatePci, vendor_id,
                        PCI_VENDOR_ID_REDHAT),
     DEFINE_PROP_UINT16("device-id", RISCVIOMMUStatePci, device_id,
                        PCI_DEVICE_ID_REDHAT_RISCV_IOMMU),
     DEFINE_PROP_UINT8("revision", RISCVIOMMUStatePci, revision, 0x01),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void riscv_iommu_pci_class_init(ObjectClass *klass, void *data)
+static void riscv_iommu_pci_reset_hold(Object *obj, ResetType type)
+{
+    RISCVIOMMUStatePci *pci = RISCV_IOMMU_PCI(obj);
+    RISCVIOMMUState *iommu = &pci->iommu;
+
+    riscv_iommu_reset(iommu);
+
+    trace_riscv_iommu_pci_reset_hold(type);
+}
+
+static void riscv_iommu_pci_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+
+    rc->phases.hold = riscv_iommu_pci_reset_hold;
 
     k->realize = riscv_iommu_pci_realize;
     k->exit = riscv_iommu_pci_exit;
@@ -188,7 +203,7 @@ static const TypeInfo riscv_iommu_pci = {
     .class_init = riscv_iommu_pci_class_init,
     .instance_init = riscv_iommu_pci_init,
     .instance_size = sizeof(RISCVIOMMUStatePci),
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_PCIE_DEVICE },
         { },
     },

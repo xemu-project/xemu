@@ -298,16 +298,15 @@ void Slider(const char *str_id, float *v, const char *description)
     ImGui::PopStyleColor();
 }
 
-bool FilePicker(const char *str_id, const char **buf, const char *filters,
-                bool dir)
+void FilePicker(const char *str_id, const char *current_path,
+                const SDL_DialogFileFilter *filters, int nfilters, bool dir,
+                std::function<void(const char *new_path)> on_select)
 {
-    bool changed = false;
-
     ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32_BLACK_TRANS);
     ImGuiStyle &style = ImGui::GetStyle();
     ImVec2 p = ImGui::GetCursorScreenPos();
     ImVec2 cursor = ImGui::GetCursorPos();
-    const char *desc = strlen(*buf) ? *buf : "(None Selected)";
+    const char *desc = (current_path && strlen(current_path)) ? current_path : "(None Selected)";
     ImVec2 bb(ImGui::GetColumnWidth(),
               GetWidgetTitleDescriptionHeight(str_id, desc));
     ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));
@@ -316,15 +315,10 @@ bool FilePicker(const char *str_id, const char **buf, const char *filters,
         ImGui::ButtonEx("###file_button", bb, ImGuiButtonFlags_AllowOverlap);
     ImGui::SetItemAllowOverlap();
     if (status) {
-        int flags = NOC_FILE_DIALOG_OPEN;
-        if (dir) flags |= NOC_FILE_DIALOG_DIR;
-        const char *new_path =
-            PausedFileOpen(flags, filters, *buf, NULL);
-        if (new_path) {
-            free((void*)*buf);
-            *buf = strdup(new_path);
-            desc = *buf;
-            changed = true;
+        if (dir) {
+            ShowOpenFolderDialog(current_path, on_select);
+        } else {
+            ShowOpenFileDialog(filters, nfilters, current_path, on_select);
         }
     }
     ImGui::PopID();
@@ -356,9 +350,7 @@ bool FilePicker(const char *str_id, const char **buf, const char *filters,
 
     bool clear = ImGui::Button(ICON_FA_XMARK, ImVec2(ts_clear_icon.x, bb.y));
     if (clear) {
-        free((void*)*buf);
-        *buf = strdup("");
-        changed = true;
+        on_select("");
     }
 
     ImGui::PopID();
@@ -369,8 +361,6 @@ bool FilePicker(const char *str_id, const char **buf, const char *filters,
     ImGui::PopFont();
 
     ImGui::PopStyleColor();
-
-    return changed;
 }
 
 void DrawComboChevron()
@@ -517,7 +507,7 @@ void Hyperlink(const char *text, const char *url)
     ImGui::GetWindowDrawList()->AddLine(min, max, col, 1.0 * g_viewport_mgr.m_scale);
 
     if (ImGui::IsItemClicked()) {
-        xemu_open_web_browser(url);
+        SDL_OpenURL(url);
     }
 }
 

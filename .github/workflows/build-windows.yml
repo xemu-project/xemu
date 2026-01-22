@@ -1,0 +1,125 @@
+name: Build for Windows
+
+on:
+  workflow_call:
+    inputs:
+      pkg_version:
+        description: Build version
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build for Windows (${{ matrix.arch }}, ${{ matrix.configuration }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
+        configuration: [debug, release]
+    container:
+      image: ghcr.io/xemu-project/xemu-win64-toolchain${{ matrix.arch == 'x86_64' && '-gcc:sha-18018f1' || ':sha-0d06ce8' }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CCACHE_DIR: /tmp/xemu-ccache
+      CCACHE_MAXSIZE: 512M
+      LTO_CACHE_DIR: /tmp/xemu-lto-ccache
+      CROSSPREFIX: ${{ matrix.arch == 'arm64' && 'aarch64' || 'x86_64' }}-w64-mingw32.static-
+      CROSSAR: ${{ matrix.arch == 'arm64' && 'aarch64' || 'x86_64' }}-w64-mingw32.static-${{ matrix.arch == 'arm64' && 'ar' || 'gcc-ar' }}
+    steps:
+    - name: Download source package
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+      with:
+        name: src
+    - name: Install zstd
+      if: ${{ matrix.arch == 'arm64' }}
+      run: apt-get install zstd
+    - name: Extract source package
+      run: tar -xf xemu-${{ inputs.pkg_version }}.tar.zst --strip-components=2
+    - name: Initialize compiler cache
+      id: cache
+      uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
+      with:
+        path: |
+          ${{ env.CCACHE_DIR }}
+          ${{ env.LTO_CACHE_DIR }}
+        key: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
+        restore-keys: cache-wincross-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
+    - name: Setup ccache
+      run: |
+        mkdir -p ${CCACHE_DIR}
+        ccache -z
+    - name: Setup build options
+      run: |
+        if [[ "${{ matrix.configuration }}" == "debug" ]]; then
+          opts=(
+            --debug
+          )
+        elif [[ "${{ matrix.arch }}" == "x86_64" ]]; then
+          opts=(
+            --extra-cflags="-flto-incremental=${LTO_CACHE_DIR} -flto-partition=cache"
+            -Db_lto=true
+          )
+          mkdir -p ${LTO_CACHE_DIR}
+        elif [[ "${{ matrix.arch }}" == "arm64" ]]; then
+          # FIXME: llvm-mingw ThinLTO has an issue with `qemu_build_not_reached_always`
+          #        being intentionaly undefined (to ensure 'unreachable' paths are
+          #        optimized out). Regular LTO doesn't pass cv2pdb. Resolve linking
+          #        failure and have llvm toolchain generate PDB directly.
+          opts=()
+        fi
+        echo "XEMU_BUILD_OPTIONS=${opts[*]}" >> "$GITHUB_ENV"
+    - name: Compile
+      run: ./build.sh -p win64-cross ${XEMU_BUILD_OPTIONS}
+    - name: Report ccache stats
+      run: ccache -s
+    - name: Upload build artifact
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+      with:
+        name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}
+        path: dist
+
+  # Generate a symbols package for Windows. Use cv2pdb to generate PDBs from
+  # DWARF and update + strip the executable. Re-package the original release
+  # and create symbols package.
+  generate_pdb:
+    name: Generate PDB for Windows (${{ matrix.arch }}, ${{ matrix.configuration }})
+    runs-on: windows-latest
+    needs: build
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
+        configuration: [debug, release]
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+      with:
+        name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}
+        path: dist
+    - name: Generate PDB
+      run: |
+        Invoke-WebRequest -Uri "https://github.com/rainers/cv2pdb/releases/download/v0.52/cv2pdb-0.52.zip" -OutFile "cv2pdb.zip"
+        7z x -ocv2pdb -y cv2pdb.zip
+        cd dist
+        ../cv2pdb/cv2pdb64.exe xemu.exe
+    - name: Determine package version
+      id: package_id
+      shell: bash
+      env:
+        VERSION: ${{ inputs.pkg_version }}${{ matrix.configuration == 'debug' && '-dbg' || '' }}
+      run: |
+        echo "pkg_filename=xemu-${VERSION}-windows-${{ matrix.arch }}.zip" >> $GITHUB_OUTPUT
+        echo "pdb_filename=xemu-${VERSION}-windows-${{ matrix.arch }}-pdb.zip" >> $GITHUB_OUTPUT
+    - name: Package
+      run: |
+        mkdir dist-pdb
+        cd dist
+        7z a -tzip ../dist-pdb/${{ steps.package_id.outputs.pkg_filename}} * "-xr!*.pdb"
+        7z a -tzip ../dist-pdb/${{ steps.package_id.outputs.pdb_filename}} "-ir!*.pdb"
+    - name: Upload build artifact
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+      with:
+        name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}-pdb
+        path: dist-pdb
+        compression-level: 0

@@ -54,14 +54,15 @@ directory:
 
 .. code-block:: shell
 
-  meson test qtest-x86_64/qos-test
+  pyvenv/bin/meson test qtest-x86_64/qos-test
 
 ethtool can test register accesses, interrupts, etc. It is automated as an
-Avocado test and can be ran with the following command:
+functional test and can be run from the build directory with the following
+command:
 
 .. code:: shell
 
-  make check-avocado AVOCADO_TESTS=tests/avocado/netdev-ethtool.py
+  pyvenv/bin/meson test --suite thorough func-x86_64-netdev_ethtool
 
 References
 ==========

@@ -31,8 +31,7 @@
 #endif
 
 #if (defined(_WIN32) || defined RUSAGE_THREAD) && \
-    (defined(CONFIG_NETTLE) || defined(CONFIG_GCRYPT) || \
-     defined(CONFIG_GNUTLS_CRYPTO))
+    (defined(CONFIG_NETTLE) || defined(CONFIG_GCRYPT))
 #define TEST_LUKS
 #else
 #undef TEST_LUKS
@@ -574,6 +573,13 @@ int main(int argc, char **argv)
     for (i = 0; i < G_N_ELEMENTS(test_data); i++) {
         if (test_data[i].open_opts->format == QCRYPTO_BLOCK_FORMAT_LUKS &&
             !qcrypto_hash_supports(test_data[i].hash_alg)) {
+            g_printerr("# skip unsupported %s\n",
+                       QCryptoHashAlgo_str(test_data[i].hash_alg));
+            continue;
+        }
+        if (!qcrypto_cipher_supports(QCRYPTO_CIPHER_ALGO_AES_128,
+                                     QCRYPTO_CIPHER_MODE_CBC)) {
+            g_printerr("# skip unsupported aes-128:cbc\n");
             continue;
         }
         if (!test_data[i].slow ||

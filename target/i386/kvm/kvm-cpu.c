@@ -11,11 +11,12 @@
 #include "cpu.h"
 #include "host-cpu.h"
 #include "qapi/error.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "hw/boards.h"
+#include "hw/i386/x86.h"
 
 #include "kvm_i386.h"
-#include "hw/core/accel-cpu.h"
+#include "accel/accel-cpu-target.h"
 
 static void kvm_set_guest_phys_bits(CPUState *cs)
 {
@@ -41,6 +42,7 @@ static void kvm_set_guest_phys_bits(CPUState *cs)
 static bool kvm_cpu_realizefn(CPUState *cs, Error **errp)
 {
     X86CPU *cpu = X86_CPU(cs);
+    X86CPUClass *xcc = X86_CPU_GET_CLASS(cpu);
     CPUX86State *env = &cpu->env;
     bool ret;
 
@@ -63,7 +65,7 @@ static bool kvm_cpu_realizefn(CPUState *cs, Error **errp)
      *   check/update ucode_rev, phys_bits, guest_phys_bits, mwait
      *   cpu_common_realizefn() (via xcc->parent_realize)
      */
-    if (cpu->max_features) {
+    if (xcc->max_features) {
         if (enable_cpu_pm) {
             if (kvm_has_waitpkg()) {
                 env->features[FEAT_7_0_ECX] |= CPUID_7_0_ECX_WAITPKG;
@@ -72,7 +74,7 @@ static bool kvm_cpu_realizefn(CPUState *cs, Error **errp)
             if (env->features[FEAT_1_ECX] & CPUID_EXT_MONITOR) {
                 host_cpuid(5, 0, &cpu->mwait.eax, &cpu->mwait.ebx,
                            &cpu->mwait.ecx, &cpu->mwait.edx);
-	    }
+            }
         }
         if (cpu->ucode_rev == 0) {
             cpu->ucode_rev =
@@ -89,6 +91,15 @@ static bool kvm_cpu_realizefn(CPUState *cs, Error **errp)
         cpu->guest_phys_bits == -1) {
         kvm_set_guest_phys_bits(cs);
     }
+
+    /*
+     * When SMM is enabled, there is 2 address spaces. Otherwise only 1.
+     *
+     * Only initialize address space 0 here, the second one for SMM is
+     * initialized at register_smram_listener() after machine init done.
+     */
+    cs->num_ases = x86_machine_is_smm_enabled(X86_MACHINE(current_machine)) ? 2 : 1;
+    cpu_address_space_init(cs, X86ASIdx_MEM, "cpu-memory", cs->memory);
 
     return true;
 }
@@ -108,7 +119,7 @@ static void kvm_cpu_max_instance_init(X86CPU *cpu)
     CPUX86State *env = &cpu->env;
     KVMState *s = kvm_state;
 
-    host_cpu_max_instance_init(cpu);
+    object_property_set_bool(OBJECT(cpu), "pmu", true, &error_abort);
 
     if (lmce_supported()) {
         object_property_set_bool(OBJECT(cpu), "lmce", true, &error_abort);
@@ -216,14 +227,14 @@ static void kvm_cpu_instance_init(CPUState *cs)
         x86_cpu_apply_props(cpu, kvm_default_props);
     }
 
-    if (cpu->max_features) {
+    if (xcc->max_features) {
         kvm_cpu_max_instance_init(cpu);
     }
 
     kvm_cpu_xsave_init();
 }
 
-static void kvm_cpu_accel_class_init(ObjectClass *oc, void *data)
+static void kvm_cpu_accel_class_init(ObjectClass *oc, const void *data)
 {
     AccelCPUClass *acc = ACCEL_CPU_CLASS(oc);
 

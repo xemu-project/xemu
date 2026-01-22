@@ -36,7 +36,7 @@
 #include "qemu/main-loop.h"
 
 #include "qapi/qapi-visit-sockets.h"
-#include "qapi/qmp/qstring.h"
+#include "qobject/qstring.h"
 #include "qapi/clone-visitor.h"
 
 #include "block/qdict.h"
@@ -351,7 +351,9 @@ int coroutine_fn nbd_co_do_establish_connection(BlockDriverState *bs,
         return ret;
     }
 
-    qio_channel_set_blocking(s->ioc, false, NULL);
+    if (!qio_channel_set_blocking(s->ioc, false, errp)) {
+        return -EINVAL;
+    }
     qio_channel_set_follow_coroutine_ctx(s->ioc, true);
 
     /* successfully connected */
@@ -1397,8 +1399,8 @@ nbd_client_co_pdiscard(BlockDriverState *bs, int64_t offset, int64_t bytes)
 }
 
 static int coroutine_fn GRAPH_RDLOCK nbd_client_co_block_status(
-        BlockDriverState *bs, bool want_zero, int64_t offset, int64_t bytes,
-        int64_t *pnum, int64_t *map, BlockDriverState **file)
+        BlockDriverState *bs, unsigned int mode, int64_t offset,
+        int64_t bytes, int64_t *pnum, int64_t *map, BlockDriverState **file)
 {
     int ret, request_ret;
     NBDExtent64 extent = { 0 };

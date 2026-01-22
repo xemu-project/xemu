@@ -2,9 +2,11 @@
 #define MIPS_CPU_H
 
 #include "cpu-qom.h"
+#include "exec/cpu-common.h"
 #include "exec/cpu-defs.h"
+#include "exec/cpu-interrupt.h"
 #ifndef CONFIG_USER_ONLY
-#include "exec/memory.h"
+#include "system/memory.h"
 #endif
 #include "fpu/softfloat-types.h"
 #include "hw/clock.h"
@@ -97,8 +99,6 @@ struct CPUMIPSFPUContext {
 #define FP_INVALID        16
 #define FP_UNIMPLEMENTED  32
 };
-
-#define TARGET_INSN_START_EXTRA_WORDS 2
 
 typedef struct CPUMIPSMVPContext CPUMIPSMVPContext;
 struct CPUMIPSMVPContext {
@@ -1256,8 +1256,6 @@ static inline int mips_env_mmu_index(CPUMIPSState *env)
     return hflags_mmu_index(env->hflags);
 }
 
-#include "exec/cpu-all.h"
-
 /* Exceptions */
 enum {
     EXCP_NONE          = -1,
@@ -1367,15 +1365,6 @@ void cpu_mips_clock_init(MIPSCPU *cpu);
 
 /* helper.c */
 target_ulong exception_resume_pc(CPUMIPSState *env);
-
-static inline void cpu_get_tb_cpu_state(CPUMIPSState *env, vaddr *pc,
-                                        uint64_t *cs_base, uint32_t *flags)
-{
-    *pc = env->active_tc.PC;
-    *cs_base = 0;
-    *flags = env->hflags & (MIPS_HFLAG_TMASK | MIPS_HFLAG_BMASK |
-                            MIPS_HFLAG_HWRENA_ULR);
-}
 
 /**
  * mips_cpu_create_with_clock:

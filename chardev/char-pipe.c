@@ -150,7 +150,14 @@ static void qemu_chr_open_pipe(Chardev *chr,
             return;
         }
     }
-    qemu_chr_open_fd(chr, fd_in, fd_out);
+
+    if (!qemu_chr_open_fd(chr, fd_in, fd_out, errp)) {
+        close(fd_in);
+        if (fd_out != fd_in) {
+            close(fd_out);
+        }
+        return;
+    }
 }
 
 #endif /* !_WIN32 */
@@ -171,7 +178,7 @@ static void qemu_chr_parse_pipe(QemuOpts *opts, ChardevBackend *backend,
     dev->device = g_strdup(device);
 }
 
-static void char_pipe_class_init(ObjectClass *oc, void *data)
+static void char_pipe_class_init(ObjectClass *oc, const void *data)
 {
     ChardevClass *cc = CHARDEV_CLASS(oc);
 

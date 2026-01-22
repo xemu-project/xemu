@@ -35,7 +35,7 @@
 #include "qemu/option.h"
 #include "chardev/char.h"
 #include "trace.h"
-#include "exec/memory.h"
+#include "system/memory.h"
 #include "qom/object.h"
 #include "qemu/memfd.h"
 
@@ -401,7 +401,7 @@ qemu_console_finalize(Object *obj)
 }
 
 static void
-qemu_console_class_init(ObjectClass *oc, void *data)
+qemu_console_class_init(ObjectClass *oc, const void *data)
 {
 }
 
@@ -437,7 +437,7 @@ qemu_graphic_console_prop_get_head(Object *obj, Visitor *v, const char *name,
 }
 
 static void
-qemu_graphic_console_class_init(ObjectClass *oc, void *data)
+qemu_graphic_console_class_init(ObjectClass *oc, const void *data)
 {
     object_class_property_add_link(oc, "device", TYPE_DEVICE,
                                    offsetof(QemuGraphicConsole, device),
@@ -1160,7 +1160,7 @@ DisplayState *init_displaystate(void)
          * all QemuConsoles are created and the order / numbering
          * doesn't change any more */
         name = g_strdup_printf("console[%d]", con->index);
-        object_property_add_child(container_get(object_get_root(), "/backend"),
+        object_property_add_child(object_get_container("backend"),
                                   name, OBJECT(con));
         g_free(name);
     }
@@ -1386,9 +1386,7 @@ char *qemu_console_get_label(QemuConsole *con)
                                        object_get_typename(c->device),
                                        c->head);
             } else {
-                return g_strdup_printf("%s", dev->id ?
-                                       dev->id :
-                                       object_get_typename(c->device));
+                return g_strdup(dev->id ? : object_get_typename(c->device));
             }
         }
         return g_strdup("VGA");

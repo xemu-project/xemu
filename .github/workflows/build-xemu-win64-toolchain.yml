@@ -10,15 +10,23 @@ on:
       - '.github/workflows/build-xemu-win64-toolchain.yml'
       - 'ubuntu-win64-cross/**'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: xemu-project/xemu-win64-toolchain
 
 jobs:
   build-image:
     name: Build and Publish Image
-    if: github.repository_owner == 'xemu-project'
+    if: ${{ github.repository_owner == 'xemu-project' }}
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain: [llvm, gcc]
+    env:
+      IMAGE_NAME: xemu-project/xemu-win64-toolchain-${{ matrix.toolchain }}
     steps:
       - name: Clone tree
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
@@ -28,8 +36,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           labels: |
-            org.opencontainers.image.title=xemu-win64-toolchain
-            org.opencontainers.image.description=Toolchain and libraries for building xemu Windows releases
+            org.opencontainers.image.title=xemu-win64-toolchain-${{ matrix.toolchain }}
+            org.opencontainers.image.description=${{ matrix.toolchain }} toolchain and libraries for building xemu Windows releases
           tags: |
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'master') }}
             type=ref,event=branch
@@ -50,3 +58,4 @@ jobs:
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          file: ubuntu-win64-cross/${{ matrix.toolchain }}.Dockerfile
