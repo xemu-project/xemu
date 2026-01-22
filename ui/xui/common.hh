@@ -32,8 +32,6 @@
 #include <stb_image.h>
 
 extern "C" {
-#include <noc_file_dialog.h>
-
 // Include necessary QEMU headers
 #include "qemu/osdep.h"
 #include "qapi/error.h"

@@ -60,7 +60,6 @@ const char *g_snapshot_pending_load_name;
 float g_main_menu_height;
 
 static ImGuiStyle g_base_style;
-static SDL_Window *g_sdl_window;
 static float g_last_scale;
 static int g_vsync;
 static GLuint g_tex;
@@ -147,7 +146,6 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     // Setup Platform/Renderer bindings
     ImGui_ImplSDL3_InitForOpenGL(window, sdl_gl_context);
     ImGui_ImplOpenGL3_Init("#version 150");
-    g_sdl_window = window;
     ImPlot::CreateContext();
 
 #if defined(_WIN32)
@@ -207,7 +205,7 @@ void xemu_hud_render(void)
 
     if (!first_boot_window.is_open) {
         int ww, wh;
-        SDL_GetWindowSizeInPixels(g_sdl_window, &ww, &wh);
+        SDL_GetWindowSizeInPixels(xemu_get_window(), &ww, &wh);
         RenderFramebuffer(g_tex, ww, wh, g_flip_req);
     }
 
