@@ -30,22 +30,6 @@ const char *xemu_get_os_info(void);
 #include <cpuid.h>
 #endif
 
-static inline const char *xemu_get_os_platform(void)
-{
-    const char *platform_name;
-
-#if defined(__linux__)
-    platform_name = "Linux";
-#elif defined(_WIN32)
-    platform_name = "Windows";
-#elif defined(__APPLE__)
-    platform_name = "macOS";
-#else
-    platform_name = "Unknown";
-#endif
-    return platform_name;
-}
-
 static inline const char *xemu_get_cpu_info(void)
 {
     const char *cpu_info = "";
