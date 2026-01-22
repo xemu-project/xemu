@@ -539,7 +539,7 @@ void MainMenuInputView::Draw()
             ImGui::PopStyleVar();
         }
 
-        if (bound_state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
+        if (bound_state->type == INPUT_DEVICE_SDL_GAMEPAD) {
             Toggle("Enable Rumble",
                    &bound_state->controller_map->enable_rumble);
             Toggle("Invert Left X Axis",
@@ -690,9 +690,9 @@ void MainMenuInputView::PopulateTableController(ControllerState *state)
                 };
 
                 int button = *(button_map[i]);
-                if (button != SDL_CONTROLLER_BUTTON_INVALID) {
-                    remap_button_text = SDL_GameControllerGetStringForButton(
-                        static_cast<SDL_GameControllerButton>(button));
+                if (button != SDL_GAMEPAD_BUTTON_INVALID) {
+                    remap_button_text = SDL_GetGamepadStringForButton(
+                        static_cast<SDL_GamepadButton>(button));
                 }
         } else {
           int *axis_map[6] = {
@@ -706,9 +706,9 @@ void MainMenuInputView::PopulateTableController(ControllerState *state)
               .axis_trigger_right,
           };
           int axis = *(axis_map[i - num_face_buttons]);
-          if (axis != SDL_CONTROLLER_AXIS_INVALID) {
-            remap_button_text = SDL_GameControllerGetStringForAxis(
-                static_cast<SDL_GameControllerAxis>(axis));
+          if (axis != SDL_GAMEPAD_AXIS_INVALID) {
+            remap_button_text = SDL_GetGamepadStringForAxis(
+                static_cast<SDL_GamepadAxis>(axis));
           }
         }
 
