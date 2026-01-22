@@ -214,8 +214,8 @@ option('opengl', type : 'feature', value : 'enabled',
        description: 'OpenGL support')
 option('rdma', type : 'feature', value : 'auto',
        description: 'Enable RDMA-based migration')
-# option('gtk', type : 'feature', value : 'auto',
-#        description: 'GTK+ user interface')
+option('gtk', type : 'feature', value : 'auto',
+       description: 'GTK+ user interface')
 option('sdl', type : 'feature', value : 'enabled',
        description: 'SDL user interface')
 option('sdl_image', type : 'feature', value : 'auto',

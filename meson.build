@@ -2001,14 +2001,14 @@ gtkx11 = not_found
 vte = not_found
 have_gtk_clipboard = get_option('gtk_clipboard').enabled()
 
-# xemu: GTK is required in Linux builds for file selection interfaces. In the
-# future, this may be relaxed in the future with alternative options.
-require_gtk = host_os == 'linux'
-
-if require_gtk
+if get_option('gtk') \
+             .disable_auto_if(not have_system) \
+             .require(pixman.found(),
+                      error_message: 'cannot enable GTK if pixman is not available') \
+             .allowed()
   gtk = dependency('gtk+-3.0', version: '>=3.22.0',
                    method: 'pkg-config',
-                   required: require_gtk or get_option('gtk'))
+                   required: get_option('gtk'))
   if gtk.found()
     gtkx11 = dependency('gtk+-x11-3.0', version: '>=3.22.0',
                         method: 'pkg-config',
