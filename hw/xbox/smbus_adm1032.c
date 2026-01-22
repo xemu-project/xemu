@@ -88,7 +88,7 @@ static void smbus_adm1032_realize(DeviceState *dev, Error **errp)
     cx->cmd = 0;
 }
 
-static void smbus_adm1032_class_initfn(ObjectClass *klass, void *data)
+static void smbus_adm1032_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     SMBusDeviceClass *sc = SMBUS_DEVICE_CLASS(klass);
@@ -103,7 +103,7 @@ static TypeInfo smbus_adm1032_info = {
     .name = TYPE_SMBUS_ADM1032,
     .parent = TYPE_SMBUS_DEVICE,
     .instance_size = sizeof(SMBusADM1032Device),
-    .class_init = smbus_adm1032_class_initfn,
+    .class_init = smbus_adm1032_class_init,
 };
 
 static void smbus_adm1032_register_devices(void)

@@ -9,7 +9,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/dump.h"
+#include "system/dump.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "exec/cpu-defs.h"
@@ -476,8 +476,6 @@ out_free:
     g_free(saved_ctx);
 out_cr3:
     first_x86_cpu->env.cr[3] = saved_cr3;
-
-    return;
 }
 
 #else /* !TARGET_X86_64 */

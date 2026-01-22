@@ -280,12 +280,13 @@ if idef_parser_enabled and 'hexagon-linux-user' in target_dirs
         command: [python, files('gen_idef_parser_funcs.py'), semantics_generated, '@OUTPUT@'],
     )
 
+    compiler = meson.get_compiler('c').get_id()
     preprocessed_idef_parser_input_generated = custom_target(
         'idef_parser_input.preprocessed.h.inc',
         output: 'idef_parser_input.preprocessed.h.inc',
         input: idef_parser_input_generated,
         depend_files: [idef_parser_dir / 'macros.h.inc'],
-        command: [idef_parser_dir / 'prepare', '@INPUT@', '-I' + idef_parser_dir, '-o', '@OUTPUT@'],
+        command: [compiler, '-x', 'c', '-E', '-I', idef_parser_dir, '-o', '@OUTPUT@', '@INPUT@'],
     )
 
     flex = generator(
@@ -323,7 +324,7 @@ if idef_parser_enabled and 'hexagon-linux-user' in target_dirs
     )
 
     indent = find_program('indent', required: false)
-    if indent.found()
+    if indent.found() and host_os == 'linux'
         idef_generated_tcg_c = custom_target(
             'indent',
             input: idef_generated_tcg[0],
@@ -346,7 +347,7 @@ if idef_parser_enabled and 'hexagon-linux-user' in target_dirs
     # Setup input and dependencies for the next step, this depends on whether or
     # not idef-parser is enabled
     helper_dep = [semantics_generated, idef_generated_tcg_c, idef_generated_tcg]
-    helper_in = [semantics_generated, gen_tcg_h, gen_tcg_hvx_h, idef_generated_list]
+    helper_in = [semantics_generated, gen_tcg_h, gen_tcg_hvx_h, '--idef-parser', idef_generated_list]
 else
     # Setup input and dependencies for the next step, this depends on whether or
     # not idef-parser is enabled

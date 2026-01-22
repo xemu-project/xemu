@@ -22,7 +22,7 @@
 
 #include "chardev/char.h"
 #include "chardev/char-fe.h"
-#include "exec/memory.h"
+#include "system/memory.h"
 
 #define TYPE_HTIF_UART "riscv.htif.uart"
 
@@ -36,7 +36,7 @@ typedef struct HTIFState {
     hwaddr fromhost_offset;
     MemoryRegion mmio;
 
-    CharBackend chr;
+    CharFrontend chr;
     uint64_t pending_read;
 } HTIFState;
 

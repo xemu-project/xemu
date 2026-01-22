@@ -20,6 +20,7 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu/http.h"
+#include "xemu-version.h"
 
 #include <curl/curl.h>
 #include <fcntl.h>
@@ -29,6 +30,13 @@
 
 static bool libcurl_init_called = false;
 static bool libcurl_init_success = false;
+static char *xemu_user_agent = NULL;
+
+static void libcurl_cleanup(void)
+{
+    curl_global_cleanup();
+    g_free(xemu_user_agent);
+}
 
 static bool ensure_libcurl_initialized(Error **errp)
 {
@@ -37,7 +45,8 @@ static bool ensure_libcurl_initialized(Error **errp)
         libcurl_init_called = true;
         if (res == CURLE_OK) {
             libcurl_init_success = true;
-            atexit(curl_global_cleanup);
+            xemu_user_agent = g_strdup_printf("xemu/%s", xemu_version);
+            atexit(libcurl_cleanup);
         }
     }
 
@@ -88,6 +97,7 @@ int http_get(const char *url, GByteArray *response_body,
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, http_get_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, response_body);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L); // Follow redirects
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, xemu_user_agent);
 #if ALLOW_INSECURE_HOSTS
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
@@ -136,6 +146,7 @@ int http_post_json(const char *url, const char *json_data, Error **errp)
     curl_easy_setopt(curl, CURLOPT_POST, 1L);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_data);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, xemu_user_agent);
 #if ALLOW_INSECURE_HOSTS
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);

@@ -18,27 +18,24 @@
 //
 #pragma once
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <epoxy/gl.h>
 #include "ui/xemu-settings.h"
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include <imgui.h>
 #include <imgui_internal.h>
-#include <imgui_impl_sdl2.h>
+#include <imgui_impl_sdl3.h>
 #include <imgui_impl_opengl3.h>
 #include <implot.h>
 #include <misc/cpp/imgui_stdlib.h>
 #include <stb_image.h>
 
 extern "C" {
-#include <noc_file_dialog.h>
-
 // Include necessary QEMU headers
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "hw/xbox/mcpx/apu/apu_debug.h"
 #include "hw/xbox/nv2a/debug.h"
 #include "hw/xbox/nv2a/nv2a.h"

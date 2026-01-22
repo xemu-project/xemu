@@ -5,7 +5,9 @@
 # See the COPYING file in the top-level directory.
 
 ##
-# = Dump guest memory
+# *****************
+# Dump guest memory
+# *****************
 ##
 
 ##
@@ -54,9 +56,9 @@
 # @paging: if true, do paging to get guest's memory mapping.  This
 #     allows using gdb to process the core file.
 #
-#     IMPORTANT: this option can make QEMU allocate several gigabytes
-#     of RAM.  This can happen for a large guest, or a malicious guest
-#     pretending to be large.
+#     **Important**: this option can make QEMU allocate several
+#     gigabytes of RAM.  This can happen for a large guest, or a
+#     malicious guest pretending to be large.
 #
 #     Also, paging=true has the following limitations:
 #
@@ -77,7 +79,7 @@
 #
 # @detach: if true, QMP will return immediately rather than waiting
 #     for the dump to finish.  The user can track progress using
-#     "query-dump".  (since 2.6).
+#     `query-dump`.  (since 2.6).
 #
 # @begin: if specified, the starting physical address.
 #
@@ -110,7 +112,7 @@
 #
 # Describe the status of a long-running background guest memory dump.
 #
-# @none: no dump-guest-memory has started yet.
+# @none: no `dump-guest-memory` has started yet.
 #
 # @active: there is one dump running in background.
 #
@@ -126,9 +128,9 @@
 ##
 # @DumpQueryResult:
 #
-# The result format for 'query-dump'.
+# The result format for `query-dump`.
 #
-# @status: enum of @DumpStatus, which shows current dump status
+# @status: enum of `DumpStatus`, which shows current dump status
 #
 # @completed: bytes written in latest dump (uncompressed)
 #
@@ -146,7 +148,7 @@
 #
 # Query latest dump status.
 #
-# Returns: A @DumpStatus object showing the dump status.
+# Returns: An object showing the dump status.
 #
 # Since: 2.6
 #
@@ -184,7 +186,7 @@
 ##
 # @DumpGuestMemoryCapability:
 #
-# @formats: the available formats for dump-guest-memory
+# @formats: the available formats for `dump-guest-memory`
 #
 # Since: 2.0
 ##
@@ -195,10 +197,9 @@
 ##
 # @query-dump-guest-memory-capability:
 #
-# Returns the available formats for dump-guest-memory
+# Return the available formats for `dump-guest-memory`
 #
-# Returns: A @DumpGuestMemoryCapability object listing available
-#     formats for dump-guest-memory
+# Returns: An object listing available formats for `dump-guest-memory`
 #
 # Since: 2.0
 #

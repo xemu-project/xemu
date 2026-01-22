@@ -72,9 +72,14 @@ void MainMenuGeneralView::Draw()
     SectionTitle("Miscellaneous");
     Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
            "Skip the full Xbox boot animation sequence");
-    FilePicker("Screenshot output directory", &g_config.general.screenshot_dir,
-               NULL, true);
-    FilePicker("Games directory", &g_config.general.games_dir, NULL, true);
+    FilePicker("Screenshot output directory", g_config.general.screenshot_dir,
+               nullptr, 0, true, [](const char *path) {
+                   xemu_settings_set_string(&g_config.general.screenshot_dir, path);
+               });
+    FilePicker("Games directory", g_config.general.games_dir, nullptr, 0, true,
+               [](const char *path) {
+                   xemu_settings_set_string(&g_config.general.games_dir, path);
+               });
     // toggle("Throttle DVD/HDD speeds", &g_config.general.throttle_io,
     //        "Limit DVD/HDD throughput to approximate Xbox load times");
 }
@@ -381,7 +386,7 @@ void MainMenuInputView::Draw()
             ImGui::PopStyleVar();
         }
 
-        if (bound_state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
+        if (bound_state->type == INPUT_DEVICE_SDL_GAMEPAD) {
             Toggle("Enable Rumble",
                    &bound_state->controller_map->enable_rumble);
             Toggle("Invert Left X Axis",
@@ -910,9 +915,9 @@ void MainMenuInputView::PopulateTableController(ControllerState *state)
                 };
 
                 int button = *(button_map[i]);
-                if (button != SDL_CONTROLLER_BUTTON_INVALID) {
-                    remap_button_text = SDL_GameControllerGetStringForButton(
-                        static_cast<SDL_GameControllerButton>(button));
+                if (button != SDL_GAMEPAD_BUTTON_INVALID) {
+                    remap_button_text = SDL_GetGamepadStringForButton(
+                        static_cast<SDL_GamepadButton>(button));
                 }
         } else {
           int *axis_map[6] = {
@@ -926,9 +931,9 @@ void MainMenuInputView::PopulateTableController(ControllerState *state)
               .axis_trigger_right,
           };
           int axis = *(axis_map[i - num_face_buttons]);
-          if (axis != SDL_CONTROLLER_AXIS_INVALID) {
-            remap_button_text = SDL_GameControllerGetStringForAxis(
-                static_cast<SDL_GameControllerAxis>(axis));
+          if (axis != SDL_GAMEPAD_AXIS_INVALID) {
+            remap_button_text = SDL_GetGamepadStringForAxis(
+                static_cast<SDL_GamepadAxis>(axis));
           }
         }
 
@@ -990,6 +995,9 @@ void MainMenuDisplayView::Draw()
     Toggle("Fullscreen on startup",
            &g_config.display.window.fullscreen_on_startup,
            "Start xemu in fullscreen when opened");
+    Toggle("Exclusive fullscreen",
+           &g_config.display.window.fullscreen_exclusive,
+           "May improve responsiveness, but slows window switching");
     if (ChevronCombo("Window size", &g_config.display.window.startup_size,
                      "Last Used\0"
                      "640x480\0"
@@ -1727,9 +1735,15 @@ MainMenuSystemView::MainMenuSystemView() : m_dirty(false)
 
 void MainMenuSystemView::Draw()
 {
-    const char *rom_file_filters =
-        ".bin Files\0*.bin\0.rom Files\0*.rom\0All Files\0*.*\0";
-    const char *qcow_file_filters = ".qcow2 Files\0*.qcow2\0All Files\0*.*\0";
+    static const SDL_DialogFileFilter rom_file_filters[] = {
+        { ".bin Files", "bin" },
+        { ".rom Files", "rom" },
+        { "All Files", "*" }
+    };
+    static const SDL_DialogFileFilter qcow_file_filters[] = {
+        { ".qcow2 Files", "qcow2" },
+        { "All Files", "*" }
+    };
 
     if (m_dirty) {
         ImGui::TextColored(ImVec4(1, 0, 0, 1),
@@ -1758,24 +1772,28 @@ void MainMenuSystemView::Draw()
     }
 
     SectionTitle("Files");
-    if (FilePicker("MCPX Boot ROM", &g_config.sys.files.bootrom_path,
-                   rom_file_filters)) {
-        m_dirty = true;
-        g_main_menu.UpdateAboutViewConfigInfo();
-    }
-    if (FilePicker("Flash ROM (BIOS)", &g_config.sys.files.flashrom_path,
-                   rom_file_filters)) {
-        m_dirty = true;
-        g_main_menu.UpdateAboutViewConfigInfo();
-    }
-    if (FilePicker("Hard Disk", &g_config.sys.files.hdd_path,
-                   qcow_file_filters)) {
-        m_dirty = true;
-    }
-    if (FilePicker("EEPROM", &g_config.sys.files.eeprom_path,
-                   rom_file_filters)) {
-        m_dirty = true;
-    }
+    FilePicker("MCPX Boot ROM", g_config.sys.files.bootrom_path,
+               rom_file_filters, 3, false, [this](const char *path) {
+                   xemu_settings_set_string(&g_config.sys.files.bootrom_path, path);
+                   m_dirty = true;
+                   g_main_menu.UpdateAboutViewConfigInfo();
+               });
+    FilePicker("Flash ROM (BIOS)", g_config.sys.files.flashrom_path,
+               rom_file_filters, 3, false, [this](const char *path) {
+                   xemu_settings_set_string(&g_config.sys.files.flashrom_path, path);
+                   m_dirty = true;
+                   g_main_menu.UpdateAboutViewConfigInfo();
+               });
+    FilePicker("Hard Disk", g_config.sys.files.hdd_path,
+               qcow_file_filters, 2, false, [this](const char *path) {
+                   xemu_settings_set_string(&g_config.sys.files.hdd_path, path);
+                   m_dirty = true;
+               });
+    FilePicker("EEPROM", g_config.sys.files.eeprom_path,
+               rom_file_filters, 3, false, [this](const char *path) {
+                   xemu_settings_set_string(&g_config.sys.files.eeprom_path, path);
+                   m_dirty = true;
+               });
 }
 
 MainMenuAboutView::MainMenuAboutView() : m_config_info_text{ NULL }
@@ -1829,7 +1847,7 @@ void MainMenuAboutView::Draw()
             "CPU:          %s\nOS Platform:  %s\nOS Version:   "
             "%s\nManufacturer: %s\n"
             "GPU Model:    %s\nDriver:       %s\nShader:       %s",
-            xemu_get_cpu_info(), xemu_get_os_platform(), xemu_get_os_info(),
+            xemu_get_cpu_info(), SDL_GetPlatform(), xemu_get_os_info(),
             gl_vendor, gl_renderer, gl_version, gl_shader_version);
     }
 

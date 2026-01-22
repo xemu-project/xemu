@@ -22,7 +22,7 @@
 #include "migration/vmstate.h"
 #include "qapi/error.h"
 #include "qemu/timer.h"
-#include "sysemu/dma.h"
+#include "system/dma.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "trace.h"
@@ -111,7 +111,8 @@ typedef enum  {
     pl330_chan_fault = 15,
 } PL330ChanState;
 
-typedef struct PL330State PL330State;
+#define TYPE_PL330 "pl330"
+OBJECT_DECLARE_SIMPLE_TYPE(PL330State, PL330)
 
 typedef struct PL330Chan {
     uint32_t src;
@@ -273,9 +274,6 @@ struct PL330State {
     MemoryRegion *mem_mr;
     AddressSpace *mem_as;
 };
-
-#define TYPE_PL330 "pl330"
-OBJECT_DECLARE_SIMPLE_TYPE(PL330State, PL330)
 
 static const VMStateDescription vmstate_pl330 = {
     .name = "pl330",
@@ -1646,7 +1644,7 @@ static void pl330_realize(DeviceState *dev, Error **errp)
     pl330_fifo_init(&s->fifo, s->data_width / 4 * s->data_buffer_dep);
 }
 
-static Property pl330_properties[] = {
+static const Property pl330_properties[] = {
     /* CR0 */
     DEFINE_PROP_UINT32("num_chnls", PL330State, num_chnls, 8),
     DEFINE_PROP_UINT8("num_periph_req", PL330State, num_periph_req, 4),
@@ -1669,11 +1667,9 @@ static Property pl330_properties[] = {
 
     DEFINE_PROP_LINK("memory", PL330State, mem_mr,
                      TYPE_MEMORY_REGION, MemoryRegion *),
-
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pl330_class_init(ObjectClass *klass, void *data)
+static void pl330_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

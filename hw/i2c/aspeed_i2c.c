@@ -1258,13 +1258,12 @@ static void aspeed_i2c_realize(DeviceState *dev, Error **errp)
     }
 }
 
-static Property aspeed_i2c_properties[] = {
+static const Property aspeed_i2c_properties[] = {
     DEFINE_PROP_LINK("dram", AspeedI2CState, dram_mr,
                      TYPE_MEMORY_REGION, MemoryRegion *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void aspeed_i2c_class_init(ObjectClass *klass, void *data)
+static void aspeed_i2c_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -1391,7 +1390,8 @@ static void aspeed_i2c_bus_slave_send_async(I2CSlave *slave, uint8_t data)
     aspeed_i2c_bus_raise_interrupt(bus);
 }
 
-static void aspeed_i2c_bus_slave_class_init(ObjectClass *klass, void *data)
+static void aspeed_i2c_bus_slave_class_init(ObjectClass *klass,
+                                            const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     I2CSlaveClass *sc = I2C_SLAVE_CLASS(klass);
@@ -1446,14 +1446,13 @@ static void aspeed_i2c_bus_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mr_pool);
 }
 
-static Property aspeed_i2c_bus_properties[] = {
+static const Property aspeed_i2c_bus_properties[] = {
     DEFINE_PROP_UINT8("bus-id", AspeedI2CBus, id, 0),
     DEFINE_PROP_LINK("controller", AspeedI2CBus, controller, TYPE_ASPEED_I2C,
                      AspeedI2CState *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void aspeed_i2c_bus_class_init(ObjectClass *klass, void *data)
+static void aspeed_i2c_bus_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -1485,7 +1484,7 @@ static uint8_t *aspeed_2400_i2c_bus_pool_base(AspeedI2CBus *bus)
     return &pool_page[ARRAY_FIELD_EX32(bus->regs, I2CD_POOL_CTRL, OFFSET)];
 }
 
-static void aspeed_2400_i2c_class_init(ObjectClass *klass, void *data)
+static void aspeed_2400_i2c_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     AspeedI2CClass *aic = ASPEED_I2C_CLASS(klass);
@@ -1519,7 +1518,7 @@ static uint8_t *aspeed_2500_i2c_bus_pool_base(AspeedI2CBus *bus)
     return bus->pool;
 }
 
-static void aspeed_2500_i2c_class_init(ObjectClass *klass, void *data)
+static void aspeed_2500_i2c_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     AspeedI2CClass *aic = ASPEED_I2C_CLASS(klass);
@@ -1549,7 +1548,7 @@ static qemu_irq aspeed_2600_i2c_bus_get_irq(AspeedI2CBus *bus)
     return bus->irq;
 }
 
-static void aspeed_2600_i2c_class_init(ObjectClass *klass, void *data)
+static void aspeed_2600_i2c_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     AspeedI2CClass *aic = ASPEED_I2C_CLASS(klass);
@@ -1573,7 +1572,7 @@ static const TypeInfo aspeed_2600_i2c_info = {
     .class_init = aspeed_2600_i2c_class_init,
 };
 
-static void aspeed_1030_i2c_class_init(ObjectClass *klass, void *data)
+static void aspeed_1030_i2c_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     AspeedI2CClass *aic = ASPEED_I2C_CLASS(klass);
@@ -1597,7 +1596,7 @@ static const TypeInfo aspeed_1030_i2c_info = {
     .class_init = aspeed_1030_i2c_class_init,
 };
 
-static void aspeed_2700_i2c_class_init(ObjectClass *klass, void *data)
+static void aspeed_2700_i2c_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     AspeedI2CClass *aic = ASPEED_I2C_CLASS(klass);

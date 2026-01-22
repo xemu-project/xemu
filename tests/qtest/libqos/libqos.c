@@ -2,7 +2,7 @@
 #include "../libqtest.h"
 #include "libqos.h"
 #include "pci.h"
-#include "qapi/qmp/qdict.h"
+#include "qobject/qdict.h"
 
 /*** Test Setup & Teardown ***/
 
@@ -117,13 +117,14 @@ void migrate(QOSState *from, QOSState *to, const char *uri)
         g_assert(qdict_haskey(sub, "status"));
         st = qdict_get_str(sub, "status");
 
-        /* "setup", "active", "completed", "failed", "cancelled" */
+        /* "setup", "active", "device", "completed", "failed", "cancelled" */
         if (strcmp(st, "completed") == 0) {
             qobject_unref(rsp);
             break;
         }
 
         if ((strcmp(st, "setup") == 0) || (strcmp(st, "active") == 0)
+            || (strcmp(st, "device") == 0)
             || (strcmp(st, "wait-unplug") == 0)) {
             qobject_unref(rsp);
             g_usleep(5000);

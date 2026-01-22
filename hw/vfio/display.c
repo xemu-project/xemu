@@ -16,9 +16,9 @@
 
 #include "qemu/error-report.h"
 #include "hw/display/edid.h"
-#include "ui/console.h"
 #include "qapi/error.h"
 #include "pci.h"
+#include "vfio-display.h"
 #include "trace.h"
 
 #ifndef DRM_PLANE_TYPE_PRIMARY
@@ -104,7 +104,6 @@ static void vfio_display_edid_update(VFIOPCIDevice *vdev, bool enabled,
 
 err:
     trace_vfio_display_edid_write_error();
-    return;
 }
 
 static void vfio_display_edid_ui_info(void *opaque, uint32_t idx,
@@ -130,10 +129,10 @@ static bool vfio_display_edid_init(VFIOPCIDevice *vdev, Error **errp)
     int fd = vdev->vbasedev.fd;
     int ret;
 
-    ret = vfio_get_dev_region_info(&vdev->vbasedev,
-                                   VFIO_REGION_TYPE_GFX,
-                                   VFIO_REGION_SUBTYPE_GFX_EDID,
-                                   &dpy->edid_info);
+    ret = vfio_device_get_region_info_type(&vdev->vbasedev,
+                                           VFIO_REGION_TYPE_GFX,
+                                           VFIO_REGION_SUBTYPE_GFX_EDID,
+                                           &dpy->edid_info);
     if (ret) {
         /* Failed to get GFX edid info, allow to go through without edid. */
         return true;
@@ -214,6 +213,7 @@ static VFIODMABuf *vfio_display_get_dmabuf(VFIOPCIDevice *vdev,
     struct vfio_device_gfx_plane_info plane;
     VFIODMABuf *dmabuf;
     int fd, ret;
+    uint32_t offset = 0;
 
     memset(&plane, 0, sizeof(plane));
     plane.argsz = sizeof(plane);
@@ -246,10 +246,10 @@ static VFIODMABuf *vfio_display_get_dmabuf(VFIOPCIDevice *vdev,
 
     dmabuf = g_new0(VFIODMABuf, 1);
     dmabuf->dmabuf_id  = plane.dmabuf_id;
-    dmabuf->buf = qemu_dmabuf_new(plane.width, plane.height,
-                                  plane.stride, 0, 0, plane.width,
+    dmabuf->buf = qemu_dmabuf_new(plane.width, plane.height, &offset,
+                                  &plane.stride, 0, 0, plane.width,
                                   plane.height, plane.drm_format,
-                                  plane.drm_format_mod, fd, false, false);
+                                  plane.drm_format_mod, &fd, 1, false, false);
 
     if (plane_type == DRM_PLANE_TYPE_CURSOR) {
         vfio_display_update_cursor(dmabuf, &plane);
@@ -365,7 +365,7 @@ static bool vfio_display_dmabuf_init(VFIOPCIDevice *vdev, Error **errp)
                                           &vfio_display_dmabuf_ops,
                                           vdev);
     if (vdev->enable_ramfb) {
-        vdev->dpy->ramfb = ramfb_setup(errp);
+        vdev->dpy->ramfb = ramfb_setup(vdev->use_legacy_x86_rom, errp);
         if (!vdev->dpy->ramfb) {
             return false;
         }
@@ -494,7 +494,7 @@ static bool vfio_display_region_init(VFIOPCIDevice *vdev, Error **errp)
                                           &vfio_display_region_ops,
                                           vdev);
     if (vdev->enable_ramfb) {
-        vdev->dpy->ramfb = ramfb_setup(errp);
+        vdev->dpy->ramfb = ramfb_setup(vdev->use_legacy_x86_rom, errp);
         if (!vdev->dpy->ramfb) {
             return false;
         }

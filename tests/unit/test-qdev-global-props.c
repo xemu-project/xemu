@@ -46,13 +46,12 @@ struct MyType {
     uint32_t prop2;
 };
 
-static Property static_props[] = {
+static const Property static_props[] = {
     DEFINE_PROP_UINT32("prop1", MyType, prop1, PROP_DEFAULT),
     DEFINE_PROP_UINT32("prop2", MyType, prop2, PROP_DEFAULT),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void static_prop_class_init(ObjectClass *oc, void *data)
+static void static_prop_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
@@ -71,6 +70,26 @@ static const TypeInfo subclass_type = {
     .name = TYPE_SUBCLASS,
     .parent = TYPE_STATIC_PROPS,
 };
+
+/*
+ * Initialize a fake machine, being prepared for future tests.
+ *
+ * All the tests later (even if to be run in subprocesses.. which will
+ * inherit the global states of the parent process) will try to create qdev
+ * and realize the device.
+ *
+ * Realization of such anonymous qdev (with no parent object) requires both
+ * the machine object and its "unattached" container to be at least present.
+ */
+static void test_init_machine(void)
+{
+    /* This is a fake machine - it doesn't need to be a machine object */
+    Object *machine = object_property_add_new_container(
+        object_get_root(), "machine");
+
+    /* This container must exist for anonymous qdevs to realize() */
+    object_property_add_new_container(machine, "unattached");
+}
 
 /* Test simple static property setting to default value */
 static void test_static_prop_subprocess(void)
@@ -158,7 +177,7 @@ static void dynamic_instance_init(Object *obj)
                         NULL, NULL);
 }
 
-static void dynamic_class_init(ObjectClass *oc, void *data)
+static void dynamic_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
@@ -174,7 +193,7 @@ static const TypeInfo dynamic_prop_type = {
     .class_init = dynamic_class_init,
 };
 
-static void hotplug_class_init(ObjectClass *oc, void *data)
+static void hotplug_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
@@ -190,7 +209,7 @@ static const TypeInfo hotplug_type = {
     .class_init = hotplug_class_init,
 };
 
-static void nohotplug_class_init(ObjectClass *oc, void *data)
+static void nohotplug_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
@@ -294,6 +313,8 @@ int main(int argc, char **argv)
     type_register_static(&hotplug_type);
     type_register_static(&nohotplug_type);
     type_register_static(&nondevice_type);
+
+    test_init_machine();
 
     g_test_add_func("/qdev/properties/static/default/subprocess",
                     test_static_prop_subprocess);

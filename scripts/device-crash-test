@@ -16,8 +16,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License along
-# with this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# with this program; if not, see <https://www.gnu.org/licenses/>.
 
 """
 Run QEMU with all combinations of -machine and -device types,
@@ -528,7 +527,7 @@ def main():
         # Async QMP, when in use, is chatty about connection failures.
         # This script knowingly generates a ton of connection errors.
         # Silence this logger.
-        logging.getLogger('qemu.qmp.qmp_client').setLevel(logging.CRITICAL)
+        logging.getLogger('qemu.qmp.protocol').setLevel(logging.CRITICAL)
 
     fatal_failures = []
     wl_stats = {}

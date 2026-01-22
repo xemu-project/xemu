@@ -23,13 +23,13 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "block/throttle-groups.h"
 #include "qemu/throttle-options.h"
 #include "qemu/main-loop.h"
 #include "qemu/queue.h"
 #include "qemu/thread.h"
-#include "sysemu/qtest.h"
+#include "system/qtest.h"
 #include "qapi/error.h"
 #include "qapi/qapi-visit-block-core.h"
 #include "qom/object.h"
@@ -908,7 +908,6 @@ unlock:
     qemu_mutex_unlock(&tg->lock);
     qapi_free_ThrottleLimits(argp);
     error_propagate(errp, local_err);
-    return;
 }
 
 static void throttle_group_get_limits(Object *obj, Visitor *v,
@@ -934,7 +933,8 @@ static bool throttle_group_can_be_deleted(UserCreatable *uc)
     return OBJECT(uc)->ref == 1;
 }
 
-static void throttle_group_obj_class_init(ObjectClass *klass, void *class_data)
+static void throttle_group_obj_class_init(ObjectClass *klass,
+                                          const void *class_data)
 {
     size_t i = 0;
     UserCreatableClass *ucc = USER_CREATABLE_CLASS(klass);
@@ -967,7 +967,7 @@ static const TypeInfo throttle_group_info = {
     .instance_size = sizeof(ThrottleGroup),
     .instance_init = throttle_group_obj_init,
     .instance_finalize = throttle_group_obj_finalize,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_USER_CREATABLE },
         { }
     },

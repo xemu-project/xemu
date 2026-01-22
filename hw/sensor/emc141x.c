@@ -265,7 +265,7 @@ static void emc141x_initfn(Object *obj)
                         emc141x_set_temperature, NULL, NULL);
 }
 
-static void emc141x_class_init(ObjectClass *klass, void *data)
+static void emc141x_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     I2CSlaveClass *k = I2C_SLAVE_CLASS(klass);
@@ -277,7 +277,7 @@ static void emc141x_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_emc141x;
 }
 
-static void emc1413_class_init(ObjectClass *klass, void *data)
+static void emc1413_class_init(ObjectClass *klass, const void *data)
 {
     EMC141XClass *ec = EMC141X_CLASS(klass);
 
@@ -286,7 +286,7 @@ static void emc1413_class_init(ObjectClass *klass, void *data)
     ec->sensors_count = 3;
 }
 
-static void emc1414_class_init(ObjectClass *klass, void *data)
+static void emc1414_class_init(ObjectClass *klass, const void *data)
 {
     EMC141XClass *ec = EMC141X_CLASS(klass);
 

@@ -255,15 +255,6 @@ LIBS = [
         submodule=Submodule("subprojects/implot.wrap"),
     ),
     Lib(
-        "noc",
-        "https://github.com/guillaumechereau/noc/blob/master/noc_file_dialog.h",
-        mit,
-        "https://raw.githubusercontent.com/xemu-project/xemu/master/ui/noc_file_dialog.h",
-        license_lines=(1, 22),
-        ships_static=all_platforms,
-        version="78b2e7b22506429dd1755ffff197c7da11507fd9",
-    ),
-    Lib(
         "stb_image",
         "https://github.com/nothings/stb",
         mit,
@@ -368,16 +359,17 @@ LIBS = [
     # Libraries either linked statically, dynamically linked & shipped, or dynamically linked with system-installed libraries only
     #
     Lib(
-        "sdl2",
+        "SDL3",
         "https://www.libsdl.org/",
         zlib,
         "https://raw.githubusercontent.com/libsdl-org/SDL/main/LICENSE.txt",
         ships_static={windows},
         ships_dynamic={macos},
-        pkgconfig=PkgConfig("sdl2"),
-        pkg_win="sdl2",
-        pkg_mac="sdl2",
-        pkg_ubuntu="libsdl2-dev",
+        pkgconfig=PkgConfig("sdl3"),
+        pkg_win="sdl3",
+        pkg_mac="sdl3",
+        pkg_ubuntu="libsdl3-dev",
+        submodule=Submodule("subprojects/sdl3.wrap"),
     ),
     Lib(
         "glib-2.0",

@@ -21,7 +21,7 @@
 #define XEMU_CONTROLLERS_H
 
 #include "xemu-input.h"
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 enum class RebindEventResult {
     Ignore,
@@ -58,8 +58,8 @@ class ControllerGamepadRebindingMap : public virtual RebindingMap {
     ControllerState *m_state;
     bool m_seen_key_down;
 
-    RebindEventResult HandleButtonEvent(SDL_ControllerButtonEvent *event);
-    RebindEventResult HandleAxisEvent(SDL_ControllerAxisEvent *event);
+    RebindEventResult HandleButtonEvent(SDL_GamepadButtonEvent *event);
+    RebindEventResult HandleAxisEvent(SDL_GamepadAxisEvent *event);
 
 public:
     RebindEventResult ConsumeRebindEvent(SDL_Event *event) override;

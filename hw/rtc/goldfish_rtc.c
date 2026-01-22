@@ -27,8 +27,8 @@
 #include "hw/sysbus.h"
 #include "qemu/bitops.h"
 #include "qemu/timer.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/rtc.h"
+#include "system/system.h"
+#include "system/rtc.h"
 #include "qemu/cutils.h"
 #include "qemu/log.h"
 
@@ -178,38 +178,21 @@ static void goldfish_rtc_write(void *opaque, hwaddr offset,
     trace_goldfish_rtc_write(offset, value);
 }
 
-static int goldfish_rtc_pre_save(void *opaque)
-{
-    uint64_t delta;
-    GoldfishRTCState *s = opaque;
-
-    /*
-     * We want to migrate this offset, which sounds straightforward.
-     * Unfortunately, we cannot directly pass tick_offset because
-     * rtc_clock on destination Host might not be same source Host.
-     *
-     * To tackle, this we pass tick_offset relative to vm_clock from
-     * source Host and make it relative to rtc_clock at destination Host.
-     */
-    delta = qemu_clock_get_ns(rtc_clock) -
-            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    s->tick_offset_vmstate = s->tick_offset + delta;
-
-    return 0;
-}
-
 static int goldfish_rtc_post_load(void *opaque, int version_id)
 {
-    uint64_t delta;
     GoldfishRTCState *s = opaque;
 
-    /*
-     * We extract tick_offset from tick_offset_vmstate by doing
-     * reverse math compared to pre_save() function.
-     */
-    delta = qemu_clock_get_ns(rtc_clock) -
-            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    s->tick_offset = s->tick_offset_vmstate - delta;
+    if (version_id < 3) {
+        /*
+         * Previous versions didn't migrate tick_offset directly. Instead, they
+         * migrated tick_offset_vmstate, which is a recalculation based on
+         * QEMU_CLOCK_VIRTUAL. We use tick_offset_vmstate when migrating from
+         * older versions.
+         */
+        uint64_t delta = qemu_clock_get_ns(rtc_clock) -
+                 qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+        s->tick_offset = s->tick_offset_vmstate - delta;
+    }
 
     goldfish_rtc_set_alarm(s);
 
@@ -239,8 +222,7 @@ static const MemoryRegionOps goldfish_rtc_ops[2] = {
 
 static const VMStateDescription goldfish_rtc_vmstate = {
     .name = TYPE_GOLDFISH_RTC,
-    .version_id = 2,
-    .pre_save = goldfish_rtc_pre_save,
+    .version_id = 3,
     .post_load = goldfish_rtc_post_load,
     .fields = (const VMStateField[]) {
         VMSTATE_UINT64(tick_offset_vmstate, GoldfishRTCState),
@@ -249,6 +231,7 @@ static const VMStateDescription goldfish_rtc_vmstate = {
         VMSTATE_UINT32(irq_pending, GoldfishRTCState),
         VMSTATE_UINT32(irq_enabled, GoldfishRTCState),
         VMSTATE_UINT32(time_high, GoldfishRTCState),
+        VMSTATE_UINT64_V(tick_offset, GoldfishRTCState, 3),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -256,15 +239,8 @@ static const VMStateDescription goldfish_rtc_vmstate = {
 static void goldfish_rtc_reset(DeviceState *dev)
 {
     GoldfishRTCState *s = GOLDFISH_RTC(dev);
-    struct tm tm;
 
     timer_del(s->timer);
-
-    qemu_get_timedate(&tm, 0);
-    s->tick_offset = mktimegm(&tm);
-    s->tick_offset *= NANOSECONDS_PER_SECOND;
-    s->tick_offset -= qemu_clock_get_ns(rtc_clock);
-    s->tick_offset_vmstate = 0;
     s->alarm_next = 0;
     s->alarm_running = 0;
     s->irq_pending = 0;
@@ -275,6 +251,7 @@ static void goldfish_rtc_realize(DeviceState *d, Error **errp)
 {
     SysBusDevice *dev = SYS_BUS_DEVICE(d);
     GoldfishRTCState *s = GOLDFISH_RTC(d);
+    struct tm tm;
 
     memory_region_init_io(&s->iomem, OBJECT(s),
                           &goldfish_rtc_ops[s->big_endian], s,
@@ -284,15 +261,19 @@ static void goldfish_rtc_realize(DeviceState *d, Error **errp)
     sysbus_init_irq(dev, &s->irq);
 
     s->timer = timer_new_ns(rtc_clock, goldfish_rtc_interrupt, s);
+
+    qemu_get_timedate(&tm, 0);
+    s->tick_offset = mktimegm(&tm);
+    s->tick_offset *= NANOSECONDS_PER_SECOND;
+    s->tick_offset -= qemu_clock_get_ns(rtc_clock);
 }
 
-static Property goldfish_rtc_properties[] = {
+static const Property goldfish_rtc_properties[] = {
     DEFINE_PROP_BOOL("big-endian", GoldfishRTCState, big_endian,
                       false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void goldfish_rtc_class_init(ObjectClass *klass, void *data)
+static void goldfish_rtc_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

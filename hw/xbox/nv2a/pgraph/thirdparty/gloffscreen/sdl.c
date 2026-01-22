@@ -28,8 +28,7 @@
 
 #include "gloffscreen.h"
 
-#include <SDL.h>
-#include <SDL_syswm.h>
+#include <SDL3/SDL.h>
 
 struct _GloContext {
     SDL_Window    *window;
@@ -60,8 +59,6 @@ GloContext *glo_context_create(void)
     // Create main window
     context->window = SDL_CreateWindow(
         "SDL Offscreen Window",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
         640, 480,
         SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
     if (context->window == NULL) {

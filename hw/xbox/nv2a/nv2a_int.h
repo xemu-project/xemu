@@ -32,10 +32,11 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "migration/vmstate.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "ui/console.h"
 #include "hw/display/vga_int.h"
 #include "hw/pci/pci_device.h"
+#include "exec/target_page.h"
 
 #include "hw/hw.h"
 #include "hw/display/vga.h"

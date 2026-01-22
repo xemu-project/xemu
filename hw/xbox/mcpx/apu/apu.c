@@ -176,52 +176,47 @@ static void se_frame(MCPXAPUState *d)
     mcpx_debug_end_frame();
 }
 
-/* Note: only supports millisecond resolution on Windows */
-static void sleep_ns(int64_t ns)
+static void monitor_sink_cb(void *userdata, SDL_AudioStream *stream,
+                            int additional_amount, int total_amount)
 {
-#ifndef _WIN32
-        struct timespec sleep_delay, rem_delay;
-        sleep_delay.tv_sec = ns / 1000000000LL;
-        sleep_delay.tv_nsec = ns % 1000000000LL;
-        nanosleep(&sleep_delay, &rem_delay);
-#else
-        Sleep(ns / SCALE_MS);
-#endif
-}
+    MCPXAPUState *s = MCPX_APU_DEVICE(userdata);
 
-static void monitor_sink_cb(void *opaque, uint8_t *stream, int free_b)
-{
-    MCPXAPUState *s = MCPX_APU_DEVICE(opaque);
-
-    if (!runstate_is_running()) {
-        memset(stream, 0, free_b);
+    if (additional_amount <= 0) {
         return;
     }
 
-    int avail = 0;
-    while (avail < free_b) {
+    int copied = 0;
+    bool stream_failed = false;
+
+    if (runstate_is_running()) {
         qemu_spin_lock(&s->monitor.fifo_lock);
-        avail = fifo8_num_used(&s->monitor.fifo);
+        int avail = fifo8_num_used(&s->monitor.fifo);
+        int to_copy = MIN(additional_amount, avail);
+        int remaining = to_copy;
+        while (remaining > 0) {
+            uint32_t chunk_len;
+            const uint8_t *ptr = fifo8_peek_bufptr(&s->monitor.fifo, remaining, &chunk_len);
+            if (!SDL_PutAudioStreamData(stream, ptr, chunk_len)) {
+                stream_failed = true;
+                break;
+            }
+            fifo8_drop(&s->monitor.fifo, chunk_len);
+            remaining -= chunk_len;
+        }
+        copied = to_copy - remaining;
         qemu_spin_unlock(&s->monitor.fifo_lock);
-        if (avail < free_b) {
-            sleep_ns(1000000);
-            qemu_cond_broadcast(&s->cond);
-        }
-        if (!runstate_is_running()) {
-            memset(stream, 0, free_b);
-            return;
-        }
     }
 
-    int to_copy = MIN(free_b, avail);
-    while (to_copy > 0) {
-        uint32_t chunk_len = 0;
-        qemu_spin_lock(&s->monitor.fifo_lock);
-        chunk_len = fifo8_pop_buf(&s->monitor.fifo, stream, to_copy);
-        assert(chunk_len <= to_copy);
-        qemu_spin_unlock(&s->monitor.fifo_lock);
-        stream += chunk_len;
-        to_copy -= chunk_len;
+    if (!stream_failed && copied < additional_amount) {
+        static const uint8_t silence[1024] = { 0 };
+        int remaining = additional_amount - copied;
+        while (remaining > 0) {
+            int chunk = MIN(remaining, (int)sizeof(silence));
+            if (!SDL_PutAudioStreamData(stream, silence, chunk)) {
+                break;
+            }
+            remaining -= chunk;
+        }
     }
 
     qemu_cond_broadcast(&s->cond);
@@ -230,30 +225,33 @@ static void monitor_sink_cb(void *opaque, uint8_t *stream, int free_b)
 static void monitor_init(MCPXAPUState *d)
 {
     qemu_spin_init(&d->monitor.fifo_lock);
-    fifo8_create(&d->monitor.fifo, 3 * (256 * 2 * 2));
+    fifo8_create(&d->monitor.fifo, 6 * (256 * 2 * 2));
 
-    struct SDL_AudioSpec sdl_audio_spec = {
+    SDL_AudioSpec sdl_audio_spec = {
         .freq = 48000,
-        .format = AUDIO_S16LSB,
+        .format = SDL_AUDIO_S16LE,
         .channels = 2,
-        .samples = 512,
-        .callback = monitor_sink_cb,
-        .userdata = d,
     };
 
-    if (SDL_Init(SDL_INIT_AUDIO) < 0)  {
+    if (!SDL_Init(SDL_INIT_AUDIO))  {
         fprintf(stderr, "Failed to initialize SDL audio subsystem: %s\n", SDL_GetError());
         exit(1);
     }
 
-    SDL_AudioDeviceID sdl_audio_dev;
-    sdl_audio_dev = SDL_OpenAudioDevice(NULL, 0, &sdl_audio_spec, NULL, 0);
-    if (sdl_audio_dev == 0) {
-        fprintf(stderr, "SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
-        assert(!"SDL_OpenAudioDevice failed");
+    d->monitor.stream = SDL_OpenAudioDeviceStream(
+        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
+        &sdl_audio_spec,
+        monitor_sink_cb,
+        d
+    );
+
+    if (d->monitor.stream == NULL) {
+        fprintf(stderr, "SDL_OpenAudioDeviceStream failed: %s\n", SDL_GetError());
+        assert(!"SDL_OpenAudioDeviceStream failed");
         exit(1);
     }
-    SDL_PauseAudioDevice(sdl_audio_dev, 0);
+
+    SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(d->monitor.stream));
 }
 
 static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
@@ -287,6 +285,7 @@ static void mcpx_apu_exitfn(PCIDevice *dev)
     qemu_cond_broadcast(&d->cond);
     qemu_thread_join(&d->apu_thread);
     mcpx_apu_vp_finalize(d);
+    SDL_DestroyAudioStream(d->monitor.stream);
 }
 
 static void mcpx_apu_reset(MCPXAPUState *d)
@@ -462,7 +461,7 @@ static const VMStateDescription vmstate_mcpx_apu = {
     },
 };
 
-static void mcpx_apu_class_init(ObjectClass *klass, void *data)
+static void mcpx_apu_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);

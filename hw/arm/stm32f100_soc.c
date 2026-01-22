@@ -27,12 +27,12 @@
 #include "qapi/error.h"
 #include "qemu/module.h"
 #include "hw/arm/boot.h"
-#include "exec/address-spaces.h"
+#include "system/address-spaces.h"
 #include "hw/arm/stm32f100_soc.h"
 #include "hw/qdev-properties.h"
 #include "hw/qdev-clock.h"
 #include "hw/misc/unimp.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 
 /* stm32f100_soc implementation is derived from stm32f205_soc */
 
@@ -181,7 +181,7 @@ static void stm32f100_soc_realize(DeviceState *dev_soc, Error **errp)
     create_unimplemented_device("CRC",       0x40023000, 0x400);
 }
 
-static void stm32f100_soc_class_init(ObjectClass *klass, void *data)
+static void stm32f100_soc_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

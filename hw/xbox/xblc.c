@@ -19,14 +19,16 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/audio/model.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "hw/hw.h"
 #include "ui/console.h"
 #include "hw/usb.h"
 #include "hw/usb/desc.h"
 #include "ui/xemu-input.h"
+#include "qemu/audio.h"
 #include "qemu/fifo8.h"
 #include "xblc.h"
 
@@ -494,7 +496,7 @@ static void usb_xbox_communicator_unrealize(USBDevice *dev)
     }
 }
 
-static void usb_xblc_class_initfn(ObjectClass *klass, void *data)
+static void usb_xblc_class_init(ObjectClass *klass, const void *data)
 {
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
     uc->handle_reset   = usb_xblc_handle_reset;
@@ -519,9 +521,8 @@ static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
     s->out.volume = SDL_MIX_MAXVOLUME;
 }
 
-static Property xblc_properties[] = {
+static const Property xblc_properties[] = {
     DEFINE_PROP_UINT8("index", USBXBLCState, device_index, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const VMStateDescription usb_xblc_vmstate = {
@@ -535,7 +536,7 @@ static const VMStateDescription usb_xblc_vmstate = {
     },
 };
 
-static void usb_xbox_communicator_class_initfn(ObjectClass *klass, void *data)
+static void usb_xbox_communicator_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
@@ -544,7 +545,7 @@ static void usb_xbox_communicator_class_initfn(ObjectClass *klass, void *data)
     uc->usb_desc       = &desc_xblc;
     uc->realize        = usb_xbox_communicator_realize;
     uc->unrealize      = usb_xbox_communicator_unrealize;
-    usb_xblc_class_initfn(klass, data);
+    usb_xblc_class_init(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd  = &usb_xblc_vmstate;
     device_class_set_props(dc, xblc_properties);
@@ -555,12 +556,13 @@ static const TypeInfo info_xblc = {
     .name          = TYPE_USB_XBLC,
     .parent        = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBXBLCState),
-    .class_init    = usb_xbox_communicator_class_initfn,
+    .class_init    = usb_xbox_communicator_class_init,
 };
 
 static void usb_xblc_register_types(void)
 {
     type_register_static(&info_xblc);
+    audio_register_model("xblc", XBLC_STR, TYPE_USB_XBLC);
 }
 
 type_init(usb_xblc_register_types)

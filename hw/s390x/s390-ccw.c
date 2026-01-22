@@ -18,7 +18,7 @@
 #include "hw/s390x/css.h"
 #include "hw/s390x/css-bridge.h"
 #include "hw/s390x/s390-ccw.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 
 IOInstEnding s390_ccw_cmd_request(SubchDev *sch)
 {
@@ -175,7 +175,7 @@ static void s390_ccw_instance_init(Object *obj)
                                   "/disk@0,0", DEVICE(obj));
 }
 
-static void s390_ccw_class_init(ObjectClass *klass, void *data)
+static void s390_ccw_class_init(ObjectClass *klass, const void *data)
 {
     S390CCWDeviceClass *cdc = S390_CCW_DEVICE_CLASS(klass);
 

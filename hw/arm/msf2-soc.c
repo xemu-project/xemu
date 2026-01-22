@@ -25,12 +25,12 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 #include "qapi/error.h"
-#include "exec/address-spaces.h"
+#include "system/address-spaces.h"
 #include "hw/char/serial-mm.h"
 #include "hw/arm/msf2-soc.h"
 #include "hw/misc/unimp.h"
 #include "hw/qdev-clock.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 
 #define MSF2_TIMER_BASE       0x40004000
 #define MSF2_SYSREG_BASE      0x40038000
@@ -222,7 +222,7 @@ static void m2sxxx_soc_realize(DeviceState *dev_soc, Error **errp)
     create_unimplemented_device("usb", 0x40043000, 0x1000);
 }
 
-static Property m2sxxx_soc_properties[] = {
+static const Property m2sxxx_soc_properties[] = {
     /*
      * part name specifies the type of SmartFusion2 device variant(this
      * property is for information purpose only.
@@ -234,10 +234,9 @@ static Property m2sxxx_soc_properties[] = {
     /* default divisors in Libero GUI */
     DEFINE_PROP_UINT8("apb0div", MSF2State, apb0div, 2),
     DEFINE_PROP_UINT8("apb1div", MSF2State, apb1div, 2),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void m2sxxx_soc_class_init(ObjectClass *klass, void *data)
+static void m2sxxx_soc_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

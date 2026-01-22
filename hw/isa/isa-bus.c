@@ -22,14 +22,14 @@
 #include "qemu/module.h"
 #include "qapi/error.h"
 #include "hw/sysbus.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "hw/isa/isa.h"
 
 static ISABus *isabus;
 
 static char *isabus_get_fw_dev_path(DeviceState *dev);
 
-static void isa_bus_class_init(ObjectClass *klass, void *data)
+static void isa_bus_class_init(ObjectClass *klass, const void *data)
 {
     BusClass *k = BUS_CLASS(klass);
 
@@ -213,7 +213,7 @@ ISADevice *isa_vga_init(ISABus *bus)
     }
 }
 
-static void isabus_bridge_class_init(ObjectClass *klass, void *data)
+static void isabus_bridge_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -228,7 +228,7 @@ static const TypeInfo isabus_bridge_info = {
     .class_init    = isabus_bridge_class_init,
 };
 
-static void isa_device_class_init(ObjectClass *klass, void *data)
+static void isa_device_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *k = DEVICE_CLASS(klass);
     k->bus_type = TYPE_ISA_BUS;

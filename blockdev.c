@@ -31,8 +31,8 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/block-backend.h"
-#include "sysemu/blockdev.h"
+#include "system/block-backend.h"
+#include "system/blockdev.h"
 #include "hw/block/block.h"
 #include "block/blockjob.h"
 #include "block/dirty-bitmap.h"
@@ -46,19 +46,19 @@
 #include "qapi/qapi-commands-block.h"
 #include "qapi/qapi-commands-transaction.h"
 #include "qapi/qapi-visit-block-core.h"
-#include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qnum.h"
-#include "qapi/qmp/qstring.h"
+#include "qobject/qdict.h"
+#include "qobject/qnum.h"
+#include "qobject/qstring.h"
 #include "qapi/error.h"
 #include "qapi/qmp/qerror.h"
-#include "qapi/qmp/qlist.h"
+#include "qobject/qlist.h"
 #include "qapi/qobject-output-visitor.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/iothread.h"
+#include "system/system.h"
+#include "system/iothread.h"
 #include "block/block_int.h"
 #include "block/trace.h"
-#include "sysemu/runstate.h"
-#include "sysemu/replay.h"
+#include "system/runstate.h"
+#include "system/replay.h"
 #include "qemu/cutils.h"
 #include "qemu/help_option.h"
 #include "qemu/main-loop.h"
@@ -617,7 +617,8 @@ static BlockBackend *blockdev_init(const char *file, QDict *bs_opts,
 
         bs->detect_zeroes = detect_zeroes;
 
-        block_acct_setup(blk_get_stats(blk), account_invalid, account_failed);
+        block_acct_setup(blk_get_stats(blk), account_invalid, account_failed,
+                         NULL, 0, NULL);
 
         if (!parse_stats_intervals(blk_get_stats(blk), interval_list, errp)) {
             blk_unref(blk);
@@ -685,6 +686,7 @@ void blockdev_close_all_bdrv_states(void)
 
     GLOBAL_STATE_CODE();
     QTAILQ_FOREACH_SAFE(bs, &monitor_bdrv_states, monitor_list, next_bs) {
+        QTAILQ_REMOVE(&monitor_bdrv_states, bs, monitor_list);
         bdrv_unref(bs);
     }
 }
@@ -1141,39 +1143,41 @@ SnapshotInfo *qmp_blockdev_snapshot_delete_internal_sync(const char *device,
     int ret;
 
     GLOBAL_STATE_CODE();
-    GRAPH_RDLOCK_GUARD_MAINLOOP();
+
+    bdrv_drain_all_begin();
+    bdrv_graph_rdlock_main_loop();
 
     bs = qmp_get_root_bs(device, errp);
     if (!bs) {
-        return NULL;
+        goto error;
     }
 
     if (!id && !name) {
         error_setg(errp, "Name or id must be provided");
-        return NULL;
+        goto error;
     }
 
     if (bdrv_op_is_blocked(bs, BLOCK_OP_TYPE_INTERNAL_SNAPSHOT_DELETE, errp)) {
-        return NULL;
+        goto error;
     }
 
     ret = bdrv_snapshot_find_by_id_and_name(bs, id, name, &sn, &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
-        return NULL;
+        goto error;
     }
     if (!ret) {
         error_setg(errp,
                    "Snapshot with id '%s' and name '%s' does not exist on "
                    "device '%s'",
                    STR_OR_NULL(id), STR_OR_NULL(name), device);
-        return NULL;
+        goto error;
     }
 
     bdrv_snapshot_delete(bs, id, name, &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
-        return NULL;
+        goto error;
     }
 
     info = g_new0(SnapshotInfo, 1);
@@ -1189,6 +1193,9 @@ SnapshotInfo *qmp_blockdev_snapshot_delete_internal_sync(const char *device,
         info->has_icount = true;
     }
 
+error:
+    bdrv_graph_rdunlock_main_loop();
+    bdrv_drain_all_end();
     return info;
 }
 
@@ -1212,7 +1219,7 @@ static void internal_snapshot_action(BlockdevSnapshotInternal *internal,
     Error *local_err = NULL;
     const char *device;
     const char *name;
-    BlockDriverState *bs;
+    BlockDriverState *bs, *check_bs;
     QEMUSnapshotInfo old_sn, *sn;
     bool ret;
     int64_t rt;
@@ -1220,7 +1227,7 @@ static void internal_snapshot_action(BlockdevSnapshotInternal *internal,
     int ret1;
 
     GLOBAL_STATE_CODE();
-    GRAPH_RDLOCK_GUARD_MAINLOOP();
+    bdrv_graph_rdlock_main_loop();
 
     tran_add(tran, &internal_snapshot_drv, state);
 
@@ -1229,13 +1236,28 @@ static void internal_snapshot_action(BlockdevSnapshotInternal *internal,
 
     bs = qmp_get_root_bs(device, errp);
     if (!bs) {
+        bdrv_graph_rdunlock_main_loop();
         return;
     }
 
     state->bs = bs;
 
+    /* Need to drain while unlocked. */
+    bdrv_graph_rdunlock_main_loop();
     /* Paired with .clean() */
     bdrv_drained_begin(bs);
+
+    GRAPH_RDLOCK_GUARD_MAINLOOP();
+
+    /* Make sure the root bs did not change with the drain. */
+    check_bs = qmp_get_root_bs(device, errp);
+    if (bs != check_bs) {
+        if (check_bs) {
+            error_setg(errp, "Block node of device '%s' unexpectedly changed",
+                       device);
+        } /* else errp is already set */
+        return;
+    }
 
     if (bdrv_op_is_blocked(bs, BLOCK_OP_TYPE_INTERNAL_SNAPSHOT, errp)) {
         return;
@@ -1304,11 +1326,13 @@ static void internal_snapshot_abort(void *opaque)
     Error *local_error = NULL;
 
     GLOBAL_STATE_CODE();
-    GRAPH_RDLOCK_GUARD_MAINLOOP();
 
     if (!state->created) {
         return;
     }
+
+    bdrv_drain_all_begin();
+    bdrv_graph_rdlock_main_loop();
 
     if (bdrv_snapshot_delete(bs, sn->id_str, sn->name, &local_error) < 0) {
         error_reportf_err(local_error,
@@ -1317,6 +1341,8 @@ static void internal_snapshot_abort(void *opaque)
                           sn->id_str, sn->name,
                           bdrv_get_device_name(bs));
     }
+    bdrv_graph_rdunlock_main_loop();
+    bdrv_drain_all_end();
 }
 
 static void internal_snapshot_clean(void *opaque)
@@ -1362,9 +1388,10 @@ static void external_snapshot_action(TransactionAction *action,
     const char *new_image_file;
     ExternalSnapshotState *state = g_new0(ExternalSnapshotState, 1);
     uint64_t perm, shared;
+    BlockDriverState *check_bs;
 
     /* TODO We'll eventually have to take a writer lock in this function */
-    GRAPH_RDLOCK_GUARD_MAINLOOP();
+    bdrv_graph_rdlock_main_loop();
 
     tran_add(tran, &external_snapshot_drv, state);
 
@@ -1397,21 +1424,35 @@ static void external_snapshot_action(TransactionAction *action,
 
     state->old_bs = bdrv_lookup_bs(device, node_name, errp);
     if (!state->old_bs) {
+        bdrv_graph_rdunlock_main_loop();
         return;
     }
 
+    /* Need to drain while unlocked. */
+    bdrv_graph_rdunlock_main_loop();
     /* Paired with .clean() */
     bdrv_drained_begin(state->old_bs);
+    bdrv_graph_rdlock_main_loop();
+
+    /* Make sure the associated bs did not change with the drain. */
+    check_bs = bdrv_lookup_bs(device, node_name, errp);
+    if (state->old_bs != check_bs) {
+        if (check_bs) {
+            error_setg(errp, "Block node of device '%s' unexpectedly changed",
+                       device);
+        } /* else errp is already set */
+        goto unlock;
+    }
 
     if (!bdrv_is_inserted(state->old_bs)) {
         error_setg(errp, "Device '%s' has no medium",
                    bdrv_get_device_or_node_name(state->old_bs));
-        return;
+        goto unlock;
     }
 
     if (bdrv_op_is_blocked(state->old_bs,
                            BLOCK_OP_TYPE_EXTERNAL_SNAPSHOT, errp)) {
-        return;
+        goto unlock;
     }
 
     if (!bdrv_is_read_only(state->old_bs)) {
@@ -1419,7 +1460,7 @@ static void external_snapshot_action(TransactionAction *action,
         if (ret < 0) {
             error_setg_errno(errp, -ret, "Write to node '%s' failed",
                              bdrv_get_device_or_node_name(state->old_bs));
-            return;
+            goto unlock;
         }
     }
 
@@ -1431,13 +1472,13 @@ static void external_snapshot_action(TransactionAction *action,
 
         if (node_name && !snapshot_node_name) {
             error_setg(errp, "New overlay node-name missing");
-            return;
+            goto unlock;
         }
 
         if (snapshot_node_name &&
             bdrv_lookup_bs(snapshot_node_name, snapshot_node_name, NULL)) {
             error_setg(errp, "New overlay node-name already in use");
-            return;
+            goto unlock;
         }
 
         flags = state->old_bs->open_flags;
@@ -1450,7 +1491,7 @@ static void external_snapshot_action(TransactionAction *action,
             int64_t size = bdrv_getlength(state->old_bs);
             if (size < 0) {
                 error_setg_errno(errp, -size, "bdrv_getlength failed");
-                return;
+                goto unlock;
             }
             bdrv_refresh_filename(state->old_bs);
 
@@ -1461,7 +1502,7 @@ static void external_snapshot_action(TransactionAction *action,
 
             if (local_err) {
                 error_propagate(errp, local_err);
-                return;
+                goto unlock;
             }
         }
 
@@ -1477,7 +1518,7 @@ static void external_snapshot_action(TransactionAction *action,
 
     /* We will manually add the backing_hd field to the bs later */
     if (!state->new_bs) {
-        return;
+        goto unlock;
     }
 
     /*
@@ -1488,29 +1529,51 @@ static void external_snapshot_action(TransactionAction *action,
     bdrv_get_cumulative_perm(state->new_bs, &perm, &shared);
     if (perm & BLK_PERM_CONSISTENT_READ) {
         error_setg(errp, "The overlay is already in use");
-        return;
+        goto unlock;
     }
 
     if (state->new_bs->drv->is_filter) {
         error_setg(errp, "Filters cannot be used as overlays");
-        return;
+        goto unlock;
     }
 
     if (bdrv_cow_child(state->new_bs)) {
         error_setg(errp, "The overlay already has a backing image");
-        return;
+        goto unlock;
     }
 
     if (!state->new_bs->drv->supports_backing) {
         error_setg(errp, "The overlay does not support backing images");
-        return;
+        goto unlock;
+    }
+
+    /*
+     * Older QEMU versions have allowed adding an active parent node to an
+     * inactive child node. This is unsafe in the general case, but there is an
+     * important use case, which is taking a VM snapshot with migration to file
+     * and then adding an external snapshot while the VM is still stopped and
+     * images are inactive. Requiring the user to explicitly create the overlay
+     * as inactive would break compatibility, so just do it automatically here
+     * to keep this working.
+     */
+    if (bdrv_is_inactive(state->old_bs) && !bdrv_is_inactive(state->new_bs)) {
+        bdrv_graph_rdunlock_main_loop();
+        bdrv_drain_all_begin();
+        bdrv_graph_rdlock_main_loop();
+        ret = bdrv_inactivate(state->new_bs, errp);
+        bdrv_drain_all_end();
+        if (ret < 0) {
+            goto unlock;
+        }
     }
 
     ret = bdrv_append(state->new_bs, state->old_bs, errp);
     if (ret < 0) {
-        return;
+        goto unlock;
     }
     state->overlay_appended = true;
+unlock:
+    bdrv_graph_rdunlock_main_loop();
 }
 
 static void external_snapshot_commit(void *opaque)
@@ -1534,10 +1597,18 @@ static void external_snapshot_abort(void *opaque)
             AioContext *tmp_context;
             int ret;
 
+            bdrv_graph_wrlock_drained();
+
             aio_context = bdrv_get_aio_context(state->old_bs);
 
-            bdrv_ref(state->old_bs);   /* we can't let bdrv_set_backind_hd()
-                                          close state->old_bs; we need it */
+            /*
+             * Note that state->old_bs would not disappear during the
+             * write-locked section, because the unref from
+             * bdrv_set_backing_hd() only happens at the end of the write-locked
+             * section. However, just be explicit about keeping a reference and
+             * don't rely on that implicit detail.
+             */
+            bdrv_ref(state->old_bs);
             bdrv_set_backing_hd(state->new_bs, NULL, &error_abort);
 
             /*
@@ -1547,16 +1618,14 @@ static void external_snapshot_abort(void *opaque)
              */
             tmp_context = bdrv_get_aio_context(state->old_bs);
             if (aio_context != tmp_context) {
-                ret = bdrv_try_change_aio_context(state->old_bs,
-                                                  aio_context, NULL, NULL);
+                ret = bdrv_try_change_aio_context_locked(state->old_bs,
+                                                         aio_context, NULL,
+                                                         NULL);
                 assert(ret == 0);
             }
 
-            bdrv_drained_begin(state->new_bs);
-            bdrv_graph_wrlock();
             bdrv_replace_node(state->new_bs, state->old_bs, &error_abort);
             bdrv_graph_wrunlock();
-            bdrv_drained_end(state->new_bs);
 
             bdrv_unref(state->old_bs); /* bdrv_replace_node() ref'ed old_bs */
         }
@@ -1724,7 +1793,10 @@ static void drive_backup_action(DriveBackup *backup,
     }
 
     if (set_backing_hd) {
-        if (bdrv_set_backing_hd(target_bs, source, errp) < 0) {
+        bdrv_graph_wrlock_drained();
+        ret = bdrv_set_backing_hd(target_bs, source, errp);
+        bdrv_graph_wrunlock();
+        if (ret < 0) {
             goto unref;
         }
     }
@@ -2634,6 +2706,7 @@ static BlockJob *do_backup_common(BackupCommon *backup,
     BdrvDirtyBitmap *bmap = NULL;
     BackupPerf perf = { .max_workers = 64 };
     int job_flags = JOB_DEFAULT;
+    OnCbwError on_cbw_error = ON_CBW_ERROR_BREAK_GUEST_WRITE;
 
     if (!backup->has_speed) {
         backup->speed = 0;
@@ -2738,6 +2811,10 @@ static BlockJob *do_backup_common(BackupCommon *backup,
         job_flags |= JOB_MANUAL_DISMISS;
     }
 
+    if (backup->has_on_cbw_error) {
+        on_cbw_error = backup->on_cbw_error;
+    }
+
     job = backup_job_create(backup->job_id, bs, target_bs, backup->speed,
                             backup->sync, bmap, backup->bitmap_mode,
                             backup->compress, backup->discard_source,
@@ -2745,6 +2822,7 @@ static BlockJob *do_backup_common(BackupCommon *backup,
                             &perf,
                             backup->on_source_error,
                             backup->on_target_error,
+                            on_cbw_error,
                             job_flags, NULL, NULL, txn, errp);
     return job;
 }
@@ -2791,7 +2869,7 @@ static void blockdev_mirror_common(const char *job_id, BlockDriverState *bs,
                                    const char *replaces,
                                    enum MirrorSyncMode sync,
                                    BlockMirrorBackingMode backing_mode,
-                                   bool zero_target,
+                                   bool target_is_zero,
                                    bool has_speed, int64_t speed,
                                    bool has_granularity, uint32_t granularity,
                                    bool has_buf_size, int64_t buf_size,
@@ -2858,10 +2936,6 @@ static void blockdev_mirror_common(const char *job_id, BlockDriverState *bs,
         return;
     }
 
-    if (!bdrv_backing_chain_next(bs) && sync == MIRROR_SYNC_MODE_TOP) {
-        sync = MIRROR_SYNC_MODE_FULL;
-    }
-
     if (!replaces) {
         /* We want to mirror from @bs, but keep implicit filters on top */
         unfiltered_bs = bdrv_skip_implicit_filters(bs);
@@ -2902,11 +2976,10 @@ static void blockdev_mirror_common(const char *job_id, BlockDriverState *bs,
     /* pass the node name to replace to mirror start since it's loose coupling
      * and will allow to check whether the node still exist at mirror completion
      */
-    mirror_start(job_id, bs, target,
-                 replaces, job_flags,
-                 speed, granularity, buf_size, sync, backing_mode, zero_target,
-                 on_source_error, on_target_error, unmap, filter_node_name,
-                 copy_mode, errp);
+    mirror_start(job_id, bs, target, replaces, job_flags,
+                 speed, granularity, buf_size, sync, backing_mode,
+                 target_is_zero, on_source_error, on_target_error, unmap,
+                 filter_node_name, copy_mode, errp);
 }
 
 void qmp_drive_mirror(DriveMirror *arg, Error **errp)
@@ -2920,7 +2993,7 @@ void qmp_drive_mirror(DriveMirror *arg, Error **errp)
     int flags;
     int64_t size;
     const char *format = arg->format;
-    bool zero_target;
+    bool target_is_zero;
     int ret;
 
     bs = qmp_get_root_bs(arg->device, errp);
@@ -3034,9 +3107,8 @@ void qmp_drive_mirror(DriveMirror *arg, Error **errp)
     }
 
     bdrv_graph_rdlock_main_loop();
-    zero_target = (arg->sync == MIRROR_SYNC_MODE_FULL &&
-                   (arg->mode == NEW_IMAGE_MODE_EXISTING ||
-                    !bdrv_has_zero_init(target_bs)));
+    target_is_zero = (arg->mode != NEW_IMAGE_MODE_EXISTING &&
+                      bdrv_has_zero_init(target_bs));
     bdrv_graph_rdunlock_main_loop();
 
 
@@ -3048,7 +3120,7 @@ void qmp_drive_mirror(DriveMirror *arg, Error **errp)
 
     blockdev_mirror_common(arg->job_id, bs, target_bs,
                            arg->replaces, arg->sync,
-                           backing_mode, zero_target,
+                           backing_mode, target_is_zero,
                            arg->has_speed, arg->speed,
                            arg->has_granularity, arg->granularity,
                            arg->has_buf_size, arg->buf_size,
@@ -3078,13 +3150,13 @@ void qmp_blockdev_mirror(const char *job_id,
                          bool has_copy_mode, MirrorCopyMode copy_mode,
                          bool has_auto_finalize, bool auto_finalize,
                          bool has_auto_dismiss, bool auto_dismiss,
+                         bool has_target_is_zero, bool target_is_zero,
                          Error **errp)
 {
     BlockDriverState *bs;
     BlockDriverState *target_bs;
     AioContext *aio_context;
     BlockMirrorBackingMode backing_mode = MIRROR_LEAVE_BACKING_CHAIN;
-    bool zero_target;
     int ret;
 
     bs = qmp_get_root_bs(device, errp);
@@ -3097,8 +3169,6 @@ void qmp_blockdev_mirror(const char *job_id,
         return;
     }
 
-    zero_target = (sync == MIRROR_SYNC_MODE_FULL);
-
     aio_context = bdrv_get_aio_context(bs);
 
     ret = bdrv_try_change_aio_context(target_bs, aio_context, NULL, errp);
@@ -3108,7 +3178,8 @@ void qmp_blockdev_mirror(const char *job_id,
 
     blockdev_mirror_common(job_id, bs, target_bs,
                            replaces, sync, backing_mode,
-                           zero_target, has_speed, speed,
+                           has_target_is_zero && target_is_zero,
+                           has_speed, speed,
                            has_granularity, granularity,
                            has_buf_size, buf_size,
                            has_on_source_error, on_source_error,
@@ -3464,6 +3535,49 @@ void qmp_blockdev_del(const char *node_name, Error **errp)
     bdrv_unref(bs);
 }
 
+void qmp_blockdev_set_active(const char *node_name, bool active, Error **errp)
+{
+    BlockDriverState *bs;
+    int ret;
+
+    GLOBAL_STATE_CODE();
+
+    if (!node_name) {
+        if (active) {
+            bdrv_activate_all(errp);
+        } else {
+            ret = bdrv_inactivate_all();
+            if (ret < 0) {
+                error_setg_errno(errp, -ret, "Failed to inactivate all nodes");
+            }
+        }
+        return;
+    }
+
+    if (!active) {
+        bdrv_drain_all_begin();
+    }
+    bdrv_graph_rdlock_main_loop();
+
+    bs = bdrv_find_node(node_name);
+    if (!bs) {
+        error_setg(errp, "Failed to find node with node-name='%s'",
+                   node_name);
+        goto unlock;
+    }
+    if (active) {
+        bdrv_activate(bs, errp);
+    } else {
+        bdrv_inactivate(bs, errp);
+    }
+
+unlock:
+    bdrv_graph_rdunlock_main_loop();
+    if (!active) {
+        bdrv_drain_all_end();
+    }
+}
+
 static BdrvChild * GRAPH_RDLOCK
 bdrv_find_child(BlockDriverState *parent_bs, const char *child_name)
 {
@@ -3484,7 +3598,7 @@ void qmp_x_blockdev_change(const char *parent, const char *child,
     BlockDriverState *parent_bs, *new_bs = NULL;
     BdrvChild *p_child;
 
-    bdrv_graph_wrlock();
+    bdrv_graph_wrlock_drained();
 
     parent_bs = bdrv_lookup_bs(parent, parent, errp);
     if (!parent_bs) {
@@ -3554,12 +3668,13 @@ void qmp_x_blockdev_set_iothread(const char *node_name, StrOrNull *iothread,
     AioContext *new_context;
     BlockDriverState *bs;
 
-    GRAPH_RDLOCK_GUARD_MAINLOOP();
+    bdrv_drain_all_begin();
+    bdrv_graph_rdlock_main_loop();
 
     bs = bdrv_find_node(node_name);
     if (!bs) {
         error_setg(errp, "Failed to find node with node-name='%s'", node_name);
-        return;
+        goto out;
     }
 
     /* Protects against accidents. */
@@ -3567,14 +3682,14 @@ void qmp_x_blockdev_set_iothread(const char *node_name, StrOrNull *iothread,
         error_setg(errp, "Node %s is associated with a BlockBackend and could "
                          "be in use (use force=true to override this check)",
                          node_name);
-        return;
+        goto out;
     }
 
     if (iothread->type == QTYPE_QSTRING) {
         IOThread *obj = iothread_by_id(iothread->u.s);
         if (!obj) {
             error_setg(errp, "Cannot find iothread %s", iothread->u.s);
-            return;
+            goto out;
         }
 
         new_context = iothread_get_aio_context(obj);
@@ -3582,7 +3697,11 @@ void qmp_x_blockdev_set_iothread(const char *node_name, StrOrNull *iothread,
         new_context = qemu_get_aio_context();
     }
 
-    bdrv_try_change_aio_context(bs, new_context, NULL, errp);
+    bdrv_try_change_aio_context_locked(bs, new_context, NULL, errp);
+
+out:
+    bdrv_graph_rdunlock_main_loop();
+    bdrv_drain_all_end();
 }
 
 QemuOptsList qemu_common_drive_opts = {

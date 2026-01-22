@@ -7,7 +7,9 @@
 # See the COPYING file in the top-level directory.
 
 ##
-# = Audio
+# *****
+# Audio
+# *****
 ##
 
 ##
@@ -66,6 +68,26 @@
     '*out': 'AudiodevPerDirectionOptions' } }
 
 ##
+# @AudiodevDBusOptions:
+#
+# Options of the D-Bus audio backend.
+#
+# @in: options of the capture stream
+#
+# @out: options of the playback stream
+#
+# @nsamples: set the number of samples per read/write calls
+#     (default to 480, 10ms at 48kHz).
+#
+# Since: 10.0
+##
+{ 'struct': 'AudiodevDBusOptions',
+  'data': {
+    '*in':  'AudiodevPerDirectionOptions',
+    '*out': 'AudiodevPerDirectionOptions',
+    '*nsamples': 'uint32'} }
+
+##
 # @AudiodevAlsaPerDirectionOptions:
 #
 # Options of the ALSA backend that are used for both playback and
@@ -76,7 +98,7 @@
 # @period-length: the period length in microseconds
 #
 # @try-poll: attempt to use poll mode, falling back to non-polling
-#     access on failure (default true)
+#     access on failure (default false)
 #
 # Since: 4.0
 ##
@@ -289,9 +311,9 @@
 #
 # @name: name of the sink/source to use
 #
-# @stream-name: name of the PulseAudio stream created by qemu.  Can be
+# @stream-name: name of the PulseAudio stream created by QEMU.  Can be
 #     used to identify the stream in PulseAudio when you create
-#     multiple PulseAudio devices or run multiple qemu instances
+#     multiple PulseAudio devices or run multiple QEMU instances
 #     (default: audiodev's id, since 4.2)
 #
 # @latency: latency you want PulseAudio to achieve in microseconds
@@ -333,9 +355,9 @@
 #
 # @name: name of the sink/source to use
 #
-# @stream-name: name of the PipeWire stream created by qemu.  Can be
+# @stream-name: name of the PipeWire stream created by QEMU.  Can be
 #     used to identify the stream in PipeWire when you create multiple
-#     PipeWire devices or run multiple qemu instances (default:
+#     PipeWire devices or run multiple QEMU instances (default:
 #     audiodev's id)
 #
 # @latency: latency you want PipeWire to achieve in microseconds
@@ -490,7 +512,7 @@
                    'if': 'CONFIG_AUDIO_ALSA' },
     'coreaudio': { 'type': 'AudiodevCoreaudioOptions',
                    'if': 'CONFIG_AUDIO_COREAUDIO' },
-    'dbus':      { 'type': 'AudiodevGenericOptions',
+    'dbus':      { 'type': 'AudiodevDBusOptions',
                    'if': 'CONFIG_DBUS_DISPLAY' },
     'dsound':    { 'type': 'AudiodevDsoundOptions',
                    'if': 'CONFIG_AUDIO_DSOUND' },
@@ -513,9 +535,7 @@
 ##
 # @query-audiodevs:
 #
-# Returns information about audiodev configuration
-#
-# Returns: array of @Audiodev
+# Return information about audiodev configuration
 #
 # Since: 8.0
 ##

@@ -29,17 +29,48 @@ sub_file="${sub_tdir}/submodule.tar"
 # independent of what the developer currently has initialized
 # in their checkout, because the build environment is completely
 # different to the host OS.
-subprojects="keycodemapdb libvfio-user berkeley-softfloat-3
-  berkeley-testfloat-3 arbitrary-int-1-rs bilge-0.2-rs
-  bilge-impl-0.2-rs either-1-rs itertools-0.11-rs proc-macro2-1-rs
-  proc-macro-error-1-rs proc-macro-error-attr-1-rs quote-1-rs
-  syn-2-rs unicode-ident-1-rs"
+subprojects=(
+  anyhow-1-rs
+  arbitrary-int-1-rs
+  attrs-0.2-rs
+  berkeley-softfloat-3
+  berkeley-testfloat-3
+  bilge-0.2-rs
+  bilge-impl-0.2-rs
+  either-1-rs
+  foreign-0.3-rs
+  glib-sys-0.21-rs
+  itertools-0.11-rs
+  keycodemapdb
+  libc-0.2-rs
+  libvfio-user
+  proc-macro-error-1-rs
+  proc-macro-error-attr-1-rs
+  proc-macro2-1-rs
+  quote-1-rs
+  syn-2-rs
+  unicode-ident-1-rs
+)
 sub_deinit=""
 
 # xemu only
-subprojects="keycodemapdb berkeley-softfloat-3 berkeley-testfloat-3
-  glslang SPIRV-Reflect  volk VulkanMemoryAllocator nv2a_vsh_cpu
-  tomlplusplus xxhash imgui implot genconfig json"
+subprojects=(
+  berkeley-softfloat-3
+  berkeley-testfloat-3
+  genconfig
+  glslang
+  imgui
+  implot
+  json
+  keycodemapdb
+  nv2a_vsh_cpu
+  SPIRV-Reflect
+  tomlplusplus
+  volk
+  VulkanMemoryAllocator
+  xxhash
+  sdl3
+)
 
 function cleanup() {
     local status=$?
@@ -84,12 +115,11 @@ function subproject_dir() {
 git archive --format tar "$(tree_ish)" --prefix="$tar_prefix" > "$tar_file"
 test $? -ne 0 && error "failed to archive qemu"
 
-meson subprojects download -j8 $subprojects
-# test $? -ne 0 && error "failed to download subprojects"
+meson subprojects download -j8 ${subprojects[@]} >/dev/null
+# test $? -ne 0 && error "failed to download subprojects $subprojects"
 
-for sp in $subprojects; do
+for sp in "${subprojects[@]}"; do
     tar --append --file "$tar_file" --exclude=.git --transform "s,^./,$tar_prefix," ./subprojects/"$(subproject_dir $sp)"
     test $? -ne 0 && error "failed to append subproject $sp to $tar_file"
 done
-
 exit 0

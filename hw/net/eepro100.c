@@ -50,9 +50,9 @@
 #include "net/net.h"
 #include "net/eth.h"
 #include "hw/nvram/eeprom93xx.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/dma.h"
-#include "sysemu/reset.h"
+#include "system/system.h"
+#include "system/dma.h"
+#include "system/reset.h"
 #include "qemu/bitops.h"
 #include "qemu/module.h"
 #include "qapi/error.h"
@@ -551,9 +551,7 @@ static void e100_pci_reset(EEPRO100State *s, Error **errp)
     if (info->power_management) {
         /* Power Management Capabilities */
         int cfg_offset = 0xdc;
-        int r = pci_add_capability(&s->dev, PCI_CAP_ID_PM,
-                                   cfg_offset, PCI_PM_SIZEOF,
-                                   errp);
+        int r = pci_pm_init(&s->dev, cfg_offset, errp);
         if (r < 0) {
             return;
         }
@@ -2058,12 +2056,11 @@ static E100PCIDeviceInfo *eepro100_get_class(EEPRO100State *s)
     return eepro100_get_class_by_name(object_get_typename(OBJECT(s)));
 }
 
-static Property e100_properties[] = {
+static const Property e100_properties[] = {
     DEFINE_NIC_PROPERTIES(EEPRO100State, conf),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void eepro100_class_init(ObjectClass *klass, void *data)
+static void eepro100_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -2097,12 +2094,12 @@ static void eepro100_register_types(void)
         type_info.class_init = eepro100_class_init;
         type_info.instance_size = sizeof(EEPRO100State);
         type_info.instance_init = eepro100_instance_init;
-        type_info.interfaces = (InterfaceInfo[]) {
+        type_info.interfaces = (const InterfaceInfo[]) {
             { INTERFACE_CONVENTIONAL_PCI_DEVICE },
             { },
         };
 
-        type_register(&type_info);
+        type_register_static(&type_info);
     }
 }
 

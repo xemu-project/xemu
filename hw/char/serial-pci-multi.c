@@ -45,8 +45,7 @@ typedef struct PCIMultiSerialState {
     char         *name[PCI_SERIAL_MAX_PORTS];
     SerialState  state[PCI_SERIAL_MAX_PORTS];
     uint32_t     level[PCI_SERIAL_MAX_PORTS];
-    qemu_irq     *irqs;
-    uint8_t      prog_if;
+    IRQState     irqs[PCI_SERIAL_MAX_PORTS];
 } PCIMultiSerialState;
 
 static void multi_serial_pci_exit(PCIDevice *dev)
@@ -61,7 +60,6 @@ static void multi_serial_pci_exit(PCIDevice *dev)
         memory_region_del_subregion(&pci->iobar, &s->io);
         g_free(pci->name[i]);
     }
-    qemu_free_irqs(pci->irqs, pci->ports);
 }
 
 static void multi_serial_irq_mux(void *opaque, int n, int level)
@@ -98,11 +96,10 @@ static void multi_serial_pci_realize(PCIDevice *dev, Error **errp)
     SerialState *s;
     size_t i, nports = multi_serial_get_port_count(pc);
 
-    pci->dev.config[PCI_CLASS_PROG] = pci->prog_if;
-    pci->dev.config[PCI_INTERRUPT_PIN] = 0x01;
+    pci->dev.config[PCI_CLASS_PROG] = 2; /* 16550 compatible */
+    pci->dev.config[PCI_INTERRUPT_PIN] = 1;
     memory_region_init(&pci->iobar, OBJECT(pci), "multiserial", 8 * nports);
     pci_register_bar(&pci->dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &pci->iobar);
-    pci->irqs = qemu_allocate_irqs(multi_serial_irq_mux, pci, nports);
 
     for (i = 0; i < nports; i++) {
         s = pci->state + i;
@@ -110,7 +107,7 @@ static void multi_serial_pci_realize(PCIDevice *dev, Error **errp)
             multi_serial_pci_exit(dev);
             return;
         }
-        s->irq = pci->irqs[i];
+        s->irq = &pci->irqs[i];
         pci->name[i] = g_strdup_printf("uart #%zu", i + 1);
         memory_region_init_io(&s->io, OBJECT(pci), &serial_io_ops, s,
                               pci->name[i], 8);
@@ -132,23 +129,20 @@ static const VMStateDescription vmstate_pci_multi_serial = {
     }
 };
 
-static Property multi_2x_serial_pci_properties[] = {
+static const Property multi_2x_serial_pci_properties[] = {
     DEFINE_PROP_CHR("chardev1",  PCIMultiSerialState, state[0].chr),
     DEFINE_PROP_CHR("chardev2",  PCIMultiSerialState, state[1].chr),
-    DEFINE_PROP_UINT8("prog_if",  PCIMultiSerialState, prog_if, 0x02),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static Property multi_4x_serial_pci_properties[] = {
+static const Property multi_4x_serial_pci_properties[] = {
     DEFINE_PROP_CHR("chardev1",  PCIMultiSerialState, state[0].chr),
     DEFINE_PROP_CHR("chardev2",  PCIMultiSerialState, state[1].chr),
     DEFINE_PROP_CHR("chardev3",  PCIMultiSerialState, state[2].chr),
     DEFINE_PROP_CHR("chardev4",  PCIMultiSerialState, state[3].chr),
-    DEFINE_PROP_UINT8("prog_if",  PCIMultiSerialState, prog_if, 0x02),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void multi_2x_serial_pci_class_initfn(ObjectClass *klass, void *data)
+static void multi_2x_serial_pci_class_initfn(ObjectClass *klass,
+                                             const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *pc = PCI_DEVICE_CLASS(klass);
@@ -163,7 +157,8 @@ static void multi_2x_serial_pci_class_initfn(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
 }
 
-static void multi_4x_serial_pci_class_initfn(ObjectClass *klass, void *data)
+static void multi_4x_serial_pci_class_initfn(ObjectClass *klass,
+                                             const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *pc = PCI_DEVICE_CLASS(klass);
@@ -185,6 +180,8 @@ static void multi_serial_init(Object *o)
     size_t i, nports = multi_serial_get_port_count(PCI_DEVICE_GET_CLASS(dev));
 
     for (i = 0; i < nports; i++) {
+        qemu_init_irq_child(o, "irq[*]", &pms->irqs[i],
+                            multi_serial_irq_mux, pms, i);
         object_initialize_child(o, "serial[*]", &pms->state[i], TYPE_SERIAL);
     }
 }
@@ -195,7 +192,7 @@ static const TypeInfo multi_2x_serial_pci_info = {
     .instance_size = sizeof(PCIMultiSerialState),
     .instance_init = multi_serial_init,
     .class_init    = multi_2x_serial_pci_class_initfn,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },
@@ -207,7 +204,7 @@ static const TypeInfo multi_4x_serial_pci_info = {
     .instance_size = sizeof(PCIMultiSerialState),
     .instance_init = multi_serial_init,
     .class_init    = multi_4x_serial_pci_class_initfn,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },
