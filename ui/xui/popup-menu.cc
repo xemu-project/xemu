@@ -381,11 +381,10 @@ public:
     }
 
     void PopulateGameList() {
-        const char *games_dir = g_config.general.games_dir;
-
         sorted_file_names.clear();
-        std::filesystem::path directory(games_dir);
-        if (std::filesystem::is_directory(directory)) {
+        std::filesystem::path directory(g_config.general.games_dir);
+        std::error_code ec;
+        if (std::filesystem::is_directory(directory, ec)) {
             for (const auto &file :
                  std::filesystem::directory_iterator(directory)) {
                 const auto &file_path = file.path();

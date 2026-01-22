@@ -136,6 +136,11 @@ void xemu_toggle_fullscreen(void)
     toggle_full_screen(&scon_list[0]);
 }
 
+SDL_Window *xemu_get_window(void)
+{
+    return m_window;
+}
+
 static struct xemu_console *get_scon_from_window(uint32_t window_id)
 {
     int i;
