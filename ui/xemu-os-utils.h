@@ -26,10 +26,8 @@ extern "C" {
 
 const char *xemu_get_os_info(void);
 
-#ifndef _WIN32
 #ifdef CONFIG_CPUID_H
 #include <cpuid.h>
-#endif
 #endif
 
 static inline const char *xemu_get_os_platform(void)
