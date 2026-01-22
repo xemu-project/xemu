@@ -97,7 +97,6 @@ void xb_surface_gl_create_texture(DisplaySurface *surface);
 void xb_surface_gl_update_texture(DisplaySurface *surface, int x, int y, int w, int h);
 void xb_surface_gl_destroy_texture(DisplaySurface *surface);
 
-static void sleep_ns(int64_t ns);
 static void process_key(struct xemu_console *scon, SDL_KeyboardEvent *ev);
 static void gl_update(DisplayChangeListener *dcl, int x, int y, int w, int h);
 static void gl_switch(DisplayChangeListener *dcl, DisplaySurface *new_surface);
@@ -1094,47 +1093,14 @@ static void gl_refresh(DisplayChangeListener *dcl)
     bql_unlock();
     qemu_mutex_unlock_main_loop();
 
-    /*
-     * Throttle to make sure swaps happen at 60Hz
-     */
+    /* Throttle to 60Hz */
     static int64_t last_update = 0;
     int64_t deadline = last_update + 16666666;
-
-#ifdef DEBUG_XEMU_C
-    int64_t sleep_acc = 0;
-    int64_t spin_acc = 0;
-#endif
-
-#ifndef _WIN32
-    const int64_t sleep_threshold = 2000000;
-#else
-    const int64_t sleep_threshold = 250000;
-#endif
-
-    while (1) {
-        int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
-        int64_t time_remaining = deadline - now;
-        if (now < deadline) {
-            if (time_remaining > sleep_threshold) {
-                // Try to sleep until the until reaching the sleep threshold.
-                sleep_ns(time_remaining - sleep_threshold);
-#ifdef DEBUG_XEMU_C
-                sleep_acc += qemu_clock_get_ns(QEMU_CLOCK_REALTIME)-now;
-#endif
-            } else {
-                // Simply spin to avoid extra delays incurred with swapping to
-                // another process and back in the event of being within
-                // threshold to desired event.
-#ifdef DEBUG_XEMU_C
-                spin_acc++;
-#endif
-            }
-        } else {
-            DPRINTF("zzZz %g %ld\n", (double)sleep_acc/1000000.0, spin_acc);
-            last_update = now;
-            break;
-        }
+    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+    if (now < deadline) {
+        SDL_DelayPrecise(deadline - now);
     }
+    last_update = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
 
 }
 
@@ -1178,19 +1144,6 @@ static void *call_qemu_main(void *opaque)
     status = qemu_main();
     DPRINTF("Second thread: qemu_main() returned, exiting\n");
     exit(status);
-}
-
-/* Note: only supports millisecond resolution on Windows */
-static void sleep_ns(int64_t ns)
-{
-#ifndef _WIN32
-        struct timespec sleep_delay, rem_delay;
-        sleep_delay.tv_sec = ns / 1000000000LL;
-        sleep_delay.tv_nsec = ns % 1000000000LL;
-        nanosleep(&sleep_delay, &rem_delay);
-#else
-        Sleep(ns / SCALE_MS);
-#endif
 }
 
 #ifdef _WIN32
