@@ -22,9 +22,8 @@
 #include "renderer.h"
 #include "xemu-version.h"
 
-#include <SDL.h>
-#include <SDL_syswm.h>
-#include <SDL_vulkan.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
 
 #include <volk.h>
 
@@ -100,7 +99,7 @@ static bool check_validation_layer_support(void)
 static void create_window(PGRAPHVkState *r, Error **errp)
 {
     r->window = SDL_CreateWindow(
-        "SDL Offscreen Window", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        "SDL Offscreen Window",
         640, 480, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
 
     if (r->window == NULL) {
@@ -151,20 +150,17 @@ is_extension_available(VkExtensionPropertiesArray *available_extensions,
 
 static StringArray *get_required_instance_extension_names(PGRAPHState *pg)
 {
-    PGRAPHVkState *r = pg->vk_renderer_state;
-
     // Add instance extensions SDL lists as required
-    unsigned int sdl_count = 0;
-    SDL_Vulkan_GetInstanceExtensions((SDL_Window *)r->window, &sdl_count, NULL);
+    Uint32 sdl_extension_count = 0;
+    const char *const *sdl_extensions =
+        SDL_Vulkan_GetInstanceExtensions(&sdl_extension_count);
 
-    StringArray *extensions =
-        g_array_sized_new(FALSE, FALSE, sizeof(char *),
-                          sdl_count + ARRAY_SIZE(required_instance_extensions));
+    StringArray *extensions = g_array_sized_new(
+        FALSE, FALSE, sizeof(char *),
+        sdl_extension_count + ARRAY_SIZE(required_instance_extensions));
 
-    if (sdl_count) {
-        g_array_set_size(extensions, sdl_count);
-        SDL_Vulkan_GetInstanceExtensions((SDL_Window *)r->window, &sdl_count,
-                                         (const char **)extensions->data);
+    if (sdl_extension_count && sdl_extensions) {
+        g_array_append_vals(extensions, sdl_extensions, sdl_extension_count);
     }
 
     // Add additional required extensions
