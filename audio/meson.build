@@ -16,7 +16,7 @@ foreach m : [
   ['alsa', alsa, files('alsaaudio.c')],
   ['oss', oss, files('ossaudio.c')],
   ['pa', pulse, files('paaudio.c')],
-  ['sdl', sdl, files('sdlaudio.c')],
+  # ['sdl', sdl, files('sdlaudio.c')],
   ['jack', jack, files('jackaudio.c')],
   ['sndio', sndio, files('sndioaudio.c')],
   ['pipewire', pipewire, files('pwaudio.c')],
