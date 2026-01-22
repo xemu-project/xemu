@@ -255,15 +255,6 @@ LIBS = [
         submodule=Submodule("subprojects/implot.wrap"),
     ),
     Lib(
-        "noc",
-        "https://github.com/guillaumechereau/noc/blob/master/noc_file_dialog.h",
-        mit,
-        "https://raw.githubusercontent.com/xemu-project/xemu/master/ui/noc_file_dialog.h",
-        license_lines=(1, 22),
-        ships_static=all_platforms,
-        version="78b2e7b22506429dd1755ffff197c7da11507fd9",
-    ),
-    Lib(
         "stb_image",
         "https://github.com/nothings/stb",
         mit,
