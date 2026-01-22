@@ -1624,7 +1624,7 @@ void MainMenuAboutView::Draw()
             "CPU:          %s\nOS Platform:  %s\nOS Version:   "
             "%s\nManufacturer: %s\n"
             "GPU Model:    %s\nDriver:       %s\nShader:       %s",
-            xemu_get_cpu_info(), xemu_get_os_platform(), xemu_get_os_info(),
+            xemu_get_cpu_info(), SDL_GetPlatform(), xemu_get_os_info(),
             gl_vendor, gl_renderer, gl_version, gl_shader_version);
     }
 
