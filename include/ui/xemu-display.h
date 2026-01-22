@@ -4,8 +4,7 @@
 /* Avoid compiler warning because macro is redefined in SDL_syswm.h. */
 #undef WIN32_LEAN_AND_MEAN
 
-#include <SDL.h>
-#include <SDL_syswm.h>
+#include <SDL3/SDL.h>
 
 #include "ui/kbd-state.h"
 

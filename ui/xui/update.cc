@@ -22,7 +22,7 @@
 #include "viewport-manager.hh"
 #include <stdio.h>
 #include <stdlib.h>
-#include <SDL_filesystem.h>
+#include <SDL3/SDL_filesystem.h>
 #include "util/miniz/miniz.h"
 #include "xemu-version.h"
 #include <nlohmann/json.hpp>
