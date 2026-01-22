@@ -17,7 +17,7 @@ MIRROR = 'https://packages.macports.org'
 # FIXME: Support multiple mirrors
 
 class LibInstaller:
-	DARWIN_TARGET_X64="darwin_17" # macOS 10.13
+	DARWIN_TARGET_X64="darwin_21" # macOS 11
 	DARWIN_TARGET_ARM64="darwin_22" # macOS 13.x
 
 	def __init__(self, arch):
