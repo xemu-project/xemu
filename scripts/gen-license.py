@@ -368,16 +368,17 @@ LIBS = [
     # Libraries either linked statically, dynamically linked & shipped, or dynamically linked with system-installed libraries only
     #
     Lib(
-        "sdl2",
+        "SDL3",
         "https://www.libsdl.org/",
         zlib,
         "https://raw.githubusercontent.com/libsdl-org/SDL/main/LICENSE.txt",
         ships_static={windows},
         ships_dynamic={macos},
-        pkgconfig=PkgConfig("sdl2"),
-        pkg_win="sdl2",
-        pkg_mac="sdl2",
-        pkg_ubuntu="libsdl2-dev",
+        pkgconfig=PkgConfig("sdl3"),
+        pkg_win="sdl3",
+        pkg_mac="sdl3",
+        pkg_ubuntu="libsdl3-dev",
+        submodule=Submodule("subprojects/sdl3.wrap"),
     ),
     Lib(
         "glib-2.0",
