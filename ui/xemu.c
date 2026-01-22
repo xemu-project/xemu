@@ -1238,6 +1238,17 @@ static void setup_nvidia_profile(void)
 }
 #endif
 
+static void init_sdl_app_metadata(void)
+{
+    SDL_SetAppMetadataProperty(SDL_PROP_APP_METADATA_NAME_STRING, "xemu");
+    SDL_SetAppMetadataProperty(SDL_PROP_APP_METADATA_VERSION_STRING,
+                               xemu_version);
+    SDL_SetAppMetadataProperty(SDL_PROP_APP_METADATA_IDENTIFIER_STRING,
+                               "app.xemu.xemu");
+    SDL_SetAppMetadataProperty(SDL_PROP_APP_METADATA_URL_STRING,
+                               "https://xemu.app");
+}
+
 int main(int argc, char **argv)
 {
     QemuThread thread;
@@ -1271,6 +1282,8 @@ int main(int argc, char **argv)
     fprintf(stderr, "xemu_version: %s\n", xemu_version);
     fprintf(stderr, "xemu_commit: %s\n", xemu_commit);
     fprintf(stderr, "xemu_date: %s\n", xemu_date);
+
+    init_sdl_app_metadata();
 
     DPRINTF("Entered main()\n");
     gArgc = argc;
