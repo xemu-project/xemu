@@ -1664,21 +1664,22 @@ endif
 
 sdl = not_found
 if not get_option('sdl').auto() or have_system
-  sdl = dependency('sdl2', required: get_option('sdl'))
+  sdl = dependency('sdl3', required: get_option('sdl'),
+                   fallback: ['sdl3', 'sdl3_dep'],
+                   default_options: ['default_library=static'])
   sdl_image = not_found
 endif
 if sdl.found()
   # Some versions of SDL have problems with -Wundef
   if not cc.compiles('''
-                     #include <SDL.h>
+                     #include <SDL3/SDL.h>
                      #include <SDL_syswm.h>
                      int main(int argc, char *argv[]) { return 0; }
-                     ''', dependencies: sdl, args: '-Werror=undef')
+                     ''', dependencies: sdl.partial_dependency(compile_args: true, includes: true), args: '-Werror=undef')
     sdl = declare_dependency(compile_args: '-Wno-undef',
-                             dependencies: sdl,
-                             version: sdl.version())
+                             dependencies: sdl.partial_dependency(compile_args: true, link_args: true, links: true, includes: true))
   endif
-  sdl_image = dependency('SDL2_image', required: get_option('sdl_image'),
+  sdl_image = dependency('SDL3_image', required: get_option('sdl_image'),
                          method: 'pkg-config')
 else
   if get_option('sdl_image').enabled()
@@ -2418,8 +2419,8 @@ imgui_proj = subproject('imgui', required: true,
                            'vulkan=disabled',
                            'webgpu=disabled',
                            'glfw=disabled',
-                           'sdl2=enabled',
-                           'sdl3=disabled',
+                           'sdl2=disabled',
+                           'sdl3=enabled',
                            'osx=disabled',
                            'win=disabled',
                            'allegro5=disabled',

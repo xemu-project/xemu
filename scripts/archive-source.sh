@@ -69,6 +69,7 @@ subprojects=(
   volk
   VulkanMemoryAllocator
   xxhash
+  sdl3
 )
 
 function cleanup() {
