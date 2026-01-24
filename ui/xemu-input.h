@@ -82,8 +82,8 @@ typedef struct XmuState {
 } XmuState;
 
 typedef struct XblcState {
-    const char *output_device_name;
-    const char *input_device_name;
+    SDL_AudioDeviceID output_device_id;
+    SDL_AudioDeviceID input_device_id;
     float input_device_volume;
     float output_device_volume;
     void *dev;
@@ -144,8 +144,8 @@ ControllerState *xemu_input_get_bound(int index);
 void xemu_input_bind(int index, ControllerState *state, int save);
 bool xemu_input_bind_xmu(int player_index, int peripheral_port_index,
                          const char *filename, bool is_rebind);
-bool xemu_input_bind_xblc(int player_index, const char *output_device, 
-                          const char *input_device, bool is_rebind);
+bool xemu_input_bind_xblc(int player_index, SDL_AudioDeviceID output_device, 
+                          SDL_AudioDeviceID input_device, bool is_rebind);
 void xemu_input_unbind_peripheral(int player_index, int expansion_slot_index);
 void xemu_input_rebind_peripherals(int port);
 int xemu_input_get_controller_default_bind_port(ControllerState *state, int start);

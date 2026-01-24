@@ -32,7 +32,7 @@
 #include "qemu/fifo8.h"
 #include "xblc.h"
 
-//#define DEBUG_XBLC
+#define DEBUG_XBLC
 #ifdef DEBUG_XBLC
 #define DPRINTF printf
 #else
@@ -63,13 +63,13 @@ static const uint16_t xblc_sample_rates[5] = {
 };
 
 typedef struct XBLCStream {
-    char *device_name;
-    SDL_AudioDeviceID voice;
+    SDL_AudioDeviceID device_id;
+    SDL_AudioStream *voice;
     SDL_AudioSpec spec;
     uint8_t packet[XBLC_MAX_PACKET];
     Fifo8 fifo;
-    int volume;
-    int peak_volume;
+    float volume;
+    float peak_volume;
 } XBLCStream;
 
 typedef struct USBXBLCState {
@@ -169,17 +169,17 @@ static void usb_xblc_handle_reset(USBDevice *dev)
     DPRINTF("[XBLC] Reset\n");
 
     if(s->in.voice != 0)
-        SDL_LockAudioDevice(s->in.voice);
+        SDL_LockAudioStream(s->in.voice);
     if(s->out.voice != 0)
-        SDL_LockAudioDevice(s->out.voice);
+        SDL_LockAudioStream(s->out.voice);
 
     fifo8_reset(&s->in.fifo);
     fifo8_reset(&s->out.fifo);
 
     if(s->in.voice != 0)
-        SDL_UnlockAudioDevice(s->in.voice);
+        SDL_UnlockAudioStream(s->in.voice);
     if(s->out.voice != 0)
-        SDL_UnlockAudioDevice(s->out.voice);
+        SDL_UnlockAudioStream(s->out.voice);
 }
 
 float xblc_audio_stream_get_current_input_volume(void *dev)
@@ -191,49 +191,49 @@ float xblc_audio_stream_get_current_input_volume(void *dev)
 float xblc_audio_stream_get_output_volume(void *dev)
 {
     USBXBLCState *s = (USBXBLCState*)dev;
-    return (float)s->out.volume / SDL_MIX_MAXVOLUME;
+    return s->out.volume;
 }
 
 float xblc_audio_stream_get_input_volume(void *dev)
 {
     USBXBLCState *s = (USBXBLCState*)dev;
-    return (float)s->in.volume / SDL_MIX_MAXVOLUME;
+    return s->in.volume;
 }
 
 void xblc_audio_stream_set_output_volume(void *dev, float volume)
 {
     USBXBLCState *s = (USBXBLCState*)dev;
-    s->out.volume = MIN(SDL_MIX_MAXVOLUME, MAX(0, (int)(volume * SDL_MIX_MAXVOLUME)));
+    s->out.volume = MIN(1.0, MAX(0, volume));
 }
 void xblc_audio_stream_set_input_volume(void *dev, float volume)
 {
     USBXBLCState *s = (USBXBLCState*)dev;
-    s->in.volume = MIN(SDL_MIX_MAXVOLUME, MAX(0, (int)(volume * SDL_MIX_MAXVOLUME)));
+    s->in.volume = MIN(1.0, MAX(0, volume));
 }
 
-static void output_callback(void *userdata, uint8_t *stream, int len)
+static void output_callback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount)
 {
+    static uint8_t mixed[XBLC_FIFO_SIZE];
     USBXBLCState *s = (USBXBLCState *)userdata;
     const uint8_t *data;
     uint32_t max_len;
 
     // Not enough data to send, wait a bit longer, fill with silence for now
     if (fifo8_num_used(&s->out.fifo) < XBLC_MAX_PACKET) {
-        memcpy(stream, (void*)silence, MIN(len, ARRAY_SIZE(silence)));
+        //SDL_PutAudioStreamData(stream, (void*)silence, MIN(additional_amount, ARRAY_SIZE(silence)));
     } else {
         // Write speaker data into audio backend
-        while (len > 0 && !fifo8_is_empty(&s->out.fifo)) {
-            max_len = MIN(fifo8_num_used(&s->out.fifo), (uint32_t)len);
+        while (total_amount > 0 && !fifo8_is_empty(&s->out.fifo)) {
+            max_len = MIN(fifo8_num_used(&s->out.fifo), (uint32_t)total_amount);
             data = fifo8_pop_bufptr(&s->out.fifo, max_len, &max_len);
 
-            if(s->out.volume < SDL_MIX_MAXVOLUME) {
-                memset(stream, 0, len);
-                SDL_MixAudioFormat(stream, data, AUDIO_S16LSB, max_len, MAX(0, s->out.volume));
+            if(s->out.volume < 1.0) {
+                SDL_MixAudio(mixed, data, SDL_AUDIO_S16LE, max_len, MAX(0, s->out.volume));
+                SDL_PutAudioStreamData(stream, mixed, max_len);
             } else {
-                memcpy(stream, data, max_len);
+                SDL_PutAudioStreamData(stream, data, max_len);
             }
-            stream += max_len;
-            len -= max_len;
+            total_amount -= max_len;
         }
     }
 }
@@ -246,28 +246,55 @@ static int calc_peak_amplitude(const int16_t *samples, int len) {
     return max;
 }
 
-static void input_callback(void *userdata, uint8_t *stream, int len)
+static void input_callback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount)
 {
+    DPRINTF("[XBLC] Input Callback: total_amount=%d\n", total_amount);
     USBXBLCState *s = (USBXBLCState *)userdata;
     static uint8_t buffer[XBLC_FIFO_SIZE];
+    static uint8_t mixed[XBLC_FIFO_SIZE];
     int peak;
     int64_t scaled_peak;
     
-    peak = calc_peak_amplitude((int16_t *)stream, len / sizeof(int16_t));
+    peak = calc_peak_amplitude((int16_t *)stream, total_amount / sizeof(int16_t));
     scaled_peak = (int64_t)s->in.volume * peak;
-    s->in.peak_volume = (int)(scaled_peak / SDL_MIX_MAXVOLUME);
+    s->in.peak_volume = (int)(scaled_peak);
 
     // Don't try to put more into the queue than will fit
-    uint32_t max_len = MIN(len, fifo8_num_free(&s->in.fifo));
+    uint32_t total_bytes_read = 0;
+    uint32_t max_len = MIN(total_amount, fifo8_num_free(&s->in.fifo));
     if (max_len > 0) {
-        if(s->in.volume < SDL_MIX_MAXVOLUME) {
-            memset(buffer, 0, max_len);
-            SDL_MixAudioFormat(buffer, stream, AUDIO_S16LSB, max_len, MAX(s->in.volume, 0));
-            fifo8_push_all(&s->in.fifo, buffer, max_len);
-        } else {
-            fifo8_push_all(&s->in.fifo, stream, max_len);
+        memset(buffer, 0, max_len);
+        int bytes_read = SDL_GetAudioStreamData(stream, buffer, max_len);
+        if(bytes_read > 0)
+        {
+            total_bytes_read += bytes_read;
+            if(s->in.volume < 1.0) {
+                
+                int bytes_read = SDL_GetAudioStreamData(stream, buffer, max_len);
+                if(bytes_read > 0)
+                {
+                    SDL_MixAudio(mixed, buffer, SDL_AUDIO_S16LE, max_len, MAX(s->in.volume, 0));
+                    fifo8_push_all(&s->in.fifo, mixed, max_len);
+                }
+            } else {
+                if(bytes_read > 0)
+                {
+                    total_bytes_read += bytes_read;
+                    fifo8_push_all(&s->in.fifo, buffer, bytes_read);
+                }
+            }
         }
     }
+            
+    // Clear out the remainder of the input buffer
+    DPRINTF("[XBLC] Input Callback: Clearing Input Stream\n");
+    int bytes_read = 1;
+    while(bytes_read > 0 && total_bytes_read < total_amount) {
+        bytes_read = SDL_GetAudioStreamData(stream, buffer, MIN(XBLC_FIFO_SIZE, total_amount - total_bytes_read));
+        if(bytes_read > 0)
+            total_bytes_read += bytes_read;
+    }
+    DPRINTF("[XBLC] Input Callback: Read %d bytes\n", total_bytes_read);
 }
 
 #ifdef DEBUG_XBLC
@@ -275,84 +302,62 @@ static const char *GetFormatString(SDL_AudioFormat format)
 {
     switch(format)
     {
-        case AUDIO_S16LSB:
-            return "AUDIO_S16LSB";
-        case AUDIO_S16MSB:
-            return "AUDIO_S16MSB";
-        case AUDIO_S32LSB:
-            return "AUDIO_S32LSB";
-        case AUDIO_S32MSB:
-            return "AUDIO_S32MSB";
-        case AUDIO_F32LSB:
-            return "AUDIO_F32LSB";
-        case AUDIO_F32MSB:
-            return "AUDIO_F32MSB";
+        case SDL_AUDIO_S16LE:
+            return "SDL_AUDIO_S16LE";
+        case SDL_AUDIO_S16BE:
+            return "SDL_AUDIO_S16BE";
+        case SDL_AUDIO_S32LE:
+            return "SDL_AUDIO_S32LE";
+        case SDL_AUDIO_S32BE:
+            return "SDL_AUDIO_S32BE";
+        case SDL_AUDIO_F32LE:
+            return "SDL_AUDIO_F32LE";
+        case SDL_AUDIO_F32BE:
+            return "SDL_AUDIO_F32BE";
         default:
             return "Unknown";
     }
 }
 #endif
 
-static void xblc_audio_channel_init(USBXBLCState *s, bool capture, const char *device_name)
+static void xblc_audio_channel_init(USBXBLCState *s, bool capture, SDL_AudioDeviceID device_id)
 {
     XBLCStream *channel = capture ? &s->in : &s->out;
     
     if(channel->voice != 0) {
-        SDL_PauseAudioDevice(channel->voice, 1);
-        SDL_CloseAudioDevice(channel->voice);
+        SDL_PauseAudioStreamDevice(channel->voice);
+        SDL_DestroyAudioStream(channel->voice);
         channel->voice = 0;
     }
 
-    if(channel->device_name != NULL)
-        g_free(channel->device_name);
-    if(device_name == NULL)
-        channel->device_name = NULL;
-    else
-        channel->device_name = g_strdup(device_name);
-
+    channel->device_id = device_id;
+    
     fifo8_reset(&channel->fifo);
     if(capture)
         s->in.peak_volume = 0;
 
-    SDL_AudioSpec desired_spec;
-    desired_spec.channels = 1;
-    desired_spec.freq = s->sample_rate;
-    desired_spec.format = AUDIO_S16LSB;
-    desired_spec.samples = 100;
-    desired_spec.userdata = (void*)s;
-    desired_spec.callback = capture ? input_callback : output_callback;
+    channel->spec.channels = 1;
+    channel->spec.freq = s->sample_rate;
+    channel->spec.format = SDL_AUDIO_S16LE;
 
-    channel->voice = SDL_OpenAudioDevice(device_name,
-                                         (int)capture, 
-                                         &desired_spec, 
-                                         &channel->spec, 
-                                         0);
+    channel->voice = SDL_OpenAudioDeviceStream(device_id,
+                                               &channel->spec, 
+                                               capture ? input_callback : output_callback,
+                                               (void*)s);
     
-    DPRINTF("%sputDevice: %s\n", capture ? "In" : "Out", NULL_DEFAULT(device_name, "Default"));
-    DPRINTF("%sputDevice: Wanted %d Channels, Obtained %d Channels\n", capture ? "In" : "Out", desired_spec.channels, channel->spec.channels);
-    DPRINTF("%sputDevice: Wanted %d hz, Obtained %d hz\n", capture ? "In" : "Out", desired_spec.freq, channel->spec.freq);
-    DPRINTF("%sputDevice: Wanted %s, Obtained %s\n", capture ? "In" : "Out", GetFormatString(desired_spec.format), GetFormatString(channel->spec.format));
-    DPRINTF("%sputDevice: Wanted samples %d, Obtained samples %d\n", capture ? "In" : "Out", desired_spec.samples, channel->spec.samples);
-
-    SDL_PauseAudioDevice(channel->voice, 0);
+    SDL_ResumeAudioStreamDevice(channel->voice);
 }
 
-static bool should_init_stream(const XBLCStream *stream, const char *requested_device_name)
+static bool should_init_stream(const XBLCStream *stream, SDL_AudioDeviceID requested_device_id)
 {
     // If the voice has not been initialized, initialize it
     if (stream->voice == 0)
         return true;
     
-    // If one of the names is null and the other is not, initialize it
-    if ((stream->device_name == NULL) ^ (requested_device_name == NULL))
+    // If the new id doesn't match the existing id, initialize it
+    if (stream->device_id != requested_device_id)
         return true;
     
-    // If neither name is null, but they don't match, initialize it
-    if (stream->device_name != NULL &&
-        requested_device_name != NULL &&
-        strcmp(stream->device_name, requested_device_name) != 0)
-        return true;
-
     // We don't need to initialize it
     return false;
 }
@@ -374,13 +379,13 @@ static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
         s->sample_rate = sample_rate;
     }
 
-    init_input_stream |= should_init_stream(&s->in, xblc->input_device_name);
-    init_output_stream |= should_init_stream(&s->out, xblc->output_device_name);
+    init_input_stream |= should_init_stream(&s->in, xblc->input_device_id);
+    init_output_stream |= should_init_stream(&s->out, xblc->output_device_id);
 
     // If either channel needs to be initialized, initialize both channels
     if (init_input_stream || init_output_stream) {
-        xblc_audio_channel_init(s, true, xblc->input_device_name);
-        xblc_audio_channel_init(s, false, xblc->output_device_name);
+        xblc_audio_channel_init(s, true, xblc->input_device_id);
+        xblc_audio_channel_init(s, false, xblc->output_device_id);
     }
 
     DPRINTF("[XBLC] Init audio streams at %d Hz\n", sample_rate);
@@ -472,28 +477,16 @@ static void usb_xbox_communicator_unrealize(USBDevice *dev)
 {
     USBXBLCState *s = USB_XBLC(dev);
 
-    SDL_PauseAudioDevice(s->in.voice, 1);
-    SDL_PauseAudioDevice(s->out.voice, 1);
+    SDL_PauseAudioStreamDevice(s->in.voice);
+    SDL_PauseAudioStreamDevice(s->out.voice);
     
     fifo8_destroy(&s->out.fifo);
     fifo8_destroy(&s->in.fifo);
 
-    SDL_CloseAudioDevice(s->in.voice);
+    SDL_DestroyAudioStream(s->in.voice);
     s->in.voice = 0;
-    SDL_CloseAudioDevice(s->out.voice);
+    SDL_DestroyAudioStream(s->out.voice);
     s->out.voice = 0;
-
-    if(s->in.device_name != NULL)
-    {
-        g_free(s->in.device_name);
-        s->in.device_name = NULL;
-    }
-
-    if(s->out.device_name != NULL)
-    {
-        g_free(s->out.device_name);
-        s->out.device_name = NULL;   
-    }
 }
 
 static void usb_xblc_class_init(ObjectClass *klass, const void *data)
@@ -517,8 +510,8 @@ static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
     s->in.voice = 0;
     s->out.voice = 0;
 
-    s->in.volume = SDL_MIX_MAXVOLUME;
-    s->out.volume = SDL_MIX_MAXVOLUME;
+    s->in.volume = 1.0f;
+    s->out.volume = 1.0f;
 }
 
 static const Property xblc_properties[] = {

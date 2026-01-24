@@ -479,6 +479,7 @@ void MainMenuInputView::DrawExpansionSlotOptions(int active, int expansion_slot_
                 // Allocate state for the new peripheral
                 switch(current_type)
                 {
+                    case PERIPHERAL_TYPE_COUNT:
                     case PERIPHERAL_NONE:
                         break;
                     case PERIPHERAL_XMU:
@@ -490,9 +491,9 @@ void MainMenuInputView::DrawExpansionSlotOptions(int active, int expansion_slot_
                         bound_state->peripherals[expansion_slot_index] = g_malloc(sizeof(XblcState));
                         memset(bound_state->peripherals[expansion_slot_index], 0, sizeof(XblcState));
                         XblcState *xblc = (XblcState*)bound_state->peripherals[expansion_slot_index];
-                        xblc->output_device_volume = 0.5;
-                        xblc->input_device_volume = 0.5;
-                        if(xemu_input_bind_xblc(active, NULL, NULL, false)) {
+                        xblc->output_device_volume = 1.0;
+                        xblc->input_device_volume = 1.0;
+                        if(xemu_input_bind_xblc(active, SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, SDL_AUDIO_DEVICE_DEFAULT_RECORDING, false)) {
                             char *buf = g_strdup_printf(
                                 "Connected Xbox Live Communicator Headset to Player %d Expansion Slot %c.", 
                                 active + 1, 'A' + expansion_slot_index);
@@ -531,7 +532,10 @@ void MainMenuInputView::DrawXmuSettings(int active, int expansion_slot_index)
     const int port_padding = 8;
     float max_width = ImGui::GetColumnWidth() - (10 * g_viewport_mgr.m_scale);
 
-    const char *img_file_filters = ".img Files\0*.img\0All Files\0*.*\0";
+    static const SDL_DialogFileFilter img_file_filters[] = {
+        { ".img Files", "img" },
+        { "All Files", "*" }
+    };
 
     ControllerState *bound_state = xemu_input_get_bound(active);
     assert(bound_state);
@@ -577,17 +581,13 @@ void MainMenuInputView::DrawXmuSettings(int active, int expansion_slot_index)
 
     // Button to generate a new XMU
     ImGui::PushID(expansion_slot_index);
-    ImGui::SetNextItemWidth(max_width);
     if (ImGui::Button("New Image", ImVec2(250, 0))) {
-        int flags = NOC_FILE_DIALOG_SAVE |
-                    NOC_FILE_DIALOG_OVERWRITE_CONFIRMATION;
-        const char *new_path = PausedFileOpen(
-            flags, img_file_filters, NULL, "xmu.img");
-
-        if (new_path) {
+        int port = active;
+        int slot = expansion_slot_index;
+        ShowSaveFileDialog(img_file_filters, 2, nullptr, [port, slot](const char *new_path) {
             if (create_fatx_image(new_path, DEFAULT_XMU_SIZE)) {
                 // XMU was created successfully. Bind it
-                xemu_input_bind_xmu(active, expansion_slot_index, new_path, false);
+                xemu_input_bind_xmu(port, slot, new_path, false);
             } else {
                 // Show alert message
                 char *msg = g_strdup_printf(
@@ -595,22 +595,19 @@ void MainMenuInputView::DrawXmuSettings(int active, int expansion_slot_index)
                 xemu_queue_error_message(msg);
                 g_free(msg);
             }
-        }
+        });
     }
 
-    const char *xmu_port_path = NULL;
-    if (xmu->filename == NULL)
-        xmu_port_path = g_strdup("");
-    else
-        xmu_port_path = g_strdup(xmu->filename);
-    if (FilePicker("Image", &xmu_port_path, img_file_filters)) {
-        if (strlen(xmu_port_path) == 0) {
-            xemu_input_unbind_peripheral(active, expansion_slot_index);
-        } else {
-            xemu_input_bind_xmu(active, expansion_slot_index, xmu_port_path, false);
-        }
-    }
-    g_free((void*)xmu_port_path);
+    int port = active;
+    int slot = expansion_slot_index;
+    FilePicker("Image", xmu->filename, img_file_filters, 2, false,
+                [port, slot](const char *path) {
+                    if (strlen(path) > 0) {
+                        xemu_input_bind_xmu(port, slot, path, false);
+                    } else {
+                        xemu_input_unbind_peripheral(port, slot);
+                    }
+                });
 
     ImGui::PopID();
 }
@@ -619,6 +616,8 @@ static int num_input_devices = 0;
 static int num_output_devices = 0;
 static char **input_device_names = nullptr;
 static char **output_device_names = nullptr;
+static SDL_AudioDeviceID *input_device_ids = nullptr;
+static SDL_AudioDeviceID *output_device_ids = nullptr;
 
 static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_capture)
 {
@@ -628,74 +627,86 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
     float max_width = ImGui::GetColumnWidth() - (10 * g_viewport_mgr.m_scale);
 
     const char *default_device_name = "Default";
-    const char *selected_device = (is_capture == 0) ? xblc->output_device_name : xblc->input_device_name;
-    if(selected_device == NULL)
-        selected_device = default_device_name;
+    SDL_AudioDeviceID default_device_id = (is_capture == 0) ? SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK : SDL_AUDIO_DEVICE_DEFAULT_RECORDING;
+    SDL_AudioDeviceID selected_device = (is_capture == 0) ? xblc->output_device_id : xblc->input_device_id;
+    const char *selected_device_name = default_device_name;
 
-    int num_devices = SDL_GetNumAudioDevices(is_capture);
+    int num_devices = 0;
+    SDL_AudioDeviceID *device_ids = (is_capture ? SDL_GetAudioRecordingDevices(&num_devices) :
+                                                  SDL_GetAudioPlaybackDevices(&num_devices));
     // Get pointers to the correct device name cache
-    char ***device_names = (is_capture ? &input_device_names : &output_device_names);
     int *num_device_names = (is_capture ? &num_input_devices : &num_output_devices);
-
-    // If the number of devices is incorrect, update the cache
-    if (num_devices != *num_device_names) {
-        // Update the device name cache
-        if(*device_names != nullptr)
-        {
-            for(int i = 0; i < *num_device_names; i++)
-                g_free(*device_names[i]);
-            g_free(*device_names);
-        }
-        *num_device_names = num_devices;
-        if(num_devices == 0)
-            *device_names = nullptr;
-        else {
-            *device_names = (char**)g_malloc(num_devices * sizeof(char*));
-            for(int i = 0; i < num_devices; i++)
+    char ***device_names = (is_capture ? &input_device_names : &output_device_names);
+    SDL_AudioDeviceID **device_id_cache = (is_capture ? &input_device_ids : &output_device_ids);
+    if(device_ids != nullptr)
+    {
+        // If the number of devices is incorrect, update the cache
+        if (num_devices != *num_device_names) {
+            // Update the device id cache
+            if(*device_id_cache != nullptr)
+                g_free(*device_id_cache);
+            *device_id_cache = (SDL_AudioDeviceID*)g_malloc(num_devices * sizeof(SDL_AudioDeviceID));
+            memcpy(*device_id_cache, device_ids, num_devices * sizeof(SDL_AudioDeviceID));
+            // Update the device name cache
+            if(*device_names != nullptr)
             {
-                const char *device_name = SDL_GetAudioDeviceName(i, is_capture);
-
-                // The string returned by this function is UTF-8 encoded, read-only, and managed internally. 
-                // You are not to free it. If you need to keep the string for any length of time, you should 
-                // make your own copy of it, as it will be invalid next time any of several other SDL 
-                // functions are called.
-                (*device_names)[i] = g_strdup(device_name);
+                for(int i = 0; i < *num_device_names; i++)
+                    g_free(*device_names[i]);
+                g_free(*device_names);
             }
+            *num_device_names = num_devices;
+            if(num_devices == 0)
+                *device_names = nullptr;
+            else {
+                *device_names = (char**)g_malloc(num_devices * sizeof(char*));
+                
+                for(int i = 0; i < num_devices; i++)
+                {
+                    const char *device_name = SDL_GetAudioDeviceName(device_ids[i]);
+
+                    // The string returned by this function is UTF-8 encoded, read-only, and managed internally. 
+                    // You are not to free it. If you need to keep the string for any length of time, you should 
+                    // make your own copy of it, as it will be invalid next time any of several other SDL 
+                    // functions are called.
+                    (*device_names)[i] = g_strdup(device_name);
+                }
+            }
+        }
+        SDL_free(device_ids);
+    }
+
+    for(int i = 0; i < *num_device_names; i++) {
+        if((*device_id_cache)[i] == selected_device) {
+            selected_device_name = (*device_names)[i];
+            break;
         }
     }
 
     const char *combo_label = (is_capture == 0) ? "###Speaker" : "###Microphone";
     // ImGui::Text("%s", label_text);
     ImGui::SetNextItemWidth(max_width);
-    if(ImGui::BeginCombo(combo_label, selected_device, ImGuiComboFlags_NoArrowButton)) {
+    if(ImGui::BeginCombo(combo_label, selected_device_name, ImGuiComboFlags_NoArrowButton)) {
         for(int device_index = -1; device_index < num_devices; device_index++) {
+            SDL_AudioDeviceID device_id = default_device_id;
             const char *device_name = default_device_name;
             if(device_index >= 0)
+            {
                 device_name = (*device_names)[device_index];
+                device_id = (*device_id_cache)[device_index];
+            }
 
             // Default: device_index is -1, label is "Default", value is NULL
-            bool is_selected = (device_index == -1) && (selected_device == default_device_name);
+            bool is_selected = (device_index == -1) && (selected_device == default_device_id);
             
             // If not default, strings are safe to compare
-            if(!is_selected && selected_device != default_device_name)
-                is_selected = strcmp(device_name, selected_device) == 0;
+            if(!is_selected && selected_device != default_device_id)
+                is_selected = (device_id == selected_device);
 
             if(ImGui::Selectable(device_name, is_selected)) {
-                if(is_capture == 0) {
-                    // Free existing output_device_name, if it's not NULL
-                    if(xblc->output_device_name != NULL)
-                        g_free((void*)xblc->output_device_name);
-
-                    // If device_index is -1, set it to NULL
-                    xblc->output_device_name = (device_index == -1) ? NULL : g_strdup(device_name);
-                } else {
-                    // Free existing input_device_name, if it's not NULL
-                    if(xblc->input_device_name != NULL)
-                        g_free((void*)xblc->input_device_name);
-
-                    // If device_index is -1, set it to NULL
-                    xblc->input_device_name = (device_index == -1) ? NULL : g_strdup(device_name);
-                }
+                if(is_capture == 0) 
+                    xblc->output_device_id = device_id;
+                else
+                    xblc->input_device_id = device_id;
 
                 // If the usb-xblc device is already bound, reinitialize it
                 if(xblc->dev != NULL)

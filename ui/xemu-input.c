@@ -129,11 +129,11 @@ static const char **peripheral_params_settings_map[4][2] = {
       &g_config.input.peripherals.port4.peripheral_param_1 }
 };
 
-static const char **xblc_input_device_map[4] = {
-    &g_config.input.peripherals.port1.xblc1_settings.input_device_name,
-    &g_config.input.peripherals.port2.xblc2_settings.input_device_name,
-    &g_config.input.peripherals.port3.xblc3_settings.input_device_name,
-    &g_config.input.peripherals.port4.xblc4_settings.input_device_name,
+static int *xblc_input_device_map[4] = {
+    &g_config.input.peripherals.port1.xblc1_settings.input_device,
+    &g_config.input.peripherals.port2.xblc2_settings.input_device,
+    &g_config.input.peripherals.port3.xblc3_settings.input_device,
+    &g_config.input.peripherals.port4.xblc4_settings.input_device,
 };
 
 static float *xblc_input_volume_map[4] = {
@@ -143,11 +143,11 @@ static float *xblc_input_volume_map[4] = {
     &g_config.input.peripherals.port4.xblc4_settings.input_device_volume,
 };
 
-static const char **xblc_output_device_map[4] = {
-    &g_config.input.peripherals.port1.xblc1_settings.output_device_name,
-    &g_config.input.peripherals.port2.xblc2_settings.output_device_name,
-    &g_config.input.peripherals.port3.xblc3_settings.output_device_name,
-    &g_config.input.peripherals.port4.xblc4_settings.output_device_name,
+static int *xblc_output_device_map[4] = {
+    &g_config.input.peripherals.port1.xblc1_settings.output_device,
+    &g_config.input.peripherals.port2.xblc2_settings.output_device,
+    &g_config.input.peripherals.port3.xblc3_settings.output_device,
+    &g_config.input.peripherals.port4.xblc4_settings.output_device,
 };
 
 static float *xblc_output_volume_map[4] = {
@@ -516,28 +516,22 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
 
 void xemu_input_save_xblc_settings(int port, XblcState *xblc)
 {
-    const char *default_device_name = "Default";
     *peripheral_types_settings_map[port][0] = PERIPHERAL_XBLC;
-    *xblc_output_device_map[port] = xblc->output_device_name == NULL ? 
-                                    default_device_name : xblc->output_device_name;
+    *xblc_output_device_map[port] = xblc->output_device_id;
     *xblc_output_volume_map[port] = xblc->output_device_volume * 100;
-    *xblc_input_device_map[port] = xblc->input_device_name == NULL ? 
-                                    default_device_name : xblc->input_device_name;
+    *xblc_input_device_map[port] = xblc->input_device_id;
     *xblc_input_volume_map[port] = xblc->input_device_volume * 100;
 }
 
 XblcState *xemu_input_load_xblc_settings(int port)
 {
-    const char *default_device_name = "Default";
     XblcState *xblc = (XblcState*)g_malloc(sizeof(XblcState));
     memset(xblc, 0, sizeof(XblcState));
-    const char *output_name = *xblc_output_device_map[port];
-    xblc->output_device_name = strcmp(output_name, default_device_name) == 0 ? 
-                                NULL : g_strdup(output_name);
+    
+    xblc->output_device_id = *xblc_output_device_map[port];
     xblc->output_device_volume = *xblc_output_volume_map[port] / 100;
-    const char *input_name = *xblc_input_device_map[port];
-    xblc->input_device_name = strcmp(input_name, default_device_name) == 0 ? 
-                                NULL : g_strdup(input_name);
+    
+    xblc->input_device_id = *xblc_input_device_map[port];
     xblc->input_device_volume = *xblc_input_volume_map[port] / 100;
 
     return xblc;
@@ -1006,21 +1000,11 @@ static void xemu_input_unbind_xblc(int player_index)
             object_unref(OBJECT(xblc->dev));
             xblc->dev = NULL;
         }
-
-        if (xblc->output_device_name != NULL) {
-            g_free((void *)xblc->output_device_name);
-            xblc->output_device_name = NULL;
-        }
-
-        if (xblc->input_device_name != NULL) {
-            g_free((void *)xblc->input_device_name);
-            xblc->input_device_name = NULL;
-        }
     }
 }
 
-bool xemu_input_bind_xblc(int player_index, const char *output_device, 
-                          const char *input_device, bool is_rebind)
+bool xemu_input_bind_xblc(int player_index, SDL_AudioDeviceID output_device, 
+                          SDL_AudioDeviceID input_device, bool is_rebind)
 {
     // Xbox Live Communicator is keyed such that it can only go into expansion slot 0
     DPRINTF("Connecting Xbox Live Communicator Headset\n");
@@ -1054,40 +1038,26 @@ bool xemu_input_bind_xblc(int player_index, const char *output_device,
                 assert(xblc_i);
 
                 if(xblc_i->dev != NULL) {
-                    bool already_bound = false;
-
-                    if (!((xblc_i->output_device_name == NULL) ^ (output_device == NULL))) {
-                        if(output_device ==NULL)
-                            already_bound = true;
-                        else
-                            already_bound = strcmp(xblc_i->output_device_name, output_device) == 0;
-                    }
+                    bool already_bound = xblc_i->output_device_id == output_device;
 
                     if (already_bound) {
-                        if(output_device == NULL)
-                            output_device = "Default";
+                        const char *device_name = SDL_GetAudioDeviceName(output_device);
                         char *buf =
                             g_strdup_printf("Output Device %s is already mounted on "
-                                            "player %d slot %c\r\n", output_device,
+                                            "player %d slot %c\r\n", device_name,
                                             player_i + 1, 'A');
                         xemu_queue_notification(buf);
                         g_free(buf);
                         return false;
                     }
 
-                    already_bound = false;
-
-                    if (!((xblc_i->input_device_name == NULL) ^ (input_device == NULL))) {
-                        if(input_device == NULL)
-                            already_bound = true;
-                        else
-                            already_bound = strcmp(xblc_i->input_device_name, input_device) == 0;
-                    }
+                    already_bound = xblc_i->input_device_id == input_device;
 
                     if (already_bound) {
+                        const char *device_name = SDL_GetAudioDeviceName(input_device);
                         char *buf =
                             g_strdup_printf("Input Device %s is already mounted on "
-                                            "player %d slot %c\r\n", input_device,
+                                            "player %d slot %c\r\n", device_name,
                                             player_i + 1, 'A');
                         xemu_queue_notification(buf);
                         g_free(buf);
@@ -1098,19 +1068,8 @@ bool xemu_input_bind_xblc(int player_index, const char *output_device,
         }
     }
 
-    if(xblc->input_device_name != NULL)
-        g_free((void*)xblc->input_device_name);
-    if(input_device == NULL)
-        xblc->input_device_name = NULL;
-    else
-        xblc->input_device_name = g_strdup(input_device);
-
-    if(xblc->output_device_name != NULL)
-        g_free((void*)xblc->output_device_name);
-    if(output_device == NULL)
-        xblc->output_device_name = NULL;
-    else
-        xblc->output_device_name = g_strdup(output_device);
+    xblc->input_device_id = input_device;
+    xblc->output_device_id = output_device;
 
     char *tmp;
 
@@ -1168,10 +1127,7 @@ static void xemu_input_rebind_xblc(int port)
         bound_controllers[port]->peripherals[0] = xemu_input_load_xblc_settings(port);
         XblcState *xblc = (XblcState*)bound_controllers[port]->peripherals[0];
 
-        char *output_temp = xblc->output_device_name == NULL ? NULL : g_strdup(xblc->output_device_name);
-        char *input_temp = xblc->input_device_name == NULL ? NULL : g_strdup(xblc->input_device_name);
-
-        bool did_bind = xemu_input_bind_xblc(port, output_temp, input_temp, true);
+        bool did_bind = xemu_input_bind_xblc(port, xblc->output_device_id, xblc->input_device_id, true);
         if (did_bind) {
             char *buf =
                 g_strdup_printf("Connected Xbox Live Communicator Headset to Player %d Expansion Slot A",
@@ -1179,11 +1135,6 @@ static void xemu_input_rebind_xblc(int port)
             xemu_queue_notification(buf);
             g_free(buf);
         }
-
-        if(output_temp != NULL)
-            g_free(output_temp);
-        if(input_temp != NULL)
-            g_free(input_temp);
     }
 }
 
