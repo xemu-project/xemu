@@ -1659,7 +1659,7 @@ void MainMenuAboutView::Draw()
     SectionTitle("Config Information");
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::InputTextMultiline("##config_info", (char *)m_config_info_text,
-                              strlen(build_info_text) + 1,
+                              strlen(m_config_info_text) + 1,
                               ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 3),
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
