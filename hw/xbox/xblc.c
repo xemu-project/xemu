@@ -32,7 +32,7 @@
 #include "qemu/fifo8.h"
 #include "xblc.h"
 
-#define DEBUG_XBLC
+//#define DEBUG_XBLC
 #ifdef DEBUG_XBLC
 #define DPRINTF printf
 #else
@@ -53,8 +53,6 @@
 
 #define XBLC_MAX_PACKET 48
 #define XBLC_FIFO_SIZE (XBLC_MAX_PACKET * 100) //~100 ms worth of audio at 16bit 24kHz
-
-#define NULL_DEFAULT(a, b) (a == NULL ? b : a)
 
 static const uint8_t silence[256] = {0};
 
@@ -269,7 +267,6 @@ static void input_callback(void *userdata, SDL_AudioStream *stream, int addition
     uint32_t total_bytes_read = 0;
     uint32_t max_len = MIN(total_amount, fifo8_num_free(&s->in.fifo));
     if (max_len > 0) {
-        memset(buffer, 0, max_len);
         int bytes_read = SDL_GetAudioStreamData(stream, buffer, max_len);
         if(bytes_read > 0)
         {
@@ -324,6 +321,10 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture, SDL_AudioDevi
                                                &channel->spec, 
                                                capture ? input_callback : output_callback,
                                                (void*)s);
+    if (channel->voice == NULL) {
+        DPRINTF("[XBLC] Failed to open audio device stream: %s\n", SDL_GetError());
+        return;
+    }
     
     SDL_ResumeAudioStreamDevice(channel->voice);
 }
@@ -362,9 +363,10 @@ static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
     init_input_stream |= should_init_stream(&s->in, xblc->input_device_id);
     init_output_stream |= should_init_stream(&s->out, xblc->output_device_id);
 
-    // If either channel needs to be initialized, initialize both channels
-    if (init_input_stream || init_output_stream) {
+    if (init_input_stream) {
         xblc_audio_channel_init(s, true, xblc->input_device_id);
+    }
+    if (init_output_stream) {
         xblc_audio_channel_init(s, false, xblc->output_device_id);
     }
 
@@ -454,16 +456,24 @@ static void usb_xbox_communicator_unrealize(USBDevice *dev)
 {
     USBXBLCState *s = USB_XBLC(dev);
 
-    SDL_PauseAudioStreamDevice(s->in.voice);
-    SDL_PauseAudioStreamDevice(s->out.voice);
+    if (s->in.voice) {
+        SDL_PauseAudioStreamDevice(s->in.voice);
+    }
+    if (s->out.voice) {
+        SDL_PauseAudioStreamDevice(s->out.voice);
+    }
     
-    fifo8_destroy(&s->out.fifo);
     fifo8_destroy(&s->in.fifo);
+    fifo8_destroy(&s->out.fifo);
 
-    SDL_DestroyAudioStream(s->in.voice);
-    s->in.voice = 0;
-    SDL_DestroyAudioStream(s->out.voice);
-    s->out.voice = 0;
+    if (s->in.voice) {
+        SDL_DestroyAudioStream(s->in.voice);
+        s->in.voice = 0;
+    }
+    if (s->out.voice) {
+        SDL_DestroyAudioStream(s->out.voice);
+        s->out.voice = 0;
+    }
 }
 
 static void usb_xblc_class_init(ObjectClass *klass, const void *data)
