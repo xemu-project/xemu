@@ -220,18 +220,24 @@ static void output_callback(void *userdata, SDL_AudioStream *stream, int additio
 
     // Not enough data to send, wait a bit longer, fill with silence for now
     if (fifo8_num_used(&s->out.fifo) < XBLC_MAX_PACKET) {
-        //SDL_PutAudioStreamData(stream, (void*)silence, MIN(additional_amount, ARRAY_SIZE(silence)));
+        if (!SDL_PutAudioStreamData(stream, (void*)silence, MIN(total_amount, ARRAY_SIZE(silence))))
+            DPRINTF("[XBLC] Error putting audio stream data: %s\n", SDL_GetError());
     } else {
         // Write speaker data into audio backend
         while (total_amount > 0 && !fifo8_is_empty(&s->out.fifo)) {
             max_len = MIN(fifo8_num_used(&s->out.fifo), (uint32_t)total_amount);
-            data = fifo8_pop_bufptr(&s->out.fifo, max_len, &max_len);
+            data    = fifo8_pop_bufptr(&s->out.fifo, max_len, &max_len);
 
             if(s->out.volume < 1.0) {
-                SDL_MixAudio(mixed, data, SDL_AUDIO_S16LE, max_len, MAX(0, s->out.volume));
-                SDL_PutAudioStreamData(stream, mixed, max_len);
+                if (!SDL_MixAudio(mixed, data, SDL_AUDIO_S16LE, max_len, MAX(0, s->out.volume)))
+                    DPRINTF("[XBLC] Error mixing audio: %s\n", SDL_GetError());
+                else {
+                    if (!SDL_PutAudioStreamData(stream, mixed, max_len))
+                        DPRINTF("[XBLC] Error getting audio stream data: %s\n", SDL_GetError());
+                }
             } else {
-                SDL_PutAudioStreamData(stream, data, max_len);
+                if (!SDL_PutAudioStreamData(stream, data, max_len)) 
+                    DPRINTF("[XBLC] Error getting audio stream data: %s\n", SDL_GetError());
             }
             total_amount -= max_len;
         }
@@ -269,56 +275,30 @@ static void input_callback(void *userdata, SDL_AudioStream *stream, int addition
         {
             total_bytes_read += bytes_read;
             if(s->in.volume < 1.0) {
-                
-                int bytes_read = SDL_GetAudioStreamData(stream, buffer, max_len);
-                if(bytes_read > 0)
-                {
-                    SDL_MixAudio(mixed, buffer, SDL_AUDIO_S16LE, max_len, MAX(s->in.volume, 0));
-                    fifo8_push_all(&s->in.fifo, mixed, max_len);
-                }
+                SDL_MixAudio(mixed, buffer, SDL_AUDIO_S16LE, max_len, MAX(s->in.volume, 0));
+                fifo8_push_all(&s->in.fifo, mixed, max_len);
             } else {
-                if(bytes_read > 0)
-                {
-                    total_bytes_read += bytes_read;
-                    fifo8_push_all(&s->in.fifo, buffer, bytes_read);
-                }
+                fifo8_push_all(&s->in.fifo, buffer, bytes_read);
             }
+        } else if (bytes_read < 0) {
+            DPRINTF("[XBLC] Error getting audio stream data: %s\n", SDL_GetError());
         }
     }
             
     // Clear out the remainder of the input buffer
     DPRINTF("[XBLC] Input Callback: Clearing Input Stream\n");
     int bytes_read = 1;
-    while(bytes_read > 0 && total_bytes_read < total_amount) {
+    while (bytes_read > 0 && total_bytes_read < total_amount) {
         bytes_read = SDL_GetAudioStreamData(stream, buffer, MIN(XBLC_FIFO_SIZE, total_amount - total_bytes_read));
-        if(bytes_read > 0)
+        if (bytes_read > 0)
             total_bytes_read += bytes_read;
+        else if(bytes_read < 0) {
+            DPRINTF("[XBLC] Error getting audio stream data: %s\n", SDL_GetError());
+            break;
+        }
     }
     DPRINTF("[XBLC] Input Callback: Read %d bytes\n", total_bytes_read);
 }
-
-#ifdef DEBUG_XBLC
-static const char *GetFormatString(SDL_AudioFormat format)
-{
-    switch(format)
-    {
-        case SDL_AUDIO_S16LE:
-            return "SDL_AUDIO_S16LE";
-        case SDL_AUDIO_S16BE:
-            return "SDL_AUDIO_S16BE";
-        case SDL_AUDIO_S32LE:
-            return "SDL_AUDIO_S32LE";
-        case SDL_AUDIO_S32BE:
-            return "SDL_AUDIO_S32BE";
-        case SDL_AUDIO_F32LE:
-            return "SDL_AUDIO_F32LE";
-        case SDL_AUDIO_F32BE:
-            return "SDL_AUDIO_F32BE";
-        default:
-            return "Unknown";
-    }
-}
-#endif
 
 static void xblc_audio_channel_init(USBXBLCState *s, bool capture, SDL_AudioDeviceID device_id)
 {
@@ -409,17 +389,14 @@ static void usb_xblc_handle_control(USBDevice *dev, USBPacket *p,
 
     switch (request) {
     case VendorInterfaceOutRequest | USB_REQ_SET_FEATURE:
-        if (index == XBLC_SET_SAMPLE_RATE)
-        {
+        if (index == XBLC_SET_SAMPLE_RATE) {
             uint8_t rate = value & 0xFF;
             assert(rate < ARRAY_SIZE(xblc_sample_rates));
             DPRINTF("[XBLC] Set Sample Rate to %04x\n", rate);
             s->sample_rate = xblc_sample_rates[rate];
             xblc_audio_stream_init(dev, s->sample_rate);
             break;
-        }
-        else if (index == XBLC_SET_AGC)
-        {
+        } else if (index == XBLC_SET_AGC) {
             DPRINTF("[XBLC] Set Auto Gain Control to %d\n", value);
             s->auto_gain_control = (value) ? 1 : 0;
             break;
@@ -504,11 +481,11 @@ static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
     usb_desc_create_serial(dev);
     usb_desc_init(dev);
 
-    fifo8_create(&s->in.fifo, XBLC_FIFO_SIZE);
-    fifo8_create(&s->out.fifo, XBLC_FIFO_SIZE);
-
     s->in.voice = 0;
     s->out.voice = 0;
+
+    fifo8_create(&s->in.fifo, XBLC_FIFO_SIZE);
+    fifo8_create(&s->out.fifo, XBLC_FIFO_SIZE);
 
     s->in.volume = 1.0f;
     s->out.volume = 1.0f;
