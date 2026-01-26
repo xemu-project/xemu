@@ -29,7 +29,7 @@ jobs:
       IMAGE_NAME: xemu-project/xemu-win64-toolchain-${{ matrix.toolchain }}
     steps:
       - name: Clone tree
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
       - name: Extract image metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
