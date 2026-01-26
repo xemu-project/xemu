@@ -110,19 +110,19 @@ static void se_frame(MCPXAPUState *d)
     g_dbg.gp_realtime = d->gp.realtime;
     g_dbg.ep_realtime = d->ep.realtime;
 
-    qemu_spin_lock(&d->monitor.fifo_lock);
-    int num_bytes_free = fifo8_num_free(&d->monitor.fifo);
-    qemu_spin_unlock(&d->monitor.fifo_lock);
+    /* Maximum bytes to buffer in SDL stream (~6 EP frames) */
+    const int max_queued = 6 * sizeof(d->monitor.frame_buf);
+    int queued = SDL_GetAudioStreamQueued(d->monitor.stream);
 
     /* A rudimentary calculation to determine approximately how taxed the APU
-     * thread is, by measuring how much time we spend waiting for FIFO to drain
+     * thread is, by measuring how much time we spend waiting for buffer to drain
      * versus working on building frames.
      * =1: thread is not sleeping and likely falling behind realtime
      * <1: thread is able to complete work on time
      */
-    if (num_bytes_free < sizeof(d->monitor.frame_buf)) {
+    if (queued >= max_queued) {
         int64_t sleep_start = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-        qemu_cond_wait(&d->cond, &d->lock);
+        qemu_cond_timedwait(&d->cond, &d->lock, 5);
         int64_t sleep_end = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
         d->sleep_acc += (sleep_end - sleep_start);
         return;
@@ -162,12 +162,8 @@ static void se_frame(MCPXAPUState *d)
             }
         }
 
-        qemu_spin_lock(&d->monitor.fifo_lock);
-        num_bytes_free = fifo8_num_free(&d->monitor.fifo);
-        assert(num_bytes_free >= sizeof(d->monitor.frame_buf));
-        fifo8_push_all(&d->monitor.fifo, (uint8_t *)d->monitor.frame_buf,
-                       sizeof(d->monitor.frame_buf));
-        qemu_spin_unlock(&d->monitor.fifo_lock);
+        SDL_PutAudioStreamData(d->monitor.stream, d->monitor.frame_buf,
+                               sizeof(d->monitor.frame_buf));
         memset(d->monitor.frame_buf, 0, sizeof(d->monitor.frame_buf));
     }
 
@@ -176,57 +172,8 @@ static void se_frame(MCPXAPUState *d)
     mcpx_debug_end_frame();
 }
 
-static void monitor_sink_cb(void *userdata, SDL_AudioStream *stream,
-                            int additional_amount, int total_amount)
-{
-    MCPXAPUState *s = MCPX_APU_DEVICE(userdata);
-
-    if (additional_amount <= 0) {
-        return;
-    }
-
-    int copied = 0;
-    bool stream_failed = false;
-
-    if (runstate_is_running()) {
-        qemu_spin_lock(&s->monitor.fifo_lock);
-        int avail = fifo8_num_used(&s->monitor.fifo);
-        int to_copy = MIN(additional_amount, avail);
-        int remaining = to_copy;
-        while (remaining > 0) {
-            uint32_t chunk_len;
-            const uint8_t *ptr = fifo8_peek_bufptr(&s->monitor.fifo, remaining, &chunk_len);
-            if (!SDL_PutAudioStreamData(stream, ptr, chunk_len)) {
-                stream_failed = true;
-                break;
-            }
-            fifo8_drop(&s->monitor.fifo, chunk_len);
-            remaining -= chunk_len;
-        }
-        copied = to_copy - remaining;
-        qemu_spin_unlock(&s->monitor.fifo_lock);
-    }
-
-    if (!stream_failed && copied < additional_amount) {
-        static const uint8_t silence[1024] = { 0 };
-        int remaining = additional_amount - copied;
-        while (remaining > 0) {
-            int chunk = MIN(remaining, (int)sizeof(silence));
-            if (!SDL_PutAudioStreamData(stream, silence, chunk)) {
-                break;
-            }
-            remaining -= chunk;
-        }
-    }
-
-    qemu_cond_broadcast(&s->cond);
-}
-
 static void monitor_init(MCPXAPUState *d)
 {
-    qemu_spin_init(&d->monitor.fifo_lock);
-    fifo8_create(&d->monitor.fifo, 6 * (256 * 2 * 2));
-
     SDL_AudioSpec sdl_audio_spec = {
         .freq = 48000,
         .format = SDL_AUDIO_S16LE,
@@ -241,8 +188,8 @@ static void monitor_init(MCPXAPUState *d)
     d->monitor.stream = SDL_OpenAudioDeviceStream(
         SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
         &sdl_audio_spec,
-        monitor_sink_cb,
-        d
+        NULL,
+        NULL
     );
 
     if (d->monitor.stream == NULL) {
