@@ -75,6 +75,8 @@ typedef struct USBXBLCState {
 
     XBLCStream out;
     XBLCStream in;
+
+    uint8_t input_buffer[XBLC_FIFO_SIZE];
 } USBXBLCState;
 
 enum {
@@ -163,18 +165,22 @@ static void usb_xblc_handle_reset(USBDevice *dev)
 
     DPRINTF("[XBLC] Reset\n");
 
-    if(s->in.voice != 0)
+    if (s->in.voice != 0) {
         SDL_LockAudioStream(s->in.voice);
-    if(s->out.voice != 0)
+    }
+    if (s->out.voice != 0) {
         SDL_LockAudioStream(s->out.voice);
+    }
 
     fifo8_reset(&s->in.fifo);
     fifo8_reset(&s->out.fifo);
 
-    if(s->in.voice != 0)
+    if (s->in.voice != 0) {
         SDL_UnlockAudioStream(s->in.voice);
-    if(s->out.voice != 0)
+    }
+    if (s->out.voice != 0) {
         SDL_UnlockAudioStream(s->out.voice);
+    }
 }
 
 static void output_callback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount)
@@ -200,16 +206,15 @@ static void output_callback(void *userdata, SDL_AudioStream *stream, int additio
 static void input_callback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount)
 {
     USBXBLCState *s = (USBXBLCState *)userdata;
-    static uint8_t buffer[XBLC_FIFO_SIZE];
     
     // Don't try to put more into the queue than will fit
     uint32_t total_bytes_read = 0;
     uint32_t max_len = MIN(total_amount, fifo8_num_free(&s->in.fifo));
     if (max_len > 0) {
-        int bytes_read = SDL_GetAudioStreamData(stream, buffer, max_len);
+        int bytes_read = SDL_GetAudioStreamData(stream, s->input_buffer, max_len);
         if(bytes_read > 0) {
             total_bytes_read += bytes_read;
-            fifo8_push_all(&s->in.fifo, buffer, bytes_read);
+            fifo8_push_all(&s->in.fifo, s->input_buffer, bytes_read);
         } else if(bytes_read < 0) {
             DPRINTF("[xblc] Error Getting audio stream data: %s\n", SDL_GetError());
         }
@@ -217,10 +222,11 @@ static void input_callback(void *userdata, SDL_AudioStream *stream, int addition
             
     // Clear out the remainder of the input buffer
     int bytes_read = 1;
-    while(bytes_read > 0 && total_bytes_read < total_amount) {
-        bytes_read = SDL_GetAudioStreamData(stream, buffer, MIN(XBLC_FIFO_SIZE, total_amount - total_bytes_read));
-        if(bytes_read > 0)
+    while (bytes_read > 0 && total_bytes_read < total_amount) {
+        bytes_read = SDL_GetAudioStreamData(stream, s->input_buffer, MIN(XBLC_FIFO_SIZE, total_amount - total_bytes_read));
+        if (bytes_read > 0) {
             total_bytes_read += bytes_read;
+        }
     }
 }
 
@@ -231,7 +237,7 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture)
         SDL_AUDIO_DEVICE_DEFAULT_RECORDING :
         SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
     
-    if(channel->voice != 0) {
+    if (channel->voice != 0) {
         SDL_PauseAudioStreamDevice(channel->voice);
         SDL_DestroyAudioStream(channel->voice);
         channel->voice = 0;
@@ -263,16 +269,18 @@ static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
     bool init_input_stream = false, 
          init_output_stream = false;
 
-    if(s->sample_rate != sample_rate) {
+    if (s->sample_rate != sample_rate) {
         init_input_stream = true;
         init_output_stream = true;
         s->sample_rate = sample_rate;
     }
 
-    if(s->in.voice == 0)
+    if (s->in.voice == 0) {
         init_input_stream = true;
-    if(s->out.voice == 0)
+    }
+    if (s->out.voice == 0) {
         init_output_stream = true;
+    }
 
     if (init_input_stream) {
         xblc_audio_channel_init(s, true);
