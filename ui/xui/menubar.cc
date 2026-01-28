@@ -79,7 +79,7 @@ void ProcessKeyboardShortcuts(void)
     if (ImGui::IsKeyPressed(ImGuiKey_F10) && nv2a_dbg_renderdoc_available()) {
         ImGuiIO& io = ImGui::GetIO();
         int num_frames = io.KeyShift ? 5 : 1;
-        nv2a_dbg_renderdoc_capture_frames(num_frames, io.KeyCtrl);
+        nv2a_dbg_renderdoc_capture_frames(num_frames, io.KeyCtrl || io.KeyAlt);
     }
 #endif
 }
