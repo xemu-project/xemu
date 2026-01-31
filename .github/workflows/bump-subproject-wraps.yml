@@ -37,6 +37,7 @@ jobs:
               subprojects/implot.wrap \
               subprojects/json.wrap \
               subprojects/nv2a_vsh_cpu.wrap \
+              subprojects/sdl3.wrap \
               subprojects/SPIRV-Reflect.wrap \
               subprojects/tomlplusplus.wrap \
               subprojects/volk.wrap \
