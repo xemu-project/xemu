@@ -74,5 +74,6 @@ jobs:
             gh pr create \
               --title "meson: Bump ${name} to ${new_tag}" \
               --body  "Automatic bump of \`${name}\` to [${new_tag}](https://github.com/${owner}/${repo}/compare/${old_rev}..${new_rev})." \
-              --base  master
+              --base  master \
+              --label dependencies
           done
