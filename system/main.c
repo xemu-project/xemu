@@ -22,13 +22,14 @@
  * THE SOFTWARE.
  */
 
+#ifndef XBOX
+
 #include "qemu/osdep.h"
 #include "qemu-main.h"
 #include "qemu/main-loop.h"
 #include "system/replay.h"
 #include "system/system.h"
 
-#ifndef XBOX
 #ifdef CONFIG_SDL
 /*
  * SDL insists on wrapping the main() function with its own implementation on
@@ -40,7 +41,6 @@
 
 #ifdef CONFIG_DARWIN
 #include <CoreFoundation/CoreFoundation.h>
-#endif
 #endif
 
 static void *qemu_default_main(void *opaque)
@@ -58,23 +58,6 @@ static void *qemu_default_main(void *opaque)
 }
 
 int (*qemu_main)(void);
-
-
-#ifdef XBOX
-
-static int qemu_xemu_main(void)
-{
-    /* Called after qemu_init, inheriting bql */
-    bql_unlock();
-    replay_mutex_unlock();
-
-    qemu_default_main(NULL);
-    g_assert_not_reached();
-}
-
-int (*qemu_main)(void) = qemu_xemu_main;
-
-#else
 
 #ifdef CONFIG_DARWIN
 static int os_darwin_cfrunloop_main(void)
@@ -114,4 +97,4 @@ int main(int argc, char **argv)
     }
 }
 
-#endif /* XBOX */
+#endif

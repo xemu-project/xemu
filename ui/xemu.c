@@ -33,7 +33,6 @@
 #include "qemu/main-loop.h"
 #include "qemu/rcu.h"
 #include "qemu-version.h"
-#include "qemu-main.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-block.h"
 #include "qobject/qdict.h"
@@ -114,7 +113,11 @@ static Notifier mouse_mode_notifier;
 static SDL_Window *m_window;
 static SDL_GLContext m_context;
 static QemuSemaphore display_init_sem;
+static QemuSemaphore display_shutdown_sem;
 static QEMUTimer *vblank_timer;
+static QemuThread vblank_thread;
+static bool qemu_exiting;
+static int exit_status;
 
 void tcg_register_init_ctx(void); // tcg.c
 
@@ -749,7 +752,7 @@ static void *vblank_timer_thread(void *opaque)
     struct xemu_console *scon = (struct xemu_console *)opaque;
     int64_t next_vblank = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
 
-    while (true) {
+    while (!qatomic_read(&qemu_exiting)) {
         // Schedule next vblank at fixed interval (absolute deadline)
         next_vblank += vblank_interval_ns;
 
@@ -763,9 +766,11 @@ static void *vblank_timer_thread(void *opaque)
             next_vblank = now;
         }
 
-        xemu_main_loop_lock();
-        process_vblank(scon);
-        xemu_main_loop_unlock();
+        if (!qatomic_read(&qemu_exiting)) {
+            xemu_main_loop_lock();
+            process_vblank(scon);
+            xemu_main_loop_unlock();
+        }
     }
 
     return NULL;
@@ -798,7 +803,7 @@ static void report_stats(void)
 static void gl_render_frame(struct xemu_console *scon)
 {
     static bool rendering;
-    if (qatomic_xchg(&rendering, true)) {
+    if (qatomic_xchg(&rendering, true) || qatomic_read(&qemu_exiting)) {
         return;
     }
 
@@ -1082,8 +1087,6 @@ static void display_very_early_init(DisplayOptions *o)
     // Initialize offscreen rendering context now
     nv2a_context_init();
     SDL_GL_MakeCurrent(NULL, NULL);
-
-    // FIXME: atexit(sdl_cleanup);
 }
 
 static void display_early_init(DisplayOptions *o)
@@ -1157,9 +1160,28 @@ static void display_init(DisplayState *ds, DisplayOptions *o)
     // Register event watch to handle rendering during these operations.
     SDL_AddEventWatch(event_watch_callback, &scon_list[0]);
 
+    if (use_vblank_timer_thread) {
+        qemu_thread_create(&vblank_thread, "vblank-timer", vblank_timer_thread,
+                           &scon_list[0], QEMU_THREAD_JOINABLE);
+    } else {
+        vblank_timer = timer_new_ns(QEMU_CLOCK_REALTIME, vblank_timer_callback, &scon_list[0]);
+        timer_mod_ns(vblank_timer, qemu_clock_get_ns(QEMU_CLOCK_REALTIME) + vblank_interval_ns);
+    }
+
     /* Tell main thread to go ahead and create the app and enter the run loop */
     SDL_GL_MakeCurrent(NULL, NULL);
     qemu_sem_post(&display_init_sem);
+}
+
+static void display_finalize(void)
+{
+    if (use_vblank_timer_thread) {
+        qemu_thread_join(&vblank_thread);
+    }
+
+    SDL_RemoveEventWatch(event_watch_callback, &scon_list[0]);
+    SDL_DestroyWindow(m_window);
+    SDL_Quit();
 }
 
 static QemuDisplay qemu_display_xemu = {
@@ -1178,15 +1200,20 @@ type_init(register_xemu_display);
 int gArgc;
 char **gArgv;
 
-static void *call_qemu_main(void *opaque)
+static void *qemu_main(void *opaque)
 {
-    int status;
-
-    DPRINTF("Second thread: calling qemu_main()\n");
     qemu_init(gArgc, gArgv);
-    status = qemu_main();
-    DPRINTF("Second thread: qemu_main() returned, exiting\n");
-    exit(status);
+    exit_status = qemu_main_loop();
+    qatomic_set(&qemu_exiting, true);
+    bql_unlock();
+    qemu_mutex_unlock_main_loop();
+
+    qemu_sem_wait(&display_shutdown_sem);
+    bql_lock();
+    qemu_cleanup(exit_status);
+    bql_unlock();
+
+    return NULL;
 }
 
 #ifdef _WIN32
@@ -1281,7 +1308,6 @@ int main(int argc, char **argv)
 
     init_sdl_app_metadata();
 
-    DPRINTF("Entered main()\n");
     gArgc = argc;
     gArgv = argv;
 
@@ -1316,10 +1342,9 @@ int main(int argc, char **argv)
     display_very_early_init(NULL);
 
     qemu_sem_init(&display_init_sem, 0);
-    qemu_thread_create(&thread, "qemu_main", call_qemu_main,
-                       NULL, QEMU_THREAD_DETACHED);
-
-    DPRINTF("Main thread: waiting for display_init_sem\n");
+    qemu_sem_init(&display_shutdown_sem, 0);
+    qemu_thread_create(&thread, "qemu_main", qemu_main,
+                       NULL, QEMU_THREAD_JOINABLE);
     qemu_sem_wait(&display_init_sem);
 
     gui_grab = 0;
@@ -1339,20 +1364,15 @@ int main(int argc, char **argv)
     xemu_input_init();
     xemu_main_loop_unlock();
 
-    if (use_vblank_timer_thread) {
-        QemuThread vblank_thread;
-        qemu_thread_create(&vblank_thread, "vblank-timer", vblank_timer_thread,
-                        &scon_list[0], QEMU_THREAD_DETACHED);
-    } else {
-        vblank_timer = timer_new_ns(QEMU_CLOCK_REALTIME, vblank_timer_callback, &scon_list[0]);
-        timer_mod_ns(vblank_timer, qemu_clock_get_ns(QEMU_CLOCK_REALTIME) + vblank_interval_ns);
-    }
-
-    while (1) {
-        struct xemu_console *scon = &scon_list[0];
+    struct xemu_console *scon = &scon_list[0];
+    while (!qatomic_read(&qemu_exiting)) {
         poll_events(scon);
         gl_render_frame(scon);
     }
+    qemu_sem_post(&display_shutdown_sem);
+    qemu_thread_join(&thread);
+    display_finalize();
+    return exit_status;
 }
 
 void xemu_eject_disc(Error **errp)
