@@ -285,7 +285,7 @@ static void absolute_mouse_grab(struct sdl2_console *scon)
     }
 }
 
-static void sdl_mouse_mode_change(Notifier *notify, void *data)
+static void mouse_mode_change(Notifier *notify, void *data)
 {
     if (qemu_input_is_absolute(sdl2_console[0].dcl.con)) {
         if (!absolute_enabled) {
@@ -939,7 +939,7 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
         SDL_SetWindowIcon(sdl2_console[0].real_window, icon);
     }
 
-    mouse_mode_notifier.notify = sdl_mouse_mode_change;
+    mouse_mode_notifier.notify = mouse_mode_change;
     qemu_add_mouse_mode_change_notifier(&mouse_mode_notifier);
 
     sdl_cursor_hidden = SDL_CreateCursor(&data, &data, 8, 1, 0, 0);
@@ -961,12 +961,12 @@ static QemuDisplay qemu_display_sdl2 = {
     .init       = sdl2_display_init,
 };
 
-static void register_sdl1(void)
+static void register_xemu_display(void)
 {
     qemu_display_register(&qemu_display_sdl2);
 }
 
-type_init(register_sdl1);
+type_init(register_xemu_display);
 
 #ifdef CONFIG_OPENGL
 module_dep("ui-opengl");
