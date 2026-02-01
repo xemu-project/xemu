@@ -1180,6 +1180,8 @@ static void display_finalize(void)
     }
 
     SDL_RemoveEventWatch(event_watch_callback, &scon_list[0]);
+    SDL_GL_MakeCurrent(NULL, NULL);
+    SDL_GL_DestroyContext(m_context);
     SDL_DestroyWindow(m_window);
     SDL_Quit();
 }
