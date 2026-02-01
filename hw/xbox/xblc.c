@@ -283,12 +283,18 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
             assert(false);
         }
 
+        int available = SDL_GetAudioStreamAvailable(s->in.voice);
+        if(available < 0) {
+            DPRINTF("[XBLC] Error getting avaialable data from audio stream: %s\n", SDL_GetError());
+            assert(false);
+        }
+
         to_process = MIN(p->iov.size, available);
 
         // Read data from the stream
         while (to_process) {
             chunk_len = SDL_GetAudioStreamData(s->in.voice, s->in.packet,
-                                               MIN(s->in.packet, to_process));
+                                               MIN(sizeof(s->in.packet), to_process));
             if (chunk_len < 0) {
                 DPRINTF("[XBLC] Error getting data from the input stream: %s\n",
                         SDL_GetError());
@@ -314,7 +320,6 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
             assert(false);
         }
 
-        // usb_packet_copy(p, (void *)s->out.packet, chunk_len);
         if (!SDL_PutAudioStreamData(s->out.voice, p->iov.iov->iov_base,
                                     p->iov.size)) {
             DPRINTF("[XBLC] Error putting data into output stream: %s\n",
