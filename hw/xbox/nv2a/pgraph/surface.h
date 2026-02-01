@@ -22,6 +22,8 @@
 #ifndef HW_XBOX_NV2A_PGRAPH_SURFACE_H
 #define HW_XBOX_NV2A_PGRAPH_SURFACE_H
 
+#include <stdint.h>
+
 typedef struct SurfaceShape {
     unsigned int z_format;
     unsigned int color_format;
@@ -31,5 +33,10 @@ typedef struct SurfaceShape {
     unsigned int clip_width, clip_height;
     unsigned int anti_aliasing;
 } SurfaceShape;
+
+/**
+ * Returns a modified blend factor to match HW behavior for special surface formats.
+ */
+uint32_t fixup_blend_factor_for_surface(uint32_t blend_factor, const struct SurfaceShape *surface);
 
 #endif
