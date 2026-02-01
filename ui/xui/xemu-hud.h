@@ -36,10 +36,13 @@ void xemu_toggle_fullscreen(void);
 SDL_Window *xemu_get_window(void);
 void xemu_eject_disc(Error **errp);
 void xemu_load_disc(const char *path, Error **errp);
+void xemu_main_loop_lock(void);
+void xemu_main_loop_unlock(void);
 
 // Implemented in xemu_hud.cc
 void xemu_hud_init(SDL_Window *window, void *sdl_gl_context);
 void xemu_hud_cleanup(void);
+void xemu_hud_update(void);
 void xemu_hud_render(void);
 void xemu_hud_process_sdl_events(SDL_Event *event);
 void xemu_hud_should_capture_kbd_mouse(int *kbd, int *mouse);
