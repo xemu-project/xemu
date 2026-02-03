@@ -1,6 +1,7 @@
 pfiles = [
   'controller_mask.png',
   'controller_mask_s.png',
+  'arcade_stick_mask.png',
   'xmu_mask.png',
   'logo_sdf.png',
   'xemu_64x64.png',
