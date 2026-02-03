@@ -341,16 +341,12 @@ static void usb_xbox_communicator_unrealize(USBDevice *dev)
 
     if (s->in.voice) {
         SDL_PauseAudioStreamDevice(s->in.voice);
-    }
-    if (s->out.voice) {
-        SDL_PauseAudioStreamDevice(s->out.voice);
-    }
-
-    if (s->in.voice) {
         SDL_DestroyAudioStream(s->in.voice);
         s->in.voice = NULL;
     }
+    
     if (s->out.voice) {
+        SDL_PauseAudioStreamDevice(s->out.voice);
         SDL_DestroyAudioStream(s->out.voice);
         s->out.voice = NULL;
     }
