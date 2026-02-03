@@ -221,6 +221,7 @@ typedef struct PGRAPHGLState {
         GLuint display_size_loc;
         GLuint line_offset_loc;
         GLuint tex_loc;
+        GLuint vga_framebuffer_tex;
         GLuint pvideo_tex;
         GLint pvideo_enable_loc;
         GLint pvideo_tex_loc;
@@ -294,5 +295,16 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d);
 /**  Note: The caller must set up a clean GL context before invoking. */
 void pgraph_gl_determine_gpu_properties(void);
 GPUProperties *pgraph_gl_get_gpu_properties(void);
+void pgraph_gl_download_surfaces_in_range_if_dirty(PGRAPHState *pg,
+                                                   hwaddr start, hwaddr size);
+/**
+ * Uploads pixel data at vram_addr into the currently bound texture.
+ */
+void pgraph_gl_upload_vram_to_bound_texture(NV2AState *d, hwaddr vram_addr,
+                                            bool swizzle,
+                                            unsigned int surface_width,
+                                            unsigned int surface_height,
+                                            unsigned int pitch, size_t size,
+                                            const SurfaceFormatInfo *fmt);
 
 #endif
