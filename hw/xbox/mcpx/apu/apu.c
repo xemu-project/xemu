@@ -174,16 +174,7 @@ static void se_frame(MCPXAPUState *d)
 
     mcpx_apu_vp_frame(d, mixbins);
     mcpx_apu_dsp_frame(d, mixbins);
-
-    if ((d->ep_frame_div + 1) % 8 == 0) {
-        if (d->monitor.stream) {
-            float vu = pow(fmax(0.0, fmin(g_config.audio.volume_limit, 1.0)), M_E);
-            SDL_SetAudioStreamGain(d->monitor.stream, vu);
-            SDL_PutAudioStreamData(d->monitor.stream, d->monitor.frame_buf,
-                                   sizeof(d->monitor.frame_buf));
-        }
-        memset(d->monitor.frame_buf, 0, sizeof(d->monitor.frame_buf));
-    }
+    mcpx_apu_monitor_frame(d);
 
     d->ep_frame_div++;
 
@@ -236,39 +227,6 @@ static void *mcpx_apu_frame_thread(void *arg)
     }
     qemu_mutex_unlock(&d->lock);
     return NULL;
-}
-
-static void monitor_init(MCPXAPUState *d, Error **errp)
-{
-    SDL_AudioSpec spec = {
-        .freq = 48000,
-        .format = SDL_AUDIO_S16LE,
-        .channels = 2,
-    };
-
-    d->monitor.stream = NULL;
-
-    if (!SDL_Init(SDL_INIT_AUDIO)) {
-        error_setg(errp, "SDL_Init failed: %s", SDL_GetError());
-        return;
-    }
-
-    d->monitor.stream = SDL_OpenAudioDeviceStream(
-        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
-    if (d->monitor.stream == NULL) {
-        error_setg(errp, "SDL_OpenAudioDeviceStream failed: %s",
-                   SDL_GetError());
-        return;
-    }
-
-    SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(d->monitor.stream));
-}
-
-static void monitor_finalize(MCPXAPUState *d)
-{
-    if (d->monitor.stream) {
-        SDL_DestroyAudioStream(d->monitor.stream);
-    }
 }
 
 static void mcpx_apu_wait_for_idle(MCPXAPUState *d)
@@ -378,9 +336,9 @@ static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
     mcpx_apu_dsp_init(d);
 
     Error *local_err = NULL;
-    monitor_init(d, &local_err);
+    mcpx_apu_monitor_init(d, &local_err);
     if (local_err) {
-        warn_reportf_err(local_err, "monitor_init failed: ");
+        warn_reportf_err(local_err, "mcpx_apu_monitor_init failed: ");
     }
 
     qemu_add_vm_change_state_handler(mcpx_apu_vm_state_change, d);
@@ -404,7 +362,7 @@ static void mcpx_apu_exitfn(PCIDevice *dev)
 
     qemu_thread_join(&d->apu_thread);
     mcpx_apu_vp_finalize(d);
-    monitor_finalize(d);
+    mcpx_apu_monitor_finalize(d);
 }
 
 const VMStateDescription vmstate_vp_dsp_dma_state = {
