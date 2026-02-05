@@ -164,6 +164,49 @@ static void se_frame(MCPXAPUState *d)
     mcpx_debug_end_frame();
 }
 
+static void *mcpx_apu_frame_thread(void *arg)
+{
+    MCPXAPUState *d = MCPX_APU_DEVICE(arg);
+    qemu_mutex_lock(&d->lock);
+    while (!qatomic_read(&d->exiting)) {
+        if (!runstate_is_running()) {
+            qemu_cond_wait(&d->cond, &d->lock);
+            continue;
+        }
+
+        int xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
+                                NV_PAPU_SECTL_XCNTMODE);
+        uint32_t fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
+        if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
+            (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
+            (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
+            d->set_irq = true;
+        }
+
+        if (d->set_irq) {
+            qemu_mutex_unlock(&d->lock);
+            bql_lock();
+            update_irq(d);
+            bql_unlock();
+            qemu_mutex_lock(&d->lock);
+            d->set_irq = false;
+        }
+
+        xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
+                            NV_PAPU_SECTL_XCNTMODE);
+        fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
+        if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
+            (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
+            (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
+            qemu_cond_timedwait(&d->cond, &d->lock, 5);
+            continue;
+        }
+        se_frame(d);
+    }
+    qemu_mutex_unlock(&d->lock);
+    return NULL;
+}
+
 static void monitor_init(MCPXAPUState *d)
 {
     SDL_AudioSpec sdl_audio_spec = {
@@ -193,42 +236,8 @@ static void monitor_init(MCPXAPUState *d)
     SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(d->monitor.stream));
 }
 
-static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
+static void monitor_finalize(MCPXAPUState *d)
 {
-    MCPXAPUState *d = MCPX_APU_DEVICE(dev);
-
-    dev->config[PCI_INTERRUPT_PIN] = 0x01;
-
-    memory_region_init_io(&d->mmio, OBJECT(dev), &mcpx_apu_mmio_ops, d,
-                          "mcpx-apu-mmio", 0x80000);
-
-    memory_region_init_io(&d->vp.mmio, OBJECT(dev), &vp_ops, d,
-                          "mcpx-apu-vp", 0x10000);
-    memory_region_add_subregion(&d->mmio, 0x20000, &d->vp.mmio);
-
-    memory_region_init_io(&d->gp.mmio, OBJECT(dev), &gp_ops, d,
-                          "mcpx-apu-gp", 0x10000);
-    memory_region_add_subregion(&d->mmio, 0x30000, &d->gp.mmio);
-
-    memory_region_init_io(&d->ep.mmio, OBJECT(dev), &ep_ops, d,
-                          "mcpx-apu-ep", 0x10000);
-    memory_region_add_subregion(&d->mmio, 0x50000, &d->ep.mmio);
-
-    pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
-}
-
-static void mcpx_apu_exitfn(PCIDevice *dev)
-{
-    MCPXAPUState *d = MCPX_APU_DEVICE(dev);
-
-    qatomic_set(&d->exiting, true);
-
-    qemu_mutex_lock(&d->lock);
-    qemu_cond_signal(&d->cond);
-    qemu_mutex_unlock(&d->lock);
-
-    qemu_thread_join(&d->apu_thread);
-    mcpx_apu_vp_finalize(d);
     SDL_DestroyAudioStream(d->monitor.stream);
 }
 
@@ -247,6 +256,12 @@ static void mcpx_apu_reset(MCPXAPUState *d)
     d->set_irq = false;
     qemu_cond_signal(&d->cond);
     qemu_mutex_unlock(&d->lock);
+}
+
+static void mcpx_apu_reset_hold(Object *obj, ResetType type)
+{
+    MCPXAPUState *d = MCPX_APU_DEVICE(obj);
+    mcpx_apu_reset(d);
 }
 
 // Note: This is handled as a VM state change and not as a `pre_save` callback
@@ -289,10 +304,56 @@ static int mcpx_apu_post_load(void *opaque, int version_id)
     return 0;
 }
 
-static void mcpx_apu_reset_hold(Object *obj, ResetType type)
+static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
 {
-    MCPXAPUState *d = MCPX_APU_DEVICE(obj);
-    mcpx_apu_reset(d);
+    MCPXAPUState *d = MCPX_APU_DEVICE(dev);
+
+    dev->config[PCI_INTERRUPT_PIN] = 0x01;
+
+    memory_region_init_io(&d->mmio, OBJECT(dev), &mcpx_apu_mmio_ops, d,
+                          "mcpx-apu-mmio", 0x80000);
+
+    memory_region_init_io(&d->vp.mmio, OBJECT(dev), &vp_ops, d,
+                          "mcpx-apu-vp", 0x10000);
+    memory_region_add_subregion(&d->mmio, 0x20000, &d->vp.mmio);
+
+    memory_region_init_io(&d->gp.mmio, OBJECT(dev), &gp_ops, d,
+                          "mcpx-apu-gp", 0x10000);
+    memory_region_add_subregion(&d->mmio, 0x30000, &d->gp.mmio);
+
+    memory_region_init_io(&d->ep.mmio, OBJECT(dev), &ep_ops, d,
+                          "mcpx-apu-ep", 0x10000);
+    memory_region_add_subregion(&d->mmio, 0x50000, &d->ep.mmio);
+
+    pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
+
+    d->set_irq = false;
+    d->exiting = false;
+    qemu_mutex_init(&d->lock);
+    qemu_cond_init(&d->cond);
+
+    mcpx_apu_vp_init(d);
+    mcpx_apu_dsp_init(d);
+    monitor_init(d);
+
+    qemu_add_vm_change_state_handler(mcpx_apu_vm_state_change, d);
+    qemu_thread_create(&d->apu_thread, "mcpx.apu_thread", mcpx_apu_frame_thread,
+                       d, QEMU_THREAD_JOINABLE);
+}
+
+static void mcpx_apu_exitfn(PCIDevice *dev)
+{
+    MCPXAPUState *d = MCPX_APU_DEVICE(dev);
+
+    qatomic_set(&d->exiting, true);
+
+    qemu_mutex_lock(&d->lock);
+    qemu_cond_signal(&d->cond);
+    qemu_mutex_unlock(&d->lock);
+
+    qemu_thread_join(&d->apu_thread);
+    mcpx_apu_vp_finalize(d);
+    monitor_finalize(d);
 }
 
 const VMStateDescription vmstate_vp_dsp_dma_state = {
@@ -443,49 +504,6 @@ static void mcpx_apu_register(void)
 }
 type_init(mcpx_apu_register);
 
-static void *mcpx_apu_frame_thread(void *arg)
-{
-    MCPXAPUState *d = MCPX_APU_DEVICE(arg);
-    qemu_mutex_lock(&d->lock);
-    while (!qatomic_read(&d->exiting)) {
-        if (!runstate_is_running()) {
-            qemu_cond_wait(&d->cond, &d->lock);
-            continue;
-        }
-
-        int xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
-                                NV_PAPU_SECTL_XCNTMODE);
-        uint32_t fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
-        if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
-            (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
-            (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
-            d->set_irq = true;
-        }
-
-        if (d->set_irq) {
-            qemu_mutex_unlock(&d->lock);
-            bql_lock();
-            update_irq(d);
-            bql_unlock();
-            qemu_mutex_lock(&d->lock);
-            d->set_irq = false;
-        }
-
-        xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
-                            NV_PAPU_SECTL_XCNTMODE);
-        fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
-        if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
-            (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
-            (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
-            qemu_cond_timedwait(&d->cond, &d->lock, 5);
-            continue;
-        }
-        se_frame(d);
-    }
-    qemu_mutex_unlock(&d->lock);
-    return NULL;
-}
-
 void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
 {
     PCIDevice *dev = pci_create_simple(bus, devfn, "mcpx-apu");
@@ -495,19 +513,4 @@ void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
 
     d->ram = ram;
     d->ram_ptr = memory_region_get_ram_ptr(d->ram);
-
-    mcpx_apu_dsp_init(d);
-
-    d->set_irq = false;
-    d->exiting = false;
-
-    qemu_mutex_init(&d->lock);
-    qemu_cond_init(&d->cond);
-    qemu_add_vm_change_state_handler(mcpx_apu_vm_state_change, d);
-
-    mcpx_apu_vp_init(d);
-    qemu_thread_create(&d->apu_thread, "mcpx.apu_thread", mcpx_apu_frame_thread,
-                       d, QEMU_THREAD_JOINABLE);
-
-    monitor_init(d);
 }
