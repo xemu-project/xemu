@@ -33,7 +33,6 @@
 #include "qemu/main-loop.h"
 #include "qemu/thread.h"
 #include "system/runstate.h"
-#include "qemu/fifo8.h"
 #include "ui/xemu-settings.h"
 
 #include "trace.h"
@@ -82,6 +81,9 @@ typedef struct MCPXAPUState {
     QemuThread apu_thread;
     QemuMutex lock;
     QemuCond cond;
+    QemuCond idle_cond;
+    bool pause_requested;
+    bool is_idle;
 
     MemoryRegion *ram;
     uint8_t *ram_ptr;
@@ -94,15 +96,14 @@ typedef struct MCPXAPUState {
     uint32_t regs[0x20000];
 
     int ep_frame_div;
-    int sleep_acc;
+    int sleep_acc_us;
     int frame_count;
-    int64_t frame_count_time;
+    int64_t frame_count_time_ms;
+    int64_t next_frame_time_us;
 
     struct {
         McpxApuDebugMonitorPoint point;
-        int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes), 8 buffered
-        QemuSpin fifo_lock;
-        Fifo8 fifo;
+        int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes)
         SDL_AudioStream *stream;
     } monitor;
 } MCPXAPUState;
