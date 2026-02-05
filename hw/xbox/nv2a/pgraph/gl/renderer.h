@@ -37,6 +37,7 @@
 
 #include "gloffscreen.h"
 #include "constants.h"
+#include <stdint.h>
 
 typedef struct SurfaceBinding {
     QTAILQ_ENTRY(SurfaceBinding) entry;
@@ -277,7 +278,7 @@ void pgraph_gl_init_buffers(NV2AState *d);
 void pgraph_gl_finalize_buffers(PGRAPHState *pg);
 void pgraph_gl_process_pending_downloads(NV2AState *d);
 void pgraph_gl_reload_surface_scale_factor(PGRAPHState *pg);
-void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface, TextureBinding *texture, TextureShape *texture_shape, int texture_unit);
+void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface, TextureBinding *texture, TextureShape *texture_shape, int texture_unit, uint32_t filter);
 void pgraph_gl_set_surface_dirty(PGRAPHState *pg, bool color, bool zeta);
 void pgraph_gl_surface_download_if_dirty(NV2AState *d, SurfaceBinding *surface);
 SurfaceBinding *pgraph_gl_surface_get(NV2AState *d, hwaddr addr);

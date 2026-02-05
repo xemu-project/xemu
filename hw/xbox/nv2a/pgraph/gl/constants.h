@@ -222,7 +222,7 @@ static const ColorFormatInfo kelvin_color_format_gl_map[66] = {
          {GL_RED, GL_RED, GL_RED, GL_GREEN}},
 
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5] =
-        {2, false, GL_RGB8_SNORM, GL_RGB, GL_BYTE}, /* FIXME: This might be signed */
+        {2, false, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE},
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8] =
         {2, false, GL_RG8, GL_RG, GL_UNSIGNED_BYTE,
          {GL_RED, GL_GREEN, GL_RED, GL_GREEN}},
@@ -276,6 +276,17 @@ static const ColorFormatInfo kelvin_color_format_gl_map[66] = {
         {4, true, GL_RGBA8, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8}
 };
 
+static const ColorFormatInfo kelvin_signed_color_format_gl_map[66] = {
+    [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5] =
+        {2, false, GL_RGB8_SNORM, GL_RGB, GL_BYTE},
+    [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8] =
+        {2, false, GL_RG8_SNORM, GL_RG, GL_BYTE,
+         {GL_RED, GL_GREEN, GL_RED, GL_GREEN}},
+    [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R8B8] =
+        {2, false, GL_RG8_SNORM, GL_RG, GL_BYTE,
+         {GL_GREEN, GL_RED, GL_RED, GL_GREEN}},
+};
+
 typedef struct SurfaceFormatInfo {
     unsigned int bytes_per_pixel;
     GLint gl_internal_format;
@@ -319,4 +330,12 @@ static const SurfaceFormatInfo kelvin_surface_zeta_fixed_format_gl_map[] = {
         {4, GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, GL_DEPTH_STENCIL_ATTACHMENT},
 };
 
+static const uint32_t kelvin_signed_format_mask_gl_map[66] = {
+    [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5] =
+        NV_PGRAPH_TEXFILTER0_RSIGNED | NV_PGRAPH_TEXFILTER0_GSIGNED | NV_PGRAPH_TEXFILTER0_BSIGNED,
+    [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8] =
+        NV_PGRAPH_TEXFILTER0_GSIGNED | NV_PGRAPH_TEXFILTER0_BSIGNED,
+    [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R8B8] =
+        NV_PGRAPH_TEXFILTER0_RSIGNED | NV_PGRAPH_TEXFILTER0_BSIGNED
+};
 #endif
