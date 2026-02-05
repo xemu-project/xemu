@@ -160,20 +160,10 @@ static void usb_xblc_handle_reset(USBDevice *dev)
     DPRINTF("[XBLC] Reset\n");
 
     if (s->in.voice != NULL) {
-        SDL_LockAudioStream(s->in.voice);
+        SDL_ClearAudioStream(s->in.voice);
     }
     if (s->out.voice != NULL) {
-        SDL_LockAudioStream(s->out.voice);
-    }
-
-    SDL_ClearAudioStream(s->in.voice);
-    SDL_ClearAudioStream(s->out.voice);
-
-    if (s->in.voice != NULL) {
-        SDL_UnlockAudioStream(s->in.voice);
-    }
-    if (s->out.voice != NULL) {
-        SDL_UnlockAudioStream(s->out.voice);
+        SDL_ClearAudioStream(s->out.voice);
     }
 }
 
@@ -184,7 +174,6 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture)
                                             SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
 
     if (channel->voice != NULL) {
-        SDL_PauseAudioStreamDevice(channel->voice);
         SDL_DestroyAudioStream(channel->voice);
         channel->voice = NULL;
     }
@@ -280,18 +269,11 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
         if (s->in.voice == NULL) {
             DPRINTF("[XBLC] Tried to get data from the input audio tream but "
                     "the audio stream is not initialized");
-            assert(false);
+            break;
         }
 
-        int available = SDL_GetAudioStreamAvailable(s->in.voice);
-        if(available < 0) {
-            DPRINTF("[XBLC] Error getting avaialable data from audio stream: %s\n", SDL_GetError());
-            assert(false);
-        }
+        to_process = p->iov.size;
 
-        to_process = MIN(p->iov.size, available);
-
-        // Read data from the stream
         while (to_process) {
             chunk_len = SDL_GetAudioStreamData(s->in.voice, s->in.packet,
                                                MIN(sizeof(s->in.packet), to_process));
@@ -302,11 +284,6 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
             }
             usb_packet_copy(p, (void *)s->in.packet, chunk_len);
             to_process -= chunk_len;
-            available -= chunk_len;
-        }
-
-        if (available) {
-            DPRINTF("[XBLC] %d bytes remaining in the stream\n", available);
         }
 
         break;
@@ -317,14 +294,13 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
         if (s->out.voice == NULL) {
             DPRINTF("[XBLC] Tried to put data into the speaker audio stream "
                     "but the audio stream is not initialized");
-            assert(false);
+            return;
         }
 
         if (!SDL_PutAudioStreamData(s->out.voice, p->iov.iov->iov_base,
                                     p->iov.size)) {
             DPRINTF("[XBLC] Error putting data into output stream: %s\n",
                     SDL_GetError());
-            assert(false);
         }
 
         break;
@@ -340,13 +316,11 @@ static void usb_xbox_communicator_unrealize(USBDevice *dev)
     USBXBLCState *s = USB_XBLC(dev);
 
     if (s->in.voice) {
-        SDL_PauseAudioStreamDevice(s->in.voice);
         SDL_DestroyAudioStream(s->in.voice);
         s->in.voice = NULL;
     }
     
     if (s->out.voice) {
-        SDL_PauseAudioStreamDevice(s->out.voice);
         SDL_DestroyAudioStream(s->out.voice);
         s->out.voice = NULL;
     }
