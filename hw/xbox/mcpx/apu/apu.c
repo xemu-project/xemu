@@ -87,7 +87,6 @@ static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
          * This value is expected to be written to FEMEMADDR on completion of
          * something to do with notifies. Just do it now :/ */
         stl_le_phys(&address_space_memory, d->regs[NV_PAPU_FEMEMADDR], val);
-        // fprintf(stderr, "MAGIC WRITE\n");
         qatomic_set(&d->regs[addr], val);
         break;
     default:
@@ -147,13 +146,6 @@ static void se_frame(MCPXAPUState *d)
     mcpx_apu_dsp_frame(d, mixbins);
 
     if ((d->ep_frame_div + 1) % 8 == 0) {
-#if 0
-        FILE *fd = fopen("ep.pcm", "a+");
-        assert(fd != NULL);
-        fwrite(d->apu_fifo_output, sizeof(d->apu_fifo_output), 1, fd);
-        fclose(fd);
-#endif
-
         if (0 <= g_config.audio.volume_limit && g_config.audio.volume_limit < 1) {
             float f = pow(g_config.audio.volume_limit, M_E);
             for (int i = 0; i < 256; i++) {
@@ -354,9 +346,6 @@ const VMStateDescription vmstate_vp_dsp_core_state = {
         VMSTATE_UINT32(disasm_cur_inst, dsp_core_t),
         VMSTATE_UINT16(disasm_cur_inst_len, dsp_core_t),
         VMSTATE_UINT32_ARRAY(disasm_registers_save, dsp_core_t, 64),
-// #ifdef DSP_DISASM_REG_PC
-//         VMSTATE_UINT32(pc_save, dsp_core_t),
-// #endif
         VMSTATE_END_OF_LIST()
     }
 };
@@ -491,7 +480,7 @@ static void *mcpx_apu_frame_thread(void *arg)
             qemu_cond_timedwait(&d->cond, &d->lock, 5);
             continue;
         }
-        se_frame((void *)d);
+        se_frame(d);
     }
     qemu_mutex_unlock(&d->lock);
     return NULL;
