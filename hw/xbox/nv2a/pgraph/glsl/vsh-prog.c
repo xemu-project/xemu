@@ -209,7 +209,7 @@ static bool ilu_force_scalar[] = {
     false,
 };
 
-#define OUTPUT_REG_R12 0
+#define OUTPUT_REG_POS 0
 #define OUTPUT_REG_FOG 5
 
 static const char* out_reg_name[] = {
@@ -297,8 +297,7 @@ static MString *decode_swizzle(const uint32_t *shader_token,
 
 static MString *decode_opcode_input(const uint32_t *shader_token,
                                     VshParameterType param,
-                                    VshFieldName neg_field, int reg_num,
-                                    bool *uses_r12_latch)
+                                    VshFieldName neg_field, int reg_num)
 {
     /* This function decodes a vertex shader opcode parameter into a string.
      * Input A, B or C is controlled via the Param and NEG fieldnames,
@@ -316,9 +315,6 @@ static MString *decode_opcode_input(const uint32_t *shader_token,
     switch (param) {
     case PARAM_R:
         snprintf(tmp, sizeof(tmp), "R%d", reg_num);
-        if (reg_num == 12) {
-            *uses_r12_latch = true;
-        }
         break;
     case PARAM_V:
         reg_num = vsh_get_field(shader_token, FLD_V);
@@ -350,14 +346,15 @@ static MString *decode_opcode_input(const uint32_t *shader_token,
     return ret_str;
 }
 
-static void decode_opcode(MString *ret, const uint32_t *shader_token,
-                          VshOutputMux out_mux, uint32_t mask,
-                          const char *opcode, const char *inputs,
-                          MString **suffix,
-                          bool *r12_is_stale)
+static MString *decode_opcode(const uint32_t *shader_token,
+                              VshOutputMux out_mux, uint32_t mask,
+                              const char *opcode, const char *inputs,
+                              MString **suffix)
 {
+    MString *ret = mstring_new();
     int reg_num = vsh_get_field(shader_token, FLD_OUT_R);
     bool use_temp_var = false;
+    bool use_temp_opos = false;
 
     /* Test for paired opcodes (in other words : Are both <> NOP?) */
     if (out_mux == OMUX_MAC
@@ -373,11 +370,7 @@ static void decode_opcode(MString *ret, const uint32_t *shader_token,
         reg_num = 1;
     }
 
-    VshOutputType out_type = vsh_get_field(shader_token, FLD_OUT_ORB);
-    int out_reg = vsh_get_field(shader_token, FLD_OUT_ADDRESS) & 0xF;
-    if (out_type == OUTPUT_O && out_reg == OUTPUT_REG_R12) {
-        *r12_is_stale = true;
-    }
+    const char *write_mask_str = NULL;
 
     /* See if we must add a muxed opcode too: */
     if (vsh_get_field(shader_token, FLD_OUT_MUX) == out_mux
@@ -389,25 +382,30 @@ static void decode_opcode(MString *ret, const uint32_t *shader_token,
         mstring_append(ret, "(");
 
         bool write_fog_register = false;
-        if (out_type == OUTPUT_C) {
+        if (vsh_get_field(shader_token, FLD_OUT_ORB) == OUTPUT_C) {
             assert(!"TODO: Emulate writeable const registers");
             mstring_append_fmt(ret, "c%d",
                                convert_c_register(vsh_get_field(
                                    shader_token, FLD_OUT_ADDRESS)));
         } else {
-            mstring_append(ret,out_reg_name[out_reg]);
+            int out_reg = vsh_get_field(shader_token, FLD_OUT_ADDRESS) & 0xF;
+            if (out_reg == OUTPUT_REG_POS && (use_temp_var || mask)) {
+                use_temp_opos = true;
+                mstring_append(ret, "_temp_r12");
+            } else {
+                mstring_append(ret, out_reg_name[out_reg]);
+            }
             write_fog_register = out_reg == OUTPUT_REG_FOG;
         }
 
         int write_mask = vsh_get_field(shader_token, FLD_OUT_O_MASK);
-        const char *write_mask_str = write_fog_register ? fog_mask_str[write_mask] : mask_str[write_mask];
+        write_mask_str = write_fog_register ? fog_mask_str[write_mask] : mask_str[write_mask];
         mstring_append(ret, write_mask_str);
         mstring_append(ret, inputs);
         mstring_append(ret, ");\n");
     }
 
     if (use_temp_var) {
-        assert(suffix && "Temp var flagged on non-MAC instruction");
         *suffix = mstring_new();
         if (strcmp(opcode, mac_opcode[MAC_ARL]) == 0) {
             mstring_append_fmt(ret, "  ARL(_temp_addr%s);\n", inputs);
@@ -436,10 +434,24 @@ static void decode_opcode(MString *ret, const uint32_t *shader_token,
                                opcode, reg_num, mask_str[mask], inputs);
         }
     }
+
+    if (use_temp_opos) {
+        if (!*suffix) {
+            *suffix = mstring_new();
+        }
+        assert(write_mask_str && "Temp oPos flagged without a mask");
+        const char *write_mask_components = write_mask_str + 1;
+        mstring_append_fmt(*suffix, "  oPos.%s = _temp_r12.%s;\n",
+                           write_mask_components, write_mask_components);
+    }
+
+    return ret;
 }
 
-static MString *decode_token(const uint32_t *shader_token, bool *r12_is_stale)
+static MString *decode_token(const uint32_t *shader_token)
 {
+    MString *ret;
+
     /* See what MAC opcode is written to (if not masked away): */
     VshMAC mac = vsh_get_field(shader_token, FLD_MAC);
     /* See if a ILU opcode is present too: */
@@ -448,29 +460,23 @@ static MString *decode_token(const uint32_t *shader_token, bool *r12_is_stale)
         return mstring_new();
     }
 
-    bool uses_r12 = false;
-
     /* Since it's potentially used twice, decode input C once: */
     MString *input_c =
         decode_opcode_input(shader_token,
                             vsh_get_field(shader_token, FLD_C_MUX),
                             FLD_C_NEG,
                             (vsh_get_field(shader_token, FLD_C_R_HIGH) << 2)
-                                | vsh_get_field(shader_token, FLD_C_R_LOW),
-                            &uses_r12);
+                                | vsh_get_field(shader_token, FLD_C_R_LOW));
 
-    MString *mac_suffix = NULL;
-    MString *inputs_mac = NULL;
-
+    MString *suffix = NULL;
     if (mac != MAC_NOP) {
-        inputs_mac = mstring_new();
+        MString *inputs_mac = mstring_new();
         if (mac_opcode_params[mac].A) {
             MString *input_a =
                 decode_opcode_input(shader_token,
                                     vsh_get_field(shader_token, FLD_A_MUX),
                                     FLD_A_NEG,
-                                    vsh_get_field(shader_token, FLD_A_R),
-                                    &uses_r12);
+                                    vsh_get_field(shader_token, FLD_A_R));
             mstring_append(inputs_mac, ", ");
             mstring_append(inputs_mac, mstring_get_str(input_a));
             mstring_unref(input_a);
@@ -480,8 +486,7 @@ static MString *decode_token(const uint32_t *shader_token, bool *r12_is_stale)
                 decode_opcode_input(shader_token,
                                     vsh_get_field(shader_token, FLD_B_MUX),
                                     FLD_B_NEG,
-                                    vsh_get_field(shader_token, FLD_B_R),
-                                    &uses_r12);
+                                    vsh_get_field(shader_token, FLD_B_R));
             mstring_append(inputs_mac, ", ");
             mstring_append(inputs_mac, mstring_get_str(input_b));
             mstring_unref(input_b);
@@ -490,25 +495,17 @@ static MString *decode_token(const uint32_t *shader_token, bool *r12_is_stale)
             mstring_append(inputs_mac, ", ");
             mstring_append(inputs_mac, mstring_get_str(input_c));
         }
-    }
 
-    MString *ret = mstring_new();
-    if (uses_r12 && *r12_is_stale) {
-        mstring_append(ret, "  R12 = oPos;\n");
-        *r12_is_stale = false;
-    }
-
-    if (mac != MAC_NOP) {
         /* Then prepend these inputs with the actual opcode, mask, and input : */
-        decode_opcode(ret,
-                      shader_token,
-                      OMUX_MAC,
-                      vsh_get_field(shader_token, FLD_OUT_MAC_MASK),
-                      mac_opcode[mac],
-                      mstring_get_str(inputs_mac),
-                      &mac_suffix,
-                      r12_is_stale);
+        ret = decode_opcode(shader_token,
+                            OMUX_MAC,
+                            vsh_get_field(shader_token, FLD_OUT_MAC_MASK),
+                            mac_opcode[mac],
+                            mstring_get_str(inputs_mac),
+                            &suffix);
         mstring_unref(inputs_mac);
+    } else {
+        ret = mstring_new();
     }
 
     if (ilu != ILU_NOP) {
@@ -516,23 +513,25 @@ static MString *decode_token(const uint32_t *shader_token, bool *r12_is_stale)
         mstring_append(inputs_c, mstring_get_str(input_c));
 
         /* Append the ILU opcode, mask and (the already determined) input C: */
-        decode_opcode(ret,
-                      shader_token,
-                      OMUX_ILU,
-                      vsh_get_field(shader_token, FLD_OUT_ILU_MASK),
-                      ilu_opcode[ilu],
-                      mstring_get_str(inputs_c),
-                      NULL,
-                      r12_is_stale);
+        MString *ilu_op =
+            decode_opcode(shader_token,
+                          OMUX_ILU,
+                          vsh_get_field(shader_token, FLD_OUT_ILU_MASK),
+                          ilu_opcode[ilu],
+                          mstring_get_str(inputs_c),
+                          &suffix);
+
+        mstring_append(ret, mstring_get_str(ilu_op));
 
         mstring_unref(inputs_c);
+        mstring_unref(ilu_op);
     }
 
     mstring_unref(input_c);
 
-    if (mac_suffix) {
-        mstring_append(ret, mstring_get_str(mac_suffix));
-        mstring_unref(mac_suffix);
+    if (suffix) {
+        mstring_append(ret, mstring_get_str(suffix));
+        mstring_unref(suffix);
     }
 
     return ret;
@@ -554,16 +553,17 @@ static const char* vsh_header =
     "vec4 R9 = vec4(0.0,0.0,0.0,0.0);\n"
     "vec4 R10 = vec4(0.0,0.0,0.0,0.0);\n"
     "vec4 R11 = vec4(0.0,0.0,0.0,0.0);\n"
-
-    /* R12 is a mirror of oPos and is updated on demand to facilitate
-     * multi-output / MAC+ILU pairs
-     */
-    "vec4 R12 = vec4(0.0,0.0,0.0,0.0);\n"
+    "#define R12 oPos\n" /* R12 is a mirror of oPos */
     "\n"
 
     /* Used to emulate concurrency of paired MAC+ILU instructions */
     "vec4 _temp_vec;\n"
     "int _temp_addr;\n"
+
+    /* Used to emulate concurrency of multi-output / paired instructions that
+     * write to oPos and read from R12
+     */
+    "vec4 _temp_r12;\n"
 
     /* See:
      * http://msdn.microsoft.com/en-us/library/windows/desktop/bb174703%28v=vs.85%29.aspx
@@ -752,13 +752,12 @@ void pgraph_glsl_gen_vsh_prog(uint16_t version, const uint32_t *tokens,
 
     mstring_append(header, vsh_header);
 
-    bool r12_is_stale = true;
     bool has_final = false;
     int slot;
 
     for (slot=0; slot < length; slot++) {
         const uint32_t* cur_token = &tokens[slot * VSH_TOKEN_SIZE];
-        MString *token_str = decode_token(cur_token, &r12_is_stale);
+        MString *token_str = decode_token(cur_token);
         mstring_append_fmt(body,
                            "  /* Slot %d: 0x%08X 0x%08X 0x%08X 0x%08X */\n"
                            "  %s\n",
