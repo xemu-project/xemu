@@ -116,4 +116,8 @@ extern uint64_t g_dbg_muted_voices[4];
 void mcpx_debug_begin_frame(void);
 void mcpx_debug_end_frame(void);
 
+void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp);
+void mcpx_apu_monitor_finalize(MCPXAPUState *d);
+void mcpx_apu_monitor_frame(MCPXAPUState *d);
+
 #endif
