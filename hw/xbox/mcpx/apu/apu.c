@@ -102,19 +102,50 @@ static const MemoryRegionOps mcpx_apu_mmio_ops = {
     .write = mcpx_apu_write,
 };
 
-static void se_frame(MCPXAPUState *d)
+static void throttle(MCPXAPUState *d)
 {
-    /* Throttle based on stream queue fullness */
-    const int max_queued = 6 * sizeof(d->monitor.frame_buf);
-    int queued = SDL_GetAudioStreamQueued(d->monitor.stream);
-    if (queued >= max_queued) {
-        int64_t sleep_start = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-        qemu_cond_timedwait(&d->cond, &d->lock, 2);  /* ~1/2 EP frame */
-        int64_t sleep_end = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-        d->sleep_acc_us += (sleep_end - sleep_start);
+    if (d->ep_frame_div % 8) {
         return;
     }
 
+    const int64_t ep_frame_us = 5333; /* 256/48000 sec (~5.33ms) */
+    int64_t start_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+    int queued = -1;
+
+    if (d->monitor.stream) {
+        while (!d->pause_requested) {
+            const int queued_max = 6 * sizeof(d->monitor.frame_buf);
+            queued = SDL_GetAudioStreamQueued(d->monitor.stream);
+            if (queued >= queued_max) {
+                qemu_cond_timedwait(&d->cond, &d->lock, ep_frame_us / 1000);
+            } else {
+                break;
+            }
+        }
+    }
+
+    if (queued < 0) {
+        if (d->next_frame_time_us == 0 ||
+            start_us - d->next_frame_time_us > ep_frame_us) {
+            d->next_frame_time_us = start_us;
+        }
+        while (!d->pause_requested) {
+            int64_t now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+            int64_t remaining_ms = (d->next_frame_time_us - now_us) / 1000;
+            if (remaining_ms > 0) {
+                qemu_cond_timedwait(&d->cond, &d->lock, remaining_ms);
+            } else {
+                break;
+            }
+        }
+        d->next_frame_time_us += ep_frame_us;
+    }
+
+    d->sleep_acc_us += qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_us;
+}
+
+static void se_frame(MCPXAPUState *d)
+{
     mcpx_apu_update_dsp_preference(d);
     mcpx_debug_begin_frame();
     g_dbg.gp_realtime = d->gp.realtime;
@@ -200,6 +231,8 @@ static void *mcpx_apu_frame_thread(void *arg)
             qemu_cond_timedwait(&d->cond, &d->lock, 5);
             continue;
         }
+
+        throttle(d);
         se_frame(d);
     }
     qemu_mutex_unlock(&d->lock);

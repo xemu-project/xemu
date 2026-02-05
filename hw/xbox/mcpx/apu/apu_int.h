@@ -96,6 +96,7 @@ typedef struct MCPXAPUState {
     int sleep_acc_us;
     int frame_count;
     int64_t frame_count_time_ms;
+    int64_t next_frame_time_us;
 
     struct {
         McpxApuDebugMonitorPoint point;
