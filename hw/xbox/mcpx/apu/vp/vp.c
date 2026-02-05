@@ -1646,7 +1646,7 @@ static void voice_work_acquire_voice_lock_for_processing(MCPXAPUState *d, int v)
     while (is_voice_locked(d, v)) {
         /* Stall until voice is available */
         qemu_spin_unlock(&d->vp.voice_spinlocks[v]);
-        qemu_cond_wait(&d->cond, &d->lock);
+        qemu_cond_timedwait(&d->cond, &d->lock, 1);
         qemu_spin_lock(&d->vp.voice_spinlocks[v]);
     }
 }
