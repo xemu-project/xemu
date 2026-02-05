@@ -184,8 +184,10 @@ static void se_frame(MCPXAPUState *d)
             }
         }
 
-        SDL_PutAudioStreamData(d->monitor.stream, d->monitor.frame_buf,
-                               sizeof(d->monitor.frame_buf));
+        if (d->monitor.stream) {
+            SDL_PutAudioStreamData(d->monitor.stream, d->monitor.frame_buf,
+                                   sizeof(d->monitor.frame_buf));
+        }
         memset(d->monitor.frame_buf, 0, sizeof(d->monitor.frame_buf));
     }
 
@@ -239,30 +241,27 @@ static void *mcpx_apu_frame_thread(void *arg)
     return NULL;
 }
 
-static void monitor_init(MCPXAPUState *d)
+static void monitor_init(MCPXAPUState *d, Error **errp)
 {
-    SDL_AudioSpec sdl_audio_spec = {
+    SDL_AudioSpec spec = {
         .freq = 48000,
         .format = SDL_AUDIO_S16LE,
         .channels = 2,
     };
 
-    if (!SDL_Init(SDL_INIT_AUDIO))  {
-        fprintf(stderr, "Failed to initialize SDL audio subsystem: %s\n", SDL_GetError());
-        exit(1);
+    d->monitor.stream = NULL;
+
+    if (!SDL_Init(SDL_INIT_AUDIO)) {
+        error_setg(errp, "SDL_Init failed: %s", SDL_GetError());
+        return;
     }
 
     d->monitor.stream = SDL_OpenAudioDeviceStream(
-        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
-        &sdl_audio_spec,
-        NULL,
-        NULL
-    );
-
+        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
     if (d->monitor.stream == NULL) {
-        fprintf(stderr, "SDL_OpenAudioDeviceStream failed: %s\n", SDL_GetError());
-        assert(!"SDL_OpenAudioDeviceStream failed");
-        exit(1);
+        error_setg(errp, "SDL_OpenAudioDeviceStream failed: %s",
+                   SDL_GetError());
+        return;
     }
 
     SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(d->monitor.stream));
@@ -270,7 +269,9 @@ static void monitor_init(MCPXAPUState *d)
 
 static void monitor_finalize(MCPXAPUState *d)
 {
-    SDL_DestroyAudioStream(d->monitor.stream);
+    if (d->monitor.stream) {
+        SDL_DestroyAudioStream(d->monitor.stream);
+    }
 }
 
 static void mcpx_apu_reset(MCPXAPUState *d)
@@ -366,7 +367,12 @@ static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
 
     mcpx_apu_vp_init(d);
     mcpx_apu_dsp_init(d);
-    monitor_init(d);
+
+    Error *local_err = NULL;
+    monitor_init(d, &local_err);
+    if (local_err) {
+        warn_reportf_err(local_err, "monitor_init failed: ");
+    }
 
     qemu_add_vm_change_state_handler(mcpx_apu_vm_state_change, d);
     qemu_thread_create(&d->apu_thread, "mcpx.apu_thread", mcpx_apu_frame_thread,
