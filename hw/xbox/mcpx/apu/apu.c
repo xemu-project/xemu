@@ -111,7 +111,7 @@ static void se_frame(MCPXAPUState *d)
         int64_t sleep_start = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
         qemu_cond_timedwait(&d->cond, &d->lock, 2);  /* ~1/2 EP frame */
         int64_t sleep_end = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-        d->sleep_acc += (sleep_end - sleep_start);
+        d->sleep_acc_us += (sleep_end - sleep_start);
         return;
     }
 
@@ -120,22 +120,21 @@ static void se_frame(MCPXAPUState *d)
     g_dbg.gp_realtime = d->gp.realtime;
     g_dbg.ep_realtime = d->ep.realtime;
 
-    int64_t now = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
-    if (now - d->frame_count_time >= 1000) {
-        g_dbg.frames_processed = d->frame_count;
+    int64_t now_ms = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
+    int64_t elapsed_ms = now_ms - d->frame_count_time_ms;
+    if (elapsed_ms >= 1000) {
         /* A rudimentary calculation to determine approximately how taxed the APU
          * thread is, by measuring how much time we spend waiting for buffer to drain
          * versus working on building frames.
          * =1: thread is not sleeping and likely falling behind realtime
          * <1: thread is able to complete work on time
          */
-        float t = 1.0f - ((double)d->sleep_acc /
-                          (double)((now - d->frame_count_time) * 1000));
-        g_dbg.utilization = t;
+        g_dbg.utilization = 1.0 - d->sleep_acc_us / (elapsed_ms * 1000.0);
+        g_dbg.frames_processed = (int)(d->frame_count * 1000.0 / elapsed_ms + 0.5);
 
-        d->frame_count_time = now;
+        d->frame_count_time_ms = now_ms;
         d->frame_count = 0;
-        d->sleep_acc = 0;
+        d->sleep_acc_us = 0;
     }
     d->frame_count++;
 

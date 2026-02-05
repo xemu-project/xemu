@@ -93,9 +93,9 @@ typedef struct MCPXAPUState {
     uint32_t regs[0x20000];
 
     int ep_frame_div;
-    int sleep_acc;
+    int sleep_acc_us;
     int frame_count;
-    int64_t frame_count_time;
+    int64_t frame_count_time_ms;
 
     struct {
         McpxApuDebugMonitorPoint point;
