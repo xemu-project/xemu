@@ -81,6 +81,9 @@ typedef struct MCPXAPUState {
     QemuThread apu_thread;
     QemuMutex lock;
     QemuCond cond;
+    QemuCond idle_cond;
+    bool pause_requested;
+    bool is_idle;
 
     MemoryRegion *ram;
     uint8_t *ram_ptr;

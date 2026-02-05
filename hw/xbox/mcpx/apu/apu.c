@@ -201,8 +201,11 @@ static void *mcpx_apu_frame_thread(void *arg)
     MCPXAPUState *d = MCPX_APU_DEVICE(arg);
     qemu_mutex_lock(&d->lock);
     while (!qatomic_read(&d->exiting)) {
-        if (!runstate_is_running()) {
+        if (d->pause_requested) {
+            d->is_idle = true;
+            qemu_cond_signal(&d->idle_cond);
             qemu_cond_wait(&d->cond, &d->lock);
+            d->is_idle = false;
             continue;
         }
 
@@ -274,9 +277,23 @@ static void monitor_finalize(MCPXAPUState *d)
     }
 }
 
-static void mcpx_apu_reset(MCPXAPUState *d)
+static void mcpx_apu_wait_for_idle(MCPXAPUState *d)
 {
-    qemu_mutex_lock(&d->lock); // FIXME: Can fail if thread is pegged, add flag
+    d->pause_requested = true;
+    qemu_cond_signal(&d->cond);
+    while (!d->is_idle) {
+        qemu_cond_wait(&d->idle_cond, &d->lock);
+    }
+}
+
+static void mcpx_apu_resume(MCPXAPUState *d)
+{
+    d->pause_requested = false;
+    qemu_cond_signal(&d->cond);
+}
+
+static void mcpx_apu_reset_locked(MCPXAPUState *d)
+{
     memset(d->regs, 0, sizeof(d->regs));
 
     mcpx_apu_vp_reset(d);
@@ -287,14 +304,19 @@ static void mcpx_apu_reset(MCPXAPUState *d)
     memset(d->ep.dsp->core.pram_opcache, 0,
            sizeof(d->ep.dsp->core.pram_opcache));
     d->set_irq = false;
-    qemu_cond_signal(&d->cond);
-    qemu_mutex_unlock(&d->lock);
 }
 
 static void mcpx_apu_reset_hold(Object *obj, ResetType type)
 {
     MCPXAPUState *d = MCPX_APU_DEVICE(obj);
-    mcpx_apu_reset(d);
+
+    bql_unlock();
+    qemu_mutex_lock(&d->lock);
+    mcpx_apu_wait_for_idle(d);
+    mcpx_apu_reset_locked(d);
+    mcpx_apu_resume(d);
+    qemu_mutex_unlock(&d->lock);
+    bql_lock();
 }
 
 // Note: This is handled as a VM state change and not as a `pre_save` callback
@@ -304,35 +326,24 @@ static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state)
 {
     MCPXAPUState *d = opaque;
 
-    if (state == RUN_STATE_SAVE_VM) {
+    if (!running) {
+        bql_unlock();
         qemu_mutex_lock(&d->lock);
-    } else if (state == RUN_STATE_RUNNING) {
+        mcpx_apu_wait_for_idle(d);
+        qemu_mutex_unlock(&d->lock);
+        bql_lock();
+    } else {
         qemu_mutex_lock(&d->lock);
-        qemu_cond_signal(&d->cond);
+        mcpx_apu_resume(d);
         qemu_mutex_unlock(&d->lock);
     }
-}
-
-static int mcpx_apu_post_save(void *opaque)
-{
-    MCPXAPUState *d = opaque;
-    qemu_cond_signal(&d->cond);
-    qemu_mutex_unlock(&d->lock);
-    return 0;
 }
 
 static int mcpx_apu_pre_load(void *opaque)
 {
     MCPXAPUState *d = opaque;
-    mcpx_apu_reset(d);
     qemu_mutex_lock(&d->lock);
-    return 0;
-}
-
-static int mcpx_apu_post_load(void *opaque, int version_id)
-{
-    MCPXAPUState *d = opaque;
-    qemu_cond_signal(&d->cond);
+    mcpx_apu_reset_locked(d);
     qemu_mutex_unlock(&d->lock);
     return 0;
 }
@@ -362,8 +373,12 @@ static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
 
     d->set_irq = false;
     d->exiting = false;
+    d->is_idle = false;
+    d->pause_requested = true;
     qemu_mutex_init(&d->lock);
+    qemu_mutex_lock(&d->lock);
     qemu_cond_init(&d->cond);
+    qemu_cond_init(&d->idle_cond);
 
     mcpx_apu_vp_init(d);
     mcpx_apu_dsp_init(d);
@@ -377,17 +392,21 @@ static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
     qemu_add_vm_change_state_handler(mcpx_apu_vm_state_change, d);
     qemu_thread_create(&d->apu_thread, "mcpx.apu_thread", mcpx_apu_frame_thread,
                        d, QEMU_THREAD_JOINABLE);
+    mcpx_apu_wait_for_idle(d);
+    qemu_mutex_unlock(&d->lock);
 }
 
 static void mcpx_apu_exitfn(PCIDevice *dev)
 {
     MCPXAPUState *d = MCPX_APU_DEVICE(dev);
 
-    qatomic_set(&d->exiting, true);
-
+    bql_unlock();
     qemu_mutex_lock(&d->lock);
+    mcpx_apu_wait_for_idle(d);
+    qatomic_set(&d->exiting, true);
     qemu_cond_signal(&d->cond);
     qemu_mutex_unlock(&d->lock);
+    bql_lock();
 
     qemu_thread_join(&d->apu_thread);
     mcpx_apu_vp_finalize(d);
@@ -480,9 +499,7 @@ static const VMStateDescription vmstate_mcpx_apu = {
     .name = "mcpx-apu",
     .version_id = 1,
     .minimum_version_id = 1,
-    .post_save = mcpx_apu_post_save,
     .pre_load = mcpx_apu_pre_load,
-    .post_load = mcpx_apu_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_PCI_DEVICE(parent_obj, MCPXAPUState),
         VMSTATE_STRUCT_POINTER(gp.dsp, MCPXAPUState, vmstate_vp_dsp_state,
