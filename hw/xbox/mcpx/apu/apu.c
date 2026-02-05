@@ -176,15 +176,9 @@ static void se_frame(MCPXAPUState *d)
     mcpx_apu_dsp_frame(d, mixbins);
 
     if ((d->ep_frame_div + 1) % 8 == 0) {
-        if (0 <= g_config.audio.volume_limit && g_config.audio.volume_limit < 1) {
-            float f = pow(g_config.audio.volume_limit, M_E);
-            for (int i = 0; i < 256; i++) {
-                d->monitor.frame_buf[i][0] *= f;
-                d->monitor.frame_buf[i][1] *= f;
-            }
-        }
-
         if (d->monitor.stream) {
+            float vu = pow(fmax(0.0, fmin(g_config.audio.volume_limit, 1.0)), M_E);
+            SDL_SetAudioStreamGain(d->monitor.stream, vu);
             SDL_PutAudioStreamData(d->monitor.stream, d->monitor.frame_buf,
                                    sizeof(d->monitor.frame_buf));
         }
