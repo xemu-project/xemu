@@ -212,7 +212,9 @@ static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
         SDL_SetAudioStreamFormat(s->out.voice, &s->out.spec, &s->out.spec);
     }
 
-    SDL_ClearAudioStream(s->in.voice);
+    if (s->in.voice != NULL) {
+        SDL_ClearAudioStream(s->in.voice);
+    }
 
     DPRINTF("[XBLC] Init audio streams at %d Hz\n", sample_rate);
 }
