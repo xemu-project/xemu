@@ -1,5 +1,4 @@
 specific_ss.add([sdl, gloffscreen, files(
-	'blit.c',
 	'debug.c',
 	'display.c',
 	'draw.c',
