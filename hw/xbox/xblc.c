@@ -51,8 +51,8 @@
 #define XBLC_SET_AGC 0x01
 
 #define XBLC_MAX_PACKET 48
-#define XBLC_FIFO_SIZE \
-    (XBLC_MAX_PACKET * 100) //~100 ms worth of audio at 16bit 24kHz
+#define XBLC_QUEUE_SIZE_MS 100 /* 100 ms */
+#define XBLC_BYTES_PER_SAMPLE 2 /* 16-bit */
 
 static const uint8_t silence[256] = { 0 };
 
@@ -212,10 +212,6 @@ static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
         SDL_SetAudioStreamFormat(s->out.voice, &s->out.spec, &s->out.spec);
     }
 
-    if (s->in.voice != NULL) {
-        SDL_ClearAudioStream(s->in.voice);
-    }
-
     DPRINTF("[XBLC] Init audio streams at %d Hz\n", sample_rate);
 }
 
@@ -261,6 +257,8 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
     USBXBLCState *s = (USBXBLCState *)dev;
     uint32_t to_process;
     int32_t chunk_len;
+    int32_t available;
+    int32_t max_queued_data;
 
     switch (p->pid) {
     case USB_TOKEN_IN:
@@ -272,6 +270,20 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
             DPRINTF("[XBLC] Tried to get data from the input audio tream but "
                     "the audio stream is not initialized");
             break;
+        }
+
+        available = SDL_GetAudioStreamAvailable(s->in.voice);
+        if (available < 0) {
+            DPRINTF("[XBLC] SDL_GetAudioStreamAvailable Error: %s\n", SDL_GetError());
+            break;
+        } else {
+            DPRINTF("[XBLC] There are %d bytes of data in the stream\n", available);
+            max_queued_data = s->sample_rate * XBLC_BYTES_PER_SAMPLE * XBLC_QUEUE_SIZE_MS / 1000;
+            if (available > max_queued_data) {
+                DPRINTF("[XBLC] More than %d bytes of data in the queue. Clearing out old data\n", 
+                        max_queued_data);
+                SDL_ClearAudioStream(s->in.voice);
+            }
         }
 
         to_process = p->iov.size;
