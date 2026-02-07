@@ -34,21 +34,73 @@ input:
     port1:
       peripheral_type_0: integer
       peripheral_param_0: string
+      xblc1_settings:
+        output_device:
+          type: integer
+          default: 0xFFFFFFFF
+        output_device_volume:
+          type: number
+          default: 100.0
+        input_device:
+          type: integer
+          default: 0xFFFFFFFE
+        input_device_volume:
+          type: number
+          default: 100.0
       peripheral_type_1: integer
       peripheral_param_1: string
     port2:
       peripheral_type_0: integer
       peripheral_param_0: string
+      xblc2_settings:
+        output_device:
+          type: integer
+          default: 0xFFFFFFFF
+        output_device_volume:
+          type: number
+          default: 100.0
+        input_device:
+          type: integer
+          default: 0xFFFFFFFE
+        input_device_volume:
+          type: number
+          default: 100.0
       peripheral_type_1: integer
       peripheral_param_1: string
     port3:
       peripheral_type_0: integer
       peripheral_param_0: string
+      xblc3_settings:
+        output_device:
+          type: integer
+          default: 0xFFFFFFFF
+        output_device_volume:
+          type: number
+          default: 100.0
+        input_device:
+          type: integer
+          default: 0xFFFFFFFE
+        input_device_volume:
+          type: number
+          default: 100.0
       peripheral_type_1: integer
       peripheral_param_1: string
     port4:
       peripheral_type_0: integer
       peripheral_param_0: string
+      xblc4_settings:
+        output_device:
+          type: integer
+          default: 0xFFFFFFFF
+        output_device_volume:
+          type: number
+          default: 100.0
+        input_device:
+          type: integer
+          default: 0xFFFFFFFE
+        input_device_volume:
+          type: number
+          default: 100.0
       peripheral_type_1: integer
       peripheral_param_1: string
   gamecontrollerdb_path: string
