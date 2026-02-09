@@ -26,7 +26,7 @@ jobs:
           sudo apt-get install meson
 
       - name: Install the latest version of uv
-        uses: astral-sh/setup-uv@803947b9bd8e9f986429fa0c5a41c367cd732b41 # v6
+        uses: astral-sh/setup-uv@eac588ad8def6316056a12d4907a9d4d84ff7a3b # v6
         with:
           enable-cache: false
 
