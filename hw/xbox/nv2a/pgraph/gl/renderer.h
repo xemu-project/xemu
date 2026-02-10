@@ -28,6 +28,7 @@
 #include "qemu/lru.h"
 
 #include "hw/hw.h"
+#include "hw/xbox/nv2a/pgraph/prim_rewrite.h"
 
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/nv2a_regs.h"
@@ -182,6 +183,8 @@ typedef struct PGRAPHGLState {
     GLuint gl_memory_buffer;
     GLuint gl_vertex_array;
     GLuint gl_inline_buffer[NV2A_VERTEXSHADER_ATTRIBUTES];
+    GLuint gl_prim_rewrite_buffer;
+    PrimRewriteBuf prim_rewrite_buf;
 
     QTAILQ_HEAD(, SurfaceBinding) surfaces;
     SurfaceBinding *color_binding, *zeta_binding;
