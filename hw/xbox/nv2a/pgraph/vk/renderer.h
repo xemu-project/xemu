@@ -596,8 +596,4 @@ void pgraph_vk_end_nondraw_commands(PGRAPHState *pg, VkCommandBuffer cmd);
 // blit.c
 void pgraph_vk_image_blit(NV2AState *d);
 
-// gpuprops.c
-void pgraph_vk_determine_gpu_properties(NV2AState *d);
-GPUProperties *pgraph_vk_get_gpu_properties(void);
-
 #endif
