@@ -31,7 +31,7 @@
 #include "qemu/audio.h"
 #include "qemu/fifo8.h"
 
-// #define DEBUG_XBLC
+//#define DEBUG_XBLC
 #ifdef DEBUG_XBLC
 #define DPRINTF printf
 #else
@@ -60,10 +60,8 @@ static const uint16_t xblc_sample_rates[5] = { 8000, 11025, 16000, 22050,
                                                24000 };
 
 typedef struct XBLCStream {
-    SDL_AudioDeviceID device_id;
     SDL_AudioStream *voice;
     SDL_AudioSpec spec;
-    uint8_t packet[XBLC_MAX_PACKET];
 } XBLCStream;
 
 typedef struct USBXBLCState {
@@ -178,8 +176,6 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture)
         channel->voice = NULL;
     }
 
-    channel->device_id = device_id;
-
     channel->spec.channels = 1;
     channel->spec.freq = s->sample_rate;
     channel->spec.format = SDL_AUDIO_S16LE;
@@ -259,6 +255,8 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
     int32_t chunk_len;
     int32_t available;
     int32_t max_queued_data;
+    int32_t copied;
+    uint8_t packet[XBLC_MAX_PACKET];
 
     switch (p->pid) {
     case USB_TOKEN_IN:
@@ -283,20 +281,29 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
                 DPRINTF("[XBLC] More than %d bytes of data in the queue. Clearing out old data\n", 
                         max_queued_data);
                 SDL_ClearAudioStream(s->in.voice);
+                available = 0;
             }
         }
 
-        to_process = p->iov.size;
-
-        while (to_process) {
-            chunk_len = SDL_GetAudioStreamData(s->in.voice, s->in.packet,
-                                               MIN(sizeof(s->in.packet), to_process));
+        to_process = MIN(p->iov.size, available);
+        copied = 0;
+        while (copied < to_process) {
+                chunk_len = SDL_GetAudioStreamData(s->in.voice, packet,
+                                               MIN(sizeof(packet), to_process));
             if (chunk_len < 0) {
                 DPRINTF("[XBLC] Error getting data from the input stream: %s\n",
                         SDL_GetError());
                 break;
             }
-            usb_packet_copy(p, (void *)s->in.packet, chunk_len);
+            usb_packet_copy(p, (void *)packet, chunk_len);
+            copied += chunk_len;
+        }
+
+        // Fill the rest of the buffer with silence
+        to_process = p->iov.size - copied;
+        while(to_process > 0) {
+            chunk_len = MIN(sizeof(silence), to_process);
+            usb_packet_copy(p, (void *)silence, chunk_len);
             to_process -= chunk_len;
         }
 
@@ -358,8 +365,9 @@ static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
     s->in.voice = NULL;
     s->out.voice = NULL;
 
-    // What sample rate does the physical XBLC default to?
-    xblc_audio_stream_init(dev, xblc_sample_rates[1]);
+    // According to Ryzee119, the XBLC appears to default to 16KHz
+    // https://github.com/Ryzee119/hawk/blob/5ab6f63b280425edd9ee121f5b5520dd8e891990/src/usbd/xblc.c#L143
+    xblc_audio_stream_init(dev, xblc_sample_rates[2]);
 }
 
 static const Property xblc_properties[] = {
