@@ -869,70 +869,41 @@ static void copy_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
     texture->draw_time = surface->draw_time;
 }
 
+static unsigned int vk_format_texel_size(VkFormat format)
+{
+    switch (format) {
+    case VK_FORMAT_R8_UNORM:                return 1;
+    case VK_FORMAT_R8G8_UNORM:              return 2;
+    case VK_FORMAT_A1R5G5B5_UNORM_PACK16:   return 2;
+    case VK_FORMAT_R5G6B5_UNORM_PACK16:     return 2;
+    case VK_FORMAT_A4R4G4B4_UNORM_PACK16:   return 2;
+    case VK_FORMAT_R16_UNORM:               return 2;
+    case VK_FORMAT_R8G8B8_SNORM:            return 3;
+    case VK_FORMAT_B8G8R8A8_UNORM:          return 4;
+    case VK_FORMAT_R8G8B8A8_UNORM:          return 4;
+    case VK_FORMAT_R32_UINT:                return 4;
+    default:                                return 0;
+    }
+}
+
 static bool check_surface_to_texture_compatiblity(const SurfaceBinding *surface,
                                                   const TextureShape *shape)
 {
-    // FIXME: Better checks/handling on formats and surface-texture compat
-
     if ((!surface->swizzle && surface->pitch != shape->pitch) ||
         surface->width != shape->width ||
-        surface->height != shape->height) {
+        surface->height != shape->height ||
+        shape->cubemap ||
+        shape->levels > 1) {
         return false;
     }
-
-    int surface_fmt = surface->shape.color_format;
-    int texture_fmt = shape->color_format;
 
     if (!surface->color) {
-        if (surface->shape.zeta_format == NV097_SET_SURFACE_FORMAT_ZETA_Z24S8) {
-            return true;
-        }
-        return false;
+        return true;
     }
 
-    if (shape->cubemap) {
-        // FIXME: Support rendering surface to cubemap face
-        return false;
-    }
-
-    if (shape->levels > 1) {
-        // FIXME: Support rendering surface to mip levels
-        return false;
-    }
-
-    switch (surface_fmt) {
-    case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5: switch (texture_fmt) {
-        case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X1R5G5B5: return true;
-        default: break;
-        }
-        break;
-    case NV097_SET_SURFACE_FORMAT_COLOR_LE_R5G6B5: switch (texture_fmt) {
-        case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5: return true;
-        case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R5G6B5: return true;
-        default: break;
-        }
-        break;
-    case NV097_SET_SURFACE_FORMAT_COLOR_LE_X8R8G8B8_Z8R8G8B8: switch(texture_fmt) {
-        case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X8R8G8B8: return true;
-        case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_X8R8G8B8: return true;
-        default: break;
-        }
-        break;
-    case NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8: switch (texture_fmt) {
-        case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8B8G8R8: return true;
-        case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R8G8B8A8: return true;
-        case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8: return true;
-        case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8R8G8B8: return true;
-        default: break;
-        }
-        break;
-    default:
-        break;
-    }
-
-    trace_nv2a_pgraph_surface_texture_compat_failed(
-        surface_fmt, texture_fmt);
-    return false;
+    VkColorFormatInfo tex_vkf = kelvin_color_format_vk_map[shape->color_format];
+    return tex_vkf.vk_format &&
+           surface->host_fmt.host_bytes_per_pixel == vk_format_texel_size(tex_vkf.vk_format);
 }
 
 static void create_dummy_texture(PGRAPHState *pg)
@@ -1153,6 +1124,12 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     if (surface && state.levels == 1) {
         surface_to_texture =
             check_surface_to_texture_compatiblity(surface, &state);
+
+        if (!surface_to_texture && surface->color) {
+            trace_nv2a_pgraph_surface_texture_compat_failed(
+                surface->shape.color_format,
+                state.color_format);
+        }
 
         if (surface_to_texture && surface->upload_pending) {
             pgraph_vk_upload_surface_data(d, surface, false);
