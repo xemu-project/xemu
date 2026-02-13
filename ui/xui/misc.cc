@@ -30,7 +30,9 @@ static void RunOnMainThread(std::function<void()> &&func)
             [](void *userdata) {
                 std::unique_ptr<std::function<void()>> f(
                     static_cast<std::function<void()> *>(userdata));
+                xemu_main_loop_lock();
                 (*f)();
+                xemu_main_loop_unlock();
             },
             p, false)) {
         delete p;

@@ -169,8 +169,8 @@ static void xemu_snapshots_all_load_data(QEMUSnapshotInfo **info,
 
     bdrv_flush(bs_ro);
     bdrv_drain(bs_ro);
+    assert(bs_ro->refcnt == 1);
     bdrv_unref(bs_ro);
-    assert(bs_ro->refcnt == 0);
     if (!(*err))
         xemu_snapshots_dirty = false;
 }
