@@ -22,9 +22,6 @@
 #include "renderer.h"
 #include "xemu-version.h"
 
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_vulkan.h>
-
 #include <volk.h>
 
 #define VkExtensionPropertiesArray GArray
@@ -96,25 +93,6 @@ static bool check_validation_layer_support(void)
     return true;
 }
 
-static void create_window(PGRAPHVkState *r, Error **errp)
-{
-    r->window = SDL_CreateWindow(
-        "SDL Offscreen Window",
-        640, 480, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
-
-    if (r->window == NULL) {
-        error_setg(errp, "SDL_CreateWindow failed: %s", SDL_GetError());
-    }
-}
-
-static void destroy_window(PGRAPHVkState *r)
-{
-    if (r->window) {
-        SDL_DestroyWindow(r->window);
-        r->window = NULL;
-    }
-}
-
 static VkExtensionPropertiesArray *
 get_available_instance_extensions(PGRAPHState *pg)
 {
@@ -150,20 +128,10 @@ is_extension_available(VkExtensionPropertiesArray *available_extensions,
 
 static StringArray *get_required_instance_extension_names(PGRAPHState *pg)
 {
-    // Add instance extensions SDL lists as required
-    Uint32 sdl_extension_count = 0;
-    const char *const *sdl_extensions =
-        SDL_Vulkan_GetInstanceExtensions(&sdl_extension_count);
-
     StringArray *extensions = g_array_sized_new(
         FALSE, FALSE, sizeof(char *),
-        sdl_extension_count + ARRAY_SIZE(required_instance_extensions));
+        ARRAY_SIZE(required_instance_extensions));
 
-    if (sdl_extension_count && sdl_extensions) {
-        g_array_append_vals(extensions, sdl_extensions, sdl_extension_count);
-    }
-
-    // Add additional required extensions
     g_array_append_vals(extensions, required_instance_extensions,
                         ARRAY_SIZE(required_instance_extensions));
 
@@ -203,15 +171,9 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
     PGRAPHVkState *r = pg->vk_renderer_state;
     VkResult result;
 
-    create_window(r, errp);
-    if (*errp) {
-        return false;
-    }
-
     result = volkInitialize();
     if (result != VK_SUCCESS) {
         error_setg(errp, "volkInitialize failed");
-        destroy_window(r);
         return false;
     }
 
@@ -318,7 +280,6 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
 
 error:
     volkFinalize();
-    destroy_window(r);
     return false;
 }
 
@@ -749,5 +710,4 @@ void pgraph_vk_finalize_instance(PGRAPHState *pg)
     }
 
     volkFinalize();
-    destroy_window(r);
 }
