@@ -319,6 +319,7 @@ typedef struct PGRAPHVkComputeState {
 } PGRAPHVkComputeState;
 
 typedef struct PGRAPHVkState {
+    uint32_t vk_api_version;
     VkInstance instance;
     VkDebugUtilsMessengerEXT debug_messenger;
     int debug_depth;
