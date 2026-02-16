@@ -110,11 +110,12 @@ static void throttle(MCPXAPUState *d)
 
     const int64_t ep_frame_us = 5333; /* 256/48000 sec (~5.33ms) */
     int64_t start_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+    const int queued_min = 2 * sizeof(d->monitor.frame_buf);
+    const int queued_max = 8 * sizeof(d->monitor.frame_buf);
     int queued = -1;
 
     if (d->monitor.stream) {
         while (!d->pause_requested) {
-            const int queued_max = 6 * sizeof(d->monitor.frame_buf);
             queued = SDL_GetAudioStreamQueued(d->monitor.stream);
             if (queued >= queued_max) {
                 qemu_cond_timedwait(&d->cond, &d->lock, ep_frame_us / 1000);
@@ -124,7 +125,7 @@ static void throttle(MCPXAPUState *d)
         }
     }
 
-    if (queued < 0) {
+    if (queued < 0 || queued > queued_min) {
         if (d->next_frame_time_us == 0 ||
             start_us - d->next_frame_time_us > ep_frame_us) {
             d->next_frame_time_us = start_us;
