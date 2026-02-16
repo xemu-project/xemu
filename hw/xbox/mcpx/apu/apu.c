@@ -205,6 +205,13 @@ static void throttle(MCPXAPUState *d)
             }
         }
         d->next_frame_time_us += EP_FRAME_US;
+
+        /* Avoid drift toward watermark */
+        if (queued_bytes >= 0) {
+            int mid = (d->monitor.queued_bytes_low +
+                       d->monitor.queued_bytes_high) / 2;
+            d->next_frame_time_us += (queued_bytes > mid) - (queued_bytes < mid);
+        }
     }
 
     d->sleep_acc_us += qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_us;
