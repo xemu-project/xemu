@@ -600,52 +600,6 @@ static bool init_allocator(PGRAPHState *pg, Error **errp)
     PGRAPHVkState *r = pg->vk_renderer_state;
     VkResult result;
 
-    VmaVulkanFunctions vulkanFunctions = {
-        /// Required when using VMA_DYNAMIC_VULKAN_FUNCTIONS.
-        .vkGetInstanceProcAddr = vkGetInstanceProcAddr,
-        /// Required when using VMA_DYNAMIC_VULKAN_FUNCTIONS.
-        .vkGetDeviceProcAddr = vkGetDeviceProcAddr,
-        .vkGetPhysicalDeviceProperties = vkGetPhysicalDeviceProperties,
-        .vkGetPhysicalDeviceMemoryProperties = vkGetPhysicalDeviceMemoryProperties,
-        .vkAllocateMemory = vkAllocateMemory,
-        .vkFreeMemory = vkFreeMemory,
-        .vkMapMemory = vkMapMemory,
-        .vkUnmapMemory = vkUnmapMemory,
-        .vkFlushMappedMemoryRanges = vkFlushMappedMemoryRanges,
-        .vkInvalidateMappedMemoryRanges = vkInvalidateMappedMemoryRanges,
-        .vkBindBufferMemory = vkBindBufferMemory,
-        .vkBindImageMemory = vkBindImageMemory,
-        .vkGetBufferMemoryRequirements = vkGetBufferMemoryRequirements,
-        .vkGetImageMemoryRequirements = vkGetImageMemoryRequirements,
-        .vkCreateBuffer = vkCreateBuffer,
-        .vkDestroyBuffer = vkDestroyBuffer,
-        .vkCreateImage = vkCreateImage,
-        .vkDestroyImage = vkDestroyImage,
-        .vkCmdCopyBuffer = vkCmdCopyBuffer,
-    #if VMA_DEDICATED_ALLOCATION || VMA_VULKAN_VERSION >= 1001000
-        /// Fetch "vkGetBufferMemoryRequirements2" on Vulkan >= 1.1, fetch "vkGetBufferMemoryRequirements2KHR" when using VK_KHR_dedicated_allocation extension.
-        .vkGetBufferMemoryRequirements2KHR = vkGetBufferMemoryRequirements2,
-        /// Fetch "vkGetImageMemoryRequirements2" on Vulkan >= 1.1, fetch "vkGetImageMemoryRequirements2KHR" when using VK_KHR_dedicated_allocation extension.
-        .vkGetImageMemoryRequirements2KHR = vkGetImageMemoryRequirements2,
-    #endif
-    #if VMA_BIND_MEMORY2 || VMA_VULKAN_VERSION >= 1001000
-        /// Fetch "vkBindBufferMemory2" on Vulkan >= 1.1, fetch "vkBindBufferMemory2KHR" when using VK_KHR_bind_memory2 extension.
-        .vkBindBufferMemory2KHR = vkBindBufferMemory2,
-        /// Fetch "vkBindImageMemory2" on Vulkan >= 1.1, fetch "vkBindImageMemory2KHR" when using VK_KHR_bind_memory2 extension.
-        .vkBindImageMemory2KHR = vkBindImageMemory2,
-    #endif
-    #if VMA_MEMORY_BUDGET || VMA_VULKAN_VERSION >= 1001000
-        /// Fetch from "vkGetPhysicalDeviceMemoryProperties2" on Vulkan >= 1.1, but you can also fetch it from "vkGetPhysicalDeviceMemoryProperties2KHR" if you enabled extension VK_KHR_get_physical_device_properties2.
-        .vkGetPhysicalDeviceMemoryProperties2KHR = vkGetPhysicalDeviceMemoryProperties2KHR,
-    #endif
-    #if VMA_KHR_MAINTENANCE4 || VMA_VULKAN_VERSION >= 1003000
-        /// Fetch from "vkGetDeviceBufferMemoryRequirements" on Vulkan >= 1.3, but you can also fetch it from "vkGetDeviceBufferMemoryRequirementsKHR" if you enabled extension VK_KHR_maintenance4.
-        .vkGetDeviceBufferMemoryRequirements = vkGetDeviceBufferMemoryRequirements,
-        /// Fetch from "vkGetDeviceImageMemoryRequirements" on Vulkan >= 1.3, but you can also fetch it from "vkGetDeviceImageMemoryRequirementsKHR" if you enabled extension VK_KHR_maintenance4.
-        .vkGetDeviceImageMemoryRequirements = vkGetDeviceImageMemoryRequirements,
-    #endif
-    };
-
     VmaAllocatorCreateInfo create_info = {
         .flags = (r->memory_budget_extension_enabled ?
                       VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT :
@@ -654,8 +608,15 @@ static bool init_allocator(PGRAPHState *pg, Error **errp)
         .instance = r->instance,
         .physicalDevice = r->physical_device,
         .device = r->device,
-        .pVulkanFunctions = &vulkanFunctions,
     };
+
+    VmaVulkanFunctions vulkan_functions;
+    VkResult res = vmaImportVulkanFunctionsFromVolk(&create_info, &vulkan_functions);
+    if (res != VK_SUCCESS) {
+        error_setg(errp, "vmaImportVulkanFunctionsFromVolk failed");
+        return false;
+    }
+    create_info.pVulkanFunctions = &vulkan_functions;
 
     result = vmaCreateAllocator(&create_info, &r->allocator);
     if (result != VK_SUCCESS) {
