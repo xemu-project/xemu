@@ -30,12 +30,13 @@
 #include <stdbool.h>
 #include "gloffscreen.h"
 #include "config-host.h"
+#include <glib.h>
 
 void gl_debug_initialize(void);
-void gl_debug_message(bool cc, const char *fmt, ...) __attribute__ ((format (printf, 2, 3)));
-void gl_debug_group_begin(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
+void gl_debug_message(bool cc, const char *fmt, ...) G_GNUC_PRINTF(2, 3);
+void gl_debug_group_begin(const char *fmt, ...) G_GNUC_PRINTF(1, 2);
 void gl_debug_group_end(void);
-void gl_debug_label(GLenum target, GLuint name, const char *fmt, ...) __attribute__ ((format (printf, 3, 4)));
+void gl_debug_label(GLenum target, GLuint name, const char *fmt, ...) G_GNUC_PRINTF(3, 4);
 void gl_debug_frame_terminator(void);
 
 # define NV2A_GL_DPRINTF(cc, format, ...) \
