@@ -22,8 +22,6 @@
 #include "renderer.h"
 #include "xemu-version.h"
 
-#include <volk.h>
-
 #define VkExtensionPropertiesArray GArray
 #define StringArray GArray
 
