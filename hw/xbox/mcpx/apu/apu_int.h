@@ -105,6 +105,7 @@ typedef struct MCPXAPUState {
         McpxApuDebugMonitorPoint point;
         int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes)
         SDL_AudioStream *stream;
+        int queued_bytes_low, queued_bytes_high;
     } monitor;
 } MCPXAPUState;
 
