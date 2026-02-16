@@ -191,12 +191,13 @@ static void throttle(MCPXAPUState *d)
     }
 
     if (queued_bytes < 0 || queued_bytes > d->monitor.queued_bytes_low) {
+        int64_t now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
         if (d->next_frame_time_us == 0 ||
-            start_us - d->next_frame_time_us > EP_FRAME_US) {
-            d->next_frame_time_us = start_us;
+            now_us - d->next_frame_time_us > EP_FRAME_US) {
+            d->next_frame_time_us = now_us;
         }
         while (!d->pause_requested) {
-            int64_t now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+            now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
             int64_t remaining_ms = (d->next_frame_time_us - now_us) / 1000;
             if (remaining_ms > 0) {
                 qemu_cond_timedwait(&d->cond, &d->lock, remaining_ms);
