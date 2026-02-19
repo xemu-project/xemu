@@ -349,10 +349,10 @@ static void xblc_unrealize(USBDevice *dev)
 
 static const VMStateDescription xblc_vmstate = {
     .name = TYPE_USB_XBLC,
-    .version_id = 1,
+    .version_id = 2,
     .minimum_version_id = 1,
     .fields = (VMStateField[]){ VMSTATE_USB_DEVICE(dev, USBXBLCState),
-                                // FIXME
+                                VMSTATE_UINT16(sample_rate, USBXBLCState),
                                 VMSTATE_END_OF_LIST() },
 };
 
