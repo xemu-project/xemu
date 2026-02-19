@@ -193,24 +193,29 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture)
     SDL_ResumeAudioStreamDevice(channel->voice);
 }
 
-static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
+static void xblc_audio_stream_init(USBDevice *dev)
 {
     USBXBLCState *s = (USBXBLCState *)dev;
 
-    if (s->in.voice == NULL) {
-        xblc_audio_channel_init(s, true);
-    } else if (s->in.spec.freq != sample_rate) {
+    xblc_audio_channel_init(s, true);
+    xblc_audio_channel_init(s, false);
+
+    DPRINTF("[XBLC] Init audio streams\n");
+}
+
+static void xblc_audio_stream_set_rate(USBDevice *dev, uint16_t sample_rate)
+{
+    USBXBLCState *s = (USBXBLCState *)dev;
+
+    s->sample_rate = sample_rate;
+    if (s->in.voice != NULL && s->in.spec.freq != sample_rate) {
         s->in.spec.freq = sample_rate;
         SDL_SetAudioStreamFormat(s->in.voice, &s->in.spec, &s->in.spec);
     }
-    if (s->out.voice == NULL) {
-        xblc_audio_channel_init(s, false);
-    } else if (s->out.spec.freq != sample_rate) {
+    if (s->out.voice != NULL && s->out.spec.freq != sample_rate) {
         s->out.spec.freq = sample_rate;
         SDL_SetAudioStreamFormat(s->out.voice, &s->out.spec, &s->out.spec);
     }
-
-    DPRINTF("[XBLC] Init audio streams at %d Hz\n", sample_rate);
 }
 
 static void usb_xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
@@ -232,8 +237,7 @@ static void usb_xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
             uint8_t rate = value & 0xFF;
             assert(rate < ARRAY_SIZE(xblc_sample_rates));
             DPRINTF("[XBLC] Set Sample Rate to %04x\n", rate);
-            s->sample_rate = xblc_sample_rates[rate];
-            xblc_audio_stream_init(dev, s->sample_rate);
+            xblc_audio_stream_set_rate(dev, xblc_sample_rates[rate]);
             break;
         } else if (index == XBLC_SET_AGC) {
             DPRINTF("[XBLC] Set Auto Gain Control to %d\n", value);
@@ -368,8 +372,9 @@ static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
 
     s->in.voice = NULL;
     s->out.voice = NULL;
+    s->sample_rate = XBLC_DEFAULT_SAMPLE_RATE;
 
-    xblc_audio_stream_init(dev, XBLC_DEFAULT_SAMPLE_RATE);
+    xblc_audio_stream_init(dev);
 }
 
 static const Property xblc_properties[] = {
