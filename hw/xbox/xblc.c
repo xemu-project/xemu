@@ -277,7 +277,7 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
         break;
     }
 
-    if (p->pid == USB_TOKEN_IN && p->iov.size > p->actual_length) {
+    if (p->iov.size > p->actual_length) {
         usb_packet_skip(p, p->iov.size - p->actual_length);
     }
 }
