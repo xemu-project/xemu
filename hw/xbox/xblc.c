@@ -244,17 +244,17 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
         if (available < 0) {
             DPRINTF("SDL_GetAudioStreamAvailable Error: %s", SDL_GetError());
             break;
-        } else {
-            DPRINTF("There are %d bytes of data in the stream", available);
-            int max_queued_data = s->sample_rate * XBLC_BYTES_PER_SAMPLE *
-                                  XBLC_QUEUE_SIZE_MS / 1000;
-            if (available > max_queued_data) {
-                DPRINTF("More than %d bytes of data in the queue. "
-                        "Clearing out old data",
-                        max_queued_data);
-                SDL_ClearAudioStream(s->in);
-                available = 0;
-            }
+        }
+
+        DPRINTF("There are %d bytes of data in the stream", available);
+        int max_queued_data = s->sample_rate * XBLC_BYTES_PER_SAMPLE *
+                                XBLC_QUEUE_SIZE_MS / 1000;
+        if (available > max_queued_data) {
+            DPRINTF("More than %d bytes of data in the queue. "
+                    "Clearing out old data",
+                    max_queued_data);
+            SDL_ClearAudioStream(s->in);
+            available = 0;
         }
 
         for (size_t remaining = MIN(p->iov.size, available); remaining > 0;) {
