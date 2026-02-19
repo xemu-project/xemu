@@ -226,8 +226,6 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
         assert(p->ep->nr == XBLC_EP_IN);
 
         if (s->in == NULL) {
-            DPRINTF("Tried to get data from the input audio tream but "
-                    "the audio stream is not initialized");
             break;
         }
 
@@ -266,19 +264,13 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
     }
     case USB_TOKEN_OUT:
         assert(p->ep->nr == XBLC_EP_OUT);
-
-        if (s->out == NULL) {
-            DPRINTF("Tried to put data into the speaker audio stream "
-                    "but the audio stream is not initialized");
-            return;
+        if (s->out != NULL) {
+            if (!SDL_PutAudioStreamData(s->out, p->iov.iov->iov_base,
+                                        p->iov.size)) {
+                DPRINTF("Error putting data into output stream: %s",
+                        SDL_GetError());
+            }
         }
-
-        if (!SDL_PutAudioStreamData(s->out, p->iov.iov->iov_base,
-                                    p->iov.size)) {
-            DPRINTF("Error putting data into output stream: %s",
-                    SDL_GetError());
-        }
-
         break;
     default:
         assert(!"Iso cannot report STALL/HALT");
