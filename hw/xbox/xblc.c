@@ -63,7 +63,6 @@ static const uint16_t xblc_sample_rates[5] = { 8000, 11025, 16000, 22050,
 
 typedef struct XBLCStream {
     SDL_AudioStream *voice;
-    SDL_AudioSpec spec;
 } XBLCStream;
 
 typedef struct USBXBLCState {
@@ -178,12 +177,11 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture)
         channel->voice = NULL;
     }
 
-    channel->spec.channels = 1;
-    channel->spec.freq = s->sample_rate;
-    channel->spec.format = SDL_AUDIO_S16LE;
+    SDL_AudioSpec spec = { .channels = 1, .freq = s->sample_rate,
+                           .format = SDL_AUDIO_S16LE };
 
     channel->voice =
-        SDL_OpenAudioDeviceStream(device_id, &channel->spec, NULL, (void *)s);
+        SDL_OpenAudioDeviceStream(device_id, &spec, NULL, (void *)s);
     if (channel->voice == NULL) {
         DPRINTF("[XBLC] Failed to open audio device stream: %s\n",
                 SDL_GetError());
@@ -208,13 +206,15 @@ static void xblc_audio_stream_set_rate(USBDevice *dev, uint16_t sample_rate)
     USBXBLCState *s = (USBXBLCState *)dev;
 
     s->sample_rate = sample_rate;
-    if (s->in.voice != NULL && s->in.spec.freq != sample_rate) {
-        s->in.spec.freq = sample_rate;
-        SDL_SetAudioStreamFormat(s->in.voice, &s->in.spec, &s->in.spec);
+
+    SDL_AudioSpec spec = { .channels = 1,
+                           .freq = sample_rate,
+                           .format = SDL_AUDIO_S16LE };
+    if (s->in.voice != NULL) {
+        SDL_SetAudioStreamFormat(s->in.voice, &spec, &spec);
     }
-    if (s->out.voice != NULL && s->out.spec.freq != sample_rate) {
-        s->out.spec.freq = sample_rate;
-        SDL_SetAudioStreamFormat(s->out.voice, &s->out.spec, &s->out.spec);
+    if (s->out.voice != NULL) {
+        SDL_SetAudioStreamFormat(s->out.voice, &spec, &spec);
     }
 }
 
