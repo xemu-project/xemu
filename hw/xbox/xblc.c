@@ -66,7 +66,6 @@
 
 typedef struct USBXBLCState {
     USBDevice dev;
-    uint8_t auto_gain_control;
     uint16_t sample_rate;
 
     SDL_AudioStream *in;
@@ -216,7 +215,6 @@ static void xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
             break;
         } else if (index == XBLC_SET_AGC) {
             DPRINTF("Set Auto Gain Control to %d", value);
-            s->auto_gain_control = (value) ? 1 : 0;
             break;
         }
         // Fallthrough
