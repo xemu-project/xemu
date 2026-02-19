@@ -54,6 +54,10 @@
 #define XBLC_QUEUE_SIZE_MS 100 /* 100 ms */
 #define XBLC_BYTES_PER_SAMPLE 2 /* 16-bit */
 
+// According to Ryzee119, the XBLC appears to default to 16KHz
+// https://github.com/Ryzee119/hawk/blob/5ab6f63b280425edd9ee121f5b5520dd8e891990/src/usbd/xblc.c#L143
+#define XBLC_DEFAULT_SAMPLE_RATE 16000
+
 static const uint16_t xblc_sample_rates[5] = { 8000, 11025, 16000, 22050,
                                                24000 };
 
@@ -365,9 +369,7 @@ static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
     s->in.voice = NULL;
     s->out.voice = NULL;
 
-    // According to Ryzee119, the XBLC appears to default to 16KHz
-    // https://github.com/Ryzee119/hawk/blob/5ab6f63b280425edd9ee121f5b5520dd8e891990/src/usbd/xblc.c#L143
-    xblc_audio_stream_init(dev, xblc_sample_rates[2]);
+    xblc_audio_stream_init(dev, XBLC_DEFAULT_SAMPLE_RATE);
 }
 
 static const Property xblc_properties[] = {
