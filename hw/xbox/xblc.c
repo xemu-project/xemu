@@ -43,6 +43,10 @@
 #define TYPE_USB_XBLC "usb-xblc"
 #define USB_XBLC(obj) OBJECT_CHECK(USBXBLCState, (obj), TYPE_USB_XBLC)
 
+#define XBLC_VENDOR_ID 0x045e
+#define XBLC_PRODUCT_ID 0x0283
+#define XBLC_DEVICE_VERSION 0x0110
+
 #define XBLC_STR "Microsoft Xbox Live Communicator"
 #define XBLC_INTERFACE_CLASS 0x78
 #define XBLC_INTERFACE_SUBCLASS 0x00
@@ -136,9 +140,9 @@ static const USBDescDevice desc_device = {
 
 static const USBDesc desc_xblc = {
     .id = {
-        .idVendor          = 0x045e,
-        .idProduct         = 0x0283,
-        .bcdDevice         = 0x0110,
+        .idVendor          = XBLC_VENDOR_ID,
+        .idProduct         = XBLC_PRODUCT_ID,
+        .bcdDevice         = XBLC_DEVICE_VERSION,
         .iManufacturer     = STR_MANUFACTURER,
         .iProduct          = STR_PRODUCT,
         .iSerialNumber     = STR_SERIALNUMBER,
