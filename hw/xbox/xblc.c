@@ -19,6 +19,8 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "hw/audio/model.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
@@ -162,7 +164,7 @@ static void usb_xblc_handle_reset(USBDevice *dev)
     }
 }
 
-static void xblc_audio_channel_init(USBXBLCState *s, bool capture)
+static void xblc_audio_channel_init(USBXBLCState *s, bool capture, Error **errp)
 {
     SDL_AudioStream **channel = capture ? &s->in : &s->out;
 
@@ -179,8 +181,8 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture)
 
     *channel = SDL_OpenAudioDeviceStream(devid, &spec, NULL, (void *)s);
     if (*channel == NULL) {
-        DPRINTF("[XBLC] Failed to open audio device stream: %s\n",
-                SDL_GetError());
+        error_setg(errp, "Failed to open audio device stream: %s",
+                   SDL_GetError());
         return;
     }
 
@@ -190,9 +192,17 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture)
 static void xblc_audio_stream_init(USBDevice *dev)
 {
     USBXBLCState *s = (USBXBLCState *)dev;
+    Error *err = NULL;
 
-    xblc_audio_channel_init(s, true);
-    xblc_audio_channel_init(s, false);
+    xblc_audio_channel_init(s, true, &err);
+    if (err) {
+        warn_report_err(err);
+    }
+
+    xblc_audio_channel_init(s, false, &err);
+    if (err) {
+        warn_report_err(err);
+    }
 
     DPRINTF("[XBLC] Init audio streams\n");
 }
