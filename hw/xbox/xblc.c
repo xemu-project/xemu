@@ -139,15 +139,15 @@ static const USBDescDevice desc_device = {
 
 static const USBDesc desc_xblc = {
     .id = {
-        .idVendor          = XBLC_VENDOR_ID,
-        .idProduct         = XBLC_PRODUCT_ID,
-        .bcdDevice         = XBLC_DEVICE_VERSION,
-        .iManufacturer     = STR_MANUFACTURER,
-        .iProduct          = STR_PRODUCT,
-        .iSerialNumber     = STR_SERIALNUMBER,
+        .idVendor = XBLC_VENDOR_ID,
+        .idProduct = XBLC_PRODUCT_ID,
+        .bcdDevice = XBLC_DEVICE_VERSION,
+        .iManufacturer = STR_MANUFACTURER,
+        .iProduct = STR_PRODUCT,
+        .iSerialNumber = STR_SERIALNUMBER,
     },
     .full = &desc_device,
-    .str  = desc_strings,
+    .str = desc_strings,
 };
 
 static int xblc_get_sample_rate_for_index(unsigned int index)
