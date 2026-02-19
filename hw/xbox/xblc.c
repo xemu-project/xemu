@@ -396,7 +396,6 @@ static const TypeInfo info_xblc = {
 static void xblc_register_types(void)
 {
     type_register_static(&info_xblc);
-    audio_register_model("xblc", XBLC_STR, TYPE_USB_XBLC);
 }
 
 type_init(xblc_register_types)
