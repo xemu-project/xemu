@@ -31,7 +31,7 @@
 #include "qemu/audio.h"
 #include "qemu/fifo8.h"
 
-//#define DEBUG_XBLC
+// #define DEBUG_XBLC
 #ifdef DEBUG_XBLC
 #define DPRINTF printf
 #else
@@ -272,13 +272,17 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
 
         available = SDL_GetAudioStreamAvailable(s->in.voice);
         if (available < 0) {
-            DPRINTF("[XBLC] SDL_GetAudioStreamAvailable Error: %s\n", SDL_GetError());
+            DPRINTF("[XBLC] SDL_GetAudioStreamAvailable Error: %s\n",
+                    SDL_GetError());
             break;
         } else {
-            DPRINTF("[XBLC] There are %d bytes of data in the stream\n", available);
-            max_queued_data = s->sample_rate * XBLC_BYTES_PER_SAMPLE * XBLC_QUEUE_SIZE_MS / 1000;
+            DPRINTF("[XBLC] There are %d bytes of data in the stream\n",
+                    available);
+            max_queued_data = s->sample_rate * XBLC_BYTES_PER_SAMPLE *
+                              XBLC_QUEUE_SIZE_MS / 1000;
             if (available > max_queued_data) {
-                DPRINTF("[XBLC] More than %d bytes of data in the queue. Clearing out old data\n", 
+                DPRINTF("[XBLC] More than %d bytes of data in the queue. "
+                        "Clearing out old data\n",
                         max_queued_data);
                 SDL_ClearAudioStream(s->in.voice);
                 available = 0;
@@ -288,7 +292,7 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
         to_process = MIN(p->iov.size, available);
         copied = 0;
         while (copied < to_process) {
-                chunk_len = SDL_GetAudioStreamData(s->in.voice, packet,
+            chunk_len = SDL_GetAudioStreamData(s->in.voice, packet,
                                                MIN(sizeof(packet), to_process));
             if (chunk_len < 0) {
                 DPRINTF("[XBLC] Error getting data from the input stream: %s\n",
@@ -301,7 +305,7 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
 
         // Fill the rest of the buffer with silence
         to_process = p->iov.size - copied;
-        while(to_process > 0) {
+        while (to_process > 0) {
             chunk_len = MIN(sizeof(silence), to_process);
             usb_packet_copy(p, (void *)silence, chunk_len);
             to_process -= chunk_len;
@@ -340,7 +344,7 @@ static void usb_xbox_communicator_unrealize(USBDevice *dev)
         SDL_DestroyAudioStream(s->in.voice);
         s->in.voice = NULL;
     }
-    
+
     if (s->out.voice) {
         SDL_DestroyAudioStream(s->out.voice);
         s->out.voice = NULL;
