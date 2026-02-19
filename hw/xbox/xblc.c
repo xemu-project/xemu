@@ -147,8 +147,7 @@ static const USBDesc desc_xblc = {
 static int xblc_get_sample_rate_for_index(unsigned int index)
 {
     static const uint16_t sample_rates[] = { 8000, 11025, 16000, 22050, 24000 };
-    assert(index < ARRAY_SIZE(sample_rates));
-    return sample_rates[index];
+    return index < ARRAY_SIZE(sample_rates) ? sample_rates[index] : 0;
 }
 
 static SDL_AudioSpec xblc_get_audio_spec(USBXBLCState *s)
@@ -205,8 +204,12 @@ static void xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
     switch (request) {
     case VendorInterfaceOutRequest | USB_REQ_SET_FEATURE:
         if (index == XBLC_SET_SAMPLE_RATE) {
-            xblc_set_sample_rate(s,
-                                 xblc_get_sample_rate_for_index(value & 0xFF));
+            int new_sample_rate = xblc_get_sample_rate_for_index(value & 0xFF);
+            if (new_sample_rate > 0) {
+                xblc_set_sample_rate(s, new_sample_rate);
+            } else {
+                DPRINTF("Invalid sample rate index %d", value & 0xFF);
+            }
             break;
         } else if (index == XBLC_SET_AGC) {
             DPRINTF("Set Auto Gain Control to %d", value);
@@ -216,7 +219,6 @@ static void xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
     default:
         DPRINTF("USB stalled on request 0x%x value 0x%x", request, value);
         p->status = USB_RET_STALL;
-        assert(!"USB stalled on request");
         return;
     }
 }
@@ -227,7 +229,10 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
 
     switch (p->pid) {
     case USB_TOKEN_IN: {
-        assert(p->ep->nr == XBLC_EP_IN);
+        if (p->ep->nr != XBLC_EP_IN) {
+            DPRINTF("Unexpected USB endpoint for USB_TOKEN_IN");
+            break;
+        }
 
         if (s->in == NULL) {
             break;
@@ -264,7 +269,10 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
         break;
     }
     case USB_TOKEN_OUT:
-        assert(p->ep->nr == XBLC_EP_OUT);
+        if (p->ep->nr != XBLC_EP_OUT) {
+            DPRINTF("Unexpected USB endpoint for USB_TOKEN_OUT");
+            break;
+        }
         if (s->out != NULL) {
             if (!SDL_PutAudioStreamData(s->out, p->iov.iov->iov_base,
                                         p->iov.size)) {
@@ -273,7 +281,7 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
         }
         break;
     default:
-        assert(!"Iso cannot report STALL/HALT");
+        DPRINTF("Unexpected USB token pid %d for XBLC device", p->pid);
         break;
     }
 
