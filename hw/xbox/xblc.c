@@ -179,7 +179,7 @@ static void xblc_handle_reset(USBDevice *dev)
     }
 }
 
-static void xblc_audio_stream_update_rate(USBXBLCState *s)
+static void xblc_audio_channel_update_format(USBXBLCState *s)
 {
     SDL_AudioSpec spec = xblc_get_audio_spec(s);
 
@@ -191,10 +191,10 @@ static void xblc_audio_stream_update_rate(USBXBLCState *s)
     }
 }
 
-static void xblc_audio_stream_set_rate(USBXBLCState *s, uint16_t sample_rate)
+static void xblc_set_sample_rate(USBXBLCState *s, uint16_t sample_rate)
 {
     s->sample_rate = sample_rate;
-    xblc_audio_stream_update_rate(s);
+    xblc_audio_channel_update_format(s);
 }
 
 static void xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
@@ -211,8 +211,8 @@ static void xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
     switch (request) {
     case VendorInterfaceOutRequest | USB_REQ_SET_FEATURE:
         if (index == XBLC_SET_SAMPLE_RATE) {
-            xblc_audio_stream_set_rate(
-                s, xblc_get_sample_rate_for_index(value & 0xFF));
+            xblc_set_sample_rate(s,
+                                 xblc_get_sample_rate_for_index(value & 0xFF));
             break;
         } else if (index == XBLC_SET_AGC) {
             DPRINTF("Set Auto Gain Control to %d", value);
@@ -355,7 +355,7 @@ static int xblc_post_load(void *opaque, int version_id)
 {
     USBXBLCState *s = USB_XBLC(opaque);
 
-    xblc_audio_stream_update_rate(s);
+    xblc_audio_channel_update_format(s);
 
     return 0;
 }
