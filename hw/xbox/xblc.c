@@ -328,10 +328,17 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture, Error **errp)
     SDL_ResumeAudioStreamDevice(*channel);
 }
 
-static void xblc_audio_stream_init(USBDevice *dev)
+static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
 {
     USBXBLCState *s = USB_XBLC(dev);
     Error *err = NULL;
+
+    usb_desc_create_serial(dev);
+    usb_desc_init(dev);
+
+    s->in = NULL;
+    s->out = NULL;
+    s->sample_rate = XBLC_DEFAULT_SAMPLE_RATE;
 
     xblc_audio_channel_init(s, true, &err);
     if (err) {
@@ -342,21 +349,6 @@ static void xblc_audio_stream_init(USBDevice *dev)
     if (err) {
         warn_report_err(err);
     }
-
-    DPRINTF("[XBLC] Init audio streams\n");
-}
-
-static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
-{
-    USBXBLCState *s = USB_XBLC(dev);
-    usb_desc_create_serial(dev);
-    usb_desc_init(dev);
-
-    s->in = NULL;
-    s->out = NULL;
-    s->sample_rate = XBLC_DEFAULT_SAMPLE_RATE;
-
-    xblc_audio_stream_init(dev);
 }
 
 static void usb_xbox_communicator_unrealize(USBDevice *dev)
