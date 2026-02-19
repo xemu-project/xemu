@@ -60,9 +60,6 @@
 // https://github.com/Ryzee119/hawk/blob/5ab6f63b280425edd9ee121f5b5520dd8e891990/src/usbd/xblc.c#L143
 #define XBLC_DEFAULT_SAMPLE_RATE 16000
 
-static const uint16_t xblc_sample_rates[5] = { 8000, 11025, 16000, 22050,
-                                               24000 };
-
 typedef struct USBXBLCState {
     USBDevice dev;
     uint8_t device_index;
@@ -150,6 +147,13 @@ static const USBDesc desc_xblc = {
     .str  = desc_strings,
 };
 
+static int xblc_get_sample_rate_for_index(unsigned int index)
+{
+    static const uint16_t sample_rates[] = { 8000, 11025, 16000, 22050, 24000 };
+    assert(index < ARRAY_SIZE(sample_rates));
+    return sample_rates[index];
+}
+
 static void usb_xblc_handle_reset(USBDevice *dev)
 {
     USBXBLCState *s = USB_XBLC(dev);
@@ -196,10 +200,8 @@ static void usb_xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
     switch (request) {
     case VendorInterfaceOutRequest | USB_REQ_SET_FEATURE:
         if (index == XBLC_SET_SAMPLE_RATE) {
-            uint8_t rate = value & 0xFF;
-            assert(rate < ARRAY_SIZE(xblc_sample_rates));
-            DPRINTF("Set Sample Rate to %04x", rate);
-            xblc_audio_stream_set_rate(dev, xblc_sample_rates[rate]);
+            xblc_audio_stream_set_rate(
+                dev, xblc_get_sample_rate_for_index(value & 0xFF));
             break;
         } else if (index == XBLC_SET_AGC) {
             DPRINTF("Set Auto Gain Control to %d", value);
