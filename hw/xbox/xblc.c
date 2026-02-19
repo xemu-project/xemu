@@ -35,7 +35,7 @@
 
 // #define DEBUG_XBLC
 #ifdef DEBUG_XBLC
-#define DPRINTF printf
+#define DPRINTF(fmt, ...) printf("[XBLC] " fmt "\n", ##__VA_ARGS__)
 #else
 #define DPRINTF(...)
 #endif
@@ -154,7 +154,7 @@ static void usb_xblc_handle_reset(USBDevice *dev)
 {
     USBXBLCState *s = USB_XBLC(dev);
 
-    DPRINTF("[XBLC] Reset\n");
+    DPRINTF("Reset");
 
     if (s->in != NULL) {
         SDL_ClearAudioStream(s->in);
@@ -189,8 +189,7 @@ static void usb_xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
 
     if (usb_desc_handle_control(dev, p, request, value, index, length, data) >=
         0) {
-        DPRINTF(
-            "[XBLC] USB Control request handled by usb_desc_handle_control\n");
+        DPRINTF("USB Control request handled by usb_desc_handle_control");
         return;
     }
 
@@ -199,18 +198,17 @@ static void usb_xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
         if (index == XBLC_SET_SAMPLE_RATE) {
             uint8_t rate = value & 0xFF;
             assert(rate < ARRAY_SIZE(xblc_sample_rates));
-            DPRINTF("[XBLC] Set Sample Rate to %04x\n", rate);
+            DPRINTF("Set Sample Rate to %04x", rate);
             xblc_audio_stream_set_rate(dev, xblc_sample_rates[rate]);
             break;
         } else if (index == XBLC_SET_AGC) {
-            DPRINTF("[XBLC] Set Auto Gain Control to %d\n", value);
+            DPRINTF("Set Auto Gain Control to %d", value);
             s->auto_gain_control = (value) ? 1 : 0;
             break;
         }
         // Fallthrough
     default:
-        DPRINTF("[XBLC] USB stalled on request 0x%x value 0x%x\n", request,
-                value);
+        DPRINTF("USB stalled on request 0x%x value 0x%x", request, value);
         p->status = USB_RET_STALL;
         assert(!"USB stalled on request");
         return;
@@ -234,24 +232,22 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
         chunk_len = 0;
 
         if (s->in == NULL) {
-            DPRINTF("[XBLC] Tried to get data from the input audio tream but "
+            DPRINTF("Tried to get data from the input audio tream but "
                     "the audio stream is not initialized");
             break;
         }
 
         available = SDL_GetAudioStreamAvailable(s->in);
         if (available < 0) {
-            DPRINTF("[XBLC] SDL_GetAudioStreamAvailable Error: %s\n",
-                    SDL_GetError());
+            DPRINTF("SDL_GetAudioStreamAvailable Error: %s", SDL_GetError());
             break;
         } else {
-            DPRINTF("[XBLC] There are %d bytes of data in the stream\n",
-                    available);
+            DPRINTF("There are %d bytes of data in the stream", available);
             max_queued_data = s->sample_rate * XBLC_BYTES_PER_SAMPLE *
                               XBLC_QUEUE_SIZE_MS / 1000;
             if (available > max_queued_data) {
-                DPRINTF("[XBLC] More than %d bytes of data in the queue. "
-                        "Clearing out old data\n",
+                DPRINTF("More than %d bytes of data in the queue. "
+                        "Clearing out old data",
                         max_queued_data);
                 SDL_ClearAudioStream(s->in);
                 available = 0;
@@ -264,7 +260,7 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
             chunk_len = SDL_GetAudioStreamData(s->in, packet,
                                                MIN(sizeof(packet), to_process));
             if (chunk_len < 0) {
-                DPRINTF("[XBLC] Error getting data from the input stream: %s\n",
+                DPRINTF("Error getting data from the input stream: %s",
                         SDL_GetError());
                 break;
             }
@@ -284,14 +280,14 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
         assert(p->ep->nr == XBLC_EP_OUT);
 
         if (s->out == NULL) {
-            DPRINTF("[XBLC] Tried to put data into the speaker audio stream "
+            DPRINTF("Tried to put data into the speaker audio stream "
                     "but the audio stream is not initialized");
             return;
         }
 
         if (!SDL_PutAudioStreamData(s->out, p->iov.iov->iov_base,
                                     p->iov.size)) {
-            DPRINTF("[XBLC] Error putting data into output stream: %s\n",
+            DPRINTF("Error putting data into output stream: %s",
                     SDL_GetError());
         }
 
