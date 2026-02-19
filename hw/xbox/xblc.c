@@ -322,11 +322,13 @@ static void xblc_realize(USBDevice *dev, Error **errp)
     xblc_audio_channel_init(s, true, &err);
     if (err) {
         warn_report_err(err);
+        err = NULL;
     }
 
     xblc_audio_channel_init(s, false, &err);
     if (err) {
         warn_report_err(err);
+        err = NULL;
     }
 }
 
