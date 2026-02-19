@@ -164,49 +164,6 @@ static void usb_xblc_handle_reset(USBDevice *dev)
     }
 }
 
-static void xblc_audio_channel_init(USBXBLCState *s, bool capture, Error **errp)
-{
-    SDL_AudioStream **channel = capture ? &s->in : &s->out;
-
-    if (*channel != NULL) {
-        SDL_DestroyAudioStream(*channel);
-        *channel = NULL;
-    }
-
-    SDL_AudioDeviceID devid = capture ? SDL_AUDIO_DEVICE_DEFAULT_RECORDING :
-                                        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
-    SDL_AudioSpec spec = { .channels = 1,
-                           .freq = s->sample_rate,
-                           .format = SDL_AUDIO_S16LE };
-
-    *channel = SDL_OpenAudioDeviceStream(devid, &spec, NULL, (void *)s);
-    if (*channel == NULL) {
-        error_setg(errp, "Failed to open audio device stream: %s",
-                   SDL_GetError());
-        return;
-    }
-
-    SDL_ResumeAudioStreamDevice(*channel);
-}
-
-static void xblc_audio_stream_init(USBDevice *dev)
-{
-    USBXBLCState *s = (USBXBLCState *)dev;
-    Error *err = NULL;
-
-    xblc_audio_channel_init(s, true, &err);
-    if (err) {
-        warn_report_err(err);
-    }
-
-    xblc_audio_channel_init(s, false, &err);
-    if (err) {
-        warn_report_err(err);
-    }
-
-    DPRINTF("[XBLC] Init audio streams\n");
-}
-
 static void xblc_audio_stream_set_rate(USBDevice *dev, uint16_t sample_rate)
 {
     USBXBLCState *s = (USBXBLCState *)dev;
@@ -346,6 +303,62 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
     }
 }
 
+static void xblc_audio_channel_init(USBXBLCState *s, bool capture, Error **errp)
+{
+    SDL_AudioStream **channel = capture ? &s->in : &s->out;
+
+    if (*channel != NULL) {
+        SDL_DestroyAudioStream(*channel);
+        *channel = NULL;
+    }
+
+    SDL_AudioDeviceID devid = capture ? SDL_AUDIO_DEVICE_DEFAULT_RECORDING :
+                                        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
+    SDL_AudioSpec spec = { .channels = 1,
+                           .freq = s->sample_rate,
+                           .format = SDL_AUDIO_S16LE };
+
+    *channel = SDL_OpenAudioDeviceStream(devid, &spec, NULL, (void *)s);
+    if (*channel == NULL) {
+        error_setg(errp, "Failed to open audio device stream: %s",
+                   SDL_GetError());
+        return;
+    }
+
+    SDL_ResumeAudioStreamDevice(*channel);
+}
+
+static void xblc_audio_stream_init(USBDevice *dev)
+{
+    USBXBLCState *s = (USBXBLCState *)dev;
+    Error *err = NULL;
+
+    xblc_audio_channel_init(s, true, &err);
+    if (err) {
+        warn_report_err(err);
+    }
+
+    xblc_audio_channel_init(s, false, &err);
+    if (err) {
+        warn_report_err(err);
+    }
+
+    DPRINTF("[XBLC] Init audio streams\n");
+}
+
+static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
+{
+    USBXBLCState *s = USB_XBLC(dev);
+    usb_desc_create_serial(dev);
+    usb_desc_init(dev);
+
+    s->in = NULL;
+    s->out = NULL;
+    s->sample_rate = XBLC_DEFAULT_SAMPLE_RATE;
+
+    xblc_audio_stream_init(dev);
+}
+
 static void usb_xbox_communicator_unrealize(USBDevice *dev)
 {
     USBXBLCState *s = USB_XBLC(dev);
@@ -368,19 +381,6 @@ static void usb_xblc_class_init(ObjectClass *klass, const void *data)
     uc->handle_control = usb_xblc_handle_control;
     uc->handle_data = usb_xblc_handle_data;
     uc->handle_attach = usb_desc_attach;
-}
-
-static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
-{
-    USBXBLCState *s = USB_XBLC(dev);
-    usb_desc_create_serial(dev);
-    usb_desc_init(dev);
-
-    s->in = NULL;
-    s->out = NULL;
-    s->sample_rate = XBLC_DEFAULT_SAMPLE_RATE;
-
-    xblc_audio_stream_init(dev);
 }
 
 static const Property xblc_properties[] = {
