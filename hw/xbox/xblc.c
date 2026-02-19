@@ -152,7 +152,7 @@ static const USBDesc desc_xblc = {
 
 static void usb_xblc_handle_reset(USBDevice *dev)
 {
-    USBXBLCState *s = (USBXBLCState *)dev;
+    USBXBLCState *s = USB_XBLC(dev);
 
     DPRINTF("[XBLC] Reset\n");
 
@@ -166,7 +166,7 @@ static void usb_xblc_handle_reset(USBDevice *dev)
 
 static void xblc_audio_stream_set_rate(USBDevice *dev, uint16_t sample_rate)
 {
-    USBXBLCState *s = (USBXBLCState *)dev;
+    USBXBLCState *s = USB_XBLC(dev);
 
     s->sample_rate = sample_rate;
 
@@ -185,7 +185,7 @@ static void usb_xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
                                     int value, int index, int length,
                                     uint8_t *data)
 {
-    USBXBLCState *s = (USBXBLCState *)dev;
+    USBXBLCState *s = USB_XBLC(dev);
 
     if (usb_desc_handle_control(dev, p, request, value, index, length, data) >=
         0) {
@@ -219,7 +219,7 @@ static void usb_xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
 
 static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
 {
-    USBXBLCState *s = (USBXBLCState *)dev;
+    USBXBLCState *s = USB_XBLC(dev);
     uint32_t to_process;
     int32_t chunk_len;
     int32_t available;
@@ -330,7 +330,7 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture, Error **errp)
 
 static void xblc_audio_stream_init(USBDevice *dev)
 {
-    USBXBLCState *s = (USBXBLCState *)dev;
+    USBXBLCState *s = USB_XBLC(dev);
     Error *err = NULL;
 
     xblc_audio_channel_init(s, true, &err);
