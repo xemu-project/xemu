@@ -263,6 +263,8 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
             } else if (chunk_len > 0) {
                 usb_packet_copy(p, (void *)packet, chunk_len);
                 remaining -= chunk_len;
+            } else {
+                break;
             }
         }
 
