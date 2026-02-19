@@ -33,7 +33,7 @@
 #include "qemu/audio.h"
 #include "qemu/fifo8.h"
 
-// #define DEBUG_XBLC
+/* #define DEBUG_XBLC */
 #ifdef DEBUG_XBLC
 #define DPRINTF(fmt, ...) printf("[XBLC] " fmt "\n", ##__VA_ARGS__)
 #else
@@ -60,8 +60,9 @@
 #define XBLC_QUEUE_SIZE_MS 100 /* 100 ms */
 #define XBLC_BYTES_PER_SAMPLE 2 /* 16-bit */
 
-// According to Ryzee119, the XBLC appears to default to 16KHz
-// https://github.com/Ryzee119/hawk/blob/5ab6f63b280425edd9ee121f5b5520dd8e891990/src/usbd/xblc.c#L143
+/* According to Ryzee119, the XBLC appears to default to 16KHz
+ * https://github.com/Ryzee119/hawk/blob/5ab6f63b280425edd9ee121f5b5520dd8e891990/src/usbd/xblc.c#L143
+ */
 #define XBLC_DEFAULT_SAMPLE_RATE 16000
 
 typedef struct USBXBLCState {
@@ -217,7 +218,7 @@ static void xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
             DPRINTF("Set Auto Gain Control to %d", value);
             break;
         }
-        // Fallthrough
+        /* Fallthrough */
     default:
         DPRINTF("USB stalled on request 0x%x value 0x%x", request, value);
         p->status = USB_RET_STALL;
