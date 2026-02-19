@@ -218,17 +218,10 @@ static void usb_xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
 static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
 {
     USBXBLCState *s = USB_XBLC(dev);
-    uint32_t to_process;
-    int32_t chunk_len;
-    int32_t available;
-    int32_t max_queued_data;
-    int32_t copied;
-    uint8_t packet[XBLC_MAX_PACKET];
 
     switch (p->pid) {
-    case USB_TOKEN_IN:
+    case USB_TOKEN_IN: {
         assert(p->ep->nr == XBLC_EP_IN);
-        chunk_len = 0;
 
         if (s->in == NULL) {
             DPRINTF("Tried to get data from the input audio tream but "
@@ -236,14 +229,14 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
             break;
         }
 
-        available = SDL_GetAudioStreamAvailable(s->in);
+        int available = SDL_GetAudioStreamAvailable(s->in);
         if (available < 0) {
             DPRINTF("SDL_GetAudioStreamAvailable Error: %s", SDL_GetError());
             break;
         } else {
             DPRINTF("There are %d bytes of data in the stream", available);
-            max_queued_data = s->sample_rate * XBLC_BYTES_PER_SAMPLE *
-                              XBLC_QUEUE_SIZE_MS / 1000;
+            int max_queued_data = s->sample_rate * XBLC_BYTES_PER_SAMPLE *
+                                  XBLC_QUEUE_SIZE_MS / 1000;
             if (available > max_queued_data) {
                 DPRINTF("More than %d bytes of data in the queue. "
                         "Clearing out old data",
@@ -253,26 +246,26 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
             }
         }
 
-        to_process = MIN(p->iov.size, available);
-        copied = 0;
-        while (copied < to_process) {
-            chunk_len = SDL_GetAudioStreamData(s->in, packet,
-                                               MIN(sizeof(packet), to_process));
+        for (size_t remaining = MIN(p->iov.size, available); remaining > 0;) {
+            uint8_t packet[XBLC_MAX_PACKET];
+
+            int chunk_len = SDL_GetAudioStreamData(
+                s->in, packet, MIN(sizeof(packet), remaining));
             if (chunk_len < 0) {
                 DPRINTF("Error getting data from the input stream: %s",
                         SDL_GetError());
                 break;
             }
             usb_packet_copy(p, (void *)packet, chunk_len);
-            copied += chunk_len;
+            remaining -= chunk_len;
         }
 
-        to_process = p->iov.size - copied;
-        if (to_process > 0) {
-            usb_packet_skip(p, to_process);
+        if (p->iov.size > p->actual_length) {
+            usb_packet_skip(p, p->iov.size - p->actual_length);
         }
 
         break;
+    }
     case USB_TOKEN_OUT:
         assert(p->ep->nr == XBLC_EP_OUT);
 
