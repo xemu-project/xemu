@@ -227,7 +227,6 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
 
     switch (p->pid) {
     case USB_TOKEN_IN:
-        // Microphone Data - Get data from audio stream and copy into usb packet
         assert(p->ep->nr == XBLC_EP_IN);
         chunk_len = 0;
 
@@ -268,7 +267,6 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
             copied += chunk_len;
         }
 
-        // Fill the rest of the buffer with silence
         to_process = p->iov.size - copied;
         if (to_process > 0) {
             usb_packet_skip(p, to_process);
@@ -276,7 +274,6 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
 
         break;
     case USB_TOKEN_OUT:
-        // Speaker data - put data from usb packet directly into audio stream.
         assert(p->ep->nr == XBLC_EP_OUT);
 
         if (s->out == NULL) {
