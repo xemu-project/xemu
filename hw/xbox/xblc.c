@@ -54,8 +54,6 @@
 #define XBLC_QUEUE_SIZE_MS 100 /* 100 ms */
 #define XBLC_BYTES_PER_SAMPLE 2 /* 16-bit */
 
-static const uint8_t silence[256] = { 0 };
-
 static const uint16_t xblc_sample_rates[5] = { 8000, 11025, 16000, 22050,
                                                24000 };
 
@@ -305,10 +303,8 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
 
         // Fill the rest of the buffer with silence
         to_process = p->iov.size - copied;
-        while (to_process > 0) {
-            chunk_len = MIN(sizeof(silence), to_process);
-            usb_packet_copy(p, (void *)silence, chunk_len);
-            to_process -= chunk_len;
+        if (to_process > 0) {
+            usb_packet_skip(p, to_process);
         }
 
         break;
