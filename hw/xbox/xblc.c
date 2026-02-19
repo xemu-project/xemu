@@ -242,17 +242,14 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
 
         int available = SDL_GetAudioStreamAvailable(s->in);
         if (available < 0) {
-            DPRINTF("SDL_GetAudioStreamAvailable Error: %s", SDL_GetError());
+            DPRINTF("SDL_GetAudioStreamAvailable failed: %s", SDL_GetError());
             break;
         }
 
-        DPRINTF("There are %d bytes of data in the stream", available);
-        int max_queued_data = s->sample_rate * XBLC_BYTES_PER_SAMPLE *
-                                XBLC_QUEUE_SIZE_MS / 1000;
+        int max_queued_data =
+            s->sample_rate * XBLC_BYTES_PER_SAMPLE * XBLC_QUEUE_SIZE_MS / 1000;
         if (available > max_queued_data) {
-            DPRINTF("More than %d bytes of data in the queue. "
-                    "Clearing out old data",
-                    max_queued_data);
+            DPRINTF("Available data exceeded max threshold. Clearing stream.");
             SDL_ClearAudioStream(s->in);
             available = 0;
         }
@@ -263,8 +260,7 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
             int chunk_len = SDL_GetAudioStreamData(
                 s->in, packet, MIN(sizeof(packet), remaining));
             if (chunk_len < 0) {
-                DPRINTF("Error getting data from the input stream: %s",
-                        SDL_GetError());
+                DPRINTF("SDL_GetAudioStreamData failed: %s", SDL_GetError());
                 break;
             } else if (chunk_len > 0) {
                 usb_packet_copy(p, (void *)packet, chunk_len);
@@ -279,8 +275,7 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
         if (s->out != NULL) {
             if (!SDL_PutAudioStreamData(s->out, p->iov.iov->iov_base,
                                         p->iov.size)) {
-                DPRINTF("Error putting data into output stream: %s",
-                        SDL_GetError());
+                DPRINTF("SDL_PutAudioStreamData failed: %s", SDL_GetError());
             }
         }
         break;
