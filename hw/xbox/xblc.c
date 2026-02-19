@@ -21,17 +21,11 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "hw/audio/model.h"
-#include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
-#include "system/system.h"
-#include "hw/hw.h"
-#include "ui/console.h"
 #include "hw/usb.h"
 #include "hw/usb/desc.h"
-#include "ui/xemu-input.h"
-#include "qemu/audio.h"
-#include "qemu/fifo8.h"
+
+#include <SDL3/SDL.h>
 
 /* #define DEBUG_XBLC */
 #ifdef DEBUG_XBLC
