@@ -260,10 +260,6 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
             remaining -= chunk_len;
         }
 
-        if (p->iov.size > p->actual_length) {
-            usb_packet_skip(p, p->iov.size - p->actual_length);
-        }
-
         break;
     }
     case USB_TOKEN_OUT:
@@ -285,6 +281,10 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
     default:
         assert(!"Iso cannot report STALL/HALT");
         break;
+    }
+
+    if (p->pid == USB_TOKEN_IN && p->iov.size > p->actual_length) {
+        usb_packet_skip(p, p->iov.size - p->actual_length);
     }
 }
 
