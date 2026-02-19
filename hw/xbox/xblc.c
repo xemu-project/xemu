@@ -179,10 +179,8 @@ static void xblc_handle_reset(USBDevice *dev)
     }
 }
 
-static void xblc_audio_stream_set_rate(USBXBLCState *s, uint16_t sample_rate)
+static void xblc_audio_stream_update_rate(USBXBLCState *s)
 {
-    s->sample_rate = sample_rate;
-
     SDL_AudioSpec spec = xblc_get_audio_spec(s);
 
     if (s->in != NULL) {
@@ -191,6 +189,12 @@ static void xblc_audio_stream_set_rate(USBXBLCState *s, uint16_t sample_rate)
     if (s->out != NULL) {
         SDL_SetAudioStreamFormat(s->out, &spec, &spec);
     }
+}
+
+static void xblc_audio_stream_set_rate(USBXBLCState *s, uint16_t sample_rate)
+{
+    s->sample_rate = sample_rate;
+    xblc_audio_stream_update_rate(s);
 }
 
 static void xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
@@ -347,10 +351,20 @@ static void xblc_unrealize(USBDevice *dev)
     }
 }
 
+static int xblc_post_load(void *opaque, int version_id)
+{
+    USBXBLCState *s = USB_XBLC(opaque);
+
+    xblc_audio_stream_update_rate(s);
+
+    return 0;
+}
+
 static const VMStateDescription xblc_vmstate = {
     .name = TYPE_USB_XBLC,
     .version_id = 2,
     .minimum_version_id = 1,
+    .post_load = xblc_post_load,
     .fields = (VMStateField[]){ VMSTATE_USB_DEVICE(dev, USBXBLCState),
                                 VMSTATE_UINT16(sample_rate, USBXBLCState),
                                 VMSTATE_END_OF_LIST() },
@@ -369,6 +383,7 @@ static void xblc_class_init(ObjectClass *klass, const void *data)
     uc->handle_control = xblc_handle_control;
     uc->handle_data = xblc_handle_data;
     uc->handle_attach = usb_desc_attach;
+
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd = &xblc_vmstate;
     dc->desc = XBLC_STR;
