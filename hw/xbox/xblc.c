@@ -66,7 +66,6 @@
 
 typedef struct USBXBLCState {
     USBDevice dev;
-    uint8_t device_index;
     uint8_t auto_gain_control;
     uint16_t sample_rate;
 
@@ -348,10 +347,6 @@ static void xblc_unrealize(USBDevice *dev)
     }
 }
 
-static const Property xblc_properties[] = {
-    DEFINE_PROP_UINT8("index", USBXBLCState, device_index, 0),
-};
-
 static const VMStateDescription xblc_vmstate = {
     .name = TYPE_USB_XBLC,
     .version_id = 1,
@@ -376,7 +371,6 @@ static void xblc_class_init(ObjectClass *klass, const void *data)
     uc->handle_attach = usb_desc_attach;
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd = &xblc_vmstate;
-    device_class_set_props(dc, xblc_properties);
     dc->desc = XBLC_STR;
 }
 
