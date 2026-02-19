@@ -180,10 +180,8 @@ static void xblc_handle_reset(USBDevice *dev)
     }
 }
 
-static void xblc_audio_stream_set_rate(USBDevice *dev, uint16_t sample_rate)
+static void xblc_audio_stream_set_rate(USBXBLCState *s, uint16_t sample_rate)
 {
-    USBXBLCState *s = USB_XBLC(dev);
-
     s->sample_rate = sample_rate;
 
     SDL_AudioSpec spec = xblc_get_audio_spec(s);
@@ -211,7 +209,7 @@ static void xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
     case VendorInterfaceOutRequest | USB_REQ_SET_FEATURE:
         if (index == XBLC_SET_SAMPLE_RATE) {
             xblc_audio_stream_set_rate(
-                dev, xblc_get_sample_rate_for_index(value & 0xFF));
+                s, xblc_get_sample_rate_for_index(value & 0xFF));
             break;
         } else if (index == XBLC_SET_AGC) {
             DPRINTF("Set Auto Gain Control to %d", value);
