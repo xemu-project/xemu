@@ -266,9 +266,10 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
                 DPRINTF("Error getting data from the input stream: %s",
                         SDL_GetError());
                 break;
+            } else if (chunk_len > 0) {
+                usb_packet_copy(p, (void *)packet, chunk_len);
+                remaining -= chunk_len;
             }
-            usb_packet_copy(p, (void *)packet, chunk_len);
-            remaining -= chunk_len;
         }
 
         break;
