@@ -165,18 +165,19 @@ static void usb_xblc_handle_reset(USBDevice *dev)
 static void xblc_audio_channel_init(USBXBLCState *s, bool capture)
 {
     SDL_AudioStream **channel = capture ? &s->in : &s->out;
-    SDL_AudioDeviceID device_id = capture ? SDL_AUDIO_DEVICE_DEFAULT_RECORDING :
-                                            SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
 
     if (*channel != NULL) {
         SDL_DestroyAudioStream(*channel);
         *channel = NULL;
     }
 
-    SDL_AudioSpec spec = { .channels = 1, .freq = s->sample_rate,
+    SDL_AudioDeviceID devid = capture ? SDL_AUDIO_DEVICE_DEFAULT_RECORDING :
+                                        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
+    SDL_AudioSpec spec = { .channels = 1,
+                           .freq = s->sample_rate,
                            .format = SDL_AUDIO_S16LE };
 
-    *channel = SDL_OpenAudioDeviceStream(device_id, &spec, NULL, (void *)s);
+    *channel = SDL_OpenAudioDeviceStream(devid, &spec, NULL, (void *)s);
     if (*channel == NULL) {
         DPRINTF("[XBLC] Failed to open audio device stream: %s\n",
                 SDL_GetError());
