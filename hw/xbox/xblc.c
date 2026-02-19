@@ -158,6 +158,14 @@ static int xblc_get_sample_rate_for_index(unsigned int index)
     return sample_rates[index];
 }
 
+static SDL_AudioSpec xblc_get_audio_spec(USBXBLCState *s)
+{
+    SDL_AudioSpec spec = { .channels = 1,
+                           .freq = s->sample_rate,
+                           .format = SDL_AUDIO_S16LE };
+    return spec;
+}
+
 static void xblc_handle_reset(USBDevice *dev)
 {
     USBXBLCState *s = USB_XBLC(dev);
@@ -178,9 +186,8 @@ static void xblc_audio_stream_set_rate(USBDevice *dev, uint16_t sample_rate)
 
     s->sample_rate = sample_rate;
 
-    SDL_AudioSpec spec = { .channels = 1,
-                           .freq = sample_rate,
-                           .format = SDL_AUDIO_S16LE };
+    SDL_AudioSpec spec = xblc_get_audio_spec(s);
+
     if (s->in != NULL) {
         SDL_SetAudioStreamFormat(s->in, &spec, &spec);
     }
@@ -290,9 +297,7 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture, Error **errp)
     SDL_AudioStream **channel = capture ? &s->in : &s->out;
     SDL_AudioDeviceID devid = capture ? SDL_AUDIO_DEVICE_DEFAULT_RECORDING :
                                         SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
-    SDL_AudioSpec spec = { .channels = 1,
-                           .freq = s->sample_rate,
-                           .format = SDL_AUDIO_S16LE };
+    SDL_AudioSpec spec = xblc_get_audio_spec(s);
 
     if (*channel != NULL) {
         SDL_DestroyAudioStream(*channel);
