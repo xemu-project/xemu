@@ -212,7 +212,7 @@ static void usb_xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
         DPRINTF("[XBLC] USB stalled on request 0x%x value 0x%x\n", request,
                 value);
         p->status = USB_RET_STALL;
-        assert(false);
+        assert(!"USB stalled on request");
         return;
     }
 }
@@ -297,8 +297,7 @@ static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
 
         break;
     default:
-        // Iso cannot report STALL/HALT, but we shouldn't be here anyway.
-        assert(false);
+        assert(!"Iso cannot report STALL/HALT");
         break;
     }
 }
