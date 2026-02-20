@@ -938,6 +938,7 @@ static void poll_events(struct xemu_console *scon)
 
         xemu_main_loop_unlock();
     }
+    last_update = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
 
     xemu_main_loop_lock();
     xemu_input_update_controllers();
