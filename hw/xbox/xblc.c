@@ -59,6 +59,16 @@
  */
 #define XBLC_DEFAULT_SAMPLE_RATE 16000
 
+typedef struct XBLCStream {
+    SDL_AudioDeviceID device_id;
+    SDL_AudioStream *voice;
+    SDL_AudioSpec spec;
+    uint8_t packet[XBLC_MAX_PACKET];
+    Fifo8 fifo;
+    float volume;
+    float peak_volume;
+} XBLCStream;
+
 typedef struct USBXBLCState {
     USBDevice dev;
     uint16_t sample_rate;
@@ -182,6 +192,22 @@ static void xblc_audio_channel_update_format(USBXBLCState *s)
     if (s->out != NULL) {
         SDL_SetAudioStreamFormat(s->out, &spec, &spec);
     }
+    
+    SDL_ResumeAudioStreamDevice(channel->voice);
+}
+
+static bool should_init_stream(const XBLCStream *stream, SDL_AudioDeviceID requested_device_id)
+{
+    // If the voice has not been initialized, initialize it
+    if (stream->voice == 0)
+        return true;
+    
+    // If the new id doesn't match the existing id, initialize it
+    if (stream->device_id != requested_device_id)
+        return true;
+    
+    // We don't need to initialize it
+    return false;
 }
 
 static void xblc_set_sample_rate(USBXBLCState *s, uint16_t sample_rate)
@@ -267,6 +293,11 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
                 break;
             }
         }
+
+        // Ensure we fill the entire packet regardless of if we have audio data so we don't
+        // cause an underrun error.
+        if (p->actual_length < p->iov.size)
+            usb_packet_copy(p, (void *)silence, p->iov.size - p->actual_length);
 
         break;
     }
