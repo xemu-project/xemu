@@ -88,9 +88,42 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get -qy update
-        sudo apt-get install ccache libfuse2 libusb-1.0-0-dev clang-21 lld-21 llvm-21-dev
+        sudo apt-get install ccache libfuse2 libusb-1.0-0-dev #clang-21 lld-21 llvm-21-dev
         pushd src
         sudo apt-get -qy build-dep .
+    - name: Install LLVM 21
+      shell: bash
+      env:
+        ARCH: ${{ matrix.arch == 'aarch64' && 'arm64' || 'amd64' }}
+        POOL: https://apt.llvm.org/jammy/pool/main/l/llvm-toolchain-21/
+      run: |
+        set -euxo pipefail
+
+        # Install the newest version that actually exists in the pool.
+        # We derive the exact version string from one known package filename.
+        HTML="$(curl -fsSL --compressed "$POOL")"
+        VER="$(grep -oE 'libllvm21_[0-9][^"]+_${{ env.ARCH }}\.deb' <<<"$HTML" | head -n1 \
+          | sed -E 's/^libllvm21_//; s/_${{ env.ARCH }}\.deb$//')"
+        echo "Using pool version: $VER"
+
+        mkdir -p /tmp/llvm21 && cd /tmp/llvm21
+
+        fetch() {
+          local pkg="$1"
+          local file="${pkg}_${VER}_${{ env.ARCH }}.deb"
+          curl -fsSLO "${POOL}${file}"
+        }
+
+        for pkg in \
+          clang-21 clang-tools-21 lld-21 \
+          libllvm21 libclang-cpp21 libclang-common-21-dev libclang1-21 libclang-rt-21-dev \
+          llvm-21 llvm-21-dev llvm-21-linker-tools llvm-21-runtime llvm-21-tools
+        do
+          fetch "$pkg"
+        done
+
+        # Install the downloaded LLVM debs. apt will resolve any non-LLVM deps from Ubuntu repos.
+        sudo apt-get install -y --no-install-recommends ./*.deb
     - name: Setup ccache
       run: |
         echo "PATH=/usr/lib/ccache:$PATH" >> "$GITHUB_ENV"
