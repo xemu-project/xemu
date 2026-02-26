@@ -1,0 +1,233 @@
+# -*- Mode: Python -*-
+# vim: filetype=python
+#
+# Positive QAPI doc comment tests
+
+{ 'pragma': {
+    'doc-required': true,
+    'documentation-exceptions': [ 'Enum', 'Variant1', 'Alternate', 'cmd' ] } }
+
+##
+# *******
+# Section
+# *******
+##
+
+##
+# Just text, no heading.
+##
+
+##
+# Subsection
+# ==========
+#
+# *with emphasis*
+# @var {in braces}
+#
+# * List item one
+# * Two, multiple
+#   lines
+#
+# * Three
+#   Still in list
+#
+# Not in list
+#
+# - Second list
+#   Note: still in list
+#
+# Note: not in list
+#
+# 1. Third list
+#    is numbered
+#
+# 2. another item
+#
+# Returns: the King
+# Since: the first age
+# Notes:
+#
+# 1. Lorem ipsum dolor sit amet
+#
+# 2. Ut enim ad minim veniam
+#
+# Duis aute irure dolor
+#
+# Example:
+#
+# -> in
+# <- out
+# Examples:
+# - *verbatim*
+# - {braces}
+##
+
+# Not a doc comment
+
+##
+# @Enum:
+#
+# @one: The _one_ {and only}, description on the same line
+#
+# Features:
+# @enum-feat: Also _one_ {and only}
+# @enum-member-feat: a member feature
+#
+# @two is undocumented
+##
+{ 'enum': 'Enum',
+  'data': [ { 'name': 'one', 'if': 'IFONE',
+              'features': [ 'enum-member-feat' ] },
+            'two' ],
+  'features': [ 'enum-feat' ],
+  'if': 'IFCOND' }
+
+##
+# @Base:
+#
+# @base1:
+#  description starts on a new line,
+#  minimally indented
+##
+{ 'struct': 'Base', 'data': { 'base1': 'Enum' },
+  'if': { 'all': ['IFALL1', 'IFALL2'] } }
+
+##
+# @Variant1:
+#
+# A paragraph
+#
+# Another paragraph
+#
+# @var1 is undocumented
+#
+# Features:
+# @variant1-feat: a feature
+# @member-feat: a member feature
+##
+{ 'struct': 'Variant1',
+  'features': [ 'variant1-feat' ],
+  'data': { 'var1': { 'type': 'str',
+                      'features': [ 'member-feat' ],
+                      'if': 'IFSTR' } } }
+
+##
+# @Variant2:
+#
+##
+{ 'struct': 'Variant2', 'data': {} }
+
+##
+# @Object:
+#
+# Features:
+# @union-feat1: a feature
+##
+{ 'union': 'Object',
+  'features': [ 'union-feat1' ],
+  'base': 'Base',
+  'discriminator': 'base1',
+  'data': { 'one': 'Variant1',
+            'two': { 'type': 'Variant2',
+                     'if': { 'any': ['IFONE', 'IFTWO'] } } } }
+
+##
+# @Alternate:
+#
+# @i: description starts on the same line
+#     remainder indented the same
+#     @b is undocumented
+#
+# Features:
+# @alt-feat: a feature
+##
+{ 'alternate': 'Alternate',
+  'features': [ 'alt-feat' ],
+  'data': { 'i': 'int', 'b': 'bool' },
+  'if': { 'not': { 'any': [ 'IFONE', 'IFTWO' ] } } }
+
+##
+# Another subsection
+# ==================
+##
+
+##
+# @cmd:
+#
+# @arg1:
+#     description starts on a new line,
+#     indented
+#
+# @arg2: description starts on the same line
+#     remainder indented differently
+#
+# Features:
+# @cmd-feat1: a feature
+# @cmd-feat2: another feature
+#
+# .. note:: @arg3 is undocumented
+#
+# Returns: @Object
+#
+# Errors: some
+#
+# TODO: frobnicate
+#
+# .. admonition:: Notes
+#
+#  - Lorem ipsum dolor sit amet
+#  - Ut enim ad minim veniam
+#
+#  Duis aute irure dolor
+#
+# .. qmp-example::
+#    :title: Ideal fast-food burger situation
+#
+#    -> "in"
+#    <- "out"
+#
+# Examples::
+#
+#  - Not a QMP code block
+#  - Merely a preformatted code block literal
+#  It isn't even an rST list.
+#  - *verbatim*
+#  - {braces}
+#
+# Note::
+#     Ceci n'est pas une note
+#
+# Since: 2.10
+##
+{ 'command': 'cmd',
+  'data': { 'arg1': 'int', '*arg2': 'str', 'arg3': 'bool' },
+  'returns': 'Object',
+  'features': [ 'cmd-feat1', 'cmd-feat2' ] }
+
+##
+# @cmd-boxed:
+# If you're bored enough to read this, go see a video of boxed cats
+#
+# Features:
+# @cmd-feat1: a feature
+# @cmd-feat2: another feature
+#
+# .. qmp-example::
+#
+#    -> "this example"
+#
+#    <- ... has no title ...
+##
+{ 'command': 'cmd-boxed', 'boxed': true,
+  'data': 'Object',
+  'features': [ 'cmd-feat1', 'cmd-feat2' ] }
+
+##
+# @EVT_BOXED:
+#
+# Features:
+# @feat3: a feature
+##
+{ 'event': 'EVT_BOXED',  'boxed': true,
+  'features': [ 'feat3' ],
+  'data': 'Object' }

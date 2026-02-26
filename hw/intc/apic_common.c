@@ -1,0 +1,503 @@
+/*
+ *  APIC support - common bits of emulated and KVM kernel model
+ *
+ *  Copyright (c) 2004-2005 Fabrice Bellard
+ *  Copyright (c) 2011      Jan Kiszka, Siemens AG
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, see <http://www.gnu.org/licenses/>
+ */
+
+#include "qemu/osdep.h"
+#include "qemu/error-report.h"
+#include "qemu/module.h"
+#include "qapi/error.h"
+#include "qapi/visitor.h"
+#include "hw/i386/apic.h"
+#include "hw/i386/apic_internal.h"
+#include "hw/intc/kvm_irqcount.h"
+#include "trace.h"
+#include "hw/boards.h"
+#include "system/kvm.h"
+#include "hw/qdev-properties.h"
+#include "hw/sysbus.h"
+#include "migration/vmstate.h"
+
+bool apic_report_tpr_access;
+
+int cpu_set_apic_base(APICCommonState *s, uint64_t val)
+{
+    trace_cpu_set_apic_base(val);
+
+    if (s) {
+        APICCommonClass *info = APIC_COMMON_GET_CLASS(s);
+        /* Reset possibly modified xAPIC ID */
+        s->id = s->initial_apic_id;
+        return info->set_base(s, val);
+    }
+
+    return 0;
+}
+
+uint64_t cpu_get_apic_base(APICCommonState *s)
+{
+    if (s) {
+        trace_cpu_get_apic_base((uint64_t)s->apicbase);
+        return s->apicbase;
+    } else {
+        trace_cpu_get_apic_base(MSR_IA32_APICBASE_BSP);
+        return MSR_IA32_APICBASE_BSP;
+    }
+}
+
+bool cpu_is_apic_enabled(APICCommonState *s)
+{
+    if (!s) {
+        return false;
+    }
+
+    return s->apicbase & MSR_IA32_APICBASE_ENABLE;
+}
+
+void cpu_set_apic_tpr(APICCommonState *s, uint8_t val)
+{
+    APICCommonClass *info;
+
+    if (!s) {
+        return;
+    }
+
+    info = APIC_COMMON_GET_CLASS(s);
+
+    info->set_tpr(s, val);
+}
+
+uint8_t cpu_get_apic_tpr(APICCommonState *s)
+{
+    APICCommonClass *info;
+
+    if (!s) {
+        return 0;
+    }
+
+    info = APIC_COMMON_GET_CLASS(s);
+
+    return info->get_tpr(s);
+}
+
+void apic_enable_tpr_access_reporting(APICCommonState *s, bool enable)
+{
+    APICCommonClass *info = APIC_COMMON_GET_CLASS(s);
+
+    apic_report_tpr_access = enable;
+    if (info->enable_tpr_reporting) {
+        info->enable_tpr_reporting(s, enable);
+    }
+}
+
+void apic_enable_vapic(APICCommonState *s, hwaddr paddr)
+{
+    APICCommonClass *info = APIC_COMMON_GET_CLASS(s);
+
+    s->vapic_paddr = paddr;
+    info->vapic_base_update(s);
+}
+
+void apic_handle_tpr_access_report(APICCommonState *s, target_ulong ip,
+                                   TPRAccess access)
+{
+    vapic_report_tpr_access(s->vapic, CPU(s->cpu), ip, access);
+}
+
+void apic_deliver_nmi(APICCommonState *s)
+{
+    APICCommonClass *info = APIC_COMMON_GET_CLASS(s);
+
+    info->external_nmi(s);
+}
+
+bool apic_next_timer(APICCommonState *s, int64_t current_time)
+{
+    int64_t d;
+
+    /* We need to store the timer state separately to support APIC
+     * implementations that maintain a non-QEMU timer, e.g. inside the
+     * host kernel. This open-coded state allows us to migrate between
+     * both models. */
+    s->timer_expiry = -1;
+
+    if (s->lvt[APIC_LVT_TIMER] & APIC_LVT_MASKED) {
+        return false;
+    }
+
+    d = (current_time - s->initial_count_load_time) >> s->count_shift;
+
+    if (s->lvt[APIC_LVT_TIMER] & APIC_LVT_TIMER_PERIODIC) {
+        if (!s->initial_count) {
+            return false;
+        }
+        d = ((d / ((uint64_t)s->initial_count + 1)) + 1) *
+            ((uint64_t)s->initial_count + 1);
+    } else {
+        if (d >= s->initial_count) {
+            return false;
+        }
+        d = (uint64_t)s->initial_count + 1;
+    }
+    s->next_time = s->initial_count_load_time + (d << s->count_shift);
+    s->timer_expiry = s->next_time;
+    return true;
+}
+
+uint32_t apic_get_current_count(APICCommonState *s)
+{
+    int64_t d;
+    uint32_t val;
+    d = (qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) - s->initial_count_load_time) >>
+        s->count_shift;
+    if (s->lvt[APIC_LVT_TIMER] & APIC_LVT_TIMER_PERIODIC) {
+        /* periodic */
+        val = s->initial_count - (d % ((uint64_t)s->initial_count + 1));
+    } else {
+        if (d >= s->initial_count) {
+            val = 0;
+        } else {
+            val = s->initial_count - d;
+        }
+    }
+    return val;
+}
+
+void apic_init_reset(APICCommonState *s)
+{
+    APICCommonClass *info;
+    int i;
+
+    if (!s) {
+        return;
+    }
+    s->tpr = 0;
+    s->spurious_vec = 0xff;
+    s->log_dest = 0;
+    s->dest_mode = 0xf;
+    memset(s->isr, 0, sizeof(s->isr));
+    memset(s->tmr, 0, sizeof(s->tmr));
+    memset(s->irr, 0, sizeof(s->irr));
+    for (i = 0; i < APIC_LVT_NB; i++) {
+        s->lvt[i] = APIC_LVT_MASKED;
+    }
+    s->esr = 0;
+    memset(s->icr, 0, sizeof(s->icr));
+    s->divide_conf = 0;
+    s->count_shift = 0;
+    s->initial_count = 0;
+    s->initial_count_load_time = 0;
+    s->next_time = 0;
+    s->wait_for_sipi = !cpu_is_bsp(s->cpu);
+
+    if (s->timer) {
+        timer_del(s->timer);
+    }
+    s->timer_expiry = -1;
+
+    info = APIC_COMMON_GET_CLASS(s);
+    if (info->reset) {
+        info->reset(s);
+    }
+}
+
+void apic_designate_bsp(APICCommonState *s, bool bsp)
+{
+    if (s == NULL) {
+        return;
+    }
+
+    if (bsp) {
+        s->apicbase |= MSR_IA32_APICBASE_BSP;
+    } else {
+        s->apicbase &= ~MSR_IA32_APICBASE_BSP;
+    }
+}
+
+static void apic_reset_common(DeviceState *dev)
+{
+    APICCommonState *s = APIC_COMMON(dev);
+    APICCommonClass *info = APIC_COMMON_GET_CLASS(s);
+    uint32_t bsp;
+
+    bsp = s->apicbase & MSR_IA32_APICBASE_BSP;
+    s->apicbase = APIC_DEFAULT_ADDRESS | bsp | MSR_IA32_APICBASE_ENABLE;
+    s->id = s->initial_apic_id;
+
+    kvm_reset_irq_delivered();
+
+    s->vapic_paddr = 0;
+    info->vapic_base_update(s);
+
+    apic_init_reset(s);
+
+#ifdef XBOX
+    /* XBOX
+     * The following code was removed in b8eb551 stating:
+     *
+     *     Due to old Seabios bug, QEMU reenable LINT0 after reset. This bug
+     *     is long gone and therefore this hack is no longer needed.  Since it
+     *     violates the specifications, it is removed.
+     *
+     * However, Xbox kernels will *not* unmask LINT0, causing PIC interrupt
+     * delivery failure. So bring this code back for Xbox compat.
+     */
+    if (bsp) {
+        /*
+         * LINT0 delivery mode on CPU #0 is set to ExtInt at initialization
+         * time typically by BIOS, so PIC interrupt can be delivered to the
+         * processor when local APIC is enabled.
+         */
+        s->lvt[APIC_LVT_LINT0] = 0x700;
+    }
+#endif
+}
+
+static const VMStateDescription vmstate_apic_common;
+
+static void apic_common_realize(DeviceState *dev, Error **errp)
+{
+    ERRP_GUARD();
+    APICCommonState *s = APIC_COMMON(dev);
+    APICCommonClass *info;
+    static DeviceState *vapic;
+    uint32_t instance_id = s->initial_apic_id;
+
+    /* Normally initial APIC ID should be no more than hundreds */
+    assert(instance_id != VMSTATE_INSTANCE_ID_ANY);
+
+    info = APIC_COMMON_GET_CLASS(s);
+    info->realize(dev, errp);
+    if (*errp) {
+        return;
+    }
+
+    /* Note: We need at least 1M to map the VAPIC option ROM */
+    if (!vapic && s->vapic_control & VAPIC_ENABLE_MASK &&
+            current_machine->ram_size >= 1024 * 1024) {
+        vapic = sysbus_create_simple("kvmvapic", -1, NULL);
+    }
+    s->vapic = vapic;
+    if (apic_report_tpr_access && info->enable_tpr_reporting) {
+        info->enable_tpr_reporting(s, true);
+    }
+
+    if (s->legacy_instance_id) {
+        instance_id = VMSTATE_INSTANCE_ID_ANY;
+    }
+    vmstate_register_with_alias_id(NULL, instance_id, &vmstate_apic_common,
+                                   s, -1, 0, NULL);
+
+    /* APIC LDR in x2APIC mode */
+    s->extended_log_dest = ((s->initial_apic_id >> 4) << 16) |
+                            (1 << (s->initial_apic_id & 0xf));
+}
+
+static void apic_common_unrealize(DeviceState *dev)
+{
+    APICCommonState *s = APIC_COMMON(dev);
+    APICCommonClass *info = APIC_COMMON_GET_CLASS(s);
+
+    vmstate_unregister(NULL, &vmstate_apic_common, s);
+    info->unrealize(dev);
+
+    if (apic_report_tpr_access && info->enable_tpr_reporting) {
+        info->enable_tpr_reporting(s, false);
+    }
+}
+
+static int apic_pre_load(void *opaque)
+{
+    APICCommonState *s = APIC_COMMON(opaque);
+
+    /* The default is !cpu_is_bsp(s->cpu), but the common value is 0
+     * so that's what apic_common_sipi_needed checks for.  Reset to
+     * the value that is assumed when the apic_sipi subsection is
+     * absent.
+     */
+    s->wait_for_sipi = 0;
+    return 0;
+}
+
+static int apic_dispatch_pre_save(void *opaque)
+{
+    APICCommonState *s = APIC_COMMON(opaque);
+    APICCommonClass *info = APIC_COMMON_GET_CLASS(s);
+
+    if (info->pre_save) {
+        info->pre_save(s);
+    }
+
+    return 0;
+}
+
+static int apic_dispatch_post_load(void *opaque, int version_id)
+{
+    APICCommonState *s = APIC_COMMON(opaque);
+    APICCommonClass *info = APIC_COMMON_GET_CLASS(s);
+
+    if (info->post_load) {
+        info->post_load(s);
+    }
+    return 0;
+}
+
+static bool apic_common_sipi_needed(void *opaque)
+{
+    APICCommonState *s = APIC_COMMON(opaque);
+    return s->wait_for_sipi != 0;
+}
+
+static const VMStateDescription vmstate_apic_common_sipi = {
+    .name = "apic_sipi",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = apic_common_sipi_needed,
+    .fields = (const VMStateField[]) {
+        VMSTATE_INT32(sipi_vector, APICCommonState),
+        VMSTATE_INT32(wait_for_sipi, APICCommonState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_apic_common = {
+    .name = "apic",
+    .version_id = 3,
+    .minimum_version_id = 3,
+    .pre_load = apic_pre_load,
+    .pre_save = apic_dispatch_pre_save,
+    .post_load = apic_dispatch_post_load,
+    .priority = MIG_PRI_APIC,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32(apicbase, APICCommonState),
+        VMSTATE_UINT8(id, APICCommonState),
+        VMSTATE_UINT8(arb_id, APICCommonState),
+        VMSTATE_UINT8(tpr, APICCommonState),
+        VMSTATE_UINT32(spurious_vec, APICCommonState),
+        VMSTATE_UINT8(log_dest, APICCommonState),
+        VMSTATE_UINT8(dest_mode, APICCommonState),
+        VMSTATE_UINT32_ARRAY(isr, APICCommonState, 8),
+        VMSTATE_UINT32_ARRAY(tmr, APICCommonState, 8),
+        VMSTATE_UINT32_ARRAY(irr, APICCommonState, 8),
+        VMSTATE_UINT32_ARRAY(lvt, APICCommonState, APIC_LVT_NB),
+        VMSTATE_UINT32(esr, APICCommonState),
+        VMSTATE_UINT32_ARRAY(icr, APICCommonState, 2),
+        VMSTATE_UINT32(divide_conf, APICCommonState),
+        VMSTATE_INT32(count_shift, APICCommonState),
+        VMSTATE_UINT32(initial_count, APICCommonState),
+        VMSTATE_INT64(initial_count_load_time, APICCommonState),
+        VMSTATE_INT64(next_time, APICCommonState),
+        VMSTATE_INT64(timer_expiry,
+                      APICCommonState), /* open-coded timer state */
+        VMSTATE_END_OF_LIST()
+    },
+    .subsections = (const VMStateDescription * const []) {
+        &vmstate_apic_common_sipi,
+        NULL
+    }
+};
+
+static const Property apic_properties_common[] = {
+    DEFINE_PROP_UINT8("version", APICCommonState, version, 0x14),
+    DEFINE_PROP_BIT("vapic", APICCommonState, vapic_control, VAPIC_ENABLE_BIT,
+                    true),
+    DEFINE_PROP_BOOL("legacy-instance-id", APICCommonState, legacy_instance_id,
+                     false),
+};
+
+static void apic_common_get_id(Object *obj, Visitor *v, const char *name,
+                               void *opaque, Error **errp)
+{
+    APICCommonState *s = APIC_COMMON(obj);
+    uint32_t value;
+
+    value = s->apicbase & MSR_IA32_APICBASE_EXTD ? s->initial_apic_id : s->id;
+    visit_type_uint32(v, name, &value, errp);
+}
+
+static void apic_common_set_id(Object *obj, Visitor *v, const char *name,
+                               void *opaque, Error **errp)
+{
+    APICCommonState *s = APIC_COMMON(obj);
+    DeviceState *dev = DEVICE(obj);
+    uint32_t value;
+    Error *local_err = NULL;
+
+    if (dev->realized) {
+        qdev_prop_set_after_realize(dev, name, errp);
+        return;
+    }
+
+    if (!visit_type_uint32(v, name, &value, errp)) {
+        return;
+    }
+
+    if (value >= 255 && !cpu_has_x2apic_feature(&s->cpu->env)) {
+        error_setg(&local_err,
+                   "APIC ID %d requires x2APIC feature in CPU",
+                   value);
+        error_append_hint(&local_err, "Try x2apic=on in -cpu.\n");
+        error_propagate(errp, local_err);
+        return;
+    }
+
+    s->initial_apic_id = value;
+    s->id = (uint8_t)value;
+}
+
+static void apic_common_initfn(Object *obj)
+{
+    APICCommonState *s = APIC_COMMON(obj);
+
+    s->id = s->initial_apic_id = -1;
+    object_property_add(obj, "id", "uint32",
+                        apic_common_get_id,
+                        apic_common_set_id, NULL, NULL);
+}
+
+static void apic_common_class_init(ObjectClass *klass, const void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+
+    device_class_set_legacy_reset(dc, apic_reset_common);
+    device_class_set_props(dc, apic_properties_common);
+    dc->realize = apic_common_realize;
+    dc->unrealize = apic_common_unrealize;
+    /*
+     * Reason: APIC and CPU need to be wired up by
+     * x86_cpu_apic_create()
+     */
+    dc->user_creatable = false;
+}
+
+static const TypeInfo apic_common_type = {
+    .name = TYPE_APIC_COMMON,
+    .parent = TYPE_DEVICE,
+    .instance_size = sizeof(APICCommonState),
+    .instance_init = apic_common_initfn,
+    .class_size = sizeof(APICCommonClass),
+    .class_init = apic_common_class_init,
+    .abstract = true,
+};
+
+static void apic_common_register_types(void)
+{
+    type_register_static(&apic_common_type);
+}
+
+type_init(apic_common_register_types)

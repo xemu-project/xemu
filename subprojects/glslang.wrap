@@ -1,0 +1,7 @@
+[wrap-git]
+url = https://github.com/KhronosGroup/glslang
+revision = f0bd0257c308b9a26562c1a30c4748a0219cc951
+depth = 1
+
+[update]
+tag_regex = ^(vulkan-sdk-)?[\d\.]+$

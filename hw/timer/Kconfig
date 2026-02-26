@@ -1,0 +1,67 @@
+config ARM_TIMER
+    bool
+    select PTIMER
+
+config ARM_MPTIMER
+    bool
+    select PTIMER
+
+config A9_GTIMER
+    bool
+
+config HPET
+    bool
+    default y if PC
+    # The HPET has both a Rust and a C implementation
+    select HPET_C if !HAVE_RUST
+    select X_HPET_RUST if HAVE_RUST
+
+config HPET_C
+    bool
+
+config I8254
+    bool
+    depends on ISA_BUS
+
+config ALLWINNER_A10_PIT
+    bool
+    select PTIMER
+
+config PXA2XX_TIMER
+    bool
+
+config SIFIVE_PWM
+    bool
+
+config STM32F2XX_TIMER
+    bool
+
+config CMSDK_APB_TIMER
+    bool
+    select PTIMER
+
+config CMSDK_APB_DUALTIMER
+    bool
+    select PTIMER
+
+config SH_TIMER
+    bool
+    select PTIMER
+
+config RENESAS_TMR
+    bool
+
+config RENESAS_CMT
+    bool
+
+config SSE_COUNTER
+    bool
+
+config SSE_TIMER
+    bool
+
+config STELLARIS_GPTM
+    bool
+
+config AVR_TIMER16
+    bool

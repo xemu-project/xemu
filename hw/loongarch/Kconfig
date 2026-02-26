@@ -1,0 +1,27 @@
+config LOONGARCH_VIRT
+    bool
+    default y
+    depends on LOONGARCH64 && FDT
+    select DEVICE_TREE
+    select PCI
+    select PCI_EXPRESS_GENERIC_BRIDGE
+    imply PCI_DEVICES
+    imply NVDIMM
+    imply TPM_TIS_SYSBUS
+    select SERIAL_MM
+    select VIRTIO_PCI
+    select PLATFORM_BUS
+    select LOONGARCH_IPI
+    select LOONGARCH_PCH_PIC
+    select LOONGARCH_PCH_MSI
+    select LOONGARCH_EXTIOI
+    select LOONGARCH_DINTC
+    select LS7A_RTC
+    select SMBIOS
+    select ACPI_CPU_HOTPLUG
+    select ACPI_PCI
+    select ACPI_HW_REDUCED
+    select FW_CFG_DMA
+    select DIMM
+    select PFLASH_CFI01
+    select ACPI_HMAT
