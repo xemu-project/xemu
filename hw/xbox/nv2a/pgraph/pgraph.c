@@ -1603,7 +1603,7 @@ DEF_METHOD(NV097, SET_CULL_FACE)
     case NV097_SET_CULL_FACE_V_FRONT_AND_BACK:
         face = NV_PGRAPH_SETUPRASTER_CULLCTRL_FRONT_AND_BACK; break;
     default:
-        assert(!"Failed to set cull face - Invalid cull face parameter");
+        assert(!"Invalid cull face parameter");
         break;
     }
     PG_SET_MASK(NV_PGRAPH_SETUPRASTER, NV_PGRAPH_SETUPRASTER_CULLCTRL, face);
