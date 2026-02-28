@@ -369,7 +369,7 @@ LIBS = [
         pkg_win="sdl3",
         pkg_mac="sdl3",
         pkg_ubuntu="libsdl3-dev",
-        submodule=Submodule("subprojects/sdl3.wrap"),
+        version="3.4.2",
     ),
     Lib(
         "glib-2.0",

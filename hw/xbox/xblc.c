@@ -2,6 +2,7 @@
  * QEMU USB Xbox Live Communicator (XBLC) Device
  *
  * Copyright (c) 2022 Ryan Wendland
+ * Copyright (c) 2025 Fred Hallock
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,21 +19,17 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/audio/model.h"
-#include "hw/qdev-properties.h"
+#include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "migration/vmstate.h"
-#include "system/system.h"
-#include "hw/hw.h"
-#include "ui/console.h"
 #include "hw/usb.h"
 #include "hw/usb/desc.h"
-#include "ui/xemu-input.h"
-#include "qemu/audio.h"
-#include "qemu/fifo8.h"
 
-//#define DEBUG_XBLC
+#include <SDL3/SDL.h>
+
+/* #define DEBUG_XBLC */
 #ifdef DEBUG_XBLC
-#define DPRINTF printf
+#define DPRINTF(fmt, ...) printf("[XBLC] " fmt "\n", ##__VA_ARGS__)
 #else
 #define DPRINTF(...)
 #endif
@@ -40,44 +37,34 @@
 #define TYPE_USB_XBLC "usb-xblc"
 #define USB_XBLC(obj) OBJECT_CHECK(USBXBLCState, (obj), TYPE_USB_XBLC)
 
-#define XBLC_STR "Microsoft Xbox Live Communicator"
-#define XBLC_INTERFACE_CLASS    0x78
-#define XBLC_INTERFACE_SUBCLASS 0x00
-#define XBLC_EP_OUT             0x04
-#define XBLC_EP_IN              0x05
+#define XBLC_VENDOR_ID 0x045e
+#define XBLC_PRODUCT_ID 0x0283
+#define XBLC_DEVICE_VERSION 0x0110
 
-#define XBLC_SET_SAMPLE_RATE    0x00
-#define XBLC_SET_AGC            0x01
+#define XBLC_STR "Microsoft Xbox Live Communicator"
+#define XBLC_INTERFACE_CLASS 0x78
+#define XBLC_INTERFACE_SUBCLASS 0x00
+#define XBLC_EP_OUT 0x04
+#define XBLC_EP_IN 0x05
+
+#define XBLC_SET_SAMPLE_RATE 0x00
+#define XBLC_SET_AGC 0x01
 
 #define XBLC_MAX_PACKET 48
-#define XBLC_FIFO_SIZE (XBLC_MAX_PACKET * 100) //~100 ms worth of audio at 16bit 24kHz
+#define XBLC_QUEUE_SIZE_MS 100 /* 100 ms */
+#define XBLC_BYTES_PER_SAMPLE 2 /* 16-bit */
 
-static const uint8_t silence[256] = {0};
-
-static const uint16_t xblc_sample_rates[5] = {
-    8000, 11025, 16000, 22050, 24000
-};
+/* According to Ryzee119, the XBLC appears to default to 16KHz
+ * https://github.com/Ryzee119/hawk/blob/5ab6f63b280425edd9ee121f5b5520dd8e891990/src/usbd/xblc.c#L143
+ */
+#define XBLC_DEFAULT_SAMPLE_RATE 16000
 
 typedef struct USBXBLCState {
     USBDevice dev;
-    uint8_t   device_index;
-    uint8_t   auto_gain_control;
-    uint16_t  sample_rate;
+    uint16_t sample_rate;
 
-    AudioBackend *audio_be;
-    struct audsettings as;
-
-    struct {
-        SWVoiceOut* voice;
-        uint8_t packet[XBLC_MAX_PACKET];
-        Fifo8 fifo;
-    } out;
-
-    struct {
-        SWVoiceIn *voice;
-        uint8_t packet[XBLC_MAX_PACKET];
-        Fifo8 fifo;
-    } in;
+    SDL_AudioStream *in;
+    SDL_AudioStream *out;
 } USBXBLCState;
 
 enum {
@@ -88,318 +75,331 @@ enum {
 
 static const USBDescStrings desc_strings = {
     [STR_MANUFACTURER] = "xemu",
-    [STR_PRODUCT]      = XBLC_STR,
+    [STR_PRODUCT] = XBLC_STR,
     [STR_SERIALNUMBER] = "1",
 };
 
-static const USBDescIface desc_iface[]= {
+static const USBDescIface desc_iface[] = {
     {
-        .bInterfaceNumber              = 0,
-        .bNumEndpoints                 = 1,
-        .bInterfaceClass               = XBLC_INTERFACE_CLASS,
-        .bInterfaceSubClass            = XBLC_INTERFACE_SUBCLASS,
-        .bInterfaceProtocol            = 0x00,
-        .eps = (USBDescEndpoint[]) {
-            {
-                .bEndpointAddress      = USB_DIR_OUT | XBLC_EP_OUT,
-                .bmAttributes          = USB_ENDPOINT_XFER_ISOC,
-                .wMaxPacketSize        = XBLC_MAX_PACKET,
-                .is_audio              = 1,
-                .bInterval             = 1,
-                .bRefresh              = 0,
-                .bSynchAddress         = 0,
-            }
-        },
+        .bInterfaceNumber = 0,
+        .bNumEndpoints = 1,
+        .bInterfaceClass = XBLC_INTERFACE_CLASS,
+        .bInterfaceSubClass = XBLC_INTERFACE_SUBCLASS,
+        .bInterfaceProtocol = 0x00,
+        .eps = (USBDescEndpoint[]){ {
+            .bEndpointAddress = USB_DIR_OUT | XBLC_EP_OUT,
+            .bmAttributes = USB_ENDPOINT_XFER_ISOC,
+            .wMaxPacketSize = XBLC_MAX_PACKET,
+            .is_audio = 1,
+            .bInterval = 1,
+            .bRefresh = 0,
+            .bSynchAddress = 0,
+        } },
     },
     {
-        .bInterfaceNumber              = 1,
-        .bNumEndpoints                 = 1,
-        .bInterfaceClass               = XBLC_INTERFACE_CLASS,
-        .bInterfaceSubClass            = XBLC_INTERFACE_SUBCLASS,
-        .bInterfaceProtocol            = 0x00,
-        .eps = (USBDescEndpoint[]) {
-            {
-                .bEndpointAddress      = USB_DIR_IN | XBLC_EP_IN,
-                .bmAttributes          = USB_ENDPOINT_XFER_ISOC,
-                .wMaxPacketSize        = XBLC_MAX_PACKET,
-                .is_audio              = 1,
-                .bInterval             = 1,
-                .bRefresh              = 0,
-                .bSynchAddress         = 0,
-            }
-        },
+        .bInterfaceNumber = 1,
+        .bNumEndpoints = 1,
+        .bInterfaceClass = XBLC_INTERFACE_CLASS,
+        .bInterfaceSubClass = XBLC_INTERFACE_SUBCLASS,
+        .bInterfaceProtocol = 0x00,
+        .eps = (USBDescEndpoint[]){ {
+            .bEndpointAddress = USB_DIR_IN | XBLC_EP_IN,
+            .bmAttributes = USB_ENDPOINT_XFER_ISOC,
+            .wMaxPacketSize = XBLC_MAX_PACKET,
+            .is_audio = 1,
+            .bInterval = 1,
+            .bRefresh = 0,
+            .bSynchAddress = 0,
+        } },
     }
 };
 
 static const USBDescDevice desc_device = {
-    .bcdUSB                        = 0x0110,
-    .bMaxPacketSize0               = 8,
-    .bNumConfigurations            = 1,
-    .confs = (USBDescConfig[]) {
-        {
-            .bNumInterfaces        = 2,
-            .bConfigurationValue   = 1,
-            .bmAttributes          = USB_CFG_ATT_ONE,
-            .bMaxPower             = 100,
-            .nif = ARRAY_SIZE(desc_iface),
-            .ifs = desc_iface,
+    .bcdUSB = 0x0110,
+    .bMaxPacketSize0 = 8,
+    .bNumConfigurations = 1,
+    .confs =
+        (USBDescConfig[]){
+            {
+                .bNumInterfaces = 2,
+                .bConfigurationValue = 1,
+                .bmAttributes = USB_CFG_ATT_ONE,
+                .bMaxPower = 100,
+                .nif = ARRAY_SIZE(desc_iface),
+                .ifs = desc_iface,
+            },
         },
-    },
 };
 
 static const USBDesc desc_xblc = {
     .id = {
-        .idVendor          = 0x045e,
-        .idProduct         = 0x0283,
-        .bcdDevice         = 0x0110,
-        .iManufacturer     = STR_MANUFACTURER,
-        .iProduct          = STR_PRODUCT,
-        .iSerialNumber     = STR_SERIALNUMBER,
+        .idVendor = XBLC_VENDOR_ID,
+        .idProduct = XBLC_PRODUCT_ID,
+        .bcdDevice = XBLC_DEVICE_VERSION,
+        .iManufacturer = STR_MANUFACTURER,
+        .iProduct = STR_PRODUCT,
+        .iSerialNumber = STR_SERIALNUMBER,
     },
     .full = &desc_device,
-    .str  = desc_strings,
+    .str = desc_strings,
 };
 
-static void usb_xblc_handle_reset(USBDevice *dev)
+static int xblc_get_sample_rate_for_index(unsigned int index)
 {
-    USBXBLCState *s = (USBXBLCState *)dev;
-
-    DPRINTF("[XBLC] Reset\n");
-    fifo8_reset(&s->in.fifo);
-    fifo8_reset(&s->out.fifo);
+    static const uint16_t sample_rates[] = { 8000, 11025, 16000, 22050, 24000 };
+    return index < ARRAY_SIZE(sample_rates) ? sample_rates[index] : 0;
 }
 
-static void output_callback(void *opaque, int avail)
+static SDL_AudioSpec xblc_get_audio_spec(USBXBLCState *s)
 {
-    USBXBLCState *s = (USBXBLCState *)opaque;
-    const uint8_t *data;
-    uint32_t processed, max_len;
+    SDL_AudioSpec spec = { .channels = 1,
+                           .freq = s->sample_rate,
+                           .format = SDL_AUDIO_S16LE };
+    return spec;
+}
 
-    // Not enough data to send, wait a bit longer, fill with silence for now
-    if (fifo8_num_used(&s->out.fifo) < XBLC_MAX_PACKET) {
-        do {
-            processed = AUD_write(s->out.voice, (void *)silence, ARRAY_SIZE(silence));
-            avail -= processed;
-        } while (avail > 0 && processed >= XBLC_MAX_PACKET);
-        return;
+static void xblc_handle_reset(USBDevice *dev)
+{
+    USBXBLCState *s = USB_XBLC(dev);
+
+    DPRINTF("Reset");
+
+    if (s->in != NULL) {
+        SDL_ClearAudioStream(s->in);
     }
-
-    // Write speaker data into audio backend
-    while (avail > 0 && !fifo8_is_empty(&s->out.fifo)) {
-        max_len   = MIN(fifo8_num_used(&s->out.fifo), avail);
-        data      = fifo8_pop_bufptr(&s->out.fifo, max_len, &max_len);
-        processed = AUD_write(s->out.voice, (void *)data, max_len);
-        avail    -= processed;
-        if (processed < max_len) return;
+    if (s->out != NULL) {
+        SDL_ClearAudioStream(s->out);
     }
 }
 
-static void input_callback(void *opaque, int avail)
+static void xblc_audio_channel_update_format(USBXBLCState *s)
 {
-    USBXBLCState *s = (USBXBLCState *)opaque;
-    uint32_t processed, max_len;
+    SDL_AudioSpec spec = xblc_get_audio_spec(s);
 
-    // Get microphone data from audio backend
-    while (avail > 0 && !fifo8_is_full(&s->in.fifo)) {
-        max_len   = MIN(sizeof(s->in.packet), fifo8_num_free(&s->in.fifo));
-        processed = AUD_read(s->in.voice, s->in.packet, max_len);
-        avail    -= processed;
-        fifo8_push_all(&s->in.fifo, s->in.packet, processed);
-        if (processed < max_len) return;
+    if (s->in != NULL) {
+        SDL_SetAudioStreamFormat(s->in, &spec, &spec);
     }
-
-    // Flush excess/old data - this can happen if the user program stops the iso transfers after it
-    // has setup the xblc.
-    while (avail > 0)
-    {
-        processed = AUD_read(s->in.voice, s->in.packet, XBLC_MAX_PACKET);
-        avail -= processed;
-        if (processed == 0) break;
+    if (s->out != NULL) {
+        SDL_SetAudioStreamFormat(s->out, &spec, &spec);
     }
 }
 
-static void xblc_audio_stream_init(USBDevice *dev, uint16_t sample_rate)
+static void xblc_set_sample_rate(USBXBLCState *s, uint16_t sample_rate)
 {
-    USBXBLCState *s = (USBXBLCState *)dev;
-
-    AUD_set_active_out(s->out.voice, FALSE);
-    AUD_set_active_in(s->in.voice, FALSE);
-
-    fifo8_reset(&s->in.fifo);
-    fifo8_reset(&s->out.fifo);
-
-    s->as.freq = sample_rate;
-    s->as.nchannels = 1;
-    s->as.fmt = AUDIO_FORMAT_S16;
-    s->as.endianness = 0;
-
-    s->out.voice = AUD_open_out(s->audio_be, s->out.voice, TYPE_USB_XBLC "-speaker",
-                                s, output_callback, &s->as);
-
-    s->in.voice = AUD_open_in(s->audio_be, s->in.voice, TYPE_USB_XBLC "-microphone",
-                                s, input_callback, &s->as);
-
-    AUD_set_active_out(s->out.voice, TRUE);
-    AUD_set_active_in(s->in.voice, TRUE);
-    DPRINTF("[XBLC] Init audio streams at %d Hz\n", sample_rate);
+    s->sample_rate = sample_rate;
+    xblc_audio_channel_update_format(s);
 }
 
-static void usb_xblc_handle_control(USBDevice *dev, USBPacket *p,
-               int request, int value, int index, int length, uint8_t *data)
+static void xblc_handle_control(USBDevice *dev, USBPacket *p, int request,
+                                int value, int index, int length, uint8_t *data)
 {
-    USBXBLCState *s = (USBXBLCState *)dev;
+    USBXBLCState *s = USB_XBLC(dev);
 
-    if (usb_desc_handle_control(dev, p, request, value, index, length, data) >= 0) {
-        DPRINTF("[XBLC] USB Control request handled by usb_desc_handle_control\n");
+    if (usb_desc_handle_control(dev, p, request, value, index, length, data) >=
+        0) {
+        DPRINTF("USB Control request handled by usb_desc_handle_control");
         return;
     }
 
     switch (request) {
     case VendorInterfaceOutRequest | USB_REQ_SET_FEATURE:
-        if (index == XBLC_SET_SAMPLE_RATE)
-        {
-            uint8_t rate = value & 0xFF;
-            assert(rate < ARRAY_SIZE(xblc_sample_rates));
-            DPRINTF("[XBLC] Set Sample Rate to %04x\n", rate);
-            s->sample_rate = xblc_sample_rates[rate];
-            xblc_audio_stream_init(dev, s->sample_rate);
+        if (index == XBLC_SET_SAMPLE_RATE) {
+            int new_sample_rate = xblc_get_sample_rate_for_index(value & 0xFF);
+            if (new_sample_rate > 0) {
+                xblc_set_sample_rate(s, new_sample_rate);
+            } else {
+                DPRINTF("Invalid sample rate index %d", value & 0xFF);
+            }
+            break;
+        } else if (index == XBLC_SET_AGC) {
+            DPRINTF("Set Auto Gain Control to %d", value);
             break;
         }
-        else if (index == XBLC_SET_AGC)
-        {
-            DPRINTF("[XBLC] Set Auto Gain Control to %d\n", value);
-            s->auto_gain_control = (value) ? 1 : 0;
-            break;
-        }
-        // Fallthrough       
+        /* Fallthrough */
     default:
-        DPRINTF("[XBLC] USB stalled on request 0x%x value 0x%x\n", request, value);
+        DPRINTF("USB stalled on request 0x%x value 0x%x", request, value);
         p->status = USB_RET_STALL;
-        assert(!"USB xblc stalled on control handler");
         return;
     }
 }
 
-static void usb_xblc_handle_data(USBDevice *dev, USBPacket *p)
+static void xblc_handle_data(USBDevice *dev, USBPacket *p)
 {
-    USBXBLCState *s = (USBXBLCState *)dev;
-    uint32_t to_process, chunk_len;
+    USBXBLCState *s = USB_XBLC(dev);
 
     switch (p->pid) {
-    case USB_TOKEN_IN:
-        // Microphone Data - Get data from fifo and copy into usb packet
-        assert(p->ep->nr == XBLC_EP_IN);
-        to_process = MIN(fifo8_num_used(&s->in.fifo), p->iov.size);
-        chunk_len = 0;
+    case USB_TOKEN_IN: {
+        if (p->ep->nr != XBLC_EP_IN) {
+            DPRINTF("Unexpected USB endpoint for USB_TOKEN_IN");
+            break;
+        }
 
-        // fifo may not give us a contiguous packet, so may need multiple calls
-        while (to_process) {
-            const uint8_t *packet = fifo8_pop_bufptr(&s->in.fifo, to_process, &chunk_len);
-            usb_packet_copy(p, (void *)packet, chunk_len);
-            to_process -= chunk_len;
+        if (s->in == NULL) {
+            break;
+        }
+
+        int available = SDL_GetAudioStreamAvailable(s->in);
+        if (available < 0) {
+            DPRINTF("SDL_GetAudioStreamAvailable failed: %s", SDL_GetError());
+            break;
+        }
+
+        int max_queued_data =
+            s->sample_rate * XBLC_BYTES_PER_SAMPLE * XBLC_QUEUE_SIZE_MS / 1000;
+        if (available > max_queued_data) {
+            DPRINTF("Available data exceeded max threshold. Clearing stream.");
+            SDL_ClearAudioStream(s->in);
+            available = 0;
+        }
+
+        for (size_t remaining = MIN(p->iov.size, available); remaining > 0;) {
+            uint8_t packet[XBLC_MAX_PACKET];
+
+            int chunk_len = SDL_GetAudioStreamData(
+                s->in, packet, MIN(sizeof(packet), remaining));
+            if (chunk_len < 0) {
+                DPRINTF("SDL_GetAudioStreamData failed: %s", SDL_GetError());
+                break;
+            } else if (chunk_len > 0) {
+                usb_packet_copy(p, (void *)packet, chunk_len);
+                remaining -= chunk_len;
+            } else {
+                break;
+            }
         }
 
         break;
+    }
     case USB_TOKEN_OUT:
-        // Speaker data - get data from usb packet then push to fifo.
-        assert(p->ep->nr == XBLC_EP_OUT);
-        to_process = MIN(fifo8_num_free(&s->out.fifo), p->iov.size);
-        usb_packet_copy(p, s->out.packet, to_process);
-        fifo8_push_all(&s->out.fifo, s->out.packet, to_process);
-
+        if (p->ep->nr != XBLC_EP_OUT) {
+            DPRINTF("Unexpected USB endpoint for USB_TOKEN_OUT");
+            break;
+        }
+        if (s->out != NULL) {
+            if (!SDL_PutAudioStreamData(s->out, p->iov.iov->iov_base,
+                                        p->iov.size)) {
+                DPRINTF("SDL_PutAudioStreamData failed: %s", SDL_GetError());
+            }
+        }
         break;
     default:
-        //Iso cannot report STALL/HALT, but we shouldn't be here anyway.
-        assert(!"USB xblc failed to handle data");
+        DPRINTF("Unexpected USB token pid %d for XBLC device", p->pid);
         break;
     }
 
-    // Ensure we fill the entire packet regardless of if we have audio data so we don't
-    // cause an underrun error.
-    if (p->actual_length < p->iov.size)
-        usb_packet_copy(p, (void *)silence, p->iov.size - p->actual_length);
-
+    if (p->iov.size > p->actual_length) {
+        usb_packet_skip(p, p->iov.size - p->actual_length);
+    }
 }
 
-static void usb_xbox_communicator_unrealize(USBDevice *dev)
+static void xblc_audio_channel_init(USBXBLCState *s, bool capture, Error **errp)
+{
+    SDL_AudioStream **channel = capture ? &s->in : &s->out;
+    SDL_AudioDeviceID devid = capture ? SDL_AUDIO_DEVICE_DEFAULT_RECORDING :
+                                        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
+    SDL_AudioSpec spec = xblc_get_audio_spec(s);
+
+    if (*channel != NULL) {
+        SDL_DestroyAudioStream(*channel);
+    }
+    *channel = SDL_OpenAudioDeviceStream(devid, &spec, NULL, (void *)s);
+    if (*channel == NULL) {
+        error_setg(errp, "Failed to open audio device stream: %s",
+                   SDL_GetError());
+        return;
+    }
+
+    SDL_ResumeAudioStreamDevice(*channel);
+}
+
+static void xblc_realize(USBDevice *dev, Error **errp)
 {
     USBXBLCState *s = USB_XBLC(dev);
+    Error *err = NULL;
 
-    AUD_set_active_out(s->out.voice, false);
-    AUD_set_active_in(s->in.voice, false);
-
-    fifo8_destroy(&s->out.fifo);
-    fifo8_destroy(&s->in.fifo);
-
-    AUD_close_out(s->audio_be, s->out.voice);
-    AUD_close_in(s->audio_be, s->in.voice);
-}
-
-static void usb_xblc_class_init(ObjectClass *klass, const void *data)
-{
-    USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
-    uc->handle_reset   = usb_xblc_handle_reset;
-    uc->handle_control = usb_xblc_handle_control;
-    uc->handle_data    = usb_xblc_handle_data;
-    uc->handle_attach  = usb_desc_attach;
-}
-
-static void usb_xbox_communicator_realize(USBDevice *dev, Error **errp)
-{
-    USBXBLCState *s = USB_XBLC(dev);
     usb_desc_create_serial(dev);
     usb_desc_init(dev);
 
-    if (!AUD_backend_check(&s->audio_be, errp)) {
-        return;
+    s->in = NULL;
+    s->out = NULL;
+    s->sample_rate = XBLC_DEFAULT_SAMPLE_RATE;
+
+    xblc_audio_channel_init(s, true, &err);
+    if (err) {
+        warn_report_err(err);
+        err = NULL;
     }
 
-    fifo8_create(&s->in.fifo, XBLC_FIFO_SIZE);
-    fifo8_create(&s->out.fifo, XBLC_FIFO_SIZE);
+    xblc_audio_channel_init(s, false, &err);
+    if (err) {
+        warn_report_err(err);
+        err = NULL;
+    }
 }
 
-static const Property xblc_properties[] = {
-    DEFINE_PROP_UINT8("index", USBXBLCState, device_index, 0),
-};
+static void xblc_unrealize(USBDevice *dev)
+{
+    USBXBLCState *s = USB_XBLC(dev);
 
-static const VMStateDescription usb_xblc_vmstate = {
+    if (s->in) {
+        SDL_DestroyAudioStream(s->in);
+        s->in = NULL;
+    }
+
+    if (s->out) {
+        SDL_DestroyAudioStream(s->out);
+        s->out = NULL;
+    }
+}
+
+static int xblc_post_load(void *opaque, int version_id)
+{
+    USBXBLCState *s = USB_XBLC(opaque);
+
+    xblc_audio_channel_update_format(s);
+
+    return 0;
+}
+
+static const VMStateDescription xblc_vmstate = {
     .name = TYPE_USB_XBLC,
-    .version_id = 1,
+    .version_id = 2,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
-        VMSTATE_USB_DEVICE(dev, USBXBLCState),
-        // FIXME
-        VMSTATE_END_OF_LIST()
-    },
+    .post_load = xblc_post_load,
+    .fields = (VMStateField[]){ VMSTATE_USB_DEVICE(dev, USBXBLCState),
+                                VMSTATE_UINT16(sample_rate, USBXBLCState),
+                                VMSTATE_END_OF_LIST() },
 };
 
-static void usb_xbox_communicator_class_init(ObjectClass *klass, const void *data)
+static void xblc_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
-    uc->product_desc   = XBLC_STR;
-    uc->usb_desc       = &desc_xblc;
-    uc->realize        = usb_xbox_communicator_realize;
-    uc->unrealize      = usb_xbox_communicator_unrealize;
-    usb_xblc_class_init(klass, data);
+    uc->product_desc = XBLC_STR;
+    uc->usb_desc = &desc_xblc;
+    uc->realize = xblc_realize;
+    uc->unrealize = xblc_unrealize;
+    uc->handle_reset = xblc_handle_reset;
+    uc->handle_control = xblc_handle_control;
+    uc->handle_data = xblc_handle_data;
+    uc->handle_attach = usb_desc_attach;
+
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
-    dc->vmsd  = &usb_xblc_vmstate;
-    device_class_set_props(dc, xblc_properties);
-    dc->desc  = XBLC_STR;
+    dc->vmsd = &xblc_vmstate;
+    dc->desc = XBLC_STR;
 }
 
 static const TypeInfo info_xblc = {
-    .name          = TYPE_USB_XBLC,
-    .parent        = TYPE_USB_DEVICE,
+    .name = TYPE_USB_XBLC,
+    .parent = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBXBLCState),
-    .class_init    = usb_xbox_communicator_class_init,
+    .class_init = xblc_class_init,
 };
 
-static void usb_xblc_register_types(void)
+static void xblc_register_types(void)
 {
     type_register_static(&info_xblc);
-    audio_register_model("xblc", XBLC_STR, TYPE_USB_XBLC);
 }
 
-type_init(usb_xblc_register_types)
+type_init(xblc_register_types)
