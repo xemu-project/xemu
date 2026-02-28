@@ -1143,7 +1143,7 @@ DEF_METHOD(NV097, SET_FOG_GEN_MODE)
     case NV097_SET_FOG_GEN_MODE_V_FOG_X:
         mode = NV_PGRAPH_CSV0_D_FOGGENMODE_FOG_X; break;
     default:
-        assert(!"Failed to set fog gen mode - Invalid fog gen mode");
+        assert(!"Invalid fog gen mode");
         break;
     }
     PG_SET_MASK(NV_PGRAPH_CSV0_D, NV_PGRAPH_CSV0_D_FOGGENMODE, mode);
