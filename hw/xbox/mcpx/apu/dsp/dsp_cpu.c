@@ -1104,7 +1104,7 @@ static void dsp_stack_push(dsp_core_t* dsp, uint32_t curpc, uint32_t cursr, uint
         dsp56k_add_interrupt(dsp, DSP_INTER_STACK_ERROR);
         DPRINTF("Dsp: Stack Overflow\n");
         if (dsp->exception_debugging)
-            assert(!"Dsp stack overflow");
+            assert(!"dsp stack overflow");
     }
 
     dsp->registers[DSP_REG_SP] = (underflow | stack_error | stack) & BITMASK(6);
