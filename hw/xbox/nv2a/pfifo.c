@@ -232,7 +232,7 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock(&d->pfifo.lock);
     } else {
-        assert(!"Unrecognized pfifo puller method.");
+        assert(!"Unrecognized pfifo puller method");
     }
 
     if (num_proc > 0) {
