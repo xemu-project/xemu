@@ -664,7 +664,7 @@ static TextureBinding* generate_texture(const TextureShape s,
             case 2: gl_target = GL_TEXTURE_2D; break;
             case 3: gl_target = GL_TEXTURE_3D; break;
             default:
-                assert(!"Failed to generate texture. Invalid texture dimensionality.");
+                assert(!"Invalid texture dimensionality");
                 break;
             }
         }
