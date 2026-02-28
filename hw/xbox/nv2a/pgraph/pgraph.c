@@ -1121,7 +1121,7 @@ DEF_METHOD(NV097, SET_FOG_MODE)
     case NV097_SET_FOG_MODE_V_LINEAR_ABS:
         mode = NV_PGRAPH_CONTROL_3_FOG_MODE_LINEAR_ABS; break;
     default:
-        assert(!"Failed to set pgraph fog mode - Invalid or unimplemented pgraph fog mode");
+        assert(!"Invalid or unimplemented fog mode");
         break;
     }
     PG_SET_MASK(NV_PGRAPH_CONTROL_3, NV_PGRAPH_CONTROL_3_FOG_MODE,
