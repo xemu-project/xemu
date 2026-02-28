@@ -100,7 +100,7 @@ bool pgraph_glsl_need_geom(const GeomState *state)
         return true;
     case PRIM_TYPE_POLYGON:
         if (polygon_mode == POLY_MODE_POINT) {
-            assert(!"POLY_MODE_POINT not supported.");
+            assert(!"POLY_MODE_POINT not supported");
             return false;
         }
         return true;
