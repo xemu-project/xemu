@@ -227,7 +227,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
     default:
         fprintf(stderr, "Unknown zeta surface format: 0x%x\n",
                 pg->surface_shape.zeta_format);
-        assert(!"Unknown zeta surface format.");
+        assert(!"Unknown zeta surface format");
         break;
     }
 }
