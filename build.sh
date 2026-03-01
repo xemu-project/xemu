@@ -95,6 +95,7 @@ debug_opts=''
 build_cflags=''
 default_job_count='12'
 sys_ldflags=''
+zen2_opts=''
 
 get_job_count () {
 	if command -v 'nproc' >/dev/null
@@ -143,6 +144,10 @@ do
         ;;
     '--debug')
         debug="y"
+        shift
+        ;;
+    '--zen2')
+        zen2_opts="y"
         shift
         ;;
     '-p'*)
@@ -198,6 +203,13 @@ case "$platform" in # Adjust compilation options based on platform
         sys_cflags='-Wno-error=redundant-decls'
         opts="$opts --disable-werror"
         postbuild='package_linux'
+        if test ! -z "$zen2_opts"; then
+            echo 'Applying Zen 2 (Steam Deck LCD) CPU optimizations...'
+            zen2_cflags='-march=znver2 -mtune=znver2 -O3 -pipe -fomit-frame-pointer'
+            sys_cflags="$sys_cflags $zen2_cflags"
+            export CXXFLAGS="${CXXFLAGS} ${zen2_cflags}"
+            sys_ldflags="$sys_ldflags -Wl,-O1"
+        fi
         ;;
     Darwin)
         echo "Compiling for MacOS for $target_arch..."
@@ -264,7 +276,7 @@ set -x # Print commands from now on
 
 "${configure}" \
     --extra-cflags="-DXBOX=1 ${build_cflags} ${sys_cflags} ${CFLAGS}" \
-    --extra-ldflags="${sys_ldflags}" \
+    --extra-ldflags="${sys_ldflags} ${LDFLAGS}" \
     --target-list=i386-softmmu \
     ${opts} \
     "$@"
