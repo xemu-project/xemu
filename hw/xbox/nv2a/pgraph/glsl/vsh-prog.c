@@ -331,7 +331,7 @@ static MString *decode_opcode_input(const uint32_t *shader_token,
         break;
     default:
         fprintf(stderr, "Unknown vs param: 0x%x\n", param);
-        assert(false);
+        assert(!"Unknown vs param");
         break;
     }
     mstring_append(ret_str, tmp);

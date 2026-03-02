@@ -34,7 +34,7 @@ uint32_t pgraph_rdi_read(PGRAPHState *pg, unsigned int select,
     default:
         fprintf(stderr, "nv2a: unknown rdi read select 0x%x address 0x%x\n",
                 select, address);
-        assert(false);
+        assert(!"Unknown rdi read select");
         break;
     }
     return r;
@@ -46,7 +46,7 @@ void pgraph_rdi_write(PGRAPHState *pg, unsigned int select,
     switch(select) {
     case RDI_INDEX_VTX_CONSTANTS0:
     case RDI_INDEX_VTX_CONSTANTS1:
-        assert(false); /* Untested */
+        assert(!"Untested select: RDI_INDEX_VTX_CONSTANTS1"); /* Untested */
         assert((address / 4) < NV2A_VERTEXSHADER_CONSTANTS);
         pg->vsh_constants_dirty[address / 4] |=
             (val != pg->vsh_constants[address / 4][3 - address % 4]);

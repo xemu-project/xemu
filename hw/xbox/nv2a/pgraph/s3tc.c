@@ -197,7 +197,7 @@ uint8_t *s3tc_decompress_3d(enum S3TC_DECOMPRESS_FORMAT color_format,
                         decompress_dxt5_block(data + 16 * sub_block_index, converted_data,
                                               i, j, width, height, z_pos_factor);
                     } else {
-                        assert(false);
+                        assert(!"Invalid S3TC_DECOMPRESS_FORMAT");
                     }
                     sub_block_index++;
                 }
@@ -231,7 +231,7 @@ uint8_t *s3tc_decompress_2d(enum S3TC_DECOMPRESS_FORMAT color_format,
                 decompress_dxt5_block(data + 16 * block_index,
                                       converted_data, i, j, width, height, 0);
             } else {
-                assert(false);
+                assert(!"Invalid S3TC_DECOMPRESS_FORMAT");
             }
         }
     }

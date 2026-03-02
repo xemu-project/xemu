@@ -232,7 +232,7 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock(&d->pfifo.lock);
     } else {
-        assert(false);
+        assert(!"Unrecognized pfifo puller method");
     }
 
     if (num_proc > 0) {
@@ -296,7 +296,7 @@ static void pfifo_run_pusher(NV2AState *d)
         uint32_t dma_put_v = *dma_put;
         if (dma_get_v == dma_put_v) break;
         if (dma_get_v >= dma_len) {
-            assert(false);
+            assert(!"Dma value is out of range in PFIFO pusher");
             SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
                      NV_PFIFO_CACHE1_DMA_STATE_ERROR_PROTECTION);
             break;
@@ -423,7 +423,7 @@ static void pfifo_run_pusher(NV2AState *d)
                 SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
                          NV_PFIFO_CACHE1_DMA_STATE_ERROR_RESERVED_CMD);
                 // break;
-                assert(false);
+                assert(!"Reserved pb command - invalid GPU command. Check logs for more info");
             }
         }
 
@@ -440,7 +440,7 @@ static void pfifo_run_pusher(NV2AState *d)
     uint32_t error = GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR);
     if (error) {
         NV2A_DPRINTF("pb error: %d\n", error);
-        assert(false);
+        assert(!"Error occurred getting mask for dma state - check logs for more info");
 
         SET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_STATUS, 1); /* suspended */
 

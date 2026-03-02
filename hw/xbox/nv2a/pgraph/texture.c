@@ -121,7 +121,7 @@ hwaddr pgraph_get_texture_palette_phys_addr_length(PGRAPHState *pg, int texture_
     case NV_PGRAPH_TEXPALETTE0_LENGTH_128: palette_length = 128; break;
     case NV_PGRAPH_TEXPALETTE0_LENGTH_64: palette_length = 64; break;
     case NV_PGRAPH_TEXPALETTE0_LENGTH_32: palette_length = 32; break;
-    default: assert(false); break;
+    default: assert(!"Invalid palette length"); break;
     }
     if (length) {
         *length = palette_length * 4;

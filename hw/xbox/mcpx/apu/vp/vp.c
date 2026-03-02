@@ -565,11 +565,11 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
             DPRINTF("idle voice %d\n", argument);
             d->set_irq = true;
         } else {
-            assert(false);
+            assert(!"SE2FE_IDLE_VOICE called but NV_PAPU_FETFORCE1_SE2FE_IDLE_VOICE not enabled");
         }
         break;
     default:
-        assert(false);
+        assert(!"Unrecognized VP method - could be unimplemented or invalid");
         break;
     }
 }
@@ -828,7 +828,7 @@ static float voice_step_envelope(MCPXAPUState *d, uint16_t v, uint32_t reg_0,
         return 0.0f;
     default:
         fprintf(stderr, "Unknown envelope state 0x%x\n", cur);
-        assert(false);
+        assert(!"Unknown envelope state");
         return 0.0f;
     }
 }
@@ -1076,7 +1076,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                     fval = int32_to_float(ival);
                     break;
                 default:
-                    assert(false);
+                    assert(!"Invalid sample size for NV_PAYS_VOICE_CFG_FMT");
                     break;
                 }
                 samples[sample_count][channel] = fval;
