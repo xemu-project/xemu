@@ -995,7 +995,22 @@ static MString* psh_convert(struct PixelShader *ps)
                              "}\n");
     }
 
-    if (ps->state->z_perspective) {
+    // TODO: MoltenVK Fix: change this when there's a better solution for MoltenVK.
+    if (ps->state->use_hw_depth) {
+        /* When Geometry Shaders are unavailable (e.g. MoltenVK), vtxPos0/1/2
+         * and triMZ cannot be correctly computed per-triangle. Fall back to
+         * hardware-interpolated depth from gl_FragCoord.z, scaled to the
+         * depth range expected by the Xbox NV2A pipeline.
+         * Use dFdx/dFdy to approximate the depth slope that triMZ provides.
+         */
+        mstring_append(clip,
+                       "float zvalue = gl_FragCoord.z * clipRange.y;\n"
+                       "float hw_dzdx = dFdx(gl_FragCoord.z) * clipRange.y;\n"
+                       "float hw_dzdy = dFdy(gl_FragCoord.z) * clipRange.y;\n"
+                       "float hw_maxSlope = max(abs(hw_dzdx), abs(hw_dzdy));\n"
+                       "zvalue += depthOffset;\n"
+                       "zvalue += depthFactor * hw_maxSlope;\n");
+    } else if (ps->state->z_perspective) {
         mstring_append(
             clip,
             "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n"

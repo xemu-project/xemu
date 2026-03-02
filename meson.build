@@ -2359,6 +2359,21 @@ if host_os == 'windows'
   vulkan = declare_dependency(compile_args: ['-DVK_USE_PLATFORM_WIN32_KHR'])
 elif host_os == 'linux'
   vulkan = dependency('vulkan')
+  # TODO: Remove this once we have a better way to handle vulkan on MacOS.
+elif host_os == 'darwin'
+  vulkan = dependency('vulkan', required: false)
+  if not vulkan.found()
+    macos_lib_arch = host_machine.cpu() == 'aarch64' ? 'arm64' : host_machine.cpu()
+    moltenvk = cc.find_library(
+      'MoltenVK',
+      dirs: [meson.project_source_root() / 'macos-libs' / macos_lib_arch / 'opt/local/lib'],
+      required: false)
+    if moltenvk.found()
+      vulkan = declare_dependency(
+        dependencies: [moltenvk],
+        compile_args: ['-I/opt/homebrew/include', '-DVK_USE_PLATFORM_METAL_EXT'])
+    endif
+  endif
 endif
 
 if vulkan.found()

@@ -207,10 +207,16 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
 
     VkDescriptorImageInfo image_infos[NV2A_MAX_TEXTURES];
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        // TODO: MoltenVK Fix: change this when there's a better solution for MoltenVK.
+        TextureBinding *tex_binding = r->texture_bindings[i];
+        if (!tex_binding) {
+            tex_binding = &r->dummy_texture;
+        }
+
         image_infos[i] = (VkDescriptorImageInfo){
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .imageView = r->texture_bindings[i]->image_view,
-            .sampler = r->texture_bindings[i]->sampler,
+            .imageView = tex_binding->image_view,
+            .sampler = tex_binding->sampler,
         };
         descriptor_writes[2 + i] = (VkWriteDescriptorSet){
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -264,7 +270,12 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
 
     ShaderModuleCacheKey key;
 
-    bool need_geometry_shader = pgraph_glsl_need_geom(&binding->state.geom);
+    // TODO: MoltenVK Fix: change this when there's a better solution for MoltenVK.
+    // The r->supports_geometry_shaders flag is false on macOS since Metal
+    // lacks native Geometry Shaders. This safely skips building and binding
+    // the Z-buffer calculations via geom shaders on Apple chips.
+    bool need_geometry_shader = r->supports_geometry_shaders &&
+                                pgraph_glsl_need_geom(&binding->state.geom);
     if (need_geometry_shader) {
         memset(&key, 0, sizeof(key));
         key.kind = VK_SHADER_STAGE_GEOMETRY_BIT;
@@ -288,6 +299,9 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     memset(&key, 0, sizeof(key));
     key.kind = VK_SHADER_STAGE_FRAGMENT_BIT;
     key.psh.state = binding->state.psh;
+    // Tell the fragment shader to fallback to hardware depth interpolation
+    // (gl_FragCoord.z) if Geometry Shaders were bypassed (like on macOS).
+    key.psh.state.use_hw_depth = !need_geometry_shader;
     key.psh.glsl_opts.vulkan = true;
     key.psh.glsl_opts.ubo_binding = PSH_UBO_BINDING;
     key.psh.glsl_opts.tex_binding = PSH_TEX_BINDING;

@@ -25,6 +25,15 @@
 #define VkExtensionPropertiesArray GArray
 #define StringArray GArray
 
+// TODO: MoltenVK Fix: change this when there's a better solution for MoltenVK.
+/*
+ * Older Vulkan headers may miss this extension name macro even when runtime
+ * drivers expose it (e.g. MoltenVK portability subset).
+ */
+#ifndef VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME
+#define VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME "VK_KHR_portability_subset"
+#endif
+
 static bool enable_validation = false;
 
 static char const *const validation_layers[] = {
@@ -32,12 +41,24 @@ static char const *const validation_layers[] = {
 };
 
 static char const *const required_device_extensions[] = {
+#if HAVE_EXTERNAL_MEMORY
 #ifdef WIN32
     VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,
     VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,
 #else
     VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
     VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,
+#endif
+#endif
+
+// TODO: MoltenVK Fix: change this when there's a better solution for MoltenVK.
+#ifdef __APPLE__
+    /*
+     * macOS/MoltenVK requires the Portability Subset extension to be explicitly
+     * enabled, otherwise the physical device will be hidden and Vulkan
+     * initialization will fail on Apple Silicon.
+     */
+    VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME,
 #endif
 };
 
@@ -142,6 +163,15 @@ add_optional_instance_extension_names(PGRAPHState *pg,
         g_config.display.vulkan.validation_layers &&
         add_extension_if_available(available_extensions, enabled_extension_names,
                                    VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
+#ifdef __APPLE__
+    /* Allow enumeration of MoltenVK portability devices */
+    r->portability_enumeration_extension_enabled = add_extension_if_available(
+        available_extensions, enabled_extension_names,
+        VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+#else
+    r->portability_enumeration_extension_enabled = false;
+#endif
 }
 
 static bool create_instance(PGRAPHState *pg, Error **errp)
@@ -200,6 +230,11 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
         .ppEnabledExtensionNames =
             &g_array_index(enabled_extension_names, const char *, 0),
     };
+#ifdef __APPLE__
+    if (r->portability_enumeration_extension_enabled) {
+        create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+    }
+#endif
 
     enable_validation = g_config.display.vulkan.validation_layers;
 
@@ -487,6 +522,20 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
             .enabled = &r->enabled_physical_device_features.n, \
             .required = req, \
         }
+        // macOS (Metal/MoltenVK) lacks native support for geometry shaders and
+        // some other strict features. Relaxing these requirements here enables
+        // Vulkan to initialize on Apple Silicon.
+#ifdef __APPLE__
+// TODO: MoltenVK Fix: change this when there's a better solution for MoltenVK.
+        F(depthClamp, false),
+        F(fillModeNonSolid, false),
+        F(geometryShader, false),
+        F(occlusionQueryPrecise, false),
+        F(samplerAnisotropy, false),
+        F(shaderClipDistance, true),
+        F(shaderTessellationAndGeometryPointSize, false),
+        F(wideLines, false),
+#else
         F(depthClamp, true),
         F(fillModeNonSolid, true),
         F(geometryShader, true),
@@ -495,6 +544,7 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
         F(shaderClipDistance, true),
         F(shaderTessellationAndGeometryPointSize, true),
         F(wideLines, false),
+#endif
         #undef F
         // clang-format on
     };
@@ -515,6 +565,8 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
         error_setg(errp, "Device does not support required features");
         return false;
     }
+    r->supports_geometry_shaders =
+        r->enabled_physical_device_features.geometryShader == VK_TRUE;
 
     void *next_struct = NULL;
 

@@ -70,6 +70,9 @@ typedef struct PshState {
     bool depth_clipping;
     bool z_perspective;
 
+    // TODO: MoltenVK Fix: change this when there's a better solution for MoltenVK.
+    bool use_hw_depth;
+
     unsigned int surface_zeta_format;
     enum PshDepthFormat depth_format;
 } PshState;

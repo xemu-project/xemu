@@ -41,7 +41,14 @@
 #include "constants.h"
 #include "glsl.h"
 
+// TODO: MoltenVK Fix: change this when there's a better solution for MoltenVK.
+#if defined(__APPLE__)
+// Native external memory extensions are not supported on macOS/MoltenVK.
+// Disabling them prevents Vulkan from crashing during initialization.
+#define HAVE_EXTERNAL_MEMORY 0
+#else
 #define HAVE_EXTERNAL_MEMORY 1
+#endif
 
 typedef struct QueueFamilyIndices {
     int queue_family;
@@ -325,8 +332,15 @@ typedef struct PGRAPHVkState {
     int debug_depth;
 
     bool debug_utils_extension_enabled;
+
+    // TODO: MoltenVK Fix: change this when there's a better solution for MoltenVK.
+    bool portability_enumeration_extension_enabled;
+
     bool custom_border_color_extension_enabled;
     bool memory_budget_extension_enabled;
+
+    // TODO: MoltenVK Fix: change this when there's a better solution for MoltenVK.
+    bool supports_geometry_shaders;
 
     VkPhysicalDevice physical_device;
     VkPhysicalDeviceFeatures enabled_physical_device_features;
