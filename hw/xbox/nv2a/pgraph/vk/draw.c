@@ -20,6 +20,7 @@
 #include "qemu/osdep.h"
 #include "qemu/fast-hash.h"
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/prim_rewrite.h"
 #include <math.h>
 
 void pgraph_vk_draw_begin(NV2AState *d)
@@ -51,38 +52,15 @@ static VkPrimitiveTopology get_primitive_topology(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    int polygon_mode = r->shader_binding->state.geom.polygon_front_mode;
     int primitive_mode = r->shader_binding->state.geom.primitive_mode;
 
-    // FIXME: Replace with LUT
     switch (primitive_mode) {
     case PRIM_TYPE_POINTS:
         return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
     case PRIM_TYPE_LINES:
         return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-    case PRIM_TYPE_LINE_LOOP:
-        // FIXME: line strips, except that the first and last vertices are also used as a line
-        return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-    case PRIM_TYPE_LINE_STRIP:
-        return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
     case PRIM_TYPE_TRIANGLES:
         return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    case PRIM_TYPE_TRIANGLE_STRIP:
-        return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-    case PRIM_TYPE_TRIANGLE_FAN:
-        return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
-    case PRIM_TYPE_QUADS:
-        return VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY;
-    case PRIM_TYPE_QUAD_STRIP:
-        return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY;
-    case PRIM_TYPE_POLYGON:
-        if (polygon_mode == POLY_MODE_LINE) {
-            return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP; // FIXME
-        } else if (polygon_mode == POLY_MODE_FILL) {
-            return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
-        }
-        assert(!"PRIM_TYPE_POLYGON with invalid polygon_mode");
-        return 0;
     default:
         assert(!"Invalid primitive_mode");
         return 0;
@@ -2030,6 +2008,19 @@ void pgraph_vk_flush_draw(NV2AState *d)
 
     r->num_vertex_ram_buffer_syncs = 0;
 
+    PrimAssemblyState assembly = {
+        .primitive_mode = pg->primitive_mode,
+        .polygon_mode = (enum ShaderPolygonMode)GET_MASK(
+            pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER),
+            NV_PGRAPH_SETUPRASTER_FRONTFACEMODE),
+        .last_provoking = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
+                                   NV_PGRAPH_CONTROL_3_PROVOKING_VERTEX) ==
+                          NV_PGRAPH_CONTROL_3_PROVOKING_VERTEX_LAST,
+        .flat_shading = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
+                                 NV_PGRAPH_CONTROL_3_SHADEMODE) ==
+                        NV_PGRAPH_CONTROL_3_SHADEMODE_FLAT,
+    };
+
     if (pg->draw_arrays_length) {
         NV2A_VK_DGROUP_BEGIN("Draw Arrays");
         nv2a_profile_inc_counter(NV2A_PROF_DRAW_ARRAYS);
@@ -2050,18 +2041,42 @@ void pgraph_vk_flush_draw(NV2AState *d)
         sync_vertex_ram_buffer(pg);
         VertexBufferRemap remap = remap_unaligned_attributes(pg, max_element);
 
+        PrimRewrite prim_rw = pgraph_prim_rewrite_ranges(
+            &r->prim_rewrite_buf, assembly,
+            pg->draw_arrays_start, pg->draw_arrays_count,
+            pg->draw_arrays_length);
+
+        if (prim_rw.num_indices > 0) {
+            size_t rewrite_size =
+                prim_rw.num_indices * sizeof(uint32_t);
+            ensure_buffer_space(pg, BUFFER_INDEX_STAGING, rewrite_size);
+        }
+
         begin_pre_draw(pg);
         copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element);
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
                                      "Draw Arrays");
         begin_draw(pg);
         bind_vertex_buffer(pg, remap.attributes, 0);
-        for (int i = 0; i < pg->draw_arrays_length; i++) {
-            uint32_t start = pg->draw_arrays_start[i],
-                     count = pg->draw_arrays_count[i];
-            NV2A_VK_DPRINTF("- [%d] Start:%d Count:%d", i, start, count);
-            vkCmdDraw(r->command_buffer, count, 1, start, 0);
+
+        if (prim_rw.num_indices > 0) {
+            size_t rewrite_size = prim_rw.num_indices * sizeof(uint32_t);
+            VkDeviceSize buffer_offset = pgraph_vk_update_index_buffer(
+                pg, prim_rw.indices, rewrite_size);
+            vkCmdBindIndexBuffer(r->command_buffer,
+                                 r->storage_buffers[BUFFER_INDEX].buffer,
+                                 buffer_offset, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(r->command_buffer, prim_rw.num_indices, 1, 0, 0,
+                             0);
+        } else {
+            for (int i = 0; i < pg->draw_arrays_length; i++) {
+                uint32_t start = pg->draw_arrays_start[i],
+                         count = pg->draw_arrays_count[i];
+                NV2A_VK_DPRINTF("- [%d] Start:%d Count:%d", i, start, count);
+                vkCmdDraw(r->command_buffer, count, 1, start, 0);
+            }
         }
+
         end_draw(pg);
         pgraph_vk_end_debug_marker(r, r->command_buffer);
 
@@ -2073,27 +2088,35 @@ void pgraph_vk_flush_draw(NV2AState *d)
 
         nv2a_profile_inc_counter(NV2A_PROF_INLINE_ELEMENTS);
 
-        size_t index_data_size =
-            pg->inline_elements_length * sizeof(pg->inline_elements[0]);
+        uint32_t *draw_indices = pg->inline_elements;
+        unsigned int draw_index_count = pg->inline_elements_length;
+        PrimRewrite prim_rw = pgraph_prim_rewrite_indexed(
+            &r->prim_rewrite_buf, assembly, pg->inline_elements,
+            pg->inline_elements_length);
+        if (prim_rw.num_indices > 0) {
+            draw_indices = prim_rw.indices;
+            draw_index_count = prim_rw.num_indices;
+        }
 
+        size_t index_data_size = draw_index_count * sizeof(uint32_t);
         ensure_buffer_space(pg, BUFFER_INDEX_STAGING, index_data_size);
 
         uint32_t min_element = (uint32_t)-1;
         uint32_t max_element = 0;
-        for (int i = 0; i < pg->inline_elements_length; i++) {
-            max_element = MAX(pg->inline_elements[i], max_element);
-            min_element = MIN(pg->inline_elements[i], min_element);
+        for (unsigned int i = 0; i < draw_index_count; i++) {
+            max_element = MAX(draw_indices[i], max_element);
+            min_element = MIN(draw_indices[i], min_element);
         }
         pgraph_vk_bind_vertex_attributes(
             d, min_element, max_element, false, 0,
-            pg->inline_elements[pg->inline_elements_length - 1]);
+            draw_indices[draw_index_count - 1]);
         sync_vertex_ram_buffer(pg);
         VertexBufferRemap remap = remap_unaligned_attributes(pg, max_element + 1);
 
         begin_pre_draw(pg);
         copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element + 1);
         VkDeviceSize buffer_offset = pgraph_vk_update_index_buffer(
-            pg, pg->inline_elements, index_data_size);
+            pg, draw_indices, index_data_size);
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
                                      "Inline Elements");
         begin_draw(pg);
@@ -2101,8 +2124,7 @@ void pgraph_vk_flush_draw(NV2AState *d)
         vkCmdBindIndexBuffer(r->command_buffer,
                              r->storage_buffers[BUFFER_INDEX].buffer,
                              buffer_offset, VK_INDEX_TYPE_UINT32);
-        vkCmdDrawIndexed(r->command_buffer, pg->inline_elements_length, 1, 0, 0,
-                         0);
+        vkCmdDrawIndexed(r->command_buffer, draw_index_count, 1, 0, 0, 0);
         end_draw(pg);
         pgraph_vk_end_debug_marker(r, r->command_buffer);
 
@@ -2130,7 +2152,14 @@ void pgraph_vk_flush_draw(NV2AState *d)
             attr->inline_buffer_populated = false;
             offset += vertex_data_size;
         }
+        PrimRewrite prim_rw = pgraph_prim_rewrite_sequential(
+            &r->prim_rewrite_buf, assembly, 0, pg->inline_buffer_length);
+
         ensure_buffer_space(pg, BUFFER_VERTEX_INLINE_STAGING, offset);
+        if (prim_rw.num_indices > 0) {
+            size_t rewrite_size = prim_rw.num_indices * sizeof(uint32_t);
+            ensure_buffer_space(pg, BUFFER_INDEX_STAGING, rewrite_size);
+        }
 
         begin_pre_draw(pg);
         VkDeviceSize buffer_offset = pgraph_vk_update_vertex_inline_buffer(
@@ -2139,7 +2168,20 @@ void pgraph_vk_flush_draw(NV2AState *d)
                                      "Inline Buffer");
         begin_draw(pg);
         bind_inline_vertex_buffer(pg, buffer_offset);
-        vkCmdDraw(r->command_buffer, pg->inline_buffer_length, 1, 0, 0);
+
+        if (prim_rw.num_indices > 0) {
+            size_t rewrite_size = prim_rw.num_indices * sizeof(uint32_t);
+            VkDeviceSize idx_offset = pgraph_vk_update_index_buffer(
+                pg, prim_rw.indices, rewrite_size);
+            vkCmdBindIndexBuffer(r->command_buffer,
+                                 r->storage_buffers[BUFFER_INDEX].buffer,
+                                 idx_offset, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(r->command_buffer, prim_rw.num_indices, 1, 0, 0,
+                             0);
+        } else {
+            vkCmdDraw(r->command_buffer, pg->inline_buffer_length, 1, 0, 0);
+        }
+
         end_draw(pg);
         pgraph_vk_end_debug_marker(r, r->command_buffer);
 
@@ -2175,6 +2217,14 @@ void pgraph_vk_flush_draw(NV2AState *d)
         pgraph_vk_bind_vertex_attributes(d, 0, index_count - 1, true,
                                          vertex_size, index_count - 1);
 
+        PrimRewrite prim_rw = pgraph_prim_rewrite_sequential(
+            &r->prim_rewrite_buf, assembly, 0, index_count);
+
+        if (prim_rw.num_indices > 0) {
+            size_t rewrite_size = prim_rw.num_indices * sizeof(uint32_t);
+            ensure_buffer_space(pg, BUFFER_INDEX_STAGING, rewrite_size);
+        }
+
         begin_pre_draw(pg);
         void *inline_array_data = pg->inline_array;
         VkDeviceSize buffer_offset = pgraph_vk_update_vertex_inline_buffer(
@@ -2183,7 +2233,20 @@ void pgraph_vk_flush_draw(NV2AState *d)
                                      "Inline Array");
         begin_draw(pg);
         bind_inline_vertex_buffer(pg, buffer_offset);
-        vkCmdDraw(r->command_buffer, index_count, 1, 0, 0);
+
+        if (prim_rw.num_indices > 0) {
+            size_t rewrite_size = prim_rw.num_indices * sizeof(uint32_t);
+            VkDeviceSize idx_offset = pgraph_vk_update_index_buffer(
+                pg, prim_rw.indices, rewrite_size);
+            vkCmdBindIndexBuffer(r->command_buffer,
+                                 r->storage_buffers[BUFFER_INDEX].buffer,
+                                 idx_offset, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(r->command_buffer, prim_rw.num_indices, 1, 0, 0,
+                             0);
+        } else {
+            vkCmdDraw(r->command_buffer, index_count, 1, 0, 0);
+        }
+
         end_draw(pg);
         pgraph_vk_end_debug_marker(r, r->command_buffer);
         NV2A_VK_DGROUP_END();

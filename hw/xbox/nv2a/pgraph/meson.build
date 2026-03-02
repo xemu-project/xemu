@@ -1,4 +1,5 @@
 specific_ss.add(files(
+	'prim_rewrite.c',
 	'pgraph.c',
 	'profile.c',
 	'rdi.c',
