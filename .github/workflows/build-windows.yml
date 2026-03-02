@@ -75,7 +75,7 @@ jobs:
     - name: Report ccache stats
       run: ccache -s
     - name: Upload build artifact
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
       with:
         name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}
         path: dist
@@ -118,7 +118,7 @@ jobs:
         7z a -tzip ../dist-pdb/${{ steps.package_id.outputs.pkg_filename}} * "-xr!*.pdb"
         7z a -tzip ../dist-pdb/${{ steps.package_id.outputs.pdb_filename}} "-ir!*.pdb"
     - name: Upload build artifact
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
       with:
         name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}-pdb
         path: dist-pdb
