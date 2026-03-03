@@ -256,7 +256,6 @@ void pgraph_gl_draw_begin(NV2AState *d);
 void pgraph_gl_draw_end(NV2AState *d);
 void pgraph_gl_flush_draw(NV2AState *d);
 void pgraph_gl_get_report(NV2AState *d, uint32_t parameter);
-void pgraph_gl_image_blit(NV2AState *d);
 void pgraph_gl_mark_textures_possibly_dirty(NV2AState *d, hwaddr addr, hwaddr size);
 void pgraph_gl_process_pending_reports(NV2AState *d);
 void pgraph_gl_surface_flush(NV2AState *d);
