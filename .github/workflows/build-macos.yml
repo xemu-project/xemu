@@ -24,7 +24,7 @@ jobs:
       LTO_CACHE_DIR: ${{ github.workspace }}/xemu-lto-cache
     steps:
     - name: Download source package
-      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+      uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v4
       with:
         name: src
     - name: Extract source package
@@ -86,7 +86,7 @@ jobs:
         zip -r ../${pkg_filename} *
         popd
     - name: Upload build artifact
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
       with:
         name: xemu-macos-${{ matrix.arch }}-${{ matrix.configuration }}
         path: ${{ steps.package.outputs.pkg_filename }}
@@ -101,7 +101,7 @@ jobs:
         configuration: [debug, release]
     steps:
     - name: Download architecture-specific builds
-      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+      uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v4
       with:
         pattern: "xemu-macos-*-${{ matrix.configuration }}"
         merge-multiple: true
@@ -127,7 +127,7 @@ jobs:
         zip -r ../${pkg_filename} *
         popd
     - name: Upload build artifact
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
       with:
         name: xemu-macos-universal-${{ matrix.configuration }}
         path: ${{ steps.package.outputs.pkg_filename }}
