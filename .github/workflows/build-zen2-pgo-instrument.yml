@@ -162,6 +162,30 @@ jobs:
         echo "PATH=/usr/lib/ccache:$PATH" >> "$GITHUB_ENV"
         mkdir -p ${CCACHE_DIR}
         ccache -z
+    - name: Build PGO flush helper object
+      run: |
+        cat > /tmp/pgo_flush.c << 'CEOF'
+        #include <signal.h>
+        #include <stdlib.h>
+
+        void __llvm_profile_write_file(void);
+
+        __attribute__((constructor))
+        static void pgo_install_flush(void) {
+            atexit(__llvm_profile_write_file);
+            signal(SIGTERM, (void(*)(int))__llvm_profile_write_file);
+            signal(SIGINT,  (void(*)(int))__llvm_profile_write_file);
+        }
+        CEOF
+
+        clang-21 -c -fprofile-generate=/tmp/xemu-pgo-profiles \
+          /tmp/pgo_flush.c -o /tmp/pgo_flush.o
+
+        # Wrap in a static lib so --whole-archive forces inclusion
+        llvm-ar-21 rcs /tmp/libpgo_flush.a /tmp/pgo_flush.o
+
+        # Append to LDFLAGS so dpkg-buildpackage links it in
+        echo "DEB_LDFLAGS_MAINT_APPEND=${DEB_LDFLAGS_MAINT_APPEND} -Wl,--whole-archive /tmp/libpgo_flush.a -Wl,--no-whole-archive" >> "$GITHUB_ENV"
     - name: Compile
       run: |
         # XXX: dpkg-genbuildinfo takes two minutes on GH runners. Nuke it for now.
@@ -193,6 +217,19 @@ jobs:
         mkdir appimage
         tar -C appimage -xf data.tar*
         install -DT src/xemu.metainfo.xml appimage/usr/share/metainfo/xemu.metainfo.xml
+
+        # Bundle Clang profile runtime so PGO instrumentation works from AppImage
+        PROFILE_RT=$(clang-21 --print-file-name=libclang_rt.profile-x86_64.a 2>/dev/null || true)
+        if [ -n "$PROFILE_RT" ] && [ -f "$PROFILE_RT" ]; then
+          echo "Profile runtime (static) already linked: $PROFILE_RT"
+        fi
+        # Also copy any shared profile runtime libs into the AppImage
+        for lib in $(find /usr/lib /usr/lib/llvm-21 -name 'libclang_rt.profile*' -o -name 'libclang_rt.profile*.so' 2>/dev/null); do
+          if [ -f "$lib" ]; then
+            echo "Bundling profile runtime: $lib"
+            install -D "$lib" "appimage/usr/lib/$(basename "$lib")"
+          fi
+        done
 
         ./linuxdeploy-x86_64.AppImage --output appimage --appdir appimage
     - name: Bundle artifacts
