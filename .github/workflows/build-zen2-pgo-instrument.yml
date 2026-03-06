@@ -1,0 +1,213 @@
+name: Build Zen 2 AppImage (PGO Phase A — Instrumented)
+
+# Phase A: builds xemu with Clang instrumentation (-fprofile-generate).
+# The resulting AppImage is intentionally slower (~2-5x); run it on the
+# Steam Deck to collect .profraw files, then feed them into Phase C.
+#
+# DO NOT use this artifact for gaming — it is for profiling only.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source:
+    name: Create source package
+    runs-on: ubuntu-latest
+    outputs:
+      pkg_version: ${{ steps.version.outputs.pkg_version }}
+    steps:
+    - name: Clone tree
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+      with:
+        fetch-depth: 0
+    - name: Install dependencies
+      run: sudo apt-get install meson
+    - name: Determine release version
+      id: version
+      run: |
+        if TAG=$(git describe --tags --match 'v*' 2>/dev/null); then
+          echo "pkg_version=${TAG#v}" >> $GITHUB_OUTPUT
+        else
+          SHORT_HASH=$(git rev-parse --short HEAD)
+          echo "pkg_version=0.0.0-0-unofficial-${SHORT_HASH}" >> $GITHUB_OUTPUT
+        fi
+    - name: Create source package
+      id: package
+      run: |
+        pkg_name="xemu-${{ steps.version.outputs.pkg_version }}"
+        tar_filename="${pkg_name}.tar"
+        tar_prefix="./${pkg_name}/"
+        ./scripts/archive-source.sh ${tar_filename} ${tar_prefix}
+
+        echo -n ${{ github.sha }} > XEMU_COMMIT
+        echo -n ${{ steps.version.outputs.pkg_version }} > XEMU_VERSION
+        tar -r --file "${tar_filename}" --transform "s,^./,${tar_prefix}," ./XEMU_COMMIT ./XEMU_VERSION
+
+        zstd "${tar_filename}"
+        echo "pkg_filename=${tar_filename}.zst" >> $GITHUB_OUTPUT
+    - name: Upload source package artifact
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+      with:
+        name: src
+        path: ${{ steps.package.outputs.pkg_filename }}
+        compression-level: 0
+
+  build:
+    name: Build Zen 2 AppImage — PGO instrumented (x86_64)
+    needs: source
+    runs-on: ubuntu-22.04
+    env:
+      ARTIFACT_NAME: xemu-zen2-pgo-instrumented
+      CCACHE_DIR: /tmp/xemu-ccache-pgo-instrument
+      CCACHE_MAXSIZE: 512M
+      # LTO is intentionally disabled for the instrumentation build.
+      # Clang PGO + ThinLTO in the same pass adds complexity; LTO will be
+      # re-enabled in Phase C (the optimised build).
+      DEB_BUILD_MAINT_OPTIONS: optimize=-lto
+      DEB_CFLAGS_MAINT_APPEND: >-
+        -gdwarf-4 -gstrict-dwarf -O3
+        -fprofile-generate=/tmp/xemu-pgo-profiles
+      DEB_CXXFLAGS_MAINT_APPEND: >-
+        -gdwarf-4 -gstrict-dwarf -O3
+        -fprofile-generate=/tmp/xemu-pgo-profiles
+      DEB_LDFLAGS_MAINT_APPEND: >-
+        -Wl,--build-id=sha1
+        -fprofile-generate
+      CC: ccache clang-21
+      CXX: ccache clang++-21
+      CC_LD: lld-21
+      CXX_LD: lld-21
+      AR: llvm-ar-21
+      RANLIB: llvm-ranlib-21
+      NM: llvm-nm-21
+    steps:
+    - name: Setup build options
+      run: |
+        # --zen2 sets -march=znver2 -mtune=znver2; LTO options are omitted
+        # intentionally (see DEB_BUILD_MAINT_OPTIONS above).
+        opts=(
+          --zen2
+        )
+        echo "XEMU_BUILD_OPTIONS=${opts[*]}" >> "$GITHUB_ENV"
+    - name: Initialize compiler cache
+      id: cache
+      uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        # Separate cache key so this build never pollutes the normal build cache.
+        key: cache-zen2-pgo-instrument-${{ runner.os }}-x86_64-${{ github.sha }}
+        restore-keys: cache-zen2-pgo-instrument-${{ runner.os }}-x86_64-
+    - name: Download source package
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+      with:
+        name: src
+    - name: Extract source package
+      run: |
+        mkdir src
+        tar -xf xemu-${{ needs.source.outputs.pkg_version }}.tar.zst -C src --strip-components=2
+    - name: Create debian changelog
+      run: |
+        pushd src
+        echo -e "\
+        xemu (1:0.0.0-0) unstable; urgency=medium\n\
+          Built from ${{ needs.source.outputs.pkg_version }})\n\
+         -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" > debian/changelog
+        popd
+    - name: Add LLVM APT repository
+      run: |
+        sudo install -d /etc/apt/keyrings
+        curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key \
+          | sudo gpg --dearmor -o /etc/apt/keyrings/llvm.gpg
+        sudo tee /etc/apt/sources.list.d/llvm.list <<EOF
+        deb [signed-by=/etc/apt/keyrings/llvm.gpg] http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main
+        deb-src [signed-by=/etc/apt/keyrings/llvm.gpg] http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main
+        EOF
+    - name: Install dependencies
+      run: |
+        sudo apt-get -qy update
+        sudo apt-get install ccache libfuse2 libusb-1.0-0-dev
+        pushd src
+        sudo apt-get -qy build-dep .
+    - name: Install LLVM 21
+      shell: bash
+      env:
+        ARCH: amd64
+        POOL: https://apt.llvm.org/jammy/pool/main/l/llvm-toolchain-21/
+      run: |
+        set -euxo pipefail
+
+        HTML="$(curl -fsSL --compressed "$POOL")"
+        VER="$(grep -oE 'libllvm21_[0-9][^"]+_amd64\.deb' <<<"$HTML" | head -n1 \
+          | sed -E 's/^libllvm21_//; s/_amd64\.deb$//')"
+        echo "Using pool version: $VER"
+
+        mkdir -p /tmp/llvm21 && cd /tmp/llvm21
+
+        fetch() {
+          local pkg="$1"
+          local file="${pkg}_${VER}_amd64.deb"
+          curl -fsSLO "${POOL}${file}"
+        }
+
+        for pkg in \
+          clang-21 clang-tools-21 lld-21 \
+          libllvm21 libclang-cpp21 libclang-common-21-dev libclang1-21 libclang-rt-21-dev \
+          llvm-21 llvm-21-dev llvm-21-linker-tools llvm-21-runtime llvm-21-tools
+        do
+          fetch "$pkg"
+        done
+
+        sudo apt-get install -y --no-install-recommends ./*.deb
+    - name: Setup ccache
+      run: |
+        echo "PATH=/usr/lib/ccache:$PATH" >> "$GITHUB_ENV"
+        mkdir -p ${CCACHE_DIR}
+        ccache -z
+    - name: Compile (with PGO instrumentation)
+      run: |
+        # XXX: dpkg-genbuildinfo takes two minutes on GH runners. Nuke it for now.
+        sudo rm /usr/bin/dpkg-genbuildinfo
+        sudo ln -s /bin/true /usr/bin/dpkg-genbuildinfo
+
+        pushd src
+        dpkg-buildpackage --no-sign -b
+        popd
+
+        mkdir -p deb
+        mv *.deb *.ddeb deb
+    - name: Test
+      run: |
+        pushd src/build
+        ./pyvenv/bin/meson compile test-xbox
+        ./pyvenv/bin/meson test --suite xbox --no-rebuild
+        popd
+    - name: Report ccache stats
+      run: ccache -s
+    - name: Generate AppImage
+      env:
+        VERSION: ${{ needs.source.outputs.pkg_version }}-zen2-pgo-instrument
+      run: |
+        wget --no-verbose https://github.com/linuxdeploy/linuxdeploy/releases/latest/download/linuxdeploy-x86_64.AppImage
+        chmod +x linuxdeploy-x86_64.AppImage
+
+        ar x deb/*.deb
+        mkdir appimage
+        tar -C appimage -xf data.tar*
+        install -DT src/xemu.metainfo.xml appimage/usr/share/metainfo/xemu.metainfo.xml
+
+        ./linuxdeploy-x86_64.AppImage --output appimage --appdir appimage
+    - name: Bundle artifacts
+      run: |
+        mkdir -p dist
+        tar -czvf ./dist/${{ env.ARTIFACT_NAME }}.tgz --transform "s#^dist#${{ env.ARTIFACT_NAME }}#" deb
+        mv xemu-*.AppImage dist
+    - name: Upload build artifact
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+      with:
+        name: ${{ env.ARTIFACT_NAME }}
+        path: dist
+        compression-level: 0
