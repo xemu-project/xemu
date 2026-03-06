@@ -219,19 +219,36 @@ jobs:
         install -DT src/xemu.metainfo.xml appimage/usr/share/metainfo/xemu.metainfo.xml
 
         # Bundle Clang profile runtime so PGO instrumentation works from AppImage
-        PROFILE_RT=$(clang-21 --print-file-name=libclang_rt.profile-x86_64.a 2>/dev/null || true)
-        if [ -n "$PROFILE_RT" ] && [ -f "$PROFILE_RT" ]; then
-          echo "Profile runtime (static) already linked: $PROFILE_RT"
-        fi
-        # Also copy any shared profile runtime libs into the AppImage
-        for lib in $(find /usr/lib /usr/lib/llvm-21 -name 'libclang_rt.profile*' -o -name 'libclang_rt.profile*.so' 2>/dev/null); do
+        for lib in $(find /usr/lib /usr/lib/llvm-21 -name 'libclang_rt.profile*' 2>/dev/null); do
           if [ -f "$lib" ]; then
             echo "Bundling profile runtime: $lib"
             install -D "$lib" "appimage/usr/lib/$(basename "$lib")"
           fi
         done
 
-        ./linuxdeploy-x86_64.AppImage --output appimage --appdir appimage
+        # Custom AppRun: sets LLVM_PROFILE_FILE automatically so the user
+        # just launches the AppImage and plays — profiles are collected
+        # transparently. The pgo_flush constructor handles writing on exit.
+        cat > appimage/AppRun << 'APPRUN'
+        #!/usr/bin/env bash
+        SELF="$(readlink -f "$0")"
+        HERE="${SELF%/*}"
+
+        # PGO profile output — persistent dir, survives reboots
+        PGO_DIR="${XEMU_PGO_DIR:-$HOME/.local/share/xemu-pgo}"
+        mkdir -p "$PGO_DIR"
+        export LLVM_PROFILE_FILE="${LLVM_PROFILE_FILE:-$PGO_DIR/xemu-%p-%m.profraw}"
+
+        # Standard AppImage env
+        export PATH="${HERE}/usr/bin:${PATH}"
+        export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
+        export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+
+        exec "${HERE}/usr/bin/xemu" "$@"
+        APPRUN
+        chmod +x appimage/AppRun
+
+        ./linuxdeploy-x86_64.AppImage --custom-apprun appimage/AppRun --output appimage --appdir appimage
     - name: Bundle artifacts
       run: |
         mkdir -p dist
