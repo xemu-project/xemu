@@ -63,7 +63,7 @@ jobs:
       DEB_BUILD_MAINT_OPTIONS: optimize=-lto
       DEB_CFLAGS_MAINT_APPEND: -gdwarf-4 -gstrict-dwarf -O3 -fprofile-generate=/tmp/xemu-pgo-profiles
       DEB_CXXFLAGS_MAINT_APPEND: -gdwarf-4 -gstrict-dwarf -O3 -fprofile-generate=/tmp/xemu-pgo-profiles
-      DEB_LDFLAGS_MAINT_APPEND: -Wl,--build-id=sha1 -fprofile-generate
+      DEB_LDFLAGS_MAINT_APPEND: -Wl,--build-id=sha1 -fprofile-generate=/tmp/xemu-pgo-profiles
       CC: ccache clang-21
       CXX: ccache clang++-21
       CC_LD: lld-21
@@ -170,16 +170,17 @@ jobs:
 
         void __llvm_profile_write_file(void);
 
+        static void sig_flush(int sig) { (void)sig; __llvm_profile_write_file(); }
+
         __attribute__((constructor))
         static void pgo_install_flush(void) {
             atexit(__llvm_profile_write_file);
-            signal(SIGTERM, (void(*)(int))__llvm_profile_write_file);
-            signal(SIGINT,  (void(*)(int))__llvm_profile_write_file);
+            signal(SIGTERM, sig_flush);
+            signal(SIGINT,  sig_flush);
         }
         CEOF
 
-        clang-21 -c -fprofile-generate=/tmp/xemu-pgo-profiles \
-          /tmp/pgo_flush.c -o /tmp/pgo_flush.o
+        clang-21 -c /tmp/pgo_flush.c -o /tmp/pgo_flush.o
 
         # Wrap in a static lib so --whole-archive forces inclusion
         llvm-ar-21 rcs /tmp/libpgo_flush.a /tmp/pgo_flush.o
