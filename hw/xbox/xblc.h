@@ -24,7 +24,9 @@
 extern "C" {
 #endif
 
-void xblc_audio_stream_reinit(void *dev);
+#include <SDL3/SDL.h>
+
+void xblc_audio_stream_reinit(void *dev, SDL_AudioDeviceID in_device_id, SDL_AudioDeviceID out_device_id);
 
 /* Outputs a value on the interval [0, 1] where 0 is muted and 1 is full volume */
 float xblc_audio_stream_get_output_volume(void *dev);

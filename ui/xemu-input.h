@@ -30,7 +30,6 @@
 
 #include "qemu/queue.h"
 #include "xemu-settings.h"
-#include <SDL3/SDL.h>
 
 #define DRIVER_DUKE "usb-xbox-gamepad"
 #define DRIVER_S "usb-xbox-gamepad-s"

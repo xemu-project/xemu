@@ -710,7 +710,7 @@ static void DrawAudioDeviceSelectComboBox(int active, XblcState *xblc, int is_ca
 
                 // If the usb-xblc device is already bound, reinitialize it
                 if(xblc->dev != NULL)
-                    xblc_audio_stream_reinit(xblc->dev);
+                    xblc_audio_stream_reinit(xblc->dev, xblc->input_device_id, xblc->output_device_id);
                 
                 // Save the changes
                 xemu_input_save_xblc_settings(active, xblc);

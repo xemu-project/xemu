@@ -24,8 +24,7 @@
 #include "migration/vmstate.h"
 #include "hw/usb.h"
 #include "hw/usb/desc.h"
-
-#include <SDL3/SDL.h>
+#include "xblc.h"
 
 /* #define DEBUG_XBLC */
 #ifdef DEBUG_XBLC
@@ -59,22 +58,20 @@
  */
 #define XBLC_DEFAULT_SAMPLE_RATE 16000
 
-typedef struct XBLCStream {
+typedef struct {
     SDL_AudioDeviceID device_id;
     SDL_AudioStream *voice;
-    SDL_AudioSpec spec;
-    uint8_t packet[XBLC_MAX_PACKET];
-    Fifo8 fifo;
     float volume;
     float peak_volume;
 } XBLCStream;
 
 typedef struct USBXBLCState {
     USBDevice dev;
+    SDL_AudioSpec spec;
     uint16_t sample_rate;
 
-    SDL_AudioStream *in;
-    SDL_AudioStream *out;
+    XBLCStream in;
+    XBLCStream out;
 } USBXBLCState;
 
 enum {
@@ -174,26 +171,54 @@ static void xblc_handle_reset(USBDevice *dev)
 
     DPRINTF("Reset");
 
-    if (s->in != NULL) {
-        SDL_ClearAudioStream(s->in);
+    if (s->in.voice != NULL) {
+        SDL_ClearAudioStream(s->in.voice);
     }
-    if (s->out != NULL) {
-        SDL_ClearAudioStream(s->out);
+    if (s->out.voice != NULL) {
+        SDL_ClearAudioStream(s->out.voice);
     }
+}
+
+float xblc_audio_stream_get_output_volume(void *dev)
+{
+    USBXBLCState *s = USB_XBLC(dev);
+    return s->out.volume;
+}
+
+float xblc_audio_stream_get_input_volume(void *dev)
+{
+    USBXBLCState *s = USB_XBLC(dev);
+    return s->in.volume;
+}
+
+void xblc_audio_stream_set_output_volume(void *dev, float volume)
+{
+    USBXBLCState *s = USB_XBLC(dev);
+    s->out.volume = volume;
+}
+
+void xblc_audio_stream_set_input_volume(void *dev, float volume)
+{
+    USBXBLCState *s = USB_XBLC(dev);
+    s->in.volume = volume;
+}
+
+float xblc_audio_stream_get_current_input_volume(void *dev)
+{
+    USBXBLCState *s = USB_XBLC(dev);
+    return s->in.peak_volume;
 }
 
 static void xblc_audio_channel_update_format(USBXBLCState *s)
 {
     SDL_AudioSpec spec = xblc_get_audio_spec(s);
 
-    if (s->in != NULL) {
-        SDL_SetAudioStreamFormat(s->in, &spec, &spec);
+    if (s->in.voice != NULL) {
+        SDL_SetAudioStreamFormat(s->in.voice, &spec, &spec);
     }
-    if (s->out != NULL) {
-        SDL_SetAudioStreamFormat(s->out, &spec, &spec);
+    if (s->out.voice != NULL) {
+        SDL_SetAudioStreamFormat(s->out.voice, &spec, &spec);
     }
-    
-    SDL_ResumeAudioStreamDevice(channel->voice);
 }
 
 static bool should_init_stream(const XBLCStream *stream, SDL_AudioDeviceID requested_device_id)
@@ -260,11 +285,11 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
             break;
         }
 
-        if (s->in == NULL) {
+        if (s->in.voice == NULL) {
             break;
         }
 
-        int available = SDL_GetAudioStreamAvailable(s->in);
+        int available = SDL_GetAudioStreamAvailable(s->in.voice);
         if (available < 0) {
             DPRINTF("SDL_GetAudioStreamAvailable failed: %s", SDL_GetError());
             break;
@@ -274,7 +299,7 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
             s->sample_rate * XBLC_BYTES_PER_SAMPLE * XBLC_QUEUE_SIZE_MS / 1000;
         if (available > max_queued_data) {
             DPRINTF("Available data exceeded max threshold. Clearing stream.");
-            SDL_ClearAudioStream(s->in);
+            SDL_ClearAudioStream(s->in.voice);
             available = 0;
         }
 
@@ -282,7 +307,7 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
             uint8_t packet[XBLC_MAX_PACKET];
 
             int chunk_len = SDL_GetAudioStreamData(
-                s->in, packet, MIN(sizeof(packet), remaining));
+                s->in.voice, packet, MIN(sizeof(packet), remaining));
             if (chunk_len < 0) {
                 DPRINTF("SDL_GetAudioStreamData failed: %s", SDL_GetError());
                 break;
@@ -294,11 +319,6 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
             }
         }
 
-        // Ensure we fill the entire packet regardless of if we have audio data so we don't
-        // cause an underrun error.
-        if (p->actual_length < p->iov.size)
-            usb_packet_copy(p, (void *)silence, p->iov.size - p->actual_length);
-
         break;
     }
     case USB_TOKEN_OUT:
@@ -306,8 +326,8 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
             DPRINTF("Unexpected USB endpoint for USB_TOKEN_OUT");
             break;
         }
-        if (s->out != NULL) {
-            if (!SDL_PutAudioStreamData(s->out, p->iov.iov->iov_base,
+        if (s->out.voice != NULL) {
+            if (!SDL_PutAudioStreamData(s->out.voice, p->iov.iov->iov_base,
                                         p->iov.size)) {
                 DPRINTF("SDL_PutAudioStreamData failed: %s", SDL_GetError());
             }
@@ -323,11 +343,9 @@ static void xblc_handle_data(USBDevice *dev, USBPacket *p)
     }
 }
 
-static void xblc_audio_channel_init(USBXBLCState *s, bool capture, Error **errp)
+static void xblc_audio_channel_init(USBXBLCState *s, SDL_AudioDeviceID devid, bool capture, Error **errp)
 {
-    SDL_AudioStream **channel = capture ? &s->in : &s->out;
-    SDL_AudioDeviceID devid = capture ? SDL_AUDIO_DEVICE_DEFAULT_RECORDING :
-                                        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
+    SDL_AudioStream **channel = capture ? &s->in.voice : &s->out.voice;
     SDL_AudioSpec spec = xblc_get_audio_spec(s);
 
     if (*channel != NULL) {
@@ -343,6 +361,32 @@ static void xblc_audio_channel_init(USBXBLCState *s, bool capture, Error **errp)
     SDL_ResumeAudioStreamDevice(*channel);
 }
 
+void xblc_audio_stream_reinit(void *dev, SDL_AudioDeviceID in_device_id, SDL_AudioDeviceID out_device_id)
+{
+    USBXBLCState *s = USB_XBLC(dev);
+    Error *err = NULL;
+
+    if(s->in.device_id != in_device_id) {
+        xblc_audio_channel_init(s, in_device_id, true, &err);
+        if(err) {
+            warn_report_err(err);
+            err = NULL;
+        } else {
+            s->in.device_id = in_device_id;
+        }
+    }
+
+    if(s->out.device_id != out_device_id) {
+        xblc_audio_channel_init(s, out_device_id, false, &err);
+        if(err) {
+            warn_report_err(err);
+            err = NULL;
+        } else {
+            s->out.device_id = out_device_id;
+        }
+    }
+}
+
 static void xblc_realize(USBDevice *dev, Error **errp)
 {
     USBXBLCState *s = USB_XBLC(dev);
@@ -351,17 +395,19 @@ static void xblc_realize(USBDevice *dev, Error **errp)
     usb_desc_create_serial(dev);
     usb_desc_init(dev);
 
-    s->in = NULL;
-    s->out = NULL;
+    s->in.device_id = SDL_AUDIO_DEVICE_DEFAULT_RECORDING;
+    s->in.voice = NULL;
+    s->out.device_id = SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
+    s->out.voice = NULL;
     s->sample_rate = XBLC_DEFAULT_SAMPLE_RATE;
 
-    xblc_audio_channel_init(s, true, &err);
+    xblc_audio_channel_init(s, s->in.device_id, true, &err);
     if (err) {
         warn_report_err(err);
         err = NULL;
     }
 
-    xblc_audio_channel_init(s, false, &err);
+    xblc_audio_channel_init(s, s->out.device_id, false, &err);
     if (err) {
         warn_report_err(err);
         err = NULL;
@@ -372,14 +418,14 @@ static void xblc_unrealize(USBDevice *dev)
 {
     USBXBLCState *s = USB_XBLC(dev);
 
-    if (s->in) {
-        SDL_DestroyAudioStream(s->in);
-        s->in = NULL;
+    if (s->in.voice) {
+        SDL_DestroyAudioStream(s->in.voice);
+        s->in.voice = NULL;
     }
 
-    if (s->out) {
-        SDL_DestroyAudioStream(s->out);
-        s->out = NULL;
+    if (s->out.voice) {
+        SDL_DestroyAudioStream(s->out.voice);
+        s->out.voice = NULL;
     }
 }
 
