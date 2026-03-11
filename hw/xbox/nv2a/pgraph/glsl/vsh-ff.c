@@ -162,7 +162,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     case SKINNING_4WEIGHTS4MATRICES:
         mix = false; count = 4; break;
     default:
-        assert(false);
+        assert(!"Invalid skinning weight");
         break;
     }
     mstring_append_fmt(body, "/* Skinning mode %d */\n",
@@ -237,7 +237,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                                    i, c, c);
                 break;
             default:
-                assert(false);
+                assert(!"Unrecognized Texgen map mode - could be unimplemented or invalid");
                 break;
             }
         }
@@ -363,7 +363,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                     i);
                 break;
             default:
-                assert(false);
+                assert(!"Invalid light type");
                 break;
             }
 

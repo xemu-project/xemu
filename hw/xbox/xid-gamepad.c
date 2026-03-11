@@ -139,7 +139,7 @@ static void usb_xid_gamepad_handle_data(USBDevice *dev, USBPacket *p)
             update_input(s);
             usb_packet_copy(p, &s->in_state, s->in_state.bLength);
         } else {
-            assert(false);
+            assert(!"Invalid GAMEPAD_IN_ENDPOINT_ID");
         }
         break;
     case USB_TOKEN_OUT:
@@ -147,12 +147,12 @@ static void usb_xid_gamepad_handle_data(USBDevice *dev, USBPacket *p)
             usb_packet_copy(p, &s->out_state, s->out_state.length);
             update_output(s);
         } else {
-            assert(false);
+            assert(!"Invalid GAMEPAD_OUT_ENDPOINT_ID");
         }
         break;
     default:
         p->status = USB_RET_STALL;
-        assert(false);
+        assert(!"Invalid USB pid");
         break;
     }
 }

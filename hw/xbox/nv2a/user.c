@@ -57,11 +57,11 @@ uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
             }
         } else {
             /* ramfc */
-            assert(false);
+            assert(!"Invalid channel id");
         }
     } else {
         /* PIO Mode */
-        assert(false);
+        assert(!"Failed to enter DMA mode - entered PIO mode");
     }
 
     qemu_mutex_unlock(&d->pfifo.lock);
@@ -100,7 +100,7 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
                 d->pfifo.regs[NV_PFIFO_CACHE1_REF] = val;
                 break;
             default:
-                assert(false);
+                assert(!"Unknown user register");
                 break;
             }
 
@@ -108,11 +108,11 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
         } else {
             /* ramfc */
-            assert(false);
+            assert(!"Invalid channel id");
         }
     } else {
         /* PIO Mode */
-        assert(false);
+        assert(!"Failed to enter DMA mode - entered PIO mode");
     }
 
     qemu_mutex_unlock(&d->pfifo.lock);

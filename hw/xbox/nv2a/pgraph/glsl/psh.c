@@ -227,7 +227,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
     default:
         fprintf(stderr, "Unknown zeta surface format: 0x%x\n",
                 pg->surface_shape.zeta_format);
-        assert(false);
+        assert(!"Unknown zeta surface format");
         break;
     }
 }
@@ -361,7 +361,7 @@ static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
                                 mstring_get_str(ps->varE),
                                 mstring_get_str(ps->varF));
     default:
-        assert(false);
+        assert(!"Invalid register for get_var");
         return NULL;
     }
 }
@@ -379,7 +379,7 @@ static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
             mstring_append(reg, ".aaa");
             break;
         default:
-            assert(false);
+            assert(!"Invalid PS_CHANNEL format - expected RGB or ALPHA");
             break;
         }
     } else {
@@ -391,7 +391,7 @@ static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
             mstring_append(reg, ".a");
             break;
         default:
-            assert(false);
+            assert(!"Invalid PS_CHANNEL format - expected BLUE or ALPHA");
             break;
         }
     }
@@ -424,7 +424,7 @@ static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
         res = mstring_from_fmt("-%s", mstring_get_str(reg));
         break;
     default:
-        assert(false);
+        assert(!"Invalid PS_INPUTMAPPING mode");
         break;
     }
 
@@ -456,7 +456,7 @@ static MString* get_output(MString *reg, int mapping)
         res = mstring_from_fmt("(%s / 2.0)", mstring_get_str(reg));
         break;
     default:
-        assert(false);
+        assert(!"Invalid PS_COMBINEROUTPUT mode");
         break;
     }
     return res;
@@ -1352,7 +1352,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         default:
             fprintf(stderr, "Unknown ps tex mode: 0x%x\n", ps->tex_modes[i]);
-            assert(false);
+            assert(!"Unknown ps texture mode.");
             break;
         }
 
@@ -1453,7 +1453,7 @@ static MString* psh_convert(struct PixelShader *ps)
             case ALPHA_FUNC_NOTEQUAL: alpha_op = "!="; break;
             case ALPHA_FUNC_GEQUAL: alpha_op = ">="; break;
             default:
-                assert(false);
+                assert(!"Invalid ALPHA_FUNC mode");
                 break;
             }
             mstring_append_fmt(ps->code,

@@ -32,7 +32,7 @@ static void emu_undefined(dsp_core_t* dsp)
     /* Add some artificial CPU cycles to avoid being stuck in an infinite loop */
     dsp->instr_cycle += 100;
     if (dsp->exception_debugging) {
-        assert(false);
+        assert(!"Illegal dsp instruction - see error above");
     }
 }
 
@@ -6846,7 +6846,7 @@ static void emu_illegal(dsp_core_t* dsp)
     /* Raise interrupt p:0x003e */
     dsp56k_add_interrupt(dsp, DSP_INTER_ILLEGAL);
     if (dsp->exception_debugging) {
-        assert(false);
+        assert(!"Illegal dsp instruction - interrupt 0x003e raised");
     }
 }
 

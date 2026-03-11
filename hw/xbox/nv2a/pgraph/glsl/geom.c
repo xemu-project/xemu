@@ -100,7 +100,7 @@ bool pgraph_glsl_need_geom(const GeomState *state)
         return true;
     case PRIM_TYPE_POLYGON:
         if (polygon_mode == POLY_MODE_POINT) {
-            assert(false);
+            assert(!"POLY_MODE_POINT not supported");
             return false;
         }
         return true;
@@ -283,13 +283,13 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
             layout_out = "layout(line_strip, max_vertices = 2) out;\n";
             body = "  emit_line(0, 1, 0.0);\n";
         } else {
-            assert(false);
+            assert(!"Invalid polygon mode for PRIM_TYPE_POLYGON");
             return NULL;
         }
         break;
 
     default:
-        assert(false);
+        assert(!"Invalid primitive mode");
         return NULL;
     }
 
