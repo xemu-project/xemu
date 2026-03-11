@@ -70,6 +70,10 @@ static std::string NormalizeDefaultLocation(const char *default_location)
         if (std::filesystem::is_directory(path)) {
             return (path / "").string();
         }
+        // Prevent a crash in SDL3 file dialog
+        if (!std::filesystem::exists(path)) {
+            return {};
+        }
 #endif
     } catch (...) {
         // Fall through to return original path
