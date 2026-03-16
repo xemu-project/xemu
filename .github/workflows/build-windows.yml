@@ -29,7 +29,7 @@ jobs:
       CROSSAR: ${{ matrix.arch == 'arm64' && 'aarch64' || 'x86_64' }}-w64-mingw32.static-${{ matrix.arch == 'arm64' && 'ar' || 'gcc-ar' }}
     steps:
     - name: Download source package
-      uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v4
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
       with:
         name: src
     - name: Install zstd
@@ -93,7 +93,7 @@ jobs:
         configuration: [debug, release]
     steps:
     - name: Download artifacts
-      uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v4
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
       with:
         name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}
         path: dist
