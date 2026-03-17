@@ -131,6 +131,16 @@ static char *get_pipeline_cache_path(void)
     return g_build_filename(base, "pipeline_cache.bin", NULL);
 }
 
+static bool pipeline_cache_saved;
+static void save_pipeline_cache(PGRAPHState *pg);
+
+static void save_pipeline_cache_atexit(void)
+{
+    if (g_nv2a) {
+        save_pipeline_cache(&g_nv2a->pgraph);
+    }
+}
+
 static void init_pipeline_cache(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -192,11 +202,20 @@ static void init_pipeline_cache(PGRAPHState *pg)
     r->pipeline_cache.init_node = pipeline_cache_entry_init;
     r->pipeline_cache.compare_nodes = pipeline_cache_entry_compare;
     r->pipeline_cache.post_node_evict = pipeline_cache_entry_post_evict;
+
+    atexit(save_pipeline_cache_atexit);
 }
 
 static void save_pipeline_cache(PGRAPHState *pg)
 {
+    if (pipeline_cache_saved) {
+        return;
+    }
+
     PGRAPHVkState *r = pg->vk_renderer_state;
+    if (!r || !r->device || !r->vk_pipeline_cache) {
+        return;
+    }
 
     char *cache_path = get_pipeline_cache_path();
     if (!cache_path) {
@@ -221,6 +240,7 @@ static void save_pipeline_cache(PGRAPHState *pg)
             fclose(f);
             fprintf(stderr, "Saved Vulkan pipeline cache (%zu bytes)\n",
                     cache_size);
+            pipeline_cache_saved = true;
         }
     }
     g_free(cache_data);
