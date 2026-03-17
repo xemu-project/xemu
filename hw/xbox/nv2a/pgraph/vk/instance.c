@@ -185,6 +185,18 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
             }
         }
     }
+
+    // Tune MoltenVK for emulator workload via environment variables.
+    // These are only applied if not already set by the user.
+    setenv("MVK_CONFIG_FAST_MATH_ENABLED", "1", 0);
+    setenv("MVK_CONFIG_SHOULD_MAXIMIZE_CONCURRENT_COMPILATION", "1", 0);
+    setenv("MVK_CONFIG_SHADER_COMPRESSION_ALGORITHM", "3", 0); // LZ4
+    setenv("MVK_CONFIG_PREFILL_METAL_COMMAND_BUFFERS", "1", 0);
+    setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "0", 0);
+    setenv("MVK_CONFIG_MAX_ACTIVE_METAL_COMMAND_BUFFERS_PER_QUEUE", "128", 0);
+    setenv("MVK_CONFIG_VK_SEMAPHORE_SUPPORT_STYLE", "2", 0);
+    setenv("MVK_CONFIG_USE_MTLHEAP", "2", 0);
+    setenv("MVK_CONFIG_METAL_COMPILE_TIMEOUT", "5000000000", 0);
 #endif
 
     result = volkInitialize();
