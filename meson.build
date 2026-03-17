@@ -2359,6 +2359,11 @@ if host_os == 'windows'
   vulkan = declare_dependency(compile_args: ['-DVK_USE_PLATFORM_WIN32_KHR'])
 elif host_os == 'linux'
   vulkan = dependency('vulkan')
+elif host_os == 'darwin'
+  vulkan = dependency('vulkan', required: false)
+  if not vulkan.found()
+    vulkan = dependency('MoltenVK', required: false)
+  endif
 endif
 
 if vulkan.found()
@@ -2381,6 +2386,8 @@ if vulkan.found()
   volk_opts.add_cmake_defines({'VOLK_STATIC_DEFINES': 'VK_NO_PROTOTYPES'})
   if host_os == 'windows'
     volk_opts.append_compile_args('c', '-DVK_USE_PLATFORM_WIN32_KHR=1')
+  elif host_os == 'darwin'
+    volk_opts.append_compile_args('c', '-DVK_USE_PLATFORM_METAL_EXT=1')
   endif
   volk_subproj = cmake.subproject('volk', options: volk_opts)
   volk = declare_dependency(compile_args: ['-DVK_NO_PROTOTYPES'],

@@ -147,9 +147,17 @@ GByteArray *pgraph_vk_compile_glsl_to_spv(glslang_stage_t stage,
         .language = GLSLANG_SOURCE_GLSL,
         .stage = stage,
         .client = GLSLANG_CLIENT_VULKAN,
+#if defined(__APPLE__)
+        .client_version = GLSLANG_TARGET_VULKAN_1_2,
+#else
         .client_version = GLSLANG_TARGET_VULKAN_1_3,
+#endif
         .target_language = GLSLANG_TARGET_SPV,
+#if defined(__APPLE__)
+        .target_language_version = GLSLANG_TARGET_SPV_1_5,
+#else
         .target_language_version = GLSLANG_TARGET_SPV_1_6,
+#endif
         .code = glsl_source,
         .default_version = 460,
         .default_profile = GLSLANG_NO_PROFILE,

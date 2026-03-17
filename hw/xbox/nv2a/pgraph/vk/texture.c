@@ -928,7 +928,11 @@ static void create_dummy_texture(PGRAPHState *pg)
     };
 
     VmaAllocationCreateInfo alloc_create_info = {
+#if defined(__APPLE__)
+        .usage = VMA_MEMORY_USAGE_AUTO,
+#else
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+#endif
     };
 
     VkImage texture_image;
@@ -1233,7 +1237,11 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     }
 
     VmaAllocationCreateInfo alloc_create_info = {
+#if defined(__APPLE__)
+        .usage = VMA_MEMORY_USAGE_AUTO,
+#else
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+#endif
     };
 
     VK_CHECK(vmaCreateImage(r->allocator, &image_create_info,
