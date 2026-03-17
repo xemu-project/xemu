@@ -257,6 +257,9 @@ display:
     vsync:
       type: bool
       default: true
+    frame_interpolation:
+      type: bool
+      default: false
   ui:
     show_menubar:
       type: bool

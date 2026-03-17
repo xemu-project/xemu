@@ -20,6 +20,13 @@
 #include "renderer.h"
 #include <math.h>
 
+#if defined(__APPLE__)
+#include <IOSurface/IOSurface.h>
+#include <OpenGL/OpenGL.h>
+#include <OpenGL/CGLIOSurface.h>
+#include <epoxy/gl.h>
+#endif
+
 static uint8_t *convert_texture_data__CR8YB8CB8YA8(uint8_t *data_out,
                                                    const uint8_t *data_in,
                                                    unsigned int width,
@@ -324,7 +331,11 @@ static void create_render_pass(PGRAPHState *pg)
 
     VkAttachmentReference color_reference;
     attachment = (VkAttachmentDescription){
+#if defined(__APPLE__)
+        .format = VK_FORMAT_B8G8R8A8_UNORM,
+#else
         .format = VK_FORMAT_R8G8B8A8_UNORM,
+#endif
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -556,6 +567,35 @@ static void destroy_current_display_image(PGRAPHState *pg)
     CloseHandle(d->handle);
     d->handle = 0;
 #endif
+#elif defined(__APPLE__)
+    if (d->gl_draw_fbo) {
+        GLuint fbo = d->gl_draw_fbo;
+        glDeleteFramebuffers(1, &fbo);
+        d->gl_draw_fbo = 0;
+    }
+
+    if (d->gl_fbo) {
+        GLuint fbo = d->gl_fbo;
+        glDeleteFramebuffers(1, &fbo);
+        d->gl_fbo = 0;
+    }
+
+    if (d->gl_texture_id) {
+        GLuint tex = d->gl_texture_id;
+        glDeleteTextures(1, &tex);
+        d->gl_texture_id = 0;
+    }
+
+    if (d->gl_rect_texture_id) {
+        GLuint tex = d->gl_rect_texture_id;
+        glDeleteTextures(1, &tex);
+        d->gl_rect_texture_id = 0;
+    }
+
+    if (d->iosurface) {
+        CFRelease(d->iosurface);
+        d->iosurface = NULL;
+    }
 #endif
 
     vkDestroyImageView(r->device, d->image_view, NULL);
@@ -613,7 +653,11 @@ static void create_display_image(PGRAPHState *pg, int width, int height)
         .extent.depth = 1,
         .mipLevels = 1,
         .arrayLayers = 1,
+#if defined(__APPLE__)
+        .format = VK_FORMAT_B8G8R8A8_UNORM,
+#else
         .format = VK_FORMAT_R8G8B8A8_UNORM,
+#endif
         .tiling = use_optimal_tiling ? VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_LINEAR,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
@@ -631,6 +675,13 @@ static void create_display_image(PGRAPHState *pg, int width, int height)
 #endif
     };
     image_create_info.pNext = &external_memory_image_create_info;
+#elif defined(__APPLE__)
+    // Tell MoltenVK to back this VkImage with an IOSurface
+    VkExportMetalObjectCreateInfoEXT export_metal_create_info = {
+        .sType = VK_STRUCTURE_TYPE_EXPORT_METAL_OBJECT_CREATE_INFO_EXT,
+        .exportObjectType = VK_EXPORT_METAL_OBJECT_TYPE_METAL_IOSURFACE_BIT_EXT,
+    };
+    image_create_info.pNext = &export_metal_create_info;
 #endif
 
     VK_CHECK(vkCreateImage(r->device, &image_create_info, NULL, &d->image));
@@ -720,6 +771,70 @@ static void create_display_image(PGRAPHState *pg, int width, int height)
                          image_create_info.extent.width,
                          image_create_info.extent.height, d->gl_memory_obj, 0);
     assert(glGetError() == GL_NO_ERROR);
+
+#elif defined(__APPLE__)
+
+    // Export IOSurface from VkImage via VK_EXT_metal_objects
+    VkExportMetalIOSurfaceInfoEXT surface_info = {
+        .sType = VK_STRUCTURE_TYPE_EXPORT_METAL_IO_SURFACE_INFO_EXT,
+        .image = d->image,
+    };
+    VkExportMetalObjectsInfoEXT export_info = {
+        .sType = VK_STRUCTURE_TYPE_EXPORT_METAL_OBJECTS_INFO_EXT,
+        .pNext = &surface_info,
+    };
+    vkExportMetalObjectsEXT(r->device, &export_info);
+    assert(surface_info.ioSurface != NULL);
+    d->iosurface = (IOSurfaceRef)CFRetain(surface_info.ioSurface);
+
+    // Create GL_TEXTURE_RECTANGLE backed by the IOSurface (zero-copy)
+    CGLContextObj cgl_ctx = CGLGetCurrentContext();
+    assert(cgl_ctx != NULL);
+
+    GLuint rect_tex;
+    glGenTextures(1, &rect_tex);
+    glBindTexture(GL_TEXTURE_RECTANGLE, rect_tex);
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    CGLTexImageIOSurface2D(cgl_ctx, GL_TEXTURE_RECTANGLE, GL_RGBA8,
+                           image_create_info.extent.width,
+                           image_create_info.extent.height,
+                           GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV,
+                           d->iosurface, 0);
+    assert(glGetError() == GL_NO_ERROR);
+    d->gl_rect_texture_id = rect_tex;
+
+    // Create GL_TEXTURE_2D for UI consumption (blit target)
+    GLuint out_tex;
+    glGenTextures(1, &out_tex);
+    glBindTexture(GL_TEXTURE_2D, out_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8,
+                 image_create_info.extent.width,
+                 image_create_info.extent.height,
+                 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    assert(glGetError() == GL_NO_ERROR);
+    d->gl_texture_id = out_tex;
+
+    // Create FBOs for rect→2D blit
+    GLuint read_fbo, draw_fbo;
+    glGenFramebuffers(1, &read_fbo);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, read_fbo);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_RECTANGLE, rect_tex, 0);
+    assert(glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    d->gl_fbo = read_fbo;
+
+    glGenFramebuffers(1, &draw_fbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw_fbo);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D, out_tex, 0);
+    assert(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    d->gl_draw_fbo = draw_fbo;
+
 
 #endif // HAVE_EXTERNAL_MEMORY
 
@@ -933,7 +1048,12 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
                                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     pgraph_vk_transition_image_layout(
-        pg, cmd, disp->image, VK_FORMAT_R8G8B8A8_UNORM,
+        pg, cmd, disp->image,
+#if defined(__APPLE__)
+        VK_FORMAT_B8G8R8A8_UNORM,
+#else
+        VK_FORMAT_R8G8B8A8_UNORM,
+#endif
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     VkRenderPassBeginInfo render_pass_begin_info = {
@@ -998,7 +1118,11 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
                                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     pgraph_vk_transition_image_layout(pg, cmd, disp->image,
-                                      VK_FORMAT_R8G8B8_UNORM,
+#if defined(__APPLE__)
+                                      VK_FORMAT_B8G8R8A8_UNORM,
+#else
+                                      VK_FORMAT_R8G8B8A8_UNORM,
+#endif
                                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
@@ -1008,6 +1132,28 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
 
     disp->draw_time = surface->draw_time;
 }
+
+#if defined(__APPLE__)
+void pgraph_vk_blit_display_to_gl(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    PGRAPHVkDisplayState *d = &r->display;
+
+    if (!d->gl_fbo || !d->gl_draw_fbo ||
+        !d->gl_rect_texture_id || !d->gl_texture_id) {
+        return;
+    }
+
+    // Blit rect texture → 2D texture (GPU-side copy, fast on unified memory)
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, d->gl_fbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, d->gl_draw_fbo);
+    glBlitFramebuffer(0, 0, d->width, d->height,
+                      0, 0, d->width, d->height,
+                      GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+}
+#endif
 
 static void create_surface_sampler(PGRAPHState *pg)
 {

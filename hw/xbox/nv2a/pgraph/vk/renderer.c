@@ -20,17 +20,17 @@
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "renderer.h"
 
-#if HAVE_EXTERNAL_MEMORY
+#if HAVE_EXTERNAL_MEMORY || defined(__APPLE__)
 #include "gloffscreen.h"
 #endif
 
-#if HAVE_EXTERNAL_MEMORY
+#if HAVE_EXTERNAL_MEMORY || defined(__APPLE__)
 static GloContext *g_gl_context;
 #endif
 
 static void early_context_init(void)
 {
-#if HAVE_EXTERNAL_MEMORY
+#if HAVE_EXTERNAL_MEMORY || defined(__APPLE__)
     g_gl_context = glo_context_create();
 #endif
 }
@@ -41,7 +41,7 @@ static void pgraph_vk_init(NV2AState *d, Error **errp)
 
     pg->vk_renderer_state = (PGRAPHVkState *)g_malloc0(sizeof(PGRAPHVkState));
 
-#if HAVE_EXTERNAL_MEMORY
+#if HAVE_EXTERNAL_MEMORY || defined(__APPLE__)
     glo_set_current(g_gl_context);
 #endif
 
@@ -192,12 +192,16 @@ static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
 
     surface->frame_time = pg->frame_time;
 
-#if HAVE_EXTERNAL_MEMORY
+#if HAVE_EXTERNAL_MEMORY || defined(__APPLE__)
     qemu_event_reset(&d->pgraph.sync_complete);
     qatomic_set(&pg->sync_pending, true);
     pfifo_kick(d);
     qemu_mutex_unlock(&d->pfifo.lock);
     qemu_event_wait(&d->pgraph.sync_complete);
+#if defined(__APPLE__)
+    // Blit IOSurface-backed rect texture → GL_TEXTURE_2D for UI
+    pgraph_vk_blit_display_to_gl(pg);
+#endif
     return r->display.gl_texture_id;
 #else
     qemu_mutex_unlock(&d->pfifo.lock);

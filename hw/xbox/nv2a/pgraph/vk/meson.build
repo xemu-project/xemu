@@ -1,6 +1,6 @@
 if vulkan.found()
 
-specific_ss.add([volk, libglslang, vma, vulkan, spirv_reflect, 
+specific_ss.add([volk, libglslang, vma, vulkan, spirv_reflect,
 	files(
 		'blit.c',
 		'buffer.c',
@@ -21,5 +21,12 @@ specific_ss.add([volk, libglslang, vma, vulkan, spirv_reflect,
 		'vertex.c',
 		)
 	])
+
+if host_os == 'darwin'
+	vk_macos_frameworks = dependency('appleframeworks',
+		modules: ['IOSurface', 'OpenGL', 'VideoToolbox', 'CoreVideo', 'CoreMedia', 'Accelerate'],
+		required: true)
+	specific_ss.add([vk_macos_frameworks, files('frame-interp-macos.m')])
+endif
 
 endif

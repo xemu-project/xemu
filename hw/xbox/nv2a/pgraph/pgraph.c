@@ -381,6 +381,30 @@ void nv2a_release_framebuffer_surface(void)
     qemu_mutex_unlock(&pg->renderer_lock);
 }
 
+int nv2a_get_frame_time(void)
+{
+    NV2AState *d = g_nv2a;
+    return d->pgraph.frame_time;
+}
+
+#if defined(__APPLE__)
+#include <IOSurface/IOSurfaceRef.h>
+#include "vk/renderer.h"
+
+IOSurfaceRef nv2a_get_display_iosurface(void)
+{
+    NV2AState *d = g_nv2a;
+    PGRAPHState *pg = &d->pgraph;
+
+    if (pg->renderer->type != CONFIG_DISPLAY_RENDERER_VULKAN) {
+        return NULL;
+    }
+
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    return r ? r->display.iosurface : NULL;
+}
+#endif
+
 void nv2a_set_surface_scale_factor(unsigned int scale)
 {
     NV2AState *d = g_nv2a;

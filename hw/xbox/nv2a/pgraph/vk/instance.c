@@ -41,6 +41,7 @@ static char const *const required_device_extensions[] = {
     VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,
 #elif defined(__APPLE__)
     "VK_KHR_portability_subset",
+    VK_EXT_METAL_OBJECTS_EXTENSION_NAME,
 #else
     VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
     VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,

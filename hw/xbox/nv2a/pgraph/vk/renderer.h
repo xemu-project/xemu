@@ -31,6 +31,10 @@
 #include "hw/xbox/nv2a/pgraph/texture.h"
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
 
+#if defined(__APPLE__)
+#define VK_USE_PLATFORM_METAL_EXT
+#endif
+
 #include <vulkan/vulkan.h>
 #include <glslang/Include/glslang_c_interface.h>
 #include <volk.h>
@@ -299,6 +303,13 @@ typedef struct PGRAPHVkDisplayState {
 #endif
     GLuint gl_memory_obj;
     GLuint gl_texture_id;
+#elif defined(__APPLE__)
+    // macOS IOSurface zero-copy interop
+    IOSurfaceRef iosurface;
+    unsigned int gl_rect_texture_id; // GL_TEXTURE_RECTANGLE from IOSurface
+    unsigned int gl_texture_id;      // GL_TEXTURE_2D for UI consumption
+    unsigned int gl_fbo;             // FBO for rect→2D blit (read side)
+    unsigned int gl_draw_fbo;        // FBO for rect→2D blit (draw side)
 #endif
 } PGRAPHVkDisplayState;
 
@@ -547,6 +558,9 @@ void pgraph_vk_unpack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
 void pgraph_vk_init_display(PGRAPHState *pg);
 void pgraph_vk_finalize_display(PGRAPHState *pg);
 void pgraph_vk_render_display(PGRAPHState *pg);
+#if defined(__APPLE__)
+void pgraph_vk_blit_display_to_gl(PGRAPHState *pg);
+#endif
 
 // texture.c
 void pgraph_vk_init_textures(PGRAPHState *pg);
