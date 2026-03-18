@@ -14,8 +14,10 @@
 
 #include "qemu/osdep.h"
 #include "qemu/bswap.h"
+#include "qemu/ctype.h"
 #include "block/block_int.h"
 #include "block/block-io.h"
+#include "block/qdict.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
 #include "qemu/memalign.h"
@@ -315,7 +317,9 @@ cci_co_block_status(BlockDriverState *bs, unsigned int mode,
     *pnum = bytes;
     *map = -1;
     *file = NULL;
-    return (mode & BDRV_REQ_WRITE) ? 0 : BDRV_BLOCK_DATA;
+    /* Read-only compressed container: data present, no single host file offset */
+    (void)mode;
+    return BDRV_BLOCK_DATA;
 }
 
 static int64_t coroutine_fn GRAPH_RDLOCK
