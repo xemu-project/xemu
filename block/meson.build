@@ -33,6 +33,8 @@ block_ss.add(files(
   'qcow2-threads.c',
   'quorum.c',
   'raw-format.c',
+  'cci.c',
+  'lz4.c',
   'reqlist.c',
   'snapshot.c',
   'snapshot-access.c',

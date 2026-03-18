@@ -47,6 +47,8 @@
 #include "xemu-settings.h"
 #include "xemu-snapshots.h"
 #include "xemu-version.h"
+#include "ui/xemu-cci-parts.h"
+#include "block/xemu-cci.h"
 #include "xemu-os-utils.h"
 
 #include "data/xemu_64x64.png.h"
@@ -1396,18 +1398,45 @@ void xemu_eject_disc(Error **errp)
 void xemu_load_disc(const char *path, Error **errp)
 {
     Error *error = NULL;
+    char **cci_paths = NULL;
+    int cci_n = 0;
+    bool is_cci = false;
+
+    if (path) {
+        size_t pl = strlen(path);
+        const char *s = path + pl;
+        if (pl >= 4 &&
+            qemu_tolower((unsigned char)s[-4]) == '.' &&
+            qemu_tolower((unsigned char)s[-3]) == 'c' &&
+            qemu_tolower((unsigned char)s[-2]) == 'c' &&
+            qemu_tolower((unsigned char)s[-1]) == 'i') {
+            is_cci = true;
+        }
+    }
 
     // Ensure an eject sequence is always triggered so Xbox software reloads
     xbox_smc_eject_button();
     xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
 
-    qmp_blockdev_change_medium("ide0-cd1", NULL, path, "raw", false, false,
-                               false, 0, &error);
+    if (is_cci) {
+        if (xemu_cci_collect_part_paths(path, &cci_paths, &cci_n) < 0) {
+            error_setg(errp, "Could not resolve CCI disc image path(s)");
+            goto out;
+        }
+        xemu_cci_blockdev_change_dvd_medium((const char **)cci_paths, cci_n,
+                                            &error);
+    } else {
+        qmp_blockdev_change_medium("ide0-cd1", NULL, path, "raw", false, false,
+                                   false, 0, &error);
+    }
+
     if (error) {
         error_propagate(errp, error);
     } else {
         xemu_settings_set_string(&g_config.sys.files.dvd_path, path);
     }
 
+out:
+    g_strfreev(cci_paths);
     xbox_smc_update_tray_state();
 }

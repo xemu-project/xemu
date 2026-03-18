@@ -38,6 +38,8 @@
 #include "qobject/qdict.h"
 #include "system/block-backend.h"
 #include "system/blockdev.h"
+#include "block/xemu-cci.h"
+#include <glib.h>
 
 static BlockBackend *qmp_get_blk(const char *blk_name, const char *qdev_id,
                                  Error **errp)
@@ -571,4 +573,83 @@ void qmp_block_latency_histogram_set(
             return;
         }
     }
+}
+
+void xemu_cci_blockdev_change_dvd_medium(const char **paths, int n, Error **errp)
+{
+    static const char ide_cd[] = "ide0-cd1";
+    BlockBackend *blk;
+    BlockDriverState *medium_bs = NULL;
+    int bdrv_flags;
+    bool detect_zeroes;
+    int rc;
+    QDict *options = NULL;
+    Error *err = NULL;
+    int i;
+
+    if (n < 1 || n > 8) {
+        error_setg(errp, "CCI disc requires 1 to 8 image part(s)");
+        return;
+    }
+
+    blk = qmp_get_blk(ide_cd, NULL, errp);
+    if (!blk) {
+        goto fail;
+    }
+
+    if (blk_bs(blk)) {
+        blk_update_root_state(blk);
+    }
+
+    bdrv_flags = blk_get_open_flags_from_root_state(blk);
+    bdrv_flags &= ~(BDRV_O_TEMPORARY | BDRV_O_SNAPSHOT | BDRV_O_NO_BACKING |
+                    BDRV_O_PROTOCOL | BDRV_O_AUTO_RDONLY);
+
+    options = qdict_new();
+    detect_zeroes = blk_get_detect_zeroes_from_root_state(blk);
+    qdict_put_str(options, "detect-zeroes", detect_zeroes ? "on" : "off");
+    qdict_put_str(options, "driver", "cci");
+
+    if (n > 1) {
+        GString *gs = g_string_new(NULL);
+
+        for (i = 1; i < n; i++) {
+            if (i > 1) {
+                g_string_append_c(gs, '\n');
+            }
+            g_string_append(gs, paths[i]);
+        }
+        qdict_put_str(options, "cci-extra-parts", gs->str);
+        g_string_free(gs, TRUE);
+    }
+
+    medium_bs = bdrv_open(paths[0], NULL, options, bdrv_flags, errp);
+    if (!medium_bs) {
+        goto fail;
+    }
+
+    rc = do_open_tray(ide_cd, NULL, false, &err);
+    if (rc && rc != -ENOSYS) {
+        error_propagate(errp, err);
+        goto fail;
+    }
+    error_free(err);
+    err = NULL;
+
+    blockdev_remove_medium(ide_cd, NULL, &err);
+    if (err) {
+        error_propagate(errp, err);
+        goto fail;
+    }
+
+    qmp_blockdev_insert_anon_medium(blk, medium_bs, &err);
+    if (err) {
+        error_propagate(errp, err);
+        goto fail;
+    }
+
+    qmp_blockdev_close_tray(ide_cd, NULL, errp);
+
+fail:
+    bdrv_unref(medium_bs);
 }
