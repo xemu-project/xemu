@@ -319,17 +319,32 @@ static void mcpx_apu_resume(MCPXAPUState *d)
     qemu_cond_signal(&d->cond);
 }
 
+static void mcpx_apu_dsp_reset(DSPState *dsp, uint32_t *regs, size_t regs_size)
+{
+    /* Reset the DSP CPU state (registers, stack, peripheral memory, interrupt
+     * state). The opcode cache and DMA state are not cleared by dsp_reset, so
+     * they need to be reset explicitly. */
+    dsp_reset(dsp);
+    memset(dsp->core.pram_opcache, 0, sizeof(dsp->core.pram_opcache));
+    dsp->interrupts = 0;
+    dsp->dma.configuration = 0;
+    dsp->dma.control = 0;
+    dsp->dma.start_block = 0;
+    dsp->dma.next_block = 0;
+    dsp->dma.error = false;
+    dsp->dma.eol = false;
+    memset(regs, 0, regs_size);
+}
+
 static void mcpx_apu_reset_locked(MCPXAPUState *d)
 {
     memset(d->regs, 0, sizeof(d->regs));
 
     mcpx_apu_vp_reset(d);
 
-    // FIXME: Reset DSP state
-    memset(d->gp.dsp->core.pram_opcache, 0,
-           sizeof(d->gp.dsp->core.pram_opcache));
-    memset(d->ep.dsp->core.pram_opcache, 0,
-           sizeof(d->ep.dsp->core.pram_opcache));
+    mcpx_apu_dsp_reset(d->gp.dsp, d->gp.regs, sizeof(d->gp.regs));
+    mcpx_apu_dsp_reset(d->ep.dsp, d->ep.regs, sizeof(d->ep.regs));
+
     d->set_irq = false;
 }
 

@@ -418,7 +418,12 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
                   cur_desc_addr, desc.buffer_addr, desc.length, desc.flags);
 
     if (desc.flags & NV_RX_AVAIL) {
-        assert((desc.length + 1) >= size); // FIXME
+        if ((desc.length + 1) < size) {
+            /* Packet is larger than the descriptor buffer; truncate to avoid
+             * overflowing the guest buffer. */
+            trace_nvnet_rx_oversized(size);
+            size = desc.length + 1;
+        }
 
         trace_nvnet_rx_dma(desc.buffer_addr, size);
         pci_dma_write(d, desc.buffer_addr, buf, size);
@@ -519,7 +524,16 @@ static void dma_packet_from_guest(NvNetState *s)
             break;
         }
 
-        assert((s->tx_dma_buf_offset + length) <= sizeof(s->tx_dma_buf));
+        if ((s->tx_dma_buf_offset + length) > sizeof(s->tx_dma_buf)) {
+            /* Discard oversized TX segment to avoid overflowing the buffer;
+             * mark the descriptor with an underflow error. */
+            desc.flags |= NV_TX_UNDERFLOW | NV_TX_ERROR;
+            desc.flags &= ~NV_TX_VALID;
+            store_ring_desc(s, cur_desc_addr, desc);
+            s->tx_dma_buf_offset = 0;
+            advance_next_tx_ring_desc_addr(s);
+            break;
+        }
 
         trace_nvnet_tx_dma(desc.buffer_addr, length);
         pci_dma_read(d, desc.buffer_addr, &s->tx_dma_buf[s->tx_dma_buf_offset],
@@ -539,11 +553,6 @@ static void dma_packet_from_guest(NvNetState *s)
         store_ring_desc(s, cur_desc_addr, desc);
 
         advance_next_tx_ring_desc_addr(s);
-
-        if (is_last_packet) {
-            // FIXME
-            break;
-        }
     }
 
     set_dma_idle(s, true);
@@ -565,6 +574,11 @@ static bool receive_filter(NvNetState *s, const uint8_t *buf, int size)
     }
 
     uint32_t rctl = get_reg(s, NVNET_PACKET_FILTER);
+
+    /* Promiscuous mode: accept all packets */
+    if (rctl & NVNET_PACKET_FILTER_PROMISC) {
+        return true;
+    }
 
     /* Broadcast */
     if (is_broadcast_ether_addr(buf)) {
@@ -847,8 +861,10 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
         }
 
         if (val & NVNET_TX_RX_CONTROL_BIT1) {
-            // FIXME
-            set_reg(s, NVNET_IRQ_STATUS, 0);
+            /* BIT1 is set during TX/RX engine stop sequence; signal that the
+             * setup register is ready so the driver can proceed. */
+            set_reg(s, NVNET_UNKNOWN_SETUP_REG5,
+                    NVNET_UNKNOWN_SETUP_REG5_BIT31);
             break;
         } else if (val == 0) {
             /* forcedeth waits for this bit to be set... */
