@@ -12,6 +12,9 @@
   "max_shader_stall_us": 150000,
   "max_audio_underruns": 10,
   "max_gpu_warnings": 20,
+  "max_mmio_reads_per_frame": 5000,
+  "max_irq_per_frame": 200,
+  "max_io_stall_us": 50000,
   "xemu_args": [
     "-cpu", "pentium3",
     "-m", "64",
