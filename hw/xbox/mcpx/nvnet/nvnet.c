@@ -420,7 +420,10 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
     if (desc.flags & NV_RX_AVAIL) {
         if ((desc.length + 1) < size) {
             /* Packet is larger than the descriptor buffer; truncate to avoid
-             * overflowing the guest buffer. */
+             * overflowing the guest buffer.  Log the original size so that the
+             * truncation is visible to developers using the trace system. */
+            NVNET_DPRINTF("RX: truncating %zu-byte packet to descriptor "
+                          "buffer size %u\n", size, desc.length + 1);
             trace_nvnet_rx_oversized(size);
             size = desc.length + 1;
         }

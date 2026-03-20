@@ -319,6 +319,19 @@ static void mcpx_apu_resume(MCPXAPUState *d)
     qemu_cond_signal(&d->cond);
 }
 
+/*
+ * mcpx_apu_dsp_reset - Perform a full reset of one DSP instance.
+ *
+ * @dsp:      The DSP state to reset.
+ * @regs:     The MMIO register file for this DSP (GP or EP).
+ * @regs_size: Size in bytes of the register file.
+ *
+ * dsp_reset() resets the DSP56300 CPU core (general-purpose registers, stack,
+ * peripheral memory, and interrupt state) but does NOT clear the opcode cache,
+ * the DMA engine state, or the per-DSP interrupt mask field.  These must be
+ * cleared explicitly so that stale state from a previous boot does not affect
+ * the next guest session.
+ */
 static void mcpx_apu_dsp_reset(DSPState *dsp, uint32_t *regs, size_t regs_size)
 {
     /* Reset the DSP CPU state (registers, stack, peripheral memory, interrupt
