@@ -43,8 +43,10 @@
 #define DSP_SR_I1   0x09
 #define DSP_SR_S0   0x0a
 #define DSP_SR_S1   0x0b
-#define DSP_SR_T    0x0d
+#define DSP_SR_SC   0x0d
+#define DSP_SR_DM   0x0e
 #define DSP_SR_LF   0x0f
+#define DSP_SR_FV   0x10
 
 #define DSP_SP_SE   0x04
 #define DSP_SP_UF   0x05
@@ -122,17 +124,9 @@
 #define DSP_INTERRUPT_DISABLED  0x1
 #define DSP_INTERRUPT_LONG      0x2
 
-#define DSP_INTER_RESET         0x0
-#define DSP_INTER_ILLEGAL       0x1
-#define DSP_INTER_STACK_ERROR       0x2
-#define DSP_INTER_TRACE         0x3
-#define DSP_INTER_SWI           0x4
-#define DSP_INTER_HOST_COMMAND      0x5
-#define DSP_INTER_HOST_RCV_DATA     0x6
-#define DSP_INTER_HOST_TRX_DATA     0x7
-#define DSP_INTER_SSI_RCV_DATA_E    0x8
-#define DSP_INTER_SSI_RCV_DATA      0x9
-#define DSP_INTER_SSI_TRX_DATA_E    0xa
-#define DSP_INTER_SSI_TRX_DATA      0xb
+#define DSP_INTER_RESET         0
+#define DSP_INTER_ILLEGAL       1
+#define DSP_INTER_STACK_ERROR   2
+#define DSP_INTER_TRAP          3
 
 #endif

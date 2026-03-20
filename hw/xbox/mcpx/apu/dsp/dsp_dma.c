@@ -20,9 +20,10 @@
 
 #include "qemu/osdep.h"
 #include "qemu/compiler.h"
+#include "debug.h"
 #include "dsp_dma.h"
 #include "dsp_dma_regs.h"
-#include "dsp_state.h"
+#include "interp/dsp_cpu_regs.h"
 
 #ifdef DEBUG
 
@@ -127,13 +128,14 @@ static void dsp_dma_run(DSPDMAState *s)
             assert(false);
         }
 
-        uint32_t next_block = dsp56k_read_memory(s->core, block_space, block_addr);
-        uint32_t control = dsp56k_read_memory(s->core, block_space, block_addr+1);
-        uint32_t count = dsp56k_read_memory(s->core, block_space, block_addr+2);
-        uint32_t dsp_offset = dsp56k_read_memory(s->core, block_space, block_addr+3);
-        uint32_t scratch_offset = dsp56k_read_memory(s->core, block_space, block_addr+4);
-        uint32_t scratch_base = dsp56k_read_memory(s->core, block_space, block_addr+5);
-        uint32_t scratch_size = dsp56k_read_memory(s->core, block_space, block_addr+6)+1;
+        uint32_t next_block = s->mem_read(s->mem_opaque, block_space, block_addr);
+        uint32_t control = s->mem_read(s->mem_opaque, block_space, block_addr+1);
+        uint32_t count = s->mem_read(s->mem_opaque, block_space, block_addr+2);
+
+        uint32_t dsp_offset = s->mem_read(s->mem_opaque, block_space, block_addr+3);
+        uint32_t scratch_offset = s->mem_read(s->mem_opaque, block_space, block_addr+4);
+        uint32_t scratch_base = s->mem_read(s->mem_opaque, block_space, block_addr+5);
+        uint32_t scratch_size = s->mem_read(s->mem_opaque, block_space, block_addr+6)+1;
 
         s->next_block = next_block;
         if (s->next_block & NODE_POINTER_EOL) {
@@ -172,6 +174,10 @@ static void dsp_dma_run(DSPDMAState *s)
         case 6:
             item_size = 4;
             item_mask = 0x00ffffff;
+            break;
+        case 0:
+            item_size = 1;
+            item_mask = 0x000000ff;
             break;
         default:
             fprintf(stderr, "Unknown dsp dma format: 0x%x\n", format);
@@ -219,7 +225,7 @@ static void dsp_dma_run(DSPDMAState *s)
                 // Interleave samples
                 for (int i = 0; i < block_count; i++) {
                     for (int ch = 0; ch < channel_count; ch++) {
-                        uint32_t v = dsp56k_read_memory(s->core,
+                        uint32_t v = s->mem_read(s->mem_opaque,
                             mem_space, mem_address+ch*block_count+i);
                         switch(item_size) {
                         case 2:
@@ -236,7 +242,7 @@ static void dsp_dma_run(DSPDMAState *s)
                 }
             } else {
                 for (int i = 0; i < count; i++) {
-                    uint32_t v = dsp56k_read_memory(s->core, mem_space, mem_address+i);
+                    uint32_t v = s->mem_read(s->mem_opaque, mem_space, mem_address+i);
                     switch(item_size) {
                     case 2:
                         *(uint16_t*)(scratch_buf + i*2) = v >> 8;
@@ -298,12 +304,12 @@ static void dsp_dma_run(DSPDMAState *s)
                     break;
                 }
 
-                dsp56k_write_memory(s->core, mem_space, mem_address+i, v);
+                s->mem_write(s->mem_opaque, mem_space, mem_address+i, v);
             }
         }
 
         if (buffer_offset_writeback) {
-            dsp56k_write_memory(s->core, block_space, block_addr+4, scratch_offset);
+            s->mem_write(s->mem_opaque, block_space, block_addr+4, scratch_offset);
         }
 
     }
@@ -315,6 +321,14 @@ uint32_t dsp_dma_read(DSPDMAState *s, DSPDMARegister reg)
     case DMA_CONFIGURATION:
         return s->configuration;
     case DMA_CONTROL:
+        if (s->control & DMA_CONTROL_RUNNING) {
+            s->dma_read_count++;
+            if (s->dma_read_count > 2) {
+                s->control &= ~DMA_CONTROL_RUNNING;
+                s->control |= DMA_CONTROL_STOPPED;
+                s->dma_read_count = 0;
+            }
+        }
         return s->control;
     case DMA_START_BLOCK:
         return s->start_block;
@@ -337,6 +351,7 @@ void dsp_dma_write(DSPDMAState *s, DSPDMARegister reg, uint32_t v)
         case DMA_CONTROL_ACTION_START:
             s->control |= DMA_CONTROL_RUNNING;
             s->control &= ~DMA_CONTROL_STOPPED;
+            s->dma_read_count = 0;
             break;
         case DMA_CONTROL_ACTION_STOP:
             s->control |= DMA_CONTROL_STOPPED;

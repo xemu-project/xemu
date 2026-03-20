@@ -122,4 +122,15 @@ for sp in "${subprojects[@]}"; do
     tar --append --file "$tar_file" --exclude=.git --transform "s,^./,$tar_prefix," ./subprojects/"$(subproject_dir $sp)"
     test $? -ne 0 && error "failed to append subproject $sp to $tar_file"
 done
+
+# Pre-download dsp56300 pre-built libraries for offline builds (e.g. PPA).
+dsp56300_version=$(sed -n "s/^project.*version: *'\([^']*\)'.*/\1/p" subprojects/dsp56300/meson.build)
+for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+    archive="dsp56300-${dsp56300_version}-${target}.tar.gz"
+    curl -fsSL "https://github.com/mborgerson/dsp56300/releases/download/v${dsp56300_version}/${archive}" \
+        -o "subprojects/dsp56300/${archive}"
+    tar --append --file "$tar_file" --transform "s,^./,$tar_prefix," "./subprojects/dsp56300/${archive}"
+    rm "subprojects/dsp56300/${archive}"
+done
+
 exit 0
