@@ -107,12 +107,12 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         break;
     case NV_PGRAPH_INCREMENT:
         if (val & NV_PGRAPH_INCREMENT_READ_3D) {
-            PG_SET_MASK(NV_PGRAPH_SURFACE,
-                     NV_PGRAPH_SURFACE_READ_3D,
-                     (PG_GET_MASK(NV_PGRAPH_SURFACE,
-                              NV_PGRAPH_SURFACE_READ_3D)+1)
-                        % PG_GET_MASK(NV_PGRAPH_SURFACE,
-                                   NV_PGRAPH_SURFACE_MODULO_3D) );
+            uint32_t surface = pgraph_reg_r(pg, NV_PGRAPH_SURFACE);
+            uint32_t read_3d = GET_MASK(surface, NV_PGRAPH_SURFACE_READ_3D);
+            uint32_t modulo = GET_MASK(surface, NV_PGRAPH_SURFACE_MODULO_3D);
+            SET_MASK(surface, NV_PGRAPH_SURFACE_READ_3D,
+                     (read_3d + 1) % modulo);
+            pgraph_reg_w(pg, NV_PGRAPH_SURFACE, surface);
             nv2a_profile_increment();
             pfifo_kick(d);
         }
@@ -837,12 +837,11 @@ DEF_METHOD(NV097, NO_OPERATION)
 
     assert(!(pg->pending_interrupts & NV_PGRAPH_INTR_ERROR));
 
-    PG_SET_MASK(NV_PGRAPH_TRAPPED_ADDR, NV_PGRAPH_TRAPPED_ADDR_CHID,
-             channel_id);
-    PG_SET_MASK(NV_PGRAPH_TRAPPED_ADDR, NV_PGRAPH_TRAPPED_ADDR_SUBCH,
-             subchannel);
-    PG_SET_MASK(NV_PGRAPH_TRAPPED_ADDR, NV_PGRAPH_TRAPPED_ADDR_MTHD,
-             method);
+    uint32_t trapped = pgraph_reg_r(pg, NV_PGRAPH_TRAPPED_ADDR);
+    SET_MASK(trapped, NV_PGRAPH_TRAPPED_ADDR_CHID, channel_id);
+    SET_MASK(trapped, NV_PGRAPH_TRAPPED_ADDR_SUBCH, subchannel);
+    SET_MASK(trapped, NV_PGRAPH_TRAPPED_ADDR_MTHD, method);
+    pgraph_reg_w(pg, NV_PGRAPH_TRAPPED_ADDR, trapped);
     pgraph_reg_w(pg, NV_PGRAPH_TRAPPED_DATA_LOW, parameter);
     pgraph_reg_w(pg, NV_PGRAPH_NSOURCE,
                  NV_PGRAPH_NSOURCE_NOTIFICATION); /* TODO: check this */
@@ -881,19 +880,12 @@ DEF_METHOD(NV097, SET_FLIP_MODULO)
 
 DEF_METHOD(NV097, FLIP_INCREMENT_WRITE)
 {
-    uint32_t old =
-        PG_GET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_WRITE_3D);
-
-    PG_SET_MASK(NV_PGRAPH_SURFACE,
-             NV_PGRAPH_SURFACE_WRITE_3D,
-             (PG_GET_MASK(NV_PGRAPH_SURFACE,
-                      NV_PGRAPH_SURFACE_WRITE_3D)+1)
-                % PG_GET_MASK(NV_PGRAPH_SURFACE,
-                           NV_PGRAPH_SURFACE_MODULO_3D) );
-
-    uint32_t new =
-        PG_GET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_WRITE_3D);
-
+    uint32_t surface = pgraph_reg_r(pg, NV_PGRAPH_SURFACE);
+    uint32_t old = GET_MASK(surface, NV_PGRAPH_SURFACE_WRITE_3D);
+    uint32_t modulo = GET_MASK(surface, NV_PGRAPH_SURFACE_MODULO_3D);
+    uint32_t new = (old + 1) % modulo;
+    SET_MASK(surface, NV_PGRAPH_SURFACE_WRITE_3D, new);
+    pgraph_reg_w(pg, NV_PGRAPH_SURFACE, surface);
     trace_nv2a_pgraph_flip_increment_write(old, new);
     pg->frame_time++;
 }
@@ -1064,43 +1056,39 @@ DEF_METHOD(NV097, SET_CONTROL0)
 
     bool stencil_write_enable =
         parameter & NV097_SET_CONTROL0_STENCIL_WRITE_ENABLE;
-    PG_SET_MASK(NV_PGRAPH_CONTROL_0,
-             NV_PGRAPH_CONTROL_0_STENCIL_WRITE_ENABLE,
+    bool z_perspective =
+        parameter & NV097_SET_CONTROL0_Z_PERSPECTIVE_ENABLE;
+    uint32_t ctrl0 = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0);
+    SET_MASK(ctrl0, NV_PGRAPH_CONTROL_0_STENCIL_WRITE_ENABLE,
              stencil_write_enable);
+    SET_MASK(ctrl0, NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE, z_perspective);
+    pgraph_reg_w(pg, NV_PGRAPH_CONTROL_0, ctrl0);
 
     uint32_t z_format = GET_MASK(parameter, NV097_SET_CONTROL0_Z_FORMAT);
     PG_SET_MASK(NV_PGRAPH_SETUPRASTER,
              NV_PGRAPH_SETUPRASTER_Z_FORMAT, z_format);
-
-    bool z_perspective =
-        parameter & NV097_SET_CONTROL0_Z_PERSPECTIVE_ENABLE;
-    PG_SET_MASK(NV_PGRAPH_CONTROL_0,
-             NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE,
-             z_perspective);
 }
 
 DEF_METHOD(NV097, SET_LIGHT_CONTROL)
 {
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_SEPARATE_SPECULAR,
+    uint32_t csv0_c = pgraph_reg_r(pg, NV_PGRAPH_CSV0_C);
+    SET_MASK(csv0_c, NV_PGRAPH_CSV0_C_SEPARATE_SPECULAR,
              (parameter & NV097_SET_LIGHT_CONTROL_SEPARATE_SPECULAR) != 0);
-
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_LOCALEYE,
+    SET_MASK(csv0_c, NV_PGRAPH_CSV0_C_LOCALEYE,
              (parameter & NV097_SET_LIGHT_CONTROL_LOCALEYE) != 0);
-
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_ALPHA_FROM_MATERIAL_SPECULAR,
+    SET_MASK(csv0_c, NV_PGRAPH_CSV0_C_ALPHA_FROM_MATERIAL_SPECULAR,
              (parameter & NV097_SET_LIGHT_CONTROL_ALPHA_FROM_MATERIAL_SPECULAR) != 0);
+    pgraph_reg_w(pg, NV_PGRAPH_CSV0_C, csv0_c);
 }
 
 DEF_METHOD(NV097, SET_COLOR_MATERIAL)
 {
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_EMISSION,
-             (parameter >> 0) & 3);
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_AMBIENT,
-             (parameter >> 2) & 3);
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_DIFFUSE,
-             (parameter >> 4) & 3);
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_SPECULAR,
-             (parameter >> 6) & 3);
+    uint32_t csv0_c = pgraph_reg_r(pg, NV_PGRAPH_CSV0_C);
+    SET_MASK(csv0_c, NV_PGRAPH_CSV0_C_EMISSION, (parameter >> 0) & 3);
+    SET_MASK(csv0_c, NV_PGRAPH_CSV0_C_AMBIENT, (parameter >> 2) & 3);
+    SET_MASK(csv0_c, NV_PGRAPH_CSV0_C_DIFFUSE, (parameter >> 4) & 3);
+    SET_MASK(csv0_c, NV_PGRAPH_CSV0_C_SPECULAR, (parameter >> 6) & 3);
+    pgraph_reg_w(pg, NV_PGRAPH_CSV0_C, csv0_c);
 }
 
 DEF_METHOD(NV097, SET_FOG_MODE)
@@ -1427,14 +1415,12 @@ DEF_METHOD(NV097, SET_COLOR_MASK)
     bool red = parameter & NV097_SET_COLOR_MASK_RED_WRITE_ENABLE;
     bool green = parameter & NV097_SET_COLOR_MASK_GREEN_WRITE_ENABLE;
     bool blue = parameter & NV097_SET_COLOR_MASK_BLUE_WRITE_ENABLE;
-    PG_SET_MASK(NV_PGRAPH_CONTROL_0,
-             NV_PGRAPH_CONTROL_0_ALPHA_WRITE_ENABLE, alpha);
-    PG_SET_MASK(NV_PGRAPH_CONTROL_0,
-             NV_PGRAPH_CONTROL_0_RED_WRITE_ENABLE, red);
-    PG_SET_MASK(NV_PGRAPH_CONTROL_0,
-             NV_PGRAPH_CONTROL_0_GREEN_WRITE_ENABLE, green);
-    PG_SET_MASK(NV_PGRAPH_CONTROL_0,
-             NV_PGRAPH_CONTROL_0_BLUE_WRITE_ENABLE, blue);
+    uint32_t ctrl0 = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0);
+    SET_MASK(ctrl0, NV_PGRAPH_CONTROL_0_ALPHA_WRITE_ENABLE, alpha);
+    SET_MASK(ctrl0, NV_PGRAPH_CONTROL_0_RED_WRITE_ENABLE, red);
+    SET_MASK(ctrl0, NV_PGRAPH_CONTROL_0_GREEN_WRITE_ENABLE, green);
+    SET_MASK(ctrl0, NV_PGRAPH_CONTROL_0_BLUE_WRITE_ENABLE, blue);
+    pgraph_reg_w(pg, NV_PGRAPH_CONTROL_0, ctrl0);
 }
 
 DEF_METHOD(NV097, SET_DEPTH_MASK)
@@ -2604,9 +2590,11 @@ DEF_METHOD(NV097, SET_TEXTURE_PALETTE)
         GET_MASK(parameter, NV097_SET_TEXTURE_PALETTE_OFFSET);
 
     unsigned int reg = NV_PGRAPH_TEXPALETTE0 + slot * 4;
-    PG_SET_MASK(reg, NV_PGRAPH_TEXPALETTE0_CONTEXT_DMA, dma_select);
-    PG_SET_MASK(reg, NV_PGRAPH_TEXPALETTE0_LENGTH, length);
-    PG_SET_MASK(reg, NV_PGRAPH_TEXPALETTE0_OFFSET, offset);
+    uint32_t texpalette = pgraph_reg_r(pg, reg);
+    SET_MASK(texpalette, NV_PGRAPH_TEXPALETTE0_CONTEXT_DMA, dma_select);
+    SET_MASK(texpalette, NV_PGRAPH_TEXPALETTE0_LENGTH, length);
+    SET_MASK(texpalette, NV_PGRAPH_TEXPALETTE0_OFFSET, offset);
+    pgraph_reg_w(pg, reg, texpalette);
 
     pg->texture_dirty[slot] = true;
 }
@@ -2669,9 +2657,11 @@ static void pgraph_expand_draw_arrays(NV2AState *d)
         pgraph_reset_inline_buffers(pg);
     }
     assert((pg->inline_elements_length + count) < NV2A_MAX_BATCH_LENGTH);
+    unsigned int base = pg->inline_elements_length;
     for (unsigned int i = 0; i < count; i++) {
-        pg->inline_elements[pg->inline_elements_length++] = start + i;
+        pg->inline_elements[base + i] = start + i;
     }
+    pg->inline_elements_length += count;
 
     pgraph_reset_draw_arrays(pg);
 }
