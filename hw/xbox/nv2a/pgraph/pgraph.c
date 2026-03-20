@@ -77,6 +77,7 @@ uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
     qemu_mutex_unlock(&pg->lock);
 
     nv2a_reg_log_read(NV_PGRAPH, addr, size, r);
+    nv2a_profile_inc_counter(NV2A_PROF_MMIO_READ);
     return r;
 }
 
@@ -175,6 +176,7 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
     qemu_mutex_unlock(&pg->lock);
     qemu_mutex_unlock(&d->pfifo.lock);
+    nv2a_profile_inc_counter(NV2A_PROF_MMIO_WRITE);
 }
 
 void pgraph_context_switch(NV2AState *d, unsigned int channel_id)

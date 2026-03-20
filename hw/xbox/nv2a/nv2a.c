@@ -47,6 +47,7 @@ void nv2a_update_irq(NV2AState *d)
 
     if (d->pmc.pending_interrupts && d->pmc.enabled_interrupts) {
         trace_nv2a_irq(d->pmc.pending_interrupts);
+        nv2a_profile_inc_counter(NV2A_PROF_IRQ_RAISED);
         pci_irq_assert(PCI_DEVICE(d));
     } else {
         pci_irq_deassert(PCI_DEVICE(d));

@@ -133,6 +133,9 @@ typedef struct TitleConfig {
     int    max_shader_stall_us;
     int    max_audio_underruns;
     int    max_gpu_warnings;
+    int    max_mmio_reads_per_frame;
+    int    max_irq_per_frame;
+    int    max_io_stall_us;
 } TitleConfig;
 
 /**
@@ -170,13 +173,16 @@ static bool load_title_config(const char *json_path, TitleConfig *cfg)
     bool ok =
         json_get_string(buf, "title_id",  cfg->title_id,  sizeof(cfg->title_id))  &&
         json_get_string(buf, "compat_bucket", cfg->compat_bucket, sizeof(cfg->compat_bucket)) &&
-        json_get_int   (buf, "boot_timeout_s",      &cfg->boot_timeout_s)      &&
-        json_get_double(buf, "fps_floor",            &cfg->fps_floor)           &&
-        json_get_double(buf, "fps_ceiling",          &cfg->fps_ceiling)         &&
-        json_get_int   (buf, "max_shader_compiles",  &cfg->max_shader_compiles) &&
-        json_get_int   (buf, "max_shader_stall_us",  &cfg->max_shader_stall_us) &&
-        json_get_int   (buf, "max_audio_underruns",  &cfg->max_audio_underruns) &&
-        json_get_int   (buf, "max_gpu_warnings",     &cfg->max_gpu_warnings);
+        json_get_int   (buf, "boot_timeout_s",           &cfg->boot_timeout_s)           &&
+        json_get_double(buf, "fps_floor",                &cfg->fps_floor)                &&
+        json_get_double(buf, "fps_ceiling",              &cfg->fps_ceiling)              &&
+        json_get_int   (buf, "max_shader_compiles",      &cfg->max_shader_compiles)      &&
+        json_get_int   (buf, "max_shader_stall_us",      &cfg->max_shader_stall_us)      &&
+        json_get_int   (buf, "max_audio_underruns",      &cfg->max_audio_underruns)      &&
+        json_get_int   (buf, "max_gpu_warnings",         &cfg->max_gpu_warnings)         &&
+        json_get_int   (buf, "max_mmio_reads_per_frame", &cfg->max_mmio_reads_per_frame) &&
+        json_get_int   (buf, "max_irq_per_frame",        &cfg->max_irq_per_frame)        &&
+        json_get_int   (buf, "max_io_stall_us",          &cfg->max_io_stall_us);
 
     g_free(buf);
     return ok;
@@ -250,6 +256,9 @@ static void test_config_loads(Fixture *f, gconstpointer data)
     g_assert_true(f->cfg.max_shader_stall_us > 0);
     g_assert_true(f->cfg.max_audio_underruns >= 0);
     g_assert_true(f->cfg.max_gpu_warnings >= 0);
+    g_assert_true(f->cfg.max_mmio_reads_per_frame > 0);
+    g_assert_true(f->cfg.max_irq_per_frame > 0);
+    g_assert_true(f->cfg.max_io_stall_us > 0);
 
     /* compat_bucket must be one of the four defined values */
     bool valid_bucket =
@@ -296,6 +305,17 @@ static void test_thresholds_sane(Fixture *f, gconstpointer data)
      * compiles are allowed, the stall budget must be >= that count. */
     g_assert_cmpint(f->cfg.max_shader_stall_us, >=,
                     f->cfg.max_shader_compiles);
+
+    /* MMIO read budget must accommodate at least one MMIO access per IRQ:
+     * a title with N IRQs per frame must have capacity for at least N
+     * MMIO reads (each IRQ triggers at least one PGRAPH register read). */
+    g_assert_cmpint(f->cfg.max_mmio_reads_per_frame, >=,
+                    f->cfg.max_irq_per_frame);
+
+    /* I/O stall budget must be at least as large as the per-IRQ floor:
+     * each IRQ costs at least 1 µs of dispatch overhead. */
+    g_assert_cmpint(f->cfg.max_io_stall_us, >=,
+                    f->cfg.max_irq_per_frame);
 }
 
 /* Generic: counts one above the maximum must NOT pass (verify the check) */
@@ -323,6 +343,18 @@ static void test_thresholds_reject_over_limit(Fixture *f, gconstpointer data)
     /* gpu warnings */
     g_assert_cmpint(f->cfg.max_gpu_warnings + 1, >,
                     f->cfg.max_gpu_warnings);
+
+    /* mmio reads per frame */
+    g_assert_cmpint(f->cfg.max_mmio_reads_per_frame + 1, >,
+                    f->cfg.max_mmio_reads_per_frame);
+
+    /* irq count per frame */
+    g_assert_cmpint(f->cfg.max_irq_per_frame + 1, >,
+                    f->cfg.max_irq_per_frame);
+
+    /* io stall budget */
+    g_assert_cmpint(f->cfg.max_io_stall_us + 1, >,
+                    f->cfg.max_io_stall_us);
 
     /* fps below floor */
     g_assert_true(f->cfg.fps_floor - 1.0 < f->cfg.fps_floor);
