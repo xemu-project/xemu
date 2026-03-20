@@ -1,0 +1,19 @@
+# OWNERS — hw/xbox/
+#
+# This file records the ownership boundary for the Xbox machine domain.
+# See docs/devel/xbox-architecture.rst for the full boundary specification.
+#
+# Domain: Xbox machine (machine init, MCPX/boot flow, SMBus devices,
+#         input devices, communicator/online peripherals)
+#
+# Format follows the QEMU MAINTAINERS convention:
+#   M: primary maintainer
+#   R: designated reviewer
+#   F: files / glob patterns covered by this entry
+#   X: exclusions (sub-domains with their own OWNERS file)
+
+Xbox Machine
+M: xemu-project developers <xemu-dev@xemu.app>
+S: Maintained
+F: hw/xbox/
+X: hw/xbox/nv2a/

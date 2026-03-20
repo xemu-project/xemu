@@ -1,0 +1,14 @@
+# OWNERS — hw/xbox/nv2a/
+#
+# This file records the ownership boundary for the NV2A GPU domain.
+# See docs/devel/xbox-architecture.rst for the full boundary specification.
+#
+# Domain: NV2A GPU (GPU emulation, shader translation / state validation,
+#         surface and texture correctness)
+#
+# Format follows the QEMU MAINTAINERS convention.
+
+NV2A GPU
+M: xemu-project developers <xemu-dev@xemu.app>
+S: Maintained
+F: hw/xbox/nv2a/

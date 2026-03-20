@@ -1,0 +1,14 @@
+# OWNERS — hw/xbox/mcpx/
+#
+# This file records the ownership boundary for the MCPX SoC domain.
+# See docs/devel/xbox-architecture.rst for the full boundary specification.
+#
+# Domain: MCPX SoC (APU DSP/VP, NIC nvnet, boot-ROM flow).
+# The MCPX domain is a sub-domain of hw/xbox/ and owned by the same team.
+#
+# Format follows the QEMU MAINTAINERS convention.
+
+Xbox MCPX SoC
+M: xemu-project developers <xemu-dev@xemu.app>
+S: Maintained
+F: hw/xbox/mcpx/
