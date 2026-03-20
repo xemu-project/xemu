@@ -1,1 +1,2 @@
 subdir('dsp')
+subdir('compat')

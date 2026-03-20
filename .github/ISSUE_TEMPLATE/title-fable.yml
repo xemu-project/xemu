@@ -1,0 +1,108 @@
+name: "Title Issue: Fable — The Lost Chapters"
+description: Report an issue specific to Fable or Fable The Lost Chapters
+title: "[Fable] "
+labels: [bug, triage, gpu-nv2a, cpu-tcg]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for issues specific to **Fable: The Lost Chapters** (or the
+        original **Fable**).
+
+        Known stress areas:
+        - **Filesystem / streaming** — Fable streams large world chunks from disc;
+          slow or incorrect ISO read ordering can cause hitching or missing geometry.
+        - **Timing** — Day/night cycle logic is frame-rate sensitive; running at
+          incorrect speed warps the in-game clock.
+        - **Shaders** — Cloth simulation and spell effects use GPU programs that
+          exercise unusual NV2A shader instructions.
+
+        Before submitting, check:
+        - Are you using the latest xemu build?
+        - Have you ruled out a bad game disc dump?
+        - Have you searched for a duplicate issue?
+  - type: dropdown
+    id: which-title
+    attributes:
+      label: Which title?
+      options:
+        - "Fable (original, NTSC)"
+        - "Fable (original, PAL)"
+        - "Fable: The Lost Chapters (NTSC)"
+        - "Fable: The Lost Chapters (PAL)"
+    validations:
+      required: true
+  - type: input
+    id: media-id
+    attributes:
+      label: Media ID / Version
+      placeholder: "MS-xxx v1.00"
+    validations:
+      required: true
+  - type: dropdown
+    id: bucket
+    attributes:
+      label: Compatibility Bucket
+      description: How far does the title get?
+      options:
+        - "Boots — reaches title screen, fails in gameplay"
+        - "In-Game Broken — crashes or hangs shortly after gameplay starts"
+        - "Playable with Issues — finishable but with notable glitches"
+        - "High Priority Regression — was working before, now broken"
+    validations:
+      required: true
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: Describe the problem with steps to reproduce.
+      placeholder: |
+        Saving the game causes an immediate crash back to the Xbox dashboard.
+
+        Steps:
+        1. Boot Fable TLC
+        2. Start a new game, play through the intro until the first save point
+        3. Save the game via the menu
+        4. xemu crashes or returns to dashboard
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      placeholder: "Game should save and return to gameplay normally."
+    validations:
+      required: true
+  - type: textarea
+    id: subsystem-hints
+    attributes:
+      label: Affected Subsystem (if known)
+      placeholder: |
+        Filesystem — save file write path through FATX / MU emulation
+        Timing — in-game clock advancing too fast due to frame-rate issue
+        Shaders — spell effect vertex program uses unsupported instruction
+  - type: input
+    id: xemu-version
+    attributes:
+      label: xemu Version
+      placeholder: "0.0.0-00-g0000000000"
+    validations:
+      required: true
+  - type: input
+    id: last-good-version
+    attributes:
+      label: Last Known-Good Version (if regression)
+      placeholder: "0.0.0-00-g0000000000 or 'never worked'"
+  - type: textarea
+    id: system-information
+    attributes:
+      label: System Information
+      placeholder: |
+        OS: Windows 10
+        CPU: AMD Ryzen 7 5800X
+        GPU: NVIDIA GTX 1660 Super
+        GPU Driver: 527.xx
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context / Logs

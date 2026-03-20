@@ -1,0 +1,20 @@
+{
+  "title_id": "halo-2",
+  "display_name": "Halo 2",
+  "media_id": "4d530064",
+  "compat_bucket": "in-game-broken",
+  "primary_subsystems": ["gpu-nv2a", "audio-dsp", "networking"],
+  "boot_timeout_s": 90,
+  "golden_frame_hash": null,
+  "fps_floor": 25.0,
+  "fps_ceiling": 30.0,
+  "max_shader_compiles": 800,
+  "max_audio_underruns": 10,
+  "max_gpu_warnings": 30,
+  "xemu_args": [
+    "-cpu", "pentium3",
+    "-m", "64",
+    "-device", "usb-xbox-gamepad"
+  ],
+  "notes": "Uses more complex combiner programs than Halo CE. System Link relies on the same broadcast nvnet fix. Multiplayer map pack disc has a separate media ID (4d53006b)."
+}

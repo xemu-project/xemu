@@ -1,0 +1,107 @@
+name: "Title Issue: Halo / Halo 2"
+description: Report an issue specific to Halo Combat Evolved or Halo 2
+title: "[Halo] "
+labels: [bug, triage, gpu-nv2a, audio-dsp]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for issues specific to **Halo: Combat Evolved** or **Halo 2**.
+
+        Known stress areas for these titles:
+        - **Networking** — System Link peer discovery, packet timing (see `compat-regression` label if this was working before)
+        - **GPU** — NV2A combiner modes used heavily in outdoor geometry and HUD
+        - **Audio** — APU DSP reverb effects in large open areas
+
+        Before submitting, check:
+        - Are you using the latest xemu build?
+        - Have you ruled out a bad game disc dump?
+        - Have you searched for a duplicate issue?
+  - type: dropdown
+    id: which-title
+    attributes:
+      label: Which title?
+      options:
+        - "Halo: Combat Evolved (NTSC)"
+        - "Halo: Combat Evolved (PAL)"
+        - "Halo 2 (NTSC)"
+        - "Halo 2 (PAL)"
+        - "Halo 2 Multiplayer Map Pack"
+    validations:
+      required: true
+  - type: input
+    id: media-id
+    attributes:
+      label: Media ID / Version
+      placeholder: "MS-004 v1.01"
+    validations:
+      required: true
+  - type: dropdown
+    id: bucket
+    attributes:
+      label: Compatibility Bucket
+      description: How far does the title get?
+      options:
+        - "Boots — reaches title screen, fails in gameplay"
+        - "In-Game Broken — crashes or hangs shortly after gameplay starts"
+        - "Playable with Issues — finishable but with notable glitches"
+        - "High Priority Regression — was working before, now broken"
+    validations:
+      required: true
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: |
+        Describe the problem including steps to reproduce. Attach screenshots or video if possible.
+      placeholder: |
+        The HUD is missing during campaign missions.
+
+        Steps:
+        1. Launch Halo CE from xemu
+        2. Start a new campaign on any difficulty
+        3. HUD elements (health bar, ammo counter, radar) are not visible
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      placeholder: "All HUD elements should be visible during gameplay."
+    validations:
+      required: true
+  - type: textarea
+    id: subsystem-hints
+    attributes:
+      label: Affected Subsystem (if known)
+      description: Which subsystem do you think is responsible?
+      placeholder: |
+        GPU — NV2A combiners (HUD uses fixed-function combiner modes that differ from 3D geometry)
+        Audio — DSP ucode (reverb in certain maps causes audio dropout)
+        Network — System Link broadcast packets not reaching peer
+  - type: input
+    id: xemu-version
+    attributes:
+      label: xemu Version
+      placeholder: "0.0.0-00-g0000000000"
+    validations:
+      required: true
+  - type: input
+    id: last-good-version
+    attributes:
+      label: Last Known-Good Version (if regression)
+      placeholder: "0.0.0-00-g0000000000 or 'never worked'"
+  - type: textarea
+    id: system-information
+    attributes:
+      label: System Information
+      placeholder: |
+        OS: Windows 11
+        CPU: Intel Core i7-12700K
+        GPU: NVIDIA RTX 3080
+        GPU Driver: 535.xx
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context / Logs
+      description: Paste relevant xemu log output here.

@@ -1,0 +1,20 @@
+{
+  "title_id": "fable",
+  "display_name": "Fable: The Lost Chapters",
+  "media_id": "4d530023",
+  "compat_bucket": "playable-with-issues",
+  "primary_subsystems": ["cpu-tcg", "gpu-nv2a"],
+  "boot_timeout_s": 90,
+  "golden_frame_hash": null,
+  "fps_floor": 25.0,
+  "fps_ceiling": 30.0,
+  "max_shader_compiles": 700,
+  "max_audio_underruns": 15,
+  "max_gpu_warnings": 25,
+  "xemu_args": [
+    "-cpu", "pentium3",
+    "-m", "64",
+    "-device", "usb-xbox-gamepad"
+  ],
+  "notes": "Large open world requires streaming. Saving can fail through the MU/FATX path. In-game clock is frame-rate-sensitive. Spell effects use vertex programs with instructions that may not be correctly translated."
+}

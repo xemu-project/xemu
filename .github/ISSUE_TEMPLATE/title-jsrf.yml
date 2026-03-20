@@ -1,0 +1,93 @@
+name: "Title Issue: Jet Set Radio Future"
+description: Report an issue specific to Jet Set Radio Future
+title: "[JSRF] "
+labels: [bug, triage, gpu-nv2a, cpu-tcg]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for issues specific to **Jet Set Radio Future**.
+
+        Known stress areas:
+        - **Timing** — JSRF uses tight per-frame timing loops that are sensitive to
+          TCG interrupt delivery latency; frame-rate spikes or stuttering usually
+          point here.
+        - **GPU** — Heavy use of NV2A cel-shading (combiners + texture stages);
+          colour banding or missing outlines are GPU emulation bugs.
+
+        Before submitting, check:
+        - Are you using the latest xemu build?
+        - Have you ruled out a bad game disc dump?
+        - Have you searched for a duplicate issue?
+  - type: input
+    id: media-id
+    attributes:
+      label: Media ID / Version
+      placeholder: "MS-004 v1.00"
+    validations:
+      required: true
+  - type: dropdown
+    id: bucket
+    attributes:
+      label: Compatibility Bucket
+      description: How far does the title get?
+      options:
+        - "Boots — reaches title screen, fails in gameplay"
+        - "In-Game Broken — crashes or hangs shortly after gameplay starts"
+        - "Playable with Issues — finishable but with notable glitches"
+        - "High Priority Regression — was working before, now broken"
+    validations:
+      required: true
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: Describe the problem with steps to reproduce. Attach screenshots if possible.
+      placeholder: |
+        Character outlines (cel-shading borders) are missing in the first stage.
+
+        Steps:
+        1. Boot JSRF
+        2. Start a new game
+        3. Character silhouettes appear without the black outline effect
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      placeholder: "Characters should have black cel-shading outlines as seen on real hardware."
+    validations:
+      required: true
+  - type: textarea
+    id: subsystem-hints
+    attributes:
+      label: Affected Subsystem (if known)
+      placeholder: |
+        GPU — NV2A combiner / stencil pass for outline rendering
+        Timing — frame-rate inconsistency causing animation hitching
+  - type: input
+    id: xemu-version
+    attributes:
+      label: xemu Version
+      placeholder: "0.0.0-00-g0000000000"
+    validations:
+      required: true
+  - type: input
+    id: last-good-version
+    attributes:
+      label: Last Known-Good Version (if regression)
+      placeholder: "0.0.0-00-g0000000000 or 'never worked'"
+  - type: textarea
+    id: system-information
+    attributes:
+      label: System Information
+      placeholder: |
+        OS: Ubuntu 24.04
+        CPU: AMD Ryzen 9 5950X
+        GPU: AMD RX 6800 XT
+        GPU Driver: Mesa 24.x
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context / Logs
