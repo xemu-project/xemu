@@ -1,0 +1,20 @@
+# OWNERS — net/
+#
+# This file records the ownership boundary for the network transport domain
+# as it relates to OpenXbox.
+# See docs/devel/xbox-architecture.rst for the full boundary specification.
+#
+# Domain: Generic transport plumbing (host-side backends: TAP, socket,
+#         SLIRP, pcap; packet dispatch, filter, hub).
+#
+# Note: The Xbox NIC device model lives in hw/xbox/mcpx/nvnet/ and is
+# owned by the Xbox machine domain.  Changes to net/ that affect Xbox
+# System Link or LAN emulation must also declare multiplayer_risk >= Medium
+# per docs/devel/ai-tasks.rst.
+#
+# Format follows the QEMU MAINTAINERS convention.
+
+Network Transport
+M: xemu-project developers <xemu-dev@xemu.app>
+S: Maintained
+F: net/

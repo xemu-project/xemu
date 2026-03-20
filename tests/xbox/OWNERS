@@ -1,0 +1,14 @@
+# OWNERS — tests/xbox/
+#
+# This file records the ownership boundary for the Xbox tests domain.
+# See docs/devel/xbox-architecture.rst for the full boundary specification.
+#
+# Domain: Xbox-only correctness and regression tests (DSP opcodes,
+#         texture swizzle, and any future Xbox-specific test targets)
+#
+# Format follows the QEMU MAINTAINERS convention.
+
+Xbox Tests
+M: xemu-project developers <xemu-dev@xemu.app>
+S: Maintained
+F: tests/xbox/

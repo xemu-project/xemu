@@ -1,0 +1,14 @@
+# OWNERS — ui/xui/
+#
+# This file records the ownership boundary for the Frontend UX domain.
+# See docs/devel/xbox-architecture.rst for the full boundary specification.
+#
+# Domain: Frontend UX (main menu, settings, debug overlays, renderer path,
+#         input-manager UI integration)
+#
+# Format follows the QEMU MAINTAINERS convention.
+
+Frontend UX (xui)
+M: xemu-project developers <xemu-dev@xemu.app>
+S: Maintained
+F: ui/xui/

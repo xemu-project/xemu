@@ -36,3 +36,5 @@ the :ref:`tcg_internals`.
    index-internals
    index-tcg
    codebase
+   xbox-architecture
+   ai-tasks
