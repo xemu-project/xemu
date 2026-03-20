@@ -91,10 +91,19 @@ static float clampf(float v, float min, float max)
     }
 }
 
+static float attenuate_table[4096];
+
+static void init_attenuate_table(void)
+{
+    for (unsigned int v = 0; v < 4096; v++) {
+        attenuate_table[v] =
+            (v == 0xFFF) ? 0.0f : powf(10.0f, v / (64.0f * -20.0f));
+    }
+}
+
 static float attenuate(uint16_t vol)
 {
-    vol &= 0xFFF;
-    return (vol == 0xFFF) ? 0.0 : powf(10.0f, vol/(64.0 * -20.0f));
+    return attenuate_table[vol & 0xFFF];
 }
 
 static uint32_t voice_get_mask(MCPXAPUState *d, uint16_t voice_handle,
@@ -1858,6 +1867,7 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
 
 void mcpx_apu_vp_init(MCPXAPUState *d)
 {
+    init_attenuate_table();
     voice_work_init(d);
 }
 
