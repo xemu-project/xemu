@@ -207,6 +207,8 @@ void DebugApuWindow::Draw()
         mcpx_apu_debug_set_monitor((McpxApuDebugMonitorPoint)mon);
     }
 
+    ImGui::Checkbox("JIT Engine\n", &g_config.audio.use_dsp_jit);
+
     static bool gp_realtime;
     gp_realtime = dbg->gp_realtime;
     if (ImGui::Checkbox("GP Realtime\n", &gp_realtime)) {

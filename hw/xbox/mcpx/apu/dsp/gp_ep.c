@@ -25,23 +25,27 @@ static const int16_t ep_silence[256][2] = { 0 };
 
 void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
 {
-    static int last_known_preference = -1;
+    static int last_known_dsp_pref = -1;
+    static int last_known_jit_pref = -1;
 
-    if (last_known_preference == (int)g_config.audio.use_dsp) {
-        return;
+    if (last_known_dsp_pref != (int)g_config.audio.use_dsp) {
+        if (g_config.audio.use_dsp) {
+            d->monitor.point = MCPX_APU_DEBUG_MON_GP_OR_EP;
+            d->gp.realtime = true;
+            d->ep.realtime = true;
+        } else {
+            d->monitor.point = MCPX_APU_DEBUG_MON_VP;
+            d->gp.realtime = false;
+            d->ep.realtime = false;
+        }
+        last_known_dsp_pref = g_config.audio.use_dsp;
     }
 
-    if (g_config.audio.use_dsp) {
-        d->monitor.point = MCPX_APU_DEBUG_MON_GP_OR_EP;
-        d->gp.realtime = true;
-        d->ep.realtime = true;
-    } else {
-        d->monitor.point = MCPX_APU_DEBUG_MON_VP;
-        d->gp.realtime = false;
-        d->ep.realtime = false;
+    if (last_known_jit_pref != (int)g_config.audio.use_dsp_jit) {
+        dsp_set_engine(d->gp.dsp, g_config.audio.use_dsp_jit);
+        dsp_set_engine(d->ep.dsp, g_config.audio.use_dsp_jit);
+        last_known_jit_pref = g_config.audio.use_dsp_jit;
     }
-
-    last_known_preference = g_config.audio.use_dsp;
 }
 
 static void scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
@@ -454,12 +458,12 @@ void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_
     if ((d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPRST) &&
         (d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPDSPRST)) {
         dsp_start_frame(d->gp.dsp);
-        d->gp.dsp->core.is_idle = false;
-        d->gp.dsp->core.cycle_count = 0;
+        dsp_set_halt_requested(d->gp.dsp, false);
+        dsp_set_cycle_count(d->gp.dsp, 0);
         do {
             dsp_run(d->gp.dsp, 1000);
-        } while (!d->gp.dsp->core.is_idle && d->gp.realtime);
-        g_dbg.gp.cycles = d->gp.dsp->core.cycle_count;
+        } while (!dsp_get_halt_requested(d->gp.dsp) && d->gp.realtime);
+        g_dbg.gp.cycles = dsp_get_cycle_count(d->gp.dsp);
 
         if ((d->monitor.point == MCPX_APU_DEBUG_MON_GP) ||
             (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP && !ep_enabled)) {
@@ -479,45 +483,25 @@ void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_
         (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPDSPRST)) {
         if (d->ep_frame_div % 8 == 0) {
             dsp_start_frame(d->ep.dsp);
-            d->ep.dsp->core.is_idle = false;
-            d->ep.dsp->core.cycle_count = 0;
+            dsp_set_halt_requested(d->ep.dsp, false);
+            dsp_set_cycle_count(d->ep.dsp, 0);
             do {
                 dsp_run(d->ep.dsp, 1000);
-            } while (!d->ep.dsp->core.is_idle && d->ep.realtime);
-            g_dbg.ep.cycles = d->ep.dsp->core.cycle_count;
+            } while (!dsp_get_halt_requested(d->ep.dsp) && d->ep.realtime);
+            g_dbg.ep.cycles = dsp_get_cycle_count(d->ep.dsp);
         }
     }
 }
 
 void mcpx_apu_dsp_init(MCPXAPUState *d)
 {
-    d->gp.dsp = dsp_init(d, gp_scratch_rw, gp_fifo_rw);
-    for (int i = 0; i < DSP_PRAM_SIZE; i++) {
-        d->gp.dsp->core.pram[i] = 0xCACACACA;
-    }
-    memset(d->gp.dsp->core.pram_opcache, 0,
-           sizeof(d->gp.dsp->core.pram_opcache));
-    d->gp.dsp->is_gp = true;
-    d->gp.dsp->core.is_gp = true;
-    d->gp.dsp->core.is_idle = false;
-    d->gp.dsp->core.cycle_count = 0;
+    d->gp.dsp = dsp_init(d, gp_scratch_rw, gp_fifo_rw, true);
+    dsp_set_halt_requested(d->gp.dsp, false);
+    dsp_set_cycle_count(d->gp.dsp, 0);
 
-    d->ep.dsp = dsp_init(d, ep_scratch_rw, ep_fifo_rw);
-    for (int i = 0; i < DSP_PRAM_SIZE; i++) {
-        d->ep.dsp->core.pram[i] = 0xCACACACA;
-    }
-    memset(d->ep.dsp->core.pram_opcache, 0,
-           sizeof(d->ep.dsp->core.pram_opcache));
-    for (int i = 0; i < DSP_XRAM_SIZE; i++) {
-        d->ep.dsp->core.xram[i] = 0xCACACACA;
-    }
-    for (int i = 0; i < DSP_YRAM_SIZE; i++) {
-        d->ep.dsp->core.yram[i] = 0xCACACACA;
-    }
-    d->ep.dsp->is_gp = false;
-    d->ep.dsp->core.is_gp = false;
-    d->ep.dsp->core.is_idle = false;
-    d->ep.dsp->core.cycle_count = 0;
+    d->ep.dsp = dsp_init(d, ep_scratch_rw, ep_fifo_rw, false);
+    dsp_set_halt_requested(d->ep.dsp, false);
+    dsp_set_cycle_count(d->ep.dsp, 0);
 
     /* Until DSP is more performant, a switch to decide whether or not we should
      * use the full audio pipeline or not.
