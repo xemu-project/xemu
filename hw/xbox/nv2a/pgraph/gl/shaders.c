@@ -772,6 +772,7 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
     if (r->shader_binding &&
         !pgraph_glsl_check_shader_state_dirty(pg, &r->shader_binding->state)) {
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND_NOTDIRTY);
+        nv2a_profile_inc_counter(NV2A_PROF_SHADER_HOT_DRAW);
         goto update_uniforms;
     }
 
@@ -791,7 +792,11 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
 
     if (!binding->initialized && !pgraph_gl_shader_load_from_memory(binding)) {
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
+        int64_t t_compile = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
         generate_shaders(r, binding);
+        int64_t compile_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME) - t_compile;
+        nv2a_profile_add_counter(NV2A_PROF_SHADER_COMPILE_US,
+                                 (int)MIN(compile_us, INT_MAX));
         if (g_config.perf.cache_shaders) {
             pgraph_gl_shader_cache_to_disk(binding);
         }

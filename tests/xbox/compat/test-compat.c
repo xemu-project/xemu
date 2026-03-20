@@ -130,6 +130,7 @@ typedef struct TitleConfig {
     double fps_floor;
     double fps_ceiling;
     int    max_shader_compiles;
+    int    max_shader_stall_us;
     int    max_audio_underruns;
     int    max_gpu_warnings;
 } TitleConfig;
@@ -169,12 +170,13 @@ static bool load_title_config(const char *json_path, TitleConfig *cfg)
     bool ok =
         json_get_string(buf, "title_id",  cfg->title_id,  sizeof(cfg->title_id))  &&
         json_get_string(buf, "compat_bucket", cfg->compat_bucket, sizeof(cfg->compat_bucket)) &&
-        json_get_int   (buf, "boot_timeout_s",     &cfg->boot_timeout_s)     &&
-        json_get_double(buf, "fps_floor",          &cfg->fps_floor)           &&
-        json_get_double(buf, "fps_ceiling",        &cfg->fps_ceiling)         &&
-        json_get_int   (buf, "max_shader_compiles",&cfg->max_shader_compiles) &&
-        json_get_int   (buf, "max_audio_underruns",&cfg->max_audio_underruns) &&
-        json_get_int   (buf, "max_gpu_warnings",   &cfg->max_gpu_warnings);
+        json_get_int   (buf, "boot_timeout_s",      &cfg->boot_timeout_s)      &&
+        json_get_double(buf, "fps_floor",            &cfg->fps_floor)           &&
+        json_get_double(buf, "fps_ceiling",          &cfg->fps_ceiling)         &&
+        json_get_int   (buf, "max_shader_compiles",  &cfg->max_shader_compiles) &&
+        json_get_int   (buf, "max_shader_stall_us",  &cfg->max_shader_stall_us) &&
+        json_get_int   (buf, "max_audio_underruns",  &cfg->max_audio_underruns) &&
+        json_get_int   (buf, "max_gpu_warnings",     &cfg->max_gpu_warnings);
 
     g_free(buf);
     return ok;
@@ -245,6 +247,7 @@ static void test_config_loads(Fixture *f, gconstpointer data)
     g_assert_true(f->cfg.fps_floor > 0.0);
     g_assert_true(f->cfg.fps_ceiling >= f->cfg.fps_floor);
     g_assert_true(f->cfg.max_shader_compiles > 0);
+    g_assert_true(f->cfg.max_shader_stall_us > 0);
     g_assert_true(f->cfg.max_audio_underruns >= 0);
     g_assert_true(f->cfg.max_gpu_warnings >= 0);
 
@@ -284,6 +287,15 @@ static void test_thresholds_sane(Fixture *f, gconstpointer data)
                           f->cfg.max_shader_compiles,
                           f->cfg.max_audio_underruns,
                           f->cfg.max_gpu_warnings);
+
+    /* max_shader_stall_us must be strictly positive */
+    g_assert_cmpint(f->cfg.max_shader_stall_us, >, 0);
+
+    /* stall budget must be at least as large as the per-compile floor:
+     * each compile stalls for at least 1 µs, so if max_shader_compiles
+     * compiles are allowed, the stall budget must be >= that count. */
+    g_assert_cmpint(f->cfg.max_shader_stall_us, >=,
+                    f->cfg.max_shader_compiles);
 }
 
 /* Generic: counts one above the maximum must NOT pass (verify the check) */
@@ -299,6 +311,10 @@ static void test_thresholds_reject_over_limit(Fixture *f, gconstpointer data)
     /* shader compiles */
     g_assert_cmpint(f->cfg.max_shader_compiles + 1, >,
                     f->cfg.max_shader_compiles);
+
+    /* shader stall budget */
+    g_assert_cmpint(f->cfg.max_shader_stall_us + 1, >,
+                    f->cfg.max_shader_stall_us);
 
     /* audio underruns */
     g_assert_cmpint(f->cfg.max_audio_underruns + 1, >,

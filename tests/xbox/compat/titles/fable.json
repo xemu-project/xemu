@@ -9,6 +9,7 @@
   "fps_floor": 25.0,
   "fps_ceiling": 30.0,
   "max_shader_compiles": 700,
+  "max_shader_stall_us": 200000,
   "max_audio_underruns": 15,
   "max_gpu_warnings": 25,
   "xemu_args": [
