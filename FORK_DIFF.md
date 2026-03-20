@@ -86,6 +86,26 @@ Each entry follows this template:
 
 ---
 
+### NV2A PGRAPH: shader compile stall instrumentation (GL backend)
+
+- **Area:** `hw/xbox/nv2a/pgraph/gl/shaders.c`, `hw/xbox/nv2a/debug.h`
+- **Status:** Active
+- **Upstream PR / issue:** N/A
+- **Description:** Adds two new per-frame profiling counters: `NV2A_PROF_SHADER_COMPILE_US` accumulates microseconds spent compiling GLSL shaders inside `generate_shaders()` on each cache miss; `NV2A_PROF_SHADER_HOT_DRAW` counts draw calls that skip the shader-state check entirely (state unchanged, zero LRU lookup). Together with the existing `NV2A_PROF_SHADER_GEN` and `NV2A_PROF_SHADER_BIND` counters, these provide a full hot/warm/cold draw-call breakdown visible in the Advanced debug overlay. A companion `nv2a_profile_add_counter()` inline was added to `debug.h` for accumulating non-unit values. Per-title compile stall budgets (`max_shader_stall_us`) were added to all eight compat title configs and validated in `test-compat.c`.
+- **Files:** `hw/xbox/nv2a/debug.h`, `hw/xbox/nv2a/pgraph/gl/shaders.c`, `tests/xbox/compat/titles/*.json`, `tests/xbox/compat/test-compat.c`
+
+---
+
+### NV2A PGRAPH: shader compile stall instrumentation (Vulkan backend parity)
+
+- **Area:** `hw/xbox/nv2a/pgraph/vk/shaders.c`
+- **Status:** Active
+- **Upstream PR / issue:** N/A
+- **Description:** Extends the Phase 3A shader stall instrumentation to the Vulkan rendering backend. `shader_cache_entry_init()` now wraps all `get_and_ref_shader_module_for_key()` calls with a `qemu_clock_get_us` timer and accumulates the result into `NV2A_PROF_SHADER_COMPILE_US`, matching the GL path. `pgraph_vk_bind_shaders()` now also increments `NV2A_PROF_SHADER_HOT_DRAW` in the not-dirty fast-path branch, giving Vulkan the same hot/warm/cold draw-call visibility as the GL backend.
+- **Files:** `hw/xbox/nv2a/pgraph/vk/shaders.c`
+
+---
+
 ### NV2A PGRAPH: register read-modify-write consolidation (ongoing)
 
 - **Area:** `hw/xbox/nv2a/pgraph/pgraph.c`

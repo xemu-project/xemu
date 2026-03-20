@@ -43,13 +43,37 @@ pgraph_reg_w(pg, REG, val);
 
 This pattern is tracked in ongoing NV2A refactoring work.
 
+### 2.3 NV2A PGRAPH — Shader Compile Stall Instrumentation (GL + Vulkan)
+
+**Problem:** First-draw shader compilation stalls (P-1) were invisible to operators — no
+counter existed to measure how much time was lost compiling GLSL shaders, or how often
+the fast "state unchanged" path was taken.
+
+**Fix (Phase 3A — GL backend):** Two new per-frame counters were added to the NV2A
+profiling ring in `debug.h`:
+- `NV2A_PROF_SHADER_COMPILE_US` — accumulates µs spent inside `generate_shaders()` on
+  each cold cache miss.
+- `NV2A_PROF_SHADER_HOT_DRAW` — counts draw calls where shader state was unchanged (the
+  fastest path, no LRU lookup required).
+
+Both counters are instrumented in `pgraph_gl_bind_shaders()` and auto-appear in the
+Advanced debug overlay.
+
+**Fix (Phase 3B — Vulkan backend parity):** The same two counters are now instrumented
+in `pgraph_vk_bind_shaders()` and `shader_cache_entry_init()` in
+`hw/xbox/nv2a/pgraph/vk/shaders.c`, giving the Vulkan rendering path identical
+observability to the GL path.
+
+**Impact:** Per-frame shader stall budget can now be monitored and capped via the
+per-title `max_shader_stall_us` threshold in the compat test suite.
+
 ---
 
 ## 3. Known Bottlenecks (Unresolved)
 
 | # | Subsystem | Description | Tracking label |
 |---|---|---|---|
-| P-1 | NV2A PGRAPH | Shader compilation stutter on first draw of new shader combinations | `gpu-nv2a` |
+| P-1 | NV2A PGRAPH | Shader compilation stutter on first draw of new shader combinations — now tracked via `NV2A_PROF_SHADER_COMPILE_US` in both GL and Vulkan backends | `gpu-nv2a` |
 | P-2 | NV2A PGRAPH | Surface resolve (GPU→CPU readback) blocks the main thread | `gpu-nv2a` |
 | P-3 | TCG | Self-modifying code detection causes excessive TB flushes on some titles | `cpu-tcg` |
 | P-4 | APU DSP | ucode interpreter per-sample loop not vectorized | `audio-dsp` |

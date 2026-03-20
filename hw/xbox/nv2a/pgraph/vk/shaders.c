@@ -261,6 +261,7 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
 
     NV2A_VK_DPRINTF("cache miss");
     nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
+    int64_t t_compile = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
 
     ShaderModuleCacheKey key;
 
@@ -294,6 +295,9 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     binding->psh.module_info = get_and_ref_shader_module_for_key(r, &key);
 
     update_shader_uniform_locs(binding);
+    int64_t compile_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME) - t_compile;
+    nv2a_profile_add_counter(NV2A_PROF_SHADER_COMPILE_US,
+                             (int)MIN(compile_us, INT_MAX));
 }
 
 static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
@@ -510,6 +514,7 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
         }
     } else {
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND_NOTDIRTY);
+        nv2a_profile_inc_counter(NV2A_PROF_SHADER_HOT_DRAW);
     }
 
     update_shader_uniforms(pg);
