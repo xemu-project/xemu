@@ -1,0 +1,124 @@
+name: "Title Issue: System Link titles (MechAssault / Crimson Skies)"
+description: Report a System Link or multiplayer issue in MechAssault or Crimson Skies
+title: "[SysLink] "
+labels: [bug, triage, multiplayer-system-link, gpu-nv2a]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for System Link / multiplayer issues in
+        **MechAssault** or **Crimson Skies: High Road to Revenge**.
+
+        These titles are the primary test bench for System Link emulation.
+        The most common failure modes are:
+
+        - **Peer discovery** — broadcast UDP packets not forwarded correctly
+          by `nvnet` when the host TAP adapter is in promiscuous mode.
+        - **Session negotiation** — Xbox Live / LAN session handshake times
+          out due to packet loss or incorrect sequencing.
+        - **GPU** — both titles exercise NV2A surface blitting for HUDs and
+          radar overlays; visual corruption here is a GPU bug, not a network bug.
+
+        Before submitting, check:
+        - Are you using the latest xemu build?
+        - Have you checked the [System Link networking docs](../../docs/networking.md)?
+        - Have you searched for a duplicate issue?
+  - type: dropdown
+    id: which-title
+    attributes:
+      label: Which title?
+      options:
+        - "MechAssault (NTSC)"
+        - "MechAssault (PAL)"
+        - "MechAssault 2: Lone Wolf (NTSC)"
+        - "Crimson Skies: High Road to Revenge (NTSC)"
+        - "Crimson Skies: High Road to Revenge (PAL)"
+    validations:
+      required: true
+  - type: input
+    id: media-id
+    attributes:
+      label: Media ID / Version
+      placeholder: "MS-xxx v1.00"
+    validations:
+      required: true
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue Type
+      options:
+        - "System Link / LAN multiplayer"
+        - "Insignia (online via Insignia relay)"
+        - "Single-player / campaign"
+        - "Visual / audio (not networking)"
+    validations:
+      required: true
+  - type: dropdown
+    id: bucket
+    attributes:
+      label: Compatibility Bucket
+      description: How far does the title get?
+      options:
+        - "Boots — reaches title screen, fails in gameplay"
+        - "In-Game Broken — crashes or hangs shortly after gameplay starts"
+        - "Playable with Issues — finishable but with notable glitches"
+        - "High Priority Regression — was working before, now broken"
+    validations:
+      required: true
+  - type: textarea
+    id: network-setup
+    attributes:
+      label: Network Setup (for System Link issues)
+      placeholder: |
+        Two xemu instances on the same host connected via TAP bridge
+        Host OS: Ubuntu 24.04, TAP bridge: br0
+        Both instances can ping each other's host IP but xemu session discovery fails
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: Describe the problem with steps to reproduce.
+      placeholder: |
+        MechAssault fails to find any LAN sessions when two xemu instances are running.
+
+        Steps:
+        1. Configure xemu with TAP networking on two instances
+        2. Boot MechAssault on both
+        3. Navigate to System Link lobby on both instances
+        4. Sessions are not discovered by either instance
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      placeholder: "Both instances should discover each other's session within ~5 seconds."
+    validations:
+      required: true
+  - type: input
+    id: xemu-version
+    attributes:
+      label: xemu Version
+      placeholder: "0.0.0-00-g0000000000"
+    validations:
+      required: true
+  - type: input
+    id: last-good-version
+    attributes:
+      label: Last Known-Good Version (if regression)
+      placeholder: "0.0.0-00-g0000000000 or 'never worked'"
+  - type: textarea
+    id: system-information
+    attributes:
+      label: System Information
+      placeholder: |
+        OS: Linux (Ubuntu 24.04)
+        CPU: AMD Ryzen 5 5600X
+        GPU: AMD RX 6600
+        GPU Driver: Mesa 24.x
+        Network: TAP bridge with two xemu instances
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context / Logs
+      description: Paste relevant xemu log output, especially network-related lines.

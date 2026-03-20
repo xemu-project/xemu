@@ -1,0 +1,91 @@
+name: "Title Issue: Project Gotham Racing 2"
+description: Report an issue specific to Project Gotham Racing 2
+title: "[PGR2] "
+labels: [bug, triage, gpu-nv2a, cpu-tcg]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for issues specific to **Project Gotham Racing 2**.
+
+        Known stress areas:
+        - **CPU/GPU sync** — PGR2 pushes the NV2A FIFO very aggressively and
+          relies on exact synchronisation between the CPU and GPU command buffer.
+          Tearing, ghost geometry, or hangs in loading screens often point here.
+        - **Shader correctness** — Reflections and environment maps use complex
+          NV2A fixed-function combiner chains.
+
+        Before submitting, check:
+        - Are you using the latest xemu build?
+        - Have you searched for a duplicate issue?
+  - type: input
+    id: media-id
+    attributes:
+      label: Media ID / Version
+      placeholder: "MS-xxx v1.00"
+    validations:
+      required: true
+  - type: dropdown
+    id: bucket
+    attributes:
+      label: Compatibility Bucket
+      description: How far does the title get?
+      options:
+        - "Boots — reaches title screen, fails in gameplay"
+        - "In-Game Broken — crashes or hangs shortly after gameplay starts"
+        - "Playable with Issues — finishable but with notable glitches"
+        - "High Priority Regression — was working before, now broken"
+    validations:
+      required: true
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: Describe the problem with steps to reproduce.
+      placeholder: |
+        The game hangs on the loading screen between races.
+
+        Steps:
+        1. Start PGR2
+        2. Select any circuit
+        3. Game shows loading screen and hangs indefinitely
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      placeholder: "Loading screen should complete within ~10 seconds and race should begin."
+    validations:
+      required: true
+  - type: textarea
+    id: subsystem-hints
+    attributes:
+      label: Affected Subsystem (if known)
+      placeholder: |
+        CPU/GPU sync — NV2A FIFO PGRAPH fence stall
+        GPU — missing surface blit operation
+  - type: input
+    id: xemu-version
+    attributes:
+      label: xemu Version
+      placeholder: "0.0.0-00-g0000000000"
+    validations:
+      required: true
+  - type: input
+    id: last-good-version
+    attributes:
+      label: Last Known-Good Version (if regression)
+      placeholder: "0.0.0-00-g0000000000 or 'never worked'"
+  - type: textarea
+    id: system-information
+    attributes:
+      label: System Information
+      placeholder: |
+        OS: macOS 14 (Apple Silicon)
+        CPU: Apple M2
+        GPU: Apple M2 integrated
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context / Logs

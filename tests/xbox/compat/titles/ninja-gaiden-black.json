@@ -1,0 +1,20 @@
+{
+  "title_id": "ninja-gaiden-black",
+  "display_name": "Ninja Gaiden Black",
+  "media_id": "4e4d000e",
+  "compat_bucket": "in-game-broken",
+  "primary_subsystems": ["gpu-nv2a"],
+  "boot_timeout_s": 60,
+  "golden_frame_hash": null,
+  "fps_floor": 55.0,
+  "fps_ceiling": 60.0,
+  "max_shader_compiles": 400,
+  "max_audio_underruns": 5,
+  "max_gpu_warnings": 20,
+  "xemu_args": [
+    "-cpu", "pentium3",
+    "-m", "64",
+    "-device", "usb-xbox-gamepad"
+  ],
+  "notes": "NGB crashes after the chapter 1 cutscene. Root cause believed to be DMA ordering in NV2A PFIFO combined with a depth buffer format that differs from standard D24S8. Memory access pattern during texture streaming is aggressive."
+}

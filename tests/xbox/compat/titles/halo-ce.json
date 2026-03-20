@@ -1,0 +1,20 @@
+{
+  "title_id": "halo-ce",
+  "display_name": "Halo: Combat Evolved",
+  "media_id": "4d530004",
+  "compat_bucket": "in-game-broken",
+  "primary_subsystems": ["gpu-nv2a", "audio-dsp", "networking"],
+  "boot_timeout_s": 60,
+  "golden_frame_hash": null,
+  "fps_floor": 25.0,
+  "fps_ceiling": 30.0,
+  "max_shader_compiles": 500,
+  "max_audio_underruns": 10,
+  "max_gpu_warnings": 20,
+  "xemu_args": [
+    "-cpu", "pentium3",
+    "-m", "64",
+    "-device", "usb-xbox-gamepad"
+  ],
+  "notes": "Heavy outdoor geometry stresses NV2A combiner modes. Audio dropout in large open areas (Blood Gulch, Sidewinder) points to DSP reverb ucode gaps. System Link peer discovery requires PROMISC nvnet fix."
+}

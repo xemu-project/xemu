@@ -1,0 +1,20 @@
+{
+  "title_id": "crimson-skies",
+  "display_name": "Crimson Skies: High Road to Revenge",
+  "media_id": "4d530010",
+  "compat_bucket": "boots",
+  "primary_subsystems": ["multiplayer-system-link", "gpu-nv2a"],
+  "boot_timeout_s": 60,
+  "golden_frame_hash": null,
+  "fps_floor": 25.0,
+  "fps_ceiling": 30.0,
+  "max_shader_compiles": 250,
+  "max_audio_underruns": 5,
+  "max_gpu_warnings": 10,
+  "xemu_args": [
+    "-cpu", "pentium3",
+    "-m", "64",
+    "-device", "usb-xbox-gamepad"
+  ],
+  "notes": "Single-player campaign boots and is playable. System Link multiplayer is the primary focus — same nvnet requirements as MechAssault. Environment fog effects use NV2A fog state that has occasionally regressed."
+}

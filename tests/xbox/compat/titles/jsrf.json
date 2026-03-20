@@ -1,0 +1,20 @@
+{
+  "title_id": "jsrf",
+  "display_name": "Jet Set Radio Future",
+  "media_id": "4d530009",
+  "compat_bucket": "in-game-broken",
+  "primary_subsystems": ["gpu-nv2a", "cpu-tcg"],
+  "boot_timeout_s": 45,
+  "golden_frame_hash": null,
+  "fps_floor": 55.0,
+  "fps_ceiling": 60.0,
+  "max_shader_compiles": 300,
+  "max_audio_underruns": 5,
+  "max_gpu_warnings": 15,
+  "xemu_args": [
+    "-cpu", "pentium3",
+    "-m", "64",
+    "-device", "usb-xbox-gamepad"
+  ],
+  "notes": "Cel-shading outline pass uses NV2A stencil + combiner sequence that is not yet fully emulated. TCG interrupt timing affects frame-rate consistency — a spike above 60 fps indicates a timing regression. Target is solid 60 fps."
+}

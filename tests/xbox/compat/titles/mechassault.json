@@ -1,0 +1,20 @@
+{
+  "title_id": "mechassault",
+  "display_name": "MechAssault",
+  "media_id": "4d4f0001",
+  "compat_bucket": "boots",
+  "primary_subsystems": ["multiplayer-system-link", "gpu-nv2a"],
+  "boot_timeout_s": 45,
+  "golden_frame_hash": null,
+  "fps_floor": 25.0,
+  "fps_ceiling": 30.0,
+  "max_shader_compiles": 200,
+  "max_audio_underruns": 5,
+  "max_gpu_warnings": 10,
+  "xemu_args": [
+    "-cpu", "pentium3",
+    "-m", "64",
+    "-device", "usb-xbox-gamepad"
+  ],
+  "notes": "Single-player boots and is playable. System Link session discovery requires the nvnet PROMISC broadcast fix and correct UDP forwarding. Primary regression target for multiplayer correctness."
+}

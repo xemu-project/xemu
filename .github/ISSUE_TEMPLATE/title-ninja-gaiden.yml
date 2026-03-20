@@ -1,0 +1,92 @@
+name: "Title Issue: Ninja Gaiden Black"
+description: Report an issue specific to Ninja Gaiden Black
+title: "[NGB] "
+labels: [bug, triage, gpu-nv2a]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for issues specific to **Ninja Gaiden Black**.
+
+        Known stress areas:
+        - **Memory** — NGB uses aggressive DMA scheduling; incorrect DMA ordering
+          can produce scrambled textures or crashes shortly after a chapter load.
+        - **GPU correctness** — The title exercises uncommon NV2A surface formats
+          and depth-buffer precision features.
+
+        Before submitting, check:
+        - Are you using the latest xemu build?
+        - Have you ruled out a bad game disc dump?
+        - Have you searched for a duplicate issue?
+  - type: input
+    id: media-id
+    attributes:
+      label: Media ID / Version
+      placeholder: "MS-xxx v1.00"
+    validations:
+      required: true
+  - type: dropdown
+    id: bucket
+    attributes:
+      label: Compatibility Bucket
+      description: How far does the title get?
+      options:
+        - "Boots — reaches title screen, fails in gameplay"
+        - "In-Game Broken — crashes or hangs shortly after gameplay starts"
+        - "Playable with Issues — finishable but with notable glitches"
+        - "High Priority Regression — was working before, now broken"
+    validations:
+      required: true
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: Describe the problem with steps to reproduce.
+      placeholder: |
+        The game crashes with a black screen immediately after the chapter 1 cutscene.
+
+        Steps:
+        1. Boot Ninja Gaiden Black
+        2. Start a new game
+        3. Watch the intro cutscene — game transitions to black and never recovers
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      placeholder: "After the cutscene, the first playable area should load and gameplay should begin."
+    validations:
+      required: true
+  - type: textarea
+    id: subsystem-hints
+    attributes:
+      label: Affected Subsystem (if known)
+      placeholder: |
+        Memory / DMA — NV2A DMA channel ordering issue
+        GPU — depth buffer format mismatch causing z-fighting or black geometry
+  - type: input
+    id: xemu-version
+    attributes:
+      label: xemu Version
+      placeholder: "0.0.0-00-g0000000000"
+    validations:
+      required: true
+  - type: input
+    id: last-good-version
+    attributes:
+      label: Last Known-Good Version (if regression)
+      placeholder: "0.0.0-00-g0000000000 or 'never worked'"
+  - type: textarea
+    id: system-information
+    attributes:
+      label: System Information
+      placeholder: |
+        OS: Windows 11
+        CPU: Intel Core i9-13900K
+        GPU: NVIDIA RTX 4090
+        GPU Driver: 545.xx
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context / Logs
