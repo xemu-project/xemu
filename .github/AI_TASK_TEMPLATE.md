@@ -1,6 +1,6 @@
 # AI Task Template
 
-> **Required for every AI-assisted coding task in OpenXbox.**
+> **Required for every AI-assisted coding task in OpenMidway.**
 > Copy this template into a GitHub issue body, pull request description,
 > or a Copilot workspace `task.yaml` and fill in **all** fields before
 > assigning work to an AI agent.

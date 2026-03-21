@@ -1,7 +1,7 @@
 # OWNERS — net/
 #
 # This file records the ownership boundary for the network transport domain
-# as it relates to OpenXbox.
+# as it relates to OpenMidway.
 # See docs/devel/xbox-architecture.rst for the full boundary specification.
 #
 # Domain: Generic transport plumbing (host-side backends: TAP, socket,

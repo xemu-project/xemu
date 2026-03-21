@@ -1,6 +1,6 @@
-# FORK_DIFF — OpenXbox Divergences from Upstream xemu / QEMU
+# FORK_DIFF — OpenMidway Divergences from Upstream xemu / QEMU
 
-This file tracks every **intentional** change that OpenXbox has made relative to upstream [xemu](https://github.com/xemu-project/xemu) (and transitively QEMU). It is the authoritative record of what makes OpenXbox different.
+This file tracks every **intentional** change that OpenMidway has made relative to upstream [xemu](https://github.com/xemu-project/xemu) (and transitively QEMU). It is the authoritative record of what makes OpenMidway different.
 
 **Maintainer rule:** Every PR that intentionally diverges from upstream xemu **must** add or update an entry here before merging.
 
@@ -23,6 +23,16 @@ Each entry follows this template:
 ---
 
 ## Entries
+
+---
+
+### Project branding: OpenXbox → OpenMidway
+
+- **Area:** Repository metadata and documentation
+- **Status:** Active
+- **Upstream PR / issue:** N/A
+- **Description:** The fork has been rebranded from OpenXbox to OpenMidway across the README, developer documentation, and user-facing tooling text so the in-tree project identity matches the repository name and avoids confusion with the previous branding.
+- **Files:** `README.md`, `.github/copilot-instructions.md`, `.github/AI_TASK_TEMPLATE.md`, `docs/conf.py`, `docs/architecture.md`, `docs/compatibility-triage.md`, `docs/devel/ai-tasks.rst`, `docs/devel/xbox-architecture.rst`, `docs/networking.md`, `docs/performance.md`, `net/OWNERS`, `tests/xbox/compat/harness.py`, `tests/xbox/compat/test-compat.c`, `tests/xbox/tools/crash_cluster.py`
 
 ---
 

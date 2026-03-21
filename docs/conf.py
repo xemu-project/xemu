@@ -91,9 +91,9 @@ master_doc = 'index'
 default_role = 'any'
 
 # General information about the project.
-project = u'QEMU'
-copyright = u'2025, The QEMU Project Developers'
-author = u'The QEMU Project Developers'
+project = u'OpenMidway'
+copyright = u'2025, OpenMidway contributors'
+author = u'OpenMidway contributors'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the

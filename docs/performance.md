@@ -1,12 +1,12 @@
-# OpenXbox — Performance Guide
+# OpenMidway — Performance Guide
 
-This document describes known performance bottlenecks in OpenXbox, the optimization strategies currently in use, and guidelines for profiling and regression tracking.
+This document describes known performance bottlenecks in OpenMidway, the optimization strategies currently in use, and guidelines for profiling and regression tracking.
 
 ---
 
 ## 1. Performance Architecture
 
-OpenXbox runs an Original Xbox (Intel Pentium III + nVidia NV2A) inside QEMU's software emulation stack. The main cost centers are:
+OpenMidway runs an Original Xbox (Intel Pentium III + nVidia NV2A) inside QEMU's software emulation stack. The main cost centers are:
 
 | Subsystem | Host CPU cost | Notes |
 |---|---|---|

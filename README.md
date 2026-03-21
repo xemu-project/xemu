@@ -1,10 +1,10 @@
-# OpenXbox
+# OpenMidway
 
-OpenXbox is an open-source Original Xbox emulator forked from [xemu](https://xemu.app) (which is itself based on QEMU). The goal of this project is to improve game compatibility, online multiplayer support via System Link tunneling, and overall performance beyond what is available in upstream xemu.
+OpenMidway is an open-source Original Xbox emulator forked from [xemu](https://xemu.app) (which is itself based on QEMU). The goal of this project is to improve game compatibility, online multiplayer support via System Link tunneling, and overall performance beyond what is available in upstream xemu.
 
 ---
 
-## What OpenXbox Changes vs Upstream xemu
+## What OpenMidway Changes vs Upstream xemu
 
 | Area | Change |
 |---|---|
@@ -40,12 +40,12 @@ Current focus is promoting as many titles as possible from Tier 3 → Tier 2 and
 
 ## Online Multiplayer Goals
 
-OpenXbox targets **System Link / LAN tunneling** — replicating the behavior of a physical Ethernet cable between consoles over the internet using standard tunneling protocols (e.g., UDP encapsulation). This approach is:
+OpenMidway targets **System Link / LAN tunneling** — replicating the behavior of a physical Ethernet cable between consoles over the internet using standard tunneling protocols (e.g., UDP encapsulation). This approach is:
 
 - Legally straightforward: it mirrors traffic that the games themselves generate with no server-side Xbox Live authentication.
 - Compatible with existing tunneling tools (XLink Kai, Insignia system-link relay, and future built-in support).
 
-> **Legal note:** OpenXbox does **not** aim to re-implement or bypass native Xbox Live (Microsoft's proprietary online service). System Link / LAN tunneling operates entirely at the network layer without touching Xbox Live authentication, title licensing, or Microsoft's servers.
+> **Legal note:** OpenMidway does **not** aim to re-implement or bypass native Xbox Live (Microsoft's proprietary online service). System Link / LAN tunneling operates entirely at the network layer without touching Xbox Live authentication, title licensing, or Microsoft's servers.
 
 See [docs/networking.md](docs/networking.md) for architecture details.
 
@@ -89,4 +89,4 @@ When your change is an intentional divergence from upstream xemu or QEMU, add a 
 
 ## License
 
-OpenXbox is distributed under the GNU General Public License v2 (or later), the same as QEMU/xemu. See [COPYING](COPYING) and [LICENSE](LICENSE) for details.
+OpenMidway is distributed under the GNU General Public License v2 (or later), the same as QEMU/xemu. See [COPYING](COPYING) and [LICENSE](LICENSE) for details.

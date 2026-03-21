@@ -1,7 +1,7 @@
 /*
  * Golden boot-state tests for top Xbox titles.
  *
- * Copyright (c) 2025 OpenXbox contributors
+ * Copyright (c) 2025 OpenMidway contributors
  *
  * These tests verify that the emulator configuration loaded from a
  * per-title JSON config file satisfies its threshold constraints.  No
