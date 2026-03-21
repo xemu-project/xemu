@@ -1157,10 +1157,13 @@ DEF_METHOD(NV097, SET_FOG_COLOR)
     uint8_t green = GET_MASK(parameter, NV097_SET_FOG_COLOR_GREEN);
     uint8_t blue = GET_MASK(parameter, NV097_SET_FOG_COLOR_BLUE);
     uint8_t alpha = GET_MASK(parameter, NV097_SET_FOG_COLOR_ALPHA);
-    PG_SET_MASK(NV_PGRAPH_FOGCOLOR, NV_PGRAPH_FOGCOLOR_RED, red);
-    PG_SET_MASK(NV_PGRAPH_FOGCOLOR, NV_PGRAPH_FOGCOLOR_GREEN, green);
-    PG_SET_MASK(NV_PGRAPH_FOGCOLOR, NV_PGRAPH_FOGCOLOR_BLUE, blue);
-    PG_SET_MASK(NV_PGRAPH_FOGCOLOR, NV_PGRAPH_FOGCOLOR_ALPHA, alpha);
+
+    uint32_t val = pgraph_reg_r(pg, NV_PGRAPH_FOGCOLOR);
+    SET_MASK(val, NV_PGRAPH_FOGCOLOR_RED, red);
+    SET_MASK(val, NV_PGRAPH_FOGCOLOR_GREEN, green);
+    SET_MASK(val, NV_PGRAPH_FOGCOLOR_BLUE, blue);
+    SET_MASK(val, NV_PGRAPH_FOGCOLOR_ALPHA, alpha);
+    pgraph_reg_w(pg, NV_PGRAPH_FOGCOLOR, val);
 }
 
 DEF_METHOD(NV097, SET_WINDOW_CLIP_TYPE)
@@ -2539,15 +2542,17 @@ DEF_METHOD(NV097, SET_TEXTURE_FORMAT)
         GET_MASK(parameter, NV097_SET_TEXTURE_FORMAT_BASE_SIZE_P);
 
     unsigned int reg = NV_PGRAPH_TEXFMT0 + slot * 4;
-    PG_SET_MASK(reg, NV_PGRAPH_TEXFMT0_CONTEXT_DMA, dma_select);
-    PG_SET_MASK(reg, NV_PGRAPH_TEXFMT0_CUBEMAPENABLE, cubemap);
-    PG_SET_MASK(reg, NV_PGRAPH_TEXFMT0_BORDER_SOURCE, border_source);
-    PG_SET_MASK(reg, NV_PGRAPH_TEXFMT0_DIMENSIONALITY, dimensionality);
-    PG_SET_MASK(reg, NV_PGRAPH_TEXFMT0_COLOR, color_format);
-    PG_SET_MASK(reg, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS, levels);
-    PG_SET_MASK(reg, NV_PGRAPH_TEXFMT0_BASE_SIZE_U, log_width);
-    PG_SET_MASK(reg, NV_PGRAPH_TEXFMT0_BASE_SIZE_V, log_height);
-    PG_SET_MASK(reg, NV_PGRAPH_TEXFMT0_BASE_SIZE_P, log_depth);
+    uint32_t val = pgraph_reg_r(pg, reg);
+    SET_MASK(val, NV_PGRAPH_TEXFMT0_CONTEXT_DMA, dma_select);
+    SET_MASK(val, NV_PGRAPH_TEXFMT0_CUBEMAPENABLE, cubemap);
+    SET_MASK(val, NV_PGRAPH_TEXFMT0_BORDER_SOURCE, border_source);
+    SET_MASK(val, NV_PGRAPH_TEXFMT0_DIMENSIONALITY, dimensionality);
+    SET_MASK(val, NV_PGRAPH_TEXFMT0_COLOR, color_format);
+    SET_MASK(val, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS, levels);
+    SET_MASK(val, NV_PGRAPH_TEXFMT0_BASE_SIZE_U, log_width);
+    SET_MASK(val, NV_PGRAPH_TEXFMT0_BASE_SIZE_V, log_height);
+    SET_MASK(val, NV_PGRAPH_TEXFMT0_BASE_SIZE_P, log_depth);
+    pgraph_reg_w(pg, reg, val);
 
     pg->texture_dirty[slot] = true;
 }
