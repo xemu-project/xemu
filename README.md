@@ -1,6 +1,39 @@
 # OpenMidway
 
-OpenMidway is an open-source Original Xbox emulator forked from [xemu](https://xemu.app) (which is itself based on QEMU). The goal of this project is to improve game compatibility, online multiplayer support via System Link tunneling, and overall performance beyond what is available in upstream xemu.
+OpenMidway is a modern, user-friendly original Xbox emulator focused on:
+- Seamless online multiplayer (System Link, tunneling, real hardware)
+- Strong Windows support
+- Performance and stability on real-world PCs
+- Gradual improvements to compatibility and accuracy
+
+It is forked from [xemu](https://xemu.app) (which is itself based on QEMU).
+
+---
+
+## Why OpenMidway?
+
+Most emulators focus on accuracy first.
+
+OpenMidway focuses on:
+- "Can I play this with friends?"
+- "Does it run well on my PC?"
+- "Can I set it up in 5 minutes?"
+
+---
+
+## Features (Planned)
+
+- One-click System Link setup
+- Multiplayer relay (room codes)
+- Improved GPU performance
+- Windows-first UX
+- Built-in diagnostics
+
+---
+
+## Based on
+
+This project is based on [xemu](https://xemu.app) and QEMU.
 
 ---
 
@@ -55,6 +88,8 @@ See [docs/networking.md](docs/networking.md) for architecture details.
 
 | Document | Purpose |
 |---|---|
+| [docs/vision.md](docs/vision.md) | Project vision and strategic direction |
+| [ROADMAP.md](ROADMAP.md) | Development phases and priority tiers |
 | [docs/architecture.md](docs/architecture.md) | High-level component map |
 | [docs/networking.md](docs/networking.md) | Networking subsystem and System Link tunneling design |
 | [docs/performance.md](docs/performance.md) | Known bottlenecks and optimization strategy |
