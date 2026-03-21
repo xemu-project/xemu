@@ -1,4 +1,4 @@
-# OpenXbox — Compatibility Triage
+# OpenMidway — Compatibility Triage
 
 This document defines how game compatibility is categorized, how to submit a triage report, and what the current focus areas are.
 
@@ -66,7 +66,7 @@ currently sits in.  Per-game issue templates live in
 - Genre:
 
 ## Environment
-- OpenXbox commit hash:
+- OpenMidway commit hash:
 - Host OS + version:
 - Host GPU + driver version:
 - BIOS version (hash, not the ROM):
@@ -172,4 +172,4 @@ group stack traces by signature and surface the most common failure modes.
 
 ## 8. Upstream Tracking
 
-When a fix has been upstreamed to xemu, close the issue and add a note referencing the upstream PR. When an upstream fix is ported to OpenXbox, update [FORK_DIFF.md](../FORK_DIFF.md) accordingly.
+When a fix has been upstreamed to xemu, close the issue and add a note referencing the upstream PR. When an upstream fix is ported to OpenMidway, update [FORK_DIFF.md](../FORK_DIFF.md) accordingly.

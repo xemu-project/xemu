@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpenXbox Compatibility Harness
+OpenMidway Compatibility Harness
 ================================
 Boots a title in xemu, waits for the title screen (via frame hash), and
 records per-frame metrics:
@@ -338,7 +338,7 @@ def save_results(metrics: RunMetrics) -> Path:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="OpenXbox compatibility harness — boot a title and record metrics."
+        description="OpenMidway compatibility harness — boot a title and record metrics."
     )
     p.add_argument("--title", metavar="ID", help="Title ID (see --list)")
     p.add_argument("--xemu", metavar="PATH", help="Path to xemu binary")

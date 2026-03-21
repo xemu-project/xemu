@@ -1,6 +1,6 @@
-# OpenXbox — Architecture Overview
+# OpenMidway — Architecture Overview
 
-This document provides a high-level map of the OpenXbox codebase and how its major components relate to one another.
+This document provides a high-level map of the OpenMidway codebase and how its major components relate to one another.
 
 ---
 
@@ -9,10 +9,10 @@ This document provides a high-level map of the OpenXbox codebase and how its maj
 ```
 QEMU (upstream)
   └─ xemu (Xbox-specific fork of QEMU)
-       └─ OpenXbox (this project — focused on compatibility, networking, and performance)
+       └─ OpenMidway (this project — focused on compatibility, networking, and performance)
 ```
 
-OpenXbox tracks xemu as its primary upstream. Intentional divergences are recorded in [FORK_DIFF.md](../FORK_DIFF.md).
+OpenMidway tracks xemu as its primary upstream. Intentional divergences are recorded in [FORK_DIFF.md](../FORK_DIFF.md).
 
 ---
 
@@ -48,7 +48,7 @@ The MCPX APU implements hardware voice mixing and DSP effects.
 
 ### Networking — `hw/xbox/mcpx/nvnet/`
 
-The MCPX NIC is an nForce Ethernet controller (nvnet). OpenXbox has improved the emulation accuracy (PROMISC mode, TX multi-packet, overflow handling). See [docs/networking.md](networking.md) for the System Link design.
+The MCPX NIC is an nForce Ethernet controller (nvnet). OpenMidway has improved the emulation accuracy (PROMISC mode, TX multi-packet, overflow handling). See [docs/networking.md](networking.md) for the System Link design.
 
 ### Storage — `hw/xbox/`
 
@@ -61,7 +61,7 @@ Standard QEMU USB stack with Xbox HID descriptor patches. Duke and S-controller 
 
 ### BIOS / Boot ROM — `hw/xbox/`
 
-The BIOS image is loaded at startup. OpenXbox does not redistribute the BIOS; users must supply their own dump.
+The BIOS image is loaded at startup. OpenMidway does not redistribute the BIOS; users must supply their own dump.
 
 ### System Bus — `hw/xbox/`
 

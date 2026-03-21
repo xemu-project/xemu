@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-OpenXbox Crash Signature Clustering
+OpenMidway Crash Signature Clustering
 ======================================
 Groups xemu crash logs by signature to surface the most common failure
 modes across title runs.
 
 A **crash signature** is the tuple of the first ``DEPTH`` frames in the
-stack trace that belong to OpenXbox source files (i.e., not libc / libpthread
+stack trace that belong to OpenMidway source files (i.e., not libc / libpthread
 frames).  Two crashes share a signature if their trimmed traces are identical.
 
 Usage
@@ -54,7 +54,7 @@ _DEFAULT_LOG_DIR = _HERE.parent / "compat" / "results"
 _SIG_DEPTH = 5
 
 # Patterns for lines we want to include in signatures.  These match frames
-# that come from the OpenXbox / QEMU source tree and skip system libraries.
+# that come from the OpenMidway / QEMU source tree and skip system libraries.
 _KEEP_FRAME_RE = re.compile(
     r"""
     (?:
@@ -110,7 +110,7 @@ class Frame:
     def __repr__(self) -> str:
         return f"{self.function} ({self.source_file}:{self.line})"
 
-    def is_openxbox(self) -> bool:
+    def is_project_frame(self) -> bool:
         return bool(_KEEP_FRAME_RE.search(self.source_file))
 
 
@@ -123,9 +123,9 @@ class CrashRecord:
 
     @property
     def signature(self) -> tuple[str, ...]:
-        """Stable, depth-limited signature of OpenXbox frames."""
-        openxbox_frames = [f for f in self.frames if f.is_openxbox()]
-        top = openxbox_frames[:_SIG_DEPTH]
+        """Stable, depth-limited signature of OpenMidway frames."""
+        project_frames = [f for f in self.frames if f.is_project_frame()]
+        top = project_frames[:_SIG_DEPTH]
         return tuple(f"{f.function}@{f.source_file}" for f in top)
 
 
@@ -249,7 +249,7 @@ def report_text(groups: dict[tuple, list[CrashRecord]]) -> str:
     ]
     for sig, recs in groups.items():
         titles = sorted({r.title_id for r in recs})
-        first_frame = sig[0] if sig else "<no openxbox frame>"
+        first_frame = sig[0] if sig else "<no openmidway frame>"
         # Trim long signatures for display
         if len(first_frame) > 50:
             first_frame = first_frame[:47] + "…"
@@ -322,15 +322,15 @@ def self_test() -> bool:
 
     assert len(records) == 2, f"Expected 2 records, got {len(records)}"
 
-    # First record: pgraph crash — should have openxbox frames
+    # First record: pgraph crash — should have openmidway frames
     rec0 = records[0]
     assert rec0.title_id == "halo-ce", f"Bad title_id: {rec0.title_id}"
-    assert len(rec0.signature) >= 1, "First record should have openxbox frames"
+    assert len(rec0.signature) >= 1, "First record should have openmidway frames"
     assert "pgraph_method_unhandled" in rec0.signature[0]
 
     # Second record: DSP crash
     rec1 = records[1]
-    assert len(rec1.signature) >= 1, "Second record should have openxbox frames"
+    assert len(rec1.signature) >= 1, "Second record should have openmidway frames"
 
     groups = cluster(records)
     assert len(groups) == 2, f"Expected 2 clusters, got {len(groups)}"

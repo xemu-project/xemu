@@ -1,13 +1,13 @@
 .. _xbox-architecture:
 
 ==========================
-OpenXbox Architecture Guide
+OpenMidway Architecture Guide
 ==========================
 
 .. contents::
 
 This document describes the explicit **ownership boundaries** for all
-Xbox-specific code in OpenXbox.  Because OpenXbox grafts a significant amount
+Xbox-specific code in OpenMidway.  Because OpenMidway grafts a significant amount
 of Xbox-specific logic onto a large, inherited QEMU/xemu tree, clear boundaries
 are essential for both human contributors and AI coding tools to avoid
 unintended cross-domain side effects.
@@ -15,7 +15,7 @@ unintended cross-domain side effects.
 Overview
 --------
 
-OpenXbox divides its Xbox-related work into five primary domains.  Each domain
+OpenMidway divides its Xbox-related work into five primary domains.  Each domain
 owns a specific subtree and a well-defined set of responsibilities.  Changes
 that cross a boundary must be reviewed by owners of **every** affected domain.
 

@@ -1,4 +1,4 @@
-# OpenXbox — Networking Subsystem
+# OpenMidway — Networking Subsystem
 
 This document covers the nvnet NIC emulation, System Link / LAN tunneling design, and the legal framework around online multiplayer.
 
@@ -8,7 +8,7 @@ This document covers the nvnet NIC emulation, System Link / LAN tunneling design
 
 The Original Xbox NIC is an nVidia nForce Ethernet controller (the same family as the "nvnet" Linux driver). It sits on the MCPX south-bridge and is emulated in `hw/xbox/mcpx/nvnet/nvnet.c`.
 
-### 1.1 OpenXbox nvnet improvements over upstream xemu
+### 1.1 OpenMidway nvnet improvements over upstream xemu
 
 | Fix | Description |
 |---|---|
@@ -27,7 +27,7 @@ System Link is the Original Xbox's LAN multiplayer mode. Games broadcast Xbox-sp
 
 ### 2.2 Tunneling Approach
 
-OpenXbox targets a **pure network-layer tunnel**: the emulator presents a virtual Ethernet adapter to the guest, and all frames sent by the guest are encapsulated and forwarded to a relay or peer over UDP/IP on the host network.
+OpenMidway targets a **pure network-layer tunnel**: the emulator presents a virtual Ethernet adapter to the guest, and all frames sent by the guest are encapsulated and forwarded to a relay or peer over UDP/IP on the host network.
 
 ```
 Guest (Xbox game)
@@ -36,7 +36,7 @@ Guest (Xbox game)
 nvnet (emulated NIC)
   │  raw frame passed to host backend
   ▼
-Tunnel backend (OpenXbox extension)
+Tunnel backend (OpenMidway extension)
   │  UDP encapsulation
   ▼
 Internet / LAN
@@ -69,9 +69,9 @@ Tunnel backends are registered in `net/` using QEMU's existing `NetClientState` 
 
 ## 3. Legal Note
 
-> **OpenXbox does not re-implement, bypass, or connect to native Xbox Live** (Microsoft's proprietary online service).
+> **OpenMidway does not re-implement, bypass, or connect to native Xbox Live** (Microsoft's proprietary online service).
 
-System Link / LAN tunneling operates entirely at the Ethernet-frame level. The game's own networking stack generates and consumes all packets. OpenXbox does not:
+System Link / LAN tunneling operates entirely at the Ethernet-frame level. The game's own networking stack generates and consumes all packets. OpenMidway does not:
 
 - Authenticate with Microsoft's servers.
 - Decrypt, forge, or replay Xbox Live security tokens.

@@ -1,14 +1,14 @@
 .. _ai-tasks:
 
 ========================
-AI Task Format for OpenXbox
+AI Task Format for OpenMidway
 ========================
 
 .. contents::
 
 Every task submitted to an AI coding assistant (GitHub Copilot, a
-Copilot agent, etc.) that touches OpenXbox code **must** declare the
-fields listed in this document.  The requirement exists because OpenXbox
+Copilot agent, etc.) that touches OpenMidway code **must** declare the
+fields listed in this document.  The requirement exists because OpenMidway
 mixes Xbox-specific logic with a large inherited QEMU/xemu tree; a task
 that lacks a clear scope, risk assessment, or test plan can silently
 break emulation correctness, save-state compatibility, or online
