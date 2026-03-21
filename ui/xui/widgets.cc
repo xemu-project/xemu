@@ -352,6 +352,9 @@ void FilePicker(const char *str_id, const char *current_path,
     if (clear) {
         on_select("");
     }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Clear");
+    }
 
     ImGui::PopID();
     g_free(clear_button_id);
