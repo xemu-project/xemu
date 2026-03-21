@@ -30,7 +30,9 @@
 extern "C" {
 #include "qemu/osdep.h"
 #include "net/net.h"
+#include "net/pcap.h"
 }
+#undef snprintf  // pcap-stdinc.h on Windows redefines snprintf as _snprintf
 
 #include <SDL3/SDL.h>
 #include <cstring>
@@ -324,6 +326,89 @@ void MultiplayerWizard::DrawModeDetails(bool appearing)
 }
 
 // ---------------------------------------------------------------------------
+// DrawDiagnostics — collapsible panel with a readiness checklist for the
+// current multiplayer scenario.
+//
+// Each row shows a green check or red X depending on whether that item is
+// satisfied, so users can quickly spot what still needs to be fixed.
+// ---------------------------------------------------------------------------
+void MultiplayerWizard::DrawDiagnostics()
+{
+    // Use a tree-node so the panel is collapsed by default and doesn't add
+    // visual clutter when everything is already working.
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    bool open = ImGui::TreeNodeEx("###diag_panel",
+                                  ImGuiTreeNodeFlags_SpanAvailWidth,
+                                  ICON_FA_STETHOSCOPE "  Diagnostics");
+    ImGui::PopFont();
+    if (!open) {
+        return;
+    }
+
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    ImGui::Dummy(ImVec2(0, 2.0f * g_viewport_mgr.m_scale));
+
+    // Helper lambda: draw a single status row.
+    auto row = [](bool ok, const char *label, const char *fix_hint) {
+        if (ok) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 1.0f, 0.4f, 1.0f));
+            ImGui::Text(ICON_FA_CIRCLE_CHECK "  %s", label);
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.36f, 0.36f, 1.0f));
+            ImGui::Text(ICON_FA_CIRCLE_XMARK "  %s", label);
+        }
+        ImGui::PopStyleColor();
+        if (!ok && fix_hint && *fix_hint) {
+            ImGui::SameLine();
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.65f, 0.65f, 0.65f, 1.0f));
+            ImGui::Text("— %s", fix_hint);
+            ImGui::PopStyleColor();
+        }
+    };
+
+    // 1. Network enabled
+    bool net_ok = xemu_net_is_enabled();
+    row(net_ok, "Virtual network cable connected",
+        "Enable in the Adapter section below");
+
+    // 2. MAC address not the QEMU default
+    bool mac_ok = !IsDefaultMac();
+    row(mac_ok, "Unique MAC address",
+        "Set a custom MAC via System \xe2\x86\x92 Machine settings");
+
+    // 3. Backend / adapter checks — only relevant for bridged (pcap) modes
+    bool needs_pcap = (m_mode == MULTIPLAYER_MODE_LAN ||
+                       m_mode == MULTIPLAYER_MODE_XLINKKAI);
+    if (needs_pcap) {
+#if defined(_WIN32)
+        // Check if Npcap is loadable
+        bool pcap_ok = (pcap_load_library() == 0);
+        row(pcap_ok, "Npcap library available",
+            "Install Npcap from nmap.org/npcap/");
+#else
+        bool pcap_ok = true; // libpcap is always present on non-Windows
+        row(pcap_ok, "Packet capture library available", "");
+#endif
+        // Check that an adapter is configured (non-empty netif string)
+        bool adapter_ok = (g_config.net.pcap.netif[0] != '\0');
+        row(adapter_ok, "Bridged network adapter selected",
+            "Pick an adapter from Adapter \xe2\x86\x92 Network interface");
+    }
+
+    // 4. For UDP/relay mode — remote address configured
+    if (m_mode == MULTIPLAYER_MODE_OPENMIDWAY) {
+        bool remote_ok = (g_config.net.udp.remote_addr[0] != '\0' &&
+                          strcmp(g_config.net.udp.remote_addr, "1.2.3.4:9368") != 0);
+        row(remote_ok, "Remote address or room code configured",
+            "Enter the remote IP:port or use a room code above");
+    }
+
+    ImGui::Dummy(ImVec2(0, 2.0f * g_viewport_mgr.m_scale));
+    ImGui::PopFont();
+    ImGui::TreePop();
+}
+
+// ---------------------------------------------------------------------------
 // Draw — top-level entry point called from MainMenuNetworkView::Draw().
 // ---------------------------------------------------------------------------
 void MultiplayerWizard::Draw()
@@ -345,6 +430,9 @@ void MultiplayerWizard::Draw()
     DrawEepromReminder();
 
     DrawModeDetails(appearing);
+
+    ImGui::Dummy(ImVec2(0, 6.0f * g_viewport_mgr.m_scale));
+    DrawDiagnostics();
 
     // Relay indicator shown inline whenever a relay session is active.
     if (m_relay_active) {

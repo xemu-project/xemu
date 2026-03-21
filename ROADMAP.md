@@ -28,9 +28,9 @@ development phases.
 
 - [x] One-click System Link setup
 - [x] Auto MAC address handling
-- [ ] Adapter auto-detection (Npcap)
-- [ ] Multiplayer diagnostics panel
-- [ ] Renderer auto-selection
+- [x] Adapter auto-detection (Npcap)
+- [x] Multiplayer diagnostics panel
+- [x] Renderer auto-selection
 - [x] "Host Game" button — creates a UDP tunnel automatically, generates a room
       code, opens ports / uses relay fallback
 
