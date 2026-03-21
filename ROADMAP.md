@@ -26,12 +26,12 @@ development phases.
 
 **Theme:** "Make playing Halo 2 online on Windows stupid easy"
 
-- [ ] One-click System Link setup
-- [ ] Auto MAC address handling
+- [x] One-click System Link setup
+- [x] Auto MAC address handling
 - [ ] Adapter auto-detection (Npcap)
 - [ ] Multiplayer diagnostics panel
 - [ ] Renderer auto-selection
-- [ ] "Host Game" button — creates a UDP tunnel automatically, generates a room
+- [x] "Host Game" button — creates a UDP tunnel automatically, generates a room
       code, opens ports / uses relay fallback
 
 ---

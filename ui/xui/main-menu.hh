@@ -24,6 +24,7 @@
 #include "widgets.hh"
 #include "scene.hh"
 #include "scene-components.hh"
+#include "multiplayer-wizard.hh"
 #include "../xemu-snapshots.h"
 #include "../xemu-controllers.h"
 #include "ui/xemu-input.h"

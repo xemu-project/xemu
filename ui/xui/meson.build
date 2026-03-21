@@ -11,6 +11,7 @@ xemu_ss.add(files(
   'misc.cc',
   'menubar.cc',
   'monitor.cc',
+  'multiplayer-wizard.cc',
   'notifications.cc',
   'popup-menu.cc',
   'reporting.cc',
