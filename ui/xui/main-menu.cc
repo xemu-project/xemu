@@ -1935,6 +1935,9 @@ bool MainMenuScene::Draw()
             if (ImGui::Button(ICON_FA_XMARK)) {
                 Hide();
             }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Close");
+            }
             ImGui::SetCursorPos(pos);
             ImGui::PopStyleColor(2);
             ImGui::PopFont();

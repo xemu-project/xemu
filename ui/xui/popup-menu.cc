@@ -234,10 +234,16 @@ void PopupMenu::Draw(PopupMenuItemDelegate &nav)
         if (ImGui::Button(ICON_FA_ARROW_LEFT)) {
             nav.PopMenu();
         }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Back");
+        }
         ImGui::SameLine();
         ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - ImGui::GetStyle().FramePadding.x * 2.0f - ImGui::GetTextLineHeight());
         if (ImGui::Button(ICON_FA_XMARK)) {
             nav.ClearMenuStack();
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Close");
         }
         ImGui::PopStyleColor(2);
         ImGui::End();
