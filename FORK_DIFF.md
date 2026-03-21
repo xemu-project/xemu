@@ -126,6 +126,16 @@ Each entry follows this template:
 
 ---
 
+### Phase 7: Multiplayer Wizard (Windows + Multiplayer UX)
+
+- **Area:** `ui/xui/`
+- **Status:** Active
+- **Upstream PR / issue:** N/A
+- **Description:** Adds a guided Multiplayer Wizard panel to the Network settings tab. The wizard lets users choose one of four System Link scenarios (OpenMidway peer-to-peer UDP tunnel, real Xbox on LAN via bridged adapter, XLink Kai, or Insignia / Xbox Live recreation) and automatically pre-configures the correct network backend. Additional features: MAC address conflict detection (warns when the emulated NIC uses the default QEMU 52:54:00:12:34:xx range), a one-time EEPROM backup reminder, a room-code / relay "easy join" flow for NAT traversal (OpenMidway mode), and a top-right HUD overlay showing relay latency and packet loss while a relay session is active.
+- **Files:** `ui/xui/multiplayer-wizard.hh`, `ui/xui/multiplayer-wizard.cc`, `ui/xui/main-menu.hh`, `ui/xui/main-menu.cc`, `ui/xui/main.cc`, `ui/xui/meson.build`
+
+---
+
 ## Upstreamed / Reverted
 
 *(None yet — entries will be moved here once a divergence is merged into upstream xemu or intentionally reverted.)*

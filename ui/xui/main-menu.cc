@@ -28,6 +28,7 @@
 #include "misc.hh"
 #include "gl-helpers.hh"
 #include "reporting.hh"
+#include "multiplayer-wizard.hh"
 #include "qapi/error.h"
 #include "actions.hh"
 
@@ -929,6 +930,10 @@ MainMenuNetworkView::MainMenuNetworkView()
 
 void MainMenuNetworkView::Draw()
 {
+    // Multiplayer Wizard — guided setup for System Link / relay / LAN / Insignia
+    g_multiplayer_wizard.Draw();
+
+    Separator();
     SectionTitle("Adapter");
     bool enabled = xemu_net_is_enabled();
     g_config.net.enable = enabled;

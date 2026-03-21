@@ -43,6 +43,7 @@
 #include "scene.hh"
 #include "scene-manager.hh"
 #include "main-menu.hh"
+#include "multiplayer-wizard.hh"
 #include "popup-menu.hh"
 #include "notifications.hh"
 #include "monitor.hh"
@@ -317,6 +318,37 @@ void xemu_hud_update(void)
     g_scene_mgr.Draw();
     if (!first_boot_window.is_open) notification_manager.Draw();
     g_snapshot_mgr.Draw();
+
+    // Relay HUD overlay — shown as a small overlay in the top-right corner
+    // whenever an OpenMidway relay session is active.
+    if (g_multiplayer_wizard.IsRelayActive()) {
+        g_multiplayer_wizard.Tick();
+        ImGuiIO &io = ImGui::GetIO();
+        const float pad = 8.0f * g_viewport_mgr.m_scale;
+        ImGui::SetNextWindowPos(
+            ImVec2(io.DisplaySize.x - pad, g_main_menu_height + pad),
+            ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+        ImGui::SetNextWindowBgAlpha(0.60f);
+        ImGui::SetNextWindowSize(ImVec2(0, 0)); // auto-size
+        ImGuiWindowFlags overlay_flags =
+            ImGuiWindowFlags_NoDecoration |
+            ImGuiWindowFlags_NoInputs |
+            ImGuiWindowFlags_NoNav |
+            ImGuiWindowFlags_NoMove |
+            ImGuiWindowFlags_NoSavedSettings |
+            ImGuiWindowFlags_NoBringToDisplayOnFocus;
+        if (ImGui::Begin("##relay_hud", nullptr, overlay_flags)) {
+            ImGui::PushFont(g_font_mgr.m_menu_font_small);
+            ImGui::PushStyleColor(ImGuiCol_Text,
+                                  ImVec4(0.2f, 1.0f, 0.4f, 1.0f));
+            ImGui::Text(ICON_FA_SERVER "  Relay  %.0f ms  %.1f%% loss",
+                        (double)g_multiplayer_wizard.GetRelayLatencyMs(),
+                        (double)g_multiplayer_wizard.GetRelayPacketLoss());
+            ImGui::PopStyleColor();
+            ImGui::PopFont();
+        }
+        ImGui::End();
+    }
 
     // static bool show_demo = true;
     // if (show_demo) ImGui::ShowDemoWindow(&show_demo);
