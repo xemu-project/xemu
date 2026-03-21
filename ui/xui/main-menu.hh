@@ -93,11 +93,15 @@ public:
     std::vector<std::unique_ptr<NetworkInterface>> m_ifaces;
     NetworkInterface *m_current_iface;
     bool m_failed_to_load_lib;
+    bool m_auto_detected;
 
     NetworkInterfaceManager();
     void Refresh(void);
     void Select(NetworkInterface &iface);
     bool IsCurrent(NetworkInterface &iface);
+
+private:
+    static bool IsLoopback(pcap_if_t *dev);
 };
 
 class MainMenuNetworkView : public virtual MainMenuTabView

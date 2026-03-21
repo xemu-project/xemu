@@ -749,6 +749,27 @@ void MainMenuDisplayView::Draw()
 #endif
                  ,
                  "Select desired renderer implementation");
+
+    // Renderer auto-selection: pick the best available backend.
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    if (ImGui::Button(ICON_FA_WAND_MAGIC_SPARKLES "  Auto-select best renderer")) {
+#ifdef CONFIG_VULKAN
+        g_config.display.renderer = CONFIG_DISPLAY_RENDERER_VULKAN;
+#else
+        g_config.display.renderer = CONFIG_DISPLAY_RENDERER_OPENGL;
+#endif
+        xemu_settings_save();
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+#ifdef CONFIG_VULKAN
+            "Selects Vulkan (best performance on this build)"
+#else
+            "Selects OpenGL (Vulkan not available in this build)"
+#endif
+        );
+    }
+    ImGui::PopFont();
     int rendering_scale = nv2a_get_surface_scale_factor() - 1;
     if (ChevronCombo("Internal resolution scale", &rendering_scale,
                      "1x\0"
@@ -868,6 +889,33 @@ NetworkInterfaceManager::NetworkInterfaceManager()
 {
     m_current_iface = NULL;
     m_failed_to_load_lib = false;
+    m_auto_detected = false;
+}
+
+// Returns true when the pcap device is a loopback or null interface that is
+// not useful for System Link bridging.
+bool NetworkInterfaceManager::IsLoopback(pcap_if_t *dev)
+{
+    if (dev->flags & PCAP_IF_LOOPBACK) {
+        return true;
+    }
+    // Catch any adapter whose description or name contains "loopback" (case
+    // insensitive) — catches Npcap's dedicated NPF_Loopback adapter on
+    // Windows as well as "lo" on Linux even when the flag is not set.
+    const char *desc = dev->description ? dev->description : "";
+    const char *name = dev->name ? dev->name : "";
+    if (g_ascii_strcasecmp(name, "lo") == 0) {
+        return true;
+    }
+    if (g_strstr_len(desc, -1, "Loopback") != NULL ||
+        g_strstr_len(desc, -1, "loopback") != NULL) {
+        return true;
+    }
+    if (g_strstr_len(name, -1, "Loopback") != NULL ||
+        g_strstr_len(name, -1, "loopback") != NULL) {
+        return true;
+    }
+    return false;
 }
 
 void NetworkInterfaceManager::Refresh(void)
@@ -888,6 +936,7 @@ void NetworkInterfaceManager::Refresh(void)
 
     m_ifaces.clear();
     m_current_iface = NULL;
+    m_auto_detected = false;
 
     if (pcap_findalldevs(&alldevs, err)) {
         return;
@@ -905,6 +954,31 @@ void NetworkInterfaceManager::Refresh(void)
 #endif
         if (!strcmp(g_config.net.pcap.netif, iter->name)) {
             m_current_iface = m_ifaces.back().get();
+        }
+    }
+
+    // Auto-detect: if no saved preference matched any adapter, pick the first
+    // non-loopback physical interface so users don't have to hunt for it
+    // manually.  The selection is recorded in g_config so it persists until
+    // the user explicitly changes it.
+    if (m_current_iface == nullptr && !m_ifaces.empty()) {
+        for (iter = alldevs; iter != NULL; iter = iter->next) {
+            if (IsLoopback(iter)) {
+                continue;
+            }
+            // Find the corresponding entry in m_ifaces
+            for (auto &iface : m_ifaces) {
+                if (iface->m_pcap_name == iter->name) {
+                    m_current_iface = iface.get();
+                    xemu_settings_set_string(&g_config.net.pcap.netif,
+                                             iface->m_pcap_name.c_str());
+                    m_auto_detected = true;
+                    break;
+                }
+            }
+            if (m_current_iface) {
+                break;
+            }
         }
     }
 
@@ -1019,6 +1093,7 @@ void MainMenuNetworkView::DrawPcapOptions(bool appearing)
                 if (ImGui::Selectable(iface->m_friendly_name.c_str(),
                                       is_selected)) {
                     iface_mgr->Select((*iface));
+                    iface_mgr->m_auto_detected = false;
                 }
                 if (is_selected) ImGui::SetItemDefaultFocus();
                 ImGui::PopID();
@@ -1029,6 +1104,13 @@ void MainMenuNetworkView::DrawPcapOptions(bool appearing)
         }
         ImGui::PopFont();
         DrawComboChevron();
+        if (iface_mgr->m_auto_detected) {
+            ImGui::PushFont(g_font_mgr.m_menu_font_small);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.45f, 0.78f, 1.0f, 1.0f));
+            ImGui::Text(ICON_FA_WAND_MAGIC_SPARKLES "  Auto-detected");
+            ImGui::PopStyleColor();
+            ImGui::PopFont();
+        }
     }
 }
 

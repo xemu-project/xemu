@@ -136,6 +136,36 @@ Each entry follows this template:
 
 ---
 
+### Phase 7: Npcap adapter auto-detection
+
+- **Area:** `ui/xui/`
+- **Status:** Active
+- **Upstream PR / issue:** N/A
+- **Description:** `NetworkInterfaceManager::Refresh()` now auto-selects the first non-loopback physical adapter when no saved adapter preference is present. This eliminates the manual step of hunting for the correct interface when using the Bridged Adapter backend on a fresh install or after removing the previous adapter. The selection is persisted to `g_config` immediately and shown with an "Auto-detected" badge in the UI. Users can still override it at any time from the adapter dropdown. On Windows, the loopback check additionally catches the Npcap `\Device\NPF_Loopback` adapter by name.
+- **Files:** `ui/xui/main-menu.hh`, `ui/xui/main-menu.cc`
+
+---
+
+### Phase 7: Multiplayer diagnostics panel
+
+- **Area:** `ui/xui/`
+- **Status:** Active
+- **Upstream PR / issue:** N/A
+- **Description:** Adds a collapsible "Diagnostics" panel inside the Multiplayer Wizard that shows a per-item readiness checklist for the current multiplayer scenario. Checks include: virtual network cable connected, unique MAC address (not the QEMU 52:54:00:12:34:xx default), Npcap library available (Windows, bridged modes), bridged adapter selected, and remote address / room code configured (UDP mode). Each item is shown in green (OK) or red (needs attention) with a short inline fix hint.
+- **Files:** `ui/xui/multiplayer-wizard.hh`, `ui/xui/multiplayer-wizard.cc`
+
+---
+
+### Phase 7: Renderer auto-selection button
+
+- **Area:** `ui/xui/`
+- **Status:** Active
+- **Upstream PR / issue:** N/A
+- **Description:** Adds an "Auto-select best renderer" button to the Display › Renderer section of the settings menu. Clicking it sets `g_config.display.renderer` to Vulkan when the build includes `CONFIG_VULKAN`, or to OpenGL otherwise, and persists the choice with `xemu_settings_save()`. A tooltip clarifies which backend was selected and why. This gives users a one-click path to the highest-performance renderer without needing to understand the backend differences.
+- **Files:** `ui/xui/main-menu.cc`
+
+---
+
 ## Upstreamed / Reverted
 
 *(None yet — entries will be moved here once a divergence is merged into upstream xemu or intentionally reverted.)*

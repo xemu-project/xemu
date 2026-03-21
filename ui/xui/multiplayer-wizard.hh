@@ -72,6 +72,7 @@ private:
     void DrawMacWarning();
     void DrawEepromReminder();
     void DrawModeDetails(bool appearing);
+    void DrawDiagnostics();
 
     // Apply g_config.net.backend (and related settings) for the chosen mode.
     void ApplyMode(MultiplayerMode mode);
