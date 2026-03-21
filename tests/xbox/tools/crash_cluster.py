@@ -110,7 +110,7 @@ class Frame:
     def __repr__(self) -> str:
         return f"{self.function} ({self.source_file}:{self.line})"
 
-    def is_openmidway(self) -> bool:
+    def is_project_frame(self) -> bool:
         return bool(_KEEP_FRAME_RE.search(self.source_file))
 
 
@@ -124,8 +124,8 @@ class CrashRecord:
     @property
     def signature(self) -> tuple[str, ...]:
         """Stable, depth-limited signature of OpenMidway frames."""
-        openmidway_frames = [f for f in self.frames if f.is_openmidway()]
-        top = openmidway_frames[:_SIG_DEPTH]
+        project_frames = [f for f in self.frames if f.is_project_frame()]
+        top = project_frames[:_SIG_DEPTH]
         return tuple(f"{f.function}@{f.source_file}" for f in top)
 
 
