@@ -984,7 +984,7 @@ static void display_very_early_init(DisplayOptions *o)
         SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-    char *title = g_strdup_printf("xemu | v%s"
+    char *title = g_strdup_printf("OpenMidway | v%s"
 #ifdef XEMU_DEBUG_BUILD
                                   " Debug"
 #endif
@@ -1058,7 +1058,7 @@ static void display_very_early_init(DisplayOptions *o)
             "Unable to create OpenGL context. This usually means the\r\n"
             "graphics device on this system does not support OpenGL 4.0.\r\n"
             "\r\n"
-            "xemu cannot continue and will now exit.",
+            "OpenMidway cannot continue and will now exit.",
             m_window);
         SDL_DestroyWindow(m_window);
         SDL_Quit();
@@ -1265,13 +1265,13 @@ static void setup_nvidia_profile(void)
 
 static void init_sdl_app_metadata(void)
 {
-    SDL_SetAppMetadataProperty(SDL_PROP_APP_METADATA_NAME_STRING, "xemu");
+    SDL_SetAppMetadataProperty(SDL_PROP_APP_METADATA_NAME_STRING, "OpenMidway");
     SDL_SetAppMetadataProperty(SDL_PROP_APP_METADATA_VERSION_STRING,
                                xemu_version);
     SDL_SetAppMetadataProperty(SDL_PROP_APP_METADATA_IDENTIFIER_STRING,
-                               "app.xemu.xemu");
+                               "app.openmidway.openmidway");
     SDL_SetAppMetadataProperty(SDL_PROP_APP_METADATA_URL_STRING,
-                               "https://xemu.app");
+                               "https://github.com/awest813/OpenMidway");
 }
 
 int main(int argc, char **argv)
@@ -1292,21 +1292,23 @@ int main(int argc, char **argv)
         }
     } else {
         // Launched without a console. Redirect stdout and stderr to a log file.
-        HANDLE logfile = CreateFileA("xemu.log",
+        HANDLE logfile = CreateFileA("openmidway.log",
             GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
             NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         if (logfile != INVALID_HANDLE_VALUE) {
-            freopen("xemu.log", "a", stdout);
-            freopen("xemu.log", "a", stderr);
+            freopen("openmidway.log", "a", stdout);
+            freopen("openmidway.log", "a", stderr);
         }
     }
 
     _set_error_mode(_OUT_TO_STDERR);
 #endif
 
-    fprintf(stderr, "xemu_version: %s\n", xemu_version);
-    fprintf(stderr, "xemu_commit: %s\n", xemu_commit);
-    fprintf(stderr, "xemu_date: %s\n", xemu_date);
+    /* xemu_version/commit/date are inherited C symbols from xemu-version.h;
+     * the log labels are updated to reflect the OpenMidway identity. */
+    fprintf(stderr, "openmidway_version: %s\n", xemu_version);
+    fprintf(stderr, "openmidway_commit: %s\n", xemu_commit);
+    fprintf(stderr, "openmidway_date: %s\n", xemu_date);
 
     init_sdl_app_metadata();
 
@@ -1328,7 +1330,7 @@ int main(int argc, char **argv)
         const char *err_msg = xemu_settings_get_error_message();
         fprintf(stderr, "%s", err_msg);
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
-            "Failed to load xemu config file", err_msg,
+            "Failed to load OpenMidway config file", err_msg,
             m_window);
         SDL_Quit();
         exit(1);
