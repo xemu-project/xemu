@@ -354,9 +354,7 @@ bool pgraph_gl_check_surface_to_texture_compatibility(
 {
     // FIXME: Better checks/handling on formats and surface-texture compat
 
-    if ((!surface->swizzle && surface->pitch != shape->pitch) ||
-        surface->width != shape->width ||
-        surface->height != shape->height) {
+    if (!surface->swizzle && surface->pitch != shape->pitch) {
         return false;
     }
 
@@ -375,6 +373,11 @@ bool pgraph_gl_check_surface_to_texture_compatibility(
 
     if (shape->levels > 1) {
         // FIXME: Support rendering surface to mip levels
+        return false;
+    }
+
+    if (surface->width != shape->width ||
+        surface->height != shape->height) {
         return false;
     }
 
