@@ -30,6 +30,15 @@ h1, h2, .rst-content .toctree-wrapper p.caption, h3, h4, h5, h6, legend {
     border-color: #f60;
 }
 
+.wy-side-nav-search input[type="text"]:focus-visible,
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+    outline: 3px solid #ff9e66;
+    outline-offset: 2px;
+}
+
 .wy-menu-vertical p.caption {
     color: white;
 }
@@ -201,6 +210,7 @@ div[class^="highlight"] pre {
         padding: unset;
         background: inherit;
         font-size: 85%;
+        overflow-wrap: anywhere;
     }
 
     .rst-content tt.literal,.rst-content tt.literal,.rst-content code.literal {
