@@ -361,11 +361,6 @@ bool pgraph_gl_check_surface_to_texture_compatibility(
     int surface_fmt = surface->shape.color_format;
     int texture_fmt = shape->color_format;
 
-    if (!surface->color) {
-        // FIXME: Support zeta to color
-        return false;
-    }
-
     if (shape->cubemap) {
         // FIXME: Support rendering surface to cubemap face
         return false;
@@ -378,6 +373,11 @@ bool pgraph_gl_check_surface_to_texture_compatibility(
 
     if (surface->width != shape->width ||
         surface->height != shape->height) {
+        return false;
+    }
+
+    if (!surface->color) {
+        // FIXME: Support zeta to color
         return false;
     }
 
