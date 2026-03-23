@@ -50,7 +50,7 @@ void FirstBootWindow::Draw()
 
     Logo();
 
-    const char *msg = "Configure machine settings to get started";
+    const char *msg = "Configure OpenMidway to get started";
     ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
     ImGui::Text("%s", msg);
 
@@ -64,9 +64,9 @@ void FirstBootWindow::Draw()
 
     ImGui::Dummy(ImVec2(0,50*g_viewport_mgr.m_scale));
 
-    msg = "Visit https://xemu.app for more information";
+    msg = "Visit the OpenMidway project page for setup help and updates";
     ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
-    Hyperlink(msg, "https://xemu.app");
+    Hyperlink(msg, "https://github.com/awest813/OpenMidway");
 
     ImGui::Dummy(ImVec2(400*g_viewport_mgr.m_scale,20*g_viewport_mgr.m_scale));
 

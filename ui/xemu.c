@@ -1038,6 +1038,15 @@ static void display_very_early_init(DisplayOptions *o)
     g_free(title);
     SDL_SetWindowMinimumSize(m_window, min_window_width, min_window_height);
 
+#if defined(SDL_VIDEO_DRIVER_WINDOWS)
+    {
+        HWND hwnd = (HWND)SDL_GetPointerProperty(
+            SDL_GetWindowProperties(m_window),
+            SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+        xemu_windows_apply_window_style(hwnd);
+    }
+#endif
+
     const SDL_DisplayMode *disp_mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(m_window));
     if (disp_mode && (disp_mode->w < window_width || disp_mode->h < window_height)) {
         SDL_SetWindowSize(m_window, min_window_width, min_window_height);
@@ -1302,6 +1311,7 @@ int main(int argc, char **argv)
     }
 
     _set_error_mode(_OUT_TO_STDERR);
+    xemu_windows_set_app_user_model_id();
 #endif
 
     /* xemu_version/commit/date are inherited C symbols from xemu-version.h;
