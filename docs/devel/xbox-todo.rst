@@ -88,7 +88,7 @@ DSP (``hw/xbox/mcpx/apu/dsp/dsp.c``)
 --------------------------------------
 
 14. **DMA timing model** *(line 174)* —
-    ``FIXME: DMA timing be done cleaner`` — DMA transfers complete
+    ``FIXME: DMA timing should be done more cleanly`` — DMA transfers complete
     instantly; a cycle-accurate model would improve audio fidelity for
     latency-sensitive effects.
 

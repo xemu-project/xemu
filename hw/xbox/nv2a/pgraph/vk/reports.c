@@ -53,6 +53,9 @@ void pgraph_vk_finalize_reports(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    /* Reset queue heads before freeing the backing pool. After
+     * QSIMPLEQ_INIT both queues are empty, so no dangling pointers
+     * remain once the pool memory is released. */
     QSIMPLEQ_INIT(&r->report_queue);
     QSIMPLEQ_INIT(&r->free_reports);
     g_free(r->report_pool);
