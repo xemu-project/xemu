@@ -895,7 +895,10 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
 
     int adpcm_block_index = -1;
     uint32_t adpcm_block[36*2/4];
-    int16_t adpcm_decoded[65*2]; // FIXME: Move out of here
+    // TODO (Phase 9 perf): Move adpcm_decoded to MCPXAPUVoiceFilter so the
+    // scratch buffer is allocated once per voice rather than on every call to
+    // voice_get_samples.  Keep it out of VMState (scratch only).
+    int16_t adpcm_decoded[65*2];
 
     // FIXME: Only update if necessary
     struct McpxApuDebugVoice *dbg = &g_dbg.vp.v[v];
@@ -1177,7 +1180,10 @@ static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
          * which case using this resampler is overkill, but quality is good
          * so use it for now.
          */
-        // FIXME: Don't do 2ch resampling if this is a mono voice
+        // TODO (Phase 9 perf): Create a 1-channel SRC state for mono voices
+        // instead of always allocating a 2-channel resampler.  Requires
+        // storing the channel count in MCPXAPUVoiceFilter and adjusting
+        // voice_resample_callback / resample_buf layout accordingly.
         filter->resampler = src_callback_new(&voice_resample_callback,
                                            SRC_SINC_FASTEST, 2, &err, filter);
         if (filter->resampler == NULL) {
