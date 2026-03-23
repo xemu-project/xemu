@@ -31,6 +31,20 @@ OpenMidway focuses on:
 
 ---
 
+## Quick Start for New Users
+
+If you want the shortest path to a first successful boot:
+
+1. Build OpenMidway with the commands in [Building](#building) or use an existing build artifact.
+2. Gather your Xbox BIOS/boot ROM and your HDD/game image files in one easy-to-find folder.
+3. Launch OpenMidway and configure only the minimum required files first.
+4. Verify video, audio, and controller input before changing advanced settings.
+5. Save that working setup, then move on to networking or performance tuning.
+
+For a more detailed first-run walkthrough, use [docs/getting-started.md](docs/getting-started.md).
+
+---
+
 ## Based on
 
 This project is based on [xemu](https://xemu.app) and QEMU.
@@ -88,6 +102,7 @@ See [docs/networking.md](docs/networking.md) for architecture details.
 
 | Document | Purpose |
 |---|---|
+| [docs/getting-started.md](docs/getting-started.md) | Fast first-run guide for new users |
 | [docs/vision.md](docs/vision.md) | Project vision and strategic direction |
 | [ROADMAP.md](ROADMAP.md) | Development phases and priority tiers |
 | [docs/architecture.md](docs/architecture.md) | High-level component map |
@@ -109,6 +124,12 @@ sudo apt-get install -y git build-essential ninja-build python3-pip \
 ./configure --target-list=i386-softmmu
 make -j$(nproc)
 ```
+
+For first-time users, the easiest workflow is:
+
+1. Finish the build.
+2. Read [docs/getting-started.md](docs/getting-started.md).
+3. Do one clean first boot before tuning performance or networking.
 
 For detailed build instructions see [`docs/devel/build-environment.rst`](docs/devel/build-environment.rst).
 
