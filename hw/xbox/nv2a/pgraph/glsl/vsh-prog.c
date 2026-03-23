@@ -548,19 +548,11 @@ static const char* vsh_header =
      * https://www.opengl.org/registry/specs/NV/vertex_program1_1.txt
      */
     "\n"
-#if 0  /* QQQ NICE_CODE */
     "/* Converts the input to vec4, pads with last component */\n"
     "vec4 _in(float v) { return vec4(v); }\n"
     "vec4 _in(vec2 v) { return v.xyyy; }\n"
     "vec4 _in(vec3 v) { return v.xyzz; }\n"
     "vec4 _in(vec4 v) { return v.xyzw; }\n"
-#else
-    "/* Converts the input to vec4, pads with last component */\n"
-    "vec4 _in(float v) { return vec4(v); }\n"
-    "vec4 _in(vec2 v) { return v.xyyy; }\n"
-    "vec4 _in(vec3 v) { return v.xyzz; }\n"
-    "vec4 _in(vec4 v) { return v.xyzw; }\n"
-#endif
     "\n"
     "#define INFINITY (1.0 / 0.0)\n"
     "\n"
