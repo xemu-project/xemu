@@ -22,11 +22,11 @@
 
 ShaderState pgraph_glsl_get_shader_state(PGRAPHState *pg)
 {
-    pg->program_data_dirty = false; /* fixme */
+    pg->program_data_dirty = false; /* FIXME */
 
     ShaderState state;
 
-    // We will hash it, so make sure any padding is zeroed
+    /* We will hash it, so make sure any padding is zeroed */
     memset(&state, 0, sizeof(ShaderState));
 
     pgraph_glsl_set_vsh_state(pg, &state.vsh);

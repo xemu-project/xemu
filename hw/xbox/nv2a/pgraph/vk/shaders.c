@@ -26,6 +26,9 @@
 #define PSH_UBO_BINDING 1
 #define PSH_TEX_BINDING 2
 
+#define SHADER_CACHE_SIZE 1024
+#define SHADER_MODULE_CACHE_SIZE (50 * 1024)
+
 const size_t MAX_UNIFORM_ATTR_VALUES_SIZE = NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float);
 
 static void create_descriptor_pool(PGRAPHState *pg)
@@ -147,7 +150,7 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
 
     if (!(r->shader_bindings_changed || r->texture_bindings_changed ||
           (r->descriptor_set_index == 0) || need_uniform_write)) {
-        return; // Nothing changed
+        return; /* Nothing changed */
     }
 
     ShaderBinding *binding = r->shader_binding;
@@ -378,7 +381,7 @@ static void shader_cache_init(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    const size_t shader_cache_size = 1024;
+    const size_t shader_cache_size = SHADER_CACHE_SIZE;
     lru_init(&r->shader_cache);
     r->shader_cache_entries = g_malloc_n(shader_cache_size, sizeof(ShaderBinding));
     assert(r->shader_cache_entries != NULL);
@@ -389,8 +392,7 @@ static void shader_cache_init(PGRAPHState *pg)
     r->shader_cache.compare_nodes = shader_cache_entry_compare;
     r->shader_cache.post_node_evict = shader_cache_entry_post_evict;
 
-    /* FIXME: Make this configurable */
-    const size_t shader_module_cache_size = 50 * 1024;
+    const size_t shader_module_cache_size = SHADER_MODULE_CACHE_SIZE;
     lru_init(&r->shader_module_cache);
     r->shader_module_cache_entries =
         g_malloc_n(shader_module_cache_size, sizeof(ShaderModuleCacheEntry));
@@ -441,7 +443,7 @@ static void apply_uniform_updates(ShaderUniformLayout *layout,
     }
 }
 
-// FIXME: Dirty tracking
+/* FIXME: Dirty tracking */
 static void update_shader_uniforms(PGRAPHState *pg)
 {
     NV2A_VK_DGROUP_BEGIN("%s", __func__);

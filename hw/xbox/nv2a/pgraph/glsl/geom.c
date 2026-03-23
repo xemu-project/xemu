@@ -366,14 +366,16 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
     if (need_triz || need_quadz) {
         mstring_append(
             output,
-            // Kahan's algorithm for computing a*b - c*d using FMA for higher
-            // precision. See e.g.:
-            // Muller et al, "Handbook of Floating-Point Arithmetic", 2nd ed.
-            // or
-            // Claude-Pierre Jeannerod, Nicolas Louvet, and Jean-Michel Muller,
-            // Further analysis of Kahan's algorithm for the accurate
-            // computation of 2x2 determinants,
-            // Mathematics of Computation 82(284), October 2013.
+            /*
+             * Kahan's algorithm for computing a*b - c*d using FMA for higher
+             * precision. See e.g.:
+             * Muller et al, "Handbook of Floating-Point Arithmetic", 2nd ed.
+             * or
+             * Claude-Pierre Jeannerod, Nicolas Louvet, and Jean-Michel Muller,
+             * Further analysis of Kahan's algorithm for the accurate
+             * computation of 2x2 determinants,
+             * Mathematics of Computation 82(284), October 2013.
+             */
             "float kahan_det(float a, float b, float c, float d) {\n"
             "  precise float cd = c*d;\n"
             "  precise float err = fma(-c, d, cd);\n"
@@ -390,8 +392,9 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                 "  precise vec2 b = vec2(v_vtxPos[i0].w - v_vtxPos[i1].w,\n"
                 "                        v_vtxPos[i0].w - v_vtxPos[i2].w);\n"
                 "  b /= vec2(v_vtxPos[i1].w, v_vtxPos[i2].w) * v_vtxPos[i0].w;\n"
-                // The following computes dzx and dzy same as
-                // vec2 dz = b * inverse(m);
+                /* The following computes dzx and dzy same as
+                 * vec2 dz = b * inverse(m);
+                 */
                 "  float det = kahan_det(m[0].x, m[1].y, m[1].x, m[0].y);\n"
                 "  float dzx = kahan_det(b.x, m[1].y, b.y, m[0].y) / det;\n"
                 "  float dzy = kahan_det(b.y, m[0].x, b.x, m[1].x) / det;\n"
@@ -406,8 +409,9 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                 "                v_vtxPos[i2].xy - v_vtxPos[i0].xy);\n"
                 "  precise vec2 b = vec2(v_vtxPos[i1].z - v_vtxPos[i0].z,\n"
                 "                        v_vtxPos[i2].z - v_vtxPos[i0].z);\n"
-                // The following computes dzx and dzy same as
-                // vec2 dz = b * inverse(m);
+                /* The following computes dzx and dzy same as
+                 * vec2 dz = b * inverse(m);
+                 */
                 "  float det = kahan_det(m[0].x, m[1].y, m[1].x, m[0].y);\n"
                 "  float dzx = kahan_det(b.x, m[1].y, b.y, m[0].y) / det;\n"
                 "  float dzy = kahan_det(b.y, m[0].x, b.x, m[1].x) / det;\n"
@@ -420,8 +424,10 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
     if (need_linez) {
         mstring_append(
             output,
-            // Calculate a third vertex by rotating 90 degrees so that triangle
-            // interpolation in fragment shader can be used as is for lines.
+            /*
+             * Calculate a third vertex by rotating 90 degrees so that triangle
+             * interpolation in fragment shader can be used as is for lines.
+             */
             "void emit_line(int i0, int i1, float dz) {\n"
             "  vec2 delta = v_vtxPos[i1].xy - v_vtxPos[i0].xy;\n"
             "  vec2 v2 = vec2(-delta.y, delta.x) + v_vtxPos[i0].xy;\n"

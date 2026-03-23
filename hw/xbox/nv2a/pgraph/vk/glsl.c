@@ -215,11 +215,13 @@ GByteArray *pgraph_vk_compile_glsl_to_spv(glslang_stage_t stage,
         spv_options.emit_nonsemantic_shader_debug_info = true;
         spv_options.emit_nonsemantic_shader_debug_source = true;
 
-        // XXX: Note emit_nonsemantic_shader_debug_source actually does nothing
-        // as of 2024.07.25. To actually get glsl source embedded in spv, we
-        // must do the following...
-        //
-        // ref: https://github.com/KhronosGroup/glslang/issues/3252
+        /*
+         * XXX: Note emit_nonsemantic_shader_debug_source actually does nothing
+         * as of 2024.07.25. To actually get glsl source embedded in spv, we
+         * must do the following...
+         *
+         * ref: https://github.com/KhronosGroup/glslang/issues/3252
+         */
         glslang_program_add_source_text(program, input.stage, input.code,
                                         strlen(input.code));
     }

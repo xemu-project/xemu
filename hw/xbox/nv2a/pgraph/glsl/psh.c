@@ -33,9 +33,11 @@
 
 DEF_UNIFORM_INFO_ARR(PshUniform, PSH_UNIFORM_DECL_X)
 
-// TODO: https://github.com/xemu-project/xemu/issues/2260
-//   Investigate how color keying is handled for components with no alpha or
-//   only alpha.
+/*
+ * TODO: https://github.com/xemu-project/xemu/issues/2260
+ *   Investigate how color keying is handled for components with no alpha or
+ *   only alpha.
+ */
 static uint32_t get_colorkey_mask(unsigned int color_format)
 {
     switch (color_format) {
@@ -140,9 +142,11 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         state->border_logical_size[i][2] = 0.0f;
         if (border_source != NV_PGRAPH_TEXFMT0_BORDER_SOURCE_COLOR) {
             if (!f.linear && !cubemap) {
-                // The actual texture will be (at least) double the reported
-                // size and shifted by a 4 texel border but texture coordinates
-                // will still be relative to the reported size.
+                /*
+                 * The actual texture will be (at least) double the reported
+                 * size and shifted by a 4 texel border but texture coordinates
+                 * will still be relative to the reported size.
+                 */
                 unsigned int reported_width =
                     1 << GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BASE_SIZE_U);
                 unsigned int reported_height =
@@ -188,7 +192,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
          * fragment shader, there may be interpolation artifacts. Fix this to
          * support signed textures more appropriately.
          */
-#if 0 // FIXME
+#if 0 /* FIXME */
         psh->snorm_tex[i] = (f.gl_internal_format == GL_RGB8_SNORM)
                                  || (f.gl_internal_format == GL_RG8_SNORM);
 #endif
@@ -308,7 +312,7 @@ static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
             MString *reg_name = mstring_from_fmt("c0_%d", ps->cur_stage);
             add_const_ref(ps, mstring_get_str(reg_name));
             return reg_name;
-        } else {  // Same c0
+        } else {  /* Same c0 */
             add_const_ref(ps, "c0_0");
             return mstring_from_str("c0_0");
         }
@@ -318,7 +322,7 @@ static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
             MString *reg_name = mstring_from_fmt("c1_%d", ps->cur_stage);
             add_const_ref(ps, mstring_get_str(reg_name));
             return reg_name;
-        } else {  // Same c1
+        } else {  /* Same c1 */
             add_const_ref(ps, "c1_0");
             return mstring_from_str("c1_0");
         }
@@ -621,7 +625,7 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
     const struct PshState *state = ps->state;
     int dim = state->dim_tex[i];
 
-    // FIXME: Cleanup
+    /* FIXME: Cleanup */
     switch (mode) {
     default:
     case PS_TEXTUREMODES_NONE:
@@ -728,7 +732,7 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
                            i, i);
     }
 
-    // Depth.y != 0 indicates 24 bit; depth.z != 0 indicates float.
+    /* Depth.y != 0 indicates 24 bit; depth.z != 0 indicates float. */
     if (compare_z) {
         mstring_append_fmt(
             vars,
@@ -752,8 +756,10 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
     }
 }
 
-// Adjust the s, t coordinates in the given VAR to account for the 4 texel
-// border supported by the hardware.
+/*
+ * Adjust the s, t coordinates in the given VAR to account for the 4 texel
+ * border supported by the hardware.
+ */
 static void apply_border_adjustment(const struct PixelShader *ps, MString *vars, int tex_index, const char *var_template)
 {
     int i = tex_index;
@@ -775,7 +781,7 @@ static void apply_border_adjustment(const struct PixelShader *ps, MString *vars,
 static void apply_convolution_filter(const struct PixelShader *ps, MString *vars, int tex)
 {
     assert(ps->state->dim_tex[tex] == 2);
-    // FIXME: Quincunx
+    /* FIXME: Quincunx */
 
     g_autofree gchar *normalize_tex_coords = g_strdup_printf("norm%d", tex);
     const char *tex_remap = ps->state->rect_tex[tex] ? normalize_tex_coords : "";
@@ -894,22 +900,24 @@ static MString* psh_convert(struct PixelShader *ps)
         "    return vec3(hi_f, lo_f, 1.0);\n"
         "}\n"
         "vec3 dotmap_hilo_hemisphere_d3d(vec4 col) {\n"
-        "    return col.rgb;\n" // FIXME
+        "    return col.rgb;\n" /* FIXME */
         "}\n"
         "vec3 dotmap_hilo_hemisphere_gl(vec4 col) {\n"
-        "    return col.rgb;\n" // FIXME
+        "    return col.rgb;\n" /* FIXME */
         "}\n"
         "vec3 dotmap_hilo_hemisphere(vec4 col) {\n"
-        "    return col.rgb;\n" // FIXME
+        "    return col.rgb;\n" /* FIXME */
         "}\n"
-        // Kahan's algorithm for computing determinant using FMA for higher
-        // precision. See e.g.:
-        // Muller et al, "Handbook of Floating-Point Arithmetic", 2nd ed.
-        // or
-        // Claude-Pierre Jeannerod, Nicolas Louvet, and Jean-Michel Muller,
-        // Further analysis of Kahan's algorithm for the accurate
-        // computation of 2x2 determinants,
-        // Mathematics of Computation 82(284), October 2013.
+        /*
+         * Kahan's algorithm for computing determinant using FMA for higher
+         * precision. See e.g.:
+         * Muller et al, "Handbook of Floating-Point Arithmetic", 2nd ed.
+         * or
+         * Claude-Pierre Jeannerod, Nicolas Louvet, and Jean-Michel Muller,
+         * Further analysis of Kahan's algorithm for the accurate
+         * computation of 2x2 determinants,
+         * Mathematics of Computation 82(284), October 2013.
+         */
         "float kahan_det(vec2 a, vec2 b) {\n"
         "    precise float cd = a.y*b.x;\n"
         "    precise float err = fma(-a.y, b.x, cd);\n"
@@ -1006,19 +1014,23 @@ static MString* psh_convert(struct PixelShader *ps)
             "bc1 /= vtxPos1.w;\n"
             "bc2 /= vtxPos2.w;\n"
             "float inv_bcsum = 1.0 / (bc0 + bc1 + bc2);\n"
-            // Denominator can be zero in case the rasterized primitive is a
-            // point or a degenerate line or triangle.
+            /*
+             * Denominator can be zero in case the rasterized primitive is a
+             * point or a degenerate line or triangle.
+             */
             "if (isinf(inv_bcsum)) {\n"
             "  inv_bcsum = 0.0;\n"
             "}\n"
             "bc1 *= inv_bcsum;\n"
             "bc2 *= inv_bcsum;\n"
             "precise float zvalue = vtxPos0.w + (bc1*(vtxPos1.w - vtxPos0.w) + bc2*(vtxPos2.w - vtxPos0.w));\n"
-            // If GPU clipping is inaccurate, the point gl_FragCoord.xy might
-            // be above the horizon of the plane of a rasterized triangle
-            // making the interpolated w-coordinate above zero or negative. We
-            // should prevent such wrapping through infinity by clamping to
-            // infinity.
+            /*
+             * If GPU clipping is inaccurate, the point gl_FragCoord.xy might
+             * be above the horizon of the plane of a rasterized triangle
+             * making the interpolated w-coordinate above zero or negative. We
+             * should prevent such wrapping through infinity by clamping to
+             * infinity.
+             */
             "if (zvalue > 0.0) {\n"
             "  float zslopeofs = depthFactor*triMZ*zvalue*zvalue;\n"
             "  zvalue += depthOffset;\n"
@@ -1037,8 +1049,10 @@ static MString* psh_convert(struct PixelShader *ps)
             "precise float bc1 = area(unscaled_xy, vtxPos2.xy, vtxPos0.xy);\n"
             "precise float bc2 = area(unscaled_xy, vtxPos0.xy, vtxPos1.xy);\n"
             "float inv_bcsum = 1.0 / (bc0 + bc1 + bc2);\n"
-            // Denominator can be zero in case the rasterized primitive is a
-            // point or a degenerate line or triangle.
+            /*
+             * Denominator can be zero in case the rasterized primitive is a
+             * point or a degenerate line or triangle.
+             */
             "if (isinf(inv_bcsum)) {\n"
             "  inv_bcsum = 0.0;\n"
             "}\n"
@@ -1188,7 +1202,7 @@ static MString* psh_convert(struct PixelShader *ps)
                 mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdt%d));\n",
                     i, i, tex_remap, i, i);
             } else if (ps->state->dim_tex[i] == 3) {
-                // FIXME: Does hardware pass through the r/z coordinate or is it 0?
+                /* FIXME: Does hardware pass through the r/z coordinate or is it 0? */
                 mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(pT%d.xy + dsdt%d, pT%d.z));\n",
                     i, i, i, i, i);
             } else {
@@ -1215,7 +1229,7 @@ static MString* psh_convert(struct PixelShader *ps)
                 mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdtl%d.st));\n",
                     i, i, tex_remap, i, i);
             } else if (ps->state->dim_tex[i] == 3) {
-                // FIXME: Does hardware pass through the r/z coordinate or is it 0?
+                /* FIXME: Does hardware pass through the r/z coordinate or is it 0? */
                 mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(pT%d.xy + dsdtl%d.st, pT%d.z));\n",
                     i, i, i, i, i);
             } else {
@@ -1249,7 +1263,7 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
             mstring_append_fmt(vars, "vec4 t%d = vec4(0.0);\n", i);
-            // FIXME: mstring_append_fmt(vars, "gl_FragDepth = t%d.x;\n", i);
+            /* FIXME: mstring_append_fmt(vars, "gl_FragDepth = t%d.x;\n", i); */
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_DIFF:
             assert(i == 2);
@@ -1486,19 +1500,19 @@ static MString* psh_convert(struct PixelShader *ps)
 
     switch (ps->state->depth_format) {
     case DEPTH_FORMAT_D16:
-        // 16-bit unsigned int
+        /* 16-bit unsigned int */
         mstring_append(
             ps->code,
             "gl_FragDepth = floor(zvalue) / 65535.0;\n");
         break;
     case DEPTH_FORMAT_D24:
-        // 24-bit unsigned int
+        /* 24-bit unsigned int */
         mstring_append(
             ps->code,
             "gl_FragDepth = uintBitsToFloat(floatBitsToUint(floor(zvalue) / 16777216.0) + 1u);\n");
         break;
     default:
-        // TODO: handle floating-point depth buffers properly
+        /* TODO: handle floating-point depth buffers properly */
         mstring_append(ps->code, "gl_FragDepth = zvalue / clipRange.y;\n");
         break;
     }
