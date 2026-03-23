@@ -105,10 +105,11 @@ void pgraph_get_inline_values(PGRAPHState *pg, uint16_t attrs,
 void pgraph_allocate_inline_buffer_vertices(PGRAPHState *pg, unsigned int attr)
 {
     VertexAttribute *attribute = &pg->vertex_attributes[attr];
-    float *inline_buffer = attribute->inline_buffer;
+    float *buffer_ptr = attribute->inline_buffer;
     size_t inline_value_size = sizeof(attribute->inline_value);
-    unsigned int copied;
-    unsigned int copy_count;
+    size_t inline_value_floats = ARRAY_SIZE(attribute->inline_value);
+    unsigned int copied = 0;
+    unsigned int copy_count = 0;
 
     if (attribute->inline_buffer_populated || pg->inline_buffer_length == 0) {
         return;
@@ -116,10 +117,10 @@ void pgraph_allocate_inline_buffer_vertices(PGRAPHState *pg, unsigned int attr)
 
     /* Now upload the previous attribute value */
     attribute->inline_buffer_populated = true;
-    memcpy(inline_buffer, attribute->inline_value, inline_value_size);
+    memcpy(buffer_ptr, attribute->inline_value, inline_value_size);
     for (copied = 1; copied < pg->inline_buffer_length; copied += copy_count) {
         copy_count = MIN(copied, pg->inline_buffer_length - copied);
-        memcpy(&inline_buffer[copied * 4], inline_buffer,
+        memcpy(&buffer_ptr[copied * inline_value_floats], buffer_ptr,
                copy_count * inline_value_size);
     }
 }
