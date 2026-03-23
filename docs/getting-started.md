@@ -15,7 +15,7 @@ You will need:
 
 ## Fast Path: First Successful Boot
 
-1. Build OpenMidway or download a build artifact. On Windows 11 x86-64, the quickest source-build path is `powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 all`.
+1. Build OpenMidway or download a build artifact. On Windows 11 x86-64, the quickest source-build path is `powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 doctor` followed by `powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 all`.
 2. Put your BIOS/boot ROM and disk/game files somewhere easy to find.
 3. Launch OpenMidway.
 4. Point the emulator at your required files when prompted.
