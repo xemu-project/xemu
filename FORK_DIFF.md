@@ -116,13 +116,23 @@ Each entry follows this template:
 
 ---
 
-### NV2A PGRAPH: register read-modify-write consolidation (ongoing)
+### NV2A PGRAPH: register read-modify-write consolidation (SET_TRANSFORM_EXECUTION_MODE)
 
 - **Area:** `hw/xbox/nv2a/pgraph/pgraph.c`
-- **Status:** Active (in progress)
+- **Status:** Active
 - **Upstream PR / issue:** N/A
-- **Description:** `PG_SET_MASK` performs a read-modify-write on `pg->regs_`. In several code paths, consecutive calls target the same register, resulting in redundant reads. These are being consolidated using a `pgraph_reg_r` + `SET_MASK` + `pgraph_reg_w` pattern to reduce register access overhead in the PGRAPH hot path.
+- **Description:** `PG_SET_MASK` performs a read-modify-write on `pg->regs_`. The `SET_TRANSFORM_EXECUTION_MODE` handler contained two consecutive `PG_SET_MASK` calls targeting the same `NV_PGRAPH_CSV0_D` register, causing one redundant register read. These have been consolidated into a single `pgraph_reg_r` + two `SET_MASK` operations + `pgraph_reg_w`, eliminating the extra read on every vertex-shader mode switch. Additional consolidation opportunities in the file are tracked as future work (Phase 9 performance pass).
 - **Files:** `hw/xbox/nv2a/pgraph/pgraph.c`
+
+---
+
+### APU VP: structured TODO comments (mono-resampler and ADPCM buffer)
+
+- **Area:** `hw/xbox/mcpx/apu/vp/vp.c`
+- **Status:** Active
+- **Upstream PR / issue:** N/A
+- **Description:** Two FIXME comments in the voice processor have been upgraded to structured TODO markers referencing Phase 9 of the roadmap. (1) The ADPCM decoded-sample scratch buffer (`adpcm_decoded[65*2]`) is allocated on the stack inside the per-sample hot loop; the TODO documents moving it to `MCPXAPUVoiceFilter` as a one-time allocation outside VMState. (2) The SRC resampler is always created as 2-channel even for mono voices; the TODO documents the channel-count tracking and buffer-layout changes needed before the optimisation can land safely.
+- **Files:** `hw/xbox/mcpx/apu/vp/vp.c`
 
 ---
 
