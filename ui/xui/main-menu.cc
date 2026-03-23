@@ -1441,6 +1441,7 @@ void MainMenuSnapshotsView::Draw()
                           "This button will overwrite the existing snapshot.",
                           m_search_buf.c_str());
     }
+    ImGui::TextDisabled("Tip: right-click a snapshot, or press Y / Triangle on a controller, for load, delete, and binding actions.");
     ImGui::PopFont();
 
     bool at_least_one_snapshot_displayed = false;
@@ -1597,6 +1598,28 @@ MainMenuSystemView::MainMenuSystemView() : m_dirty(false)
 {
 }
 
+static bool IsConfiguredFilePresent(const char *path)
+{
+    return path && path[0] && g_file_test(path, G_FILE_TEST_EXISTS);
+}
+
+static void DrawSetupStatusRow(const char *label, bool ready,
+                               const char *ready_text,
+                               const char *missing_text)
+{
+    const ImVec4 color = ready
+        ? ImVec4(0.35f, 0.85f, 0.45f, 1.0f)
+        : ImVec4(0.95f, 0.35f, 0.35f, 1.0f);
+    const char *icon = ready ? ICON_FA_CIRCLE_CHECK : ICON_FA_TRIANGLE_EXCLAMATION;
+    const char *status = ready ? ready_text : missing_text;
+
+    ImGui::TextColored(color, "%s", icon);
+    ImGui::SameLine();
+    ImGui::Text("%s", label);
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", status);
+}
+
 void MainMenuSystemView::Draw()
 {
     static const SDL_DialogFileFilter rom_file_filters[] = {
@@ -1617,6 +1640,32 @@ void MainMenuSystemView::Draw()
     if ((int)g_config.sys.avpack == CONFIG_SYS_AVPACK_NONE) {
         ImGui::TextColored(ImVec4(1,0,0,1), "Setting AV Pack to NONE disables video output.");
     }
+
+    bool bootrom_ready = IsConfiguredFilePresent(g_config.sys.files.bootrom_path);
+    bool flashrom_ready = IsConfiguredFilePresent(g_config.sys.files.flashrom_path);
+    bool hdd_ready = IsConfiguredFilePresent(g_config.sys.files.hdd_path);
+    bool core_setup_ready = bootrom_ready && flashrom_ready && hdd_ready;
+
+    SectionTitle("Setup Readiness");
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    DrawSetupStatusRow("MCPX Boot ROM", bootrom_ready, "Configured", "Choose a file below");
+    DrawSetupStatusRow("Flash ROM (BIOS)", flashrom_ready, "Configured", "Choose a file below");
+    DrawSetupStatusRow("Hard Disk", hdd_ready, "Configured", "Choose a file below");
+    DrawSetupStatusRow("EEPROM", IsConfiguredFilePresent(g_config.sys.files.eeprom_path),
+                       "Configured (optional)", "Optional");
+
+    ImGui::Dummy(g_viewport_mgr.Scale(ImVec2(0, 4)));
+    ImGui::TextWrapped(core_setup_ready
+        ? "Core files are configured. If a game still fails to boot, verify controller input and only then tune graphics or networking."
+        : "Finish the three required file paths below before troubleshooting graphics or System Link. That gives you the shortest path to a first successful boot.");
+    Hyperlink("Open first-run guide", "https://github.com/awest813/OpenMidway/blob/main/docs/getting-started.md");
+#if defined(_WIN32)
+    ImGui::SameLine();
+    ImGui::TextDisabled("|");
+    ImGui::SameLine();
+    Hyperlink("Open Windows 11 build guide", "https://github.com/awest813/OpenMidway/blob/main/docs/windows-11.md");
+#endif
+    ImGui::PopFont();
 
     SectionTitle("System Configuration");
 

@@ -90,6 +90,7 @@ working first. That separates setup problems from networking problems.
 From a normal PowerShell window at the repository root:
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 doctor
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 all
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 run
 ```
@@ -97,8 +98,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 
 This uses MSYS2 MinGW-w64 under the hood and places the runnable build
 in `dist\xemu.exe`.
 
-For the full walkthrough, dependency notes, and manual fallback path,
-see [docs/windows-11.md](docs/windows-11.md).
+For the full walkthrough, dependency notes, `doctor`/`shell` helper commands, and manual fallback path, see [docs/windows-11.md](docs/windows-11.md).
 
 ### Linux quick path
 

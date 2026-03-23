@@ -51,6 +51,14 @@ dist\xemu.exe
 
 ## Useful one-command shortcuts
 
+### Check your MSYS2 + repo setup first
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 doctor
+```
+
+This verifies that MSYS2 was found, confirms whether `dist\xemu.exe` already exists, and warns if core MinGW packages are still missing.
+
 ### Install/update dependencies only
 
 ```powershell
@@ -62,6 +70,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 build
 ```
+
+### Open an MSYS2 MINGW64 shell at the repo root
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 shell
+```
+
+Use this when you want to run `./build.sh`, inspect package state, or debug a failing build without manually navigating into MSYS2 first.
 
 ### Preview commands without changing anything
 
@@ -87,6 +103,8 @@ The helper script installs the MSYS2 packages OpenMidway needs most often on Win
 - zstd
 
 ## Manual fallback
+
+If `run` says `dist\xemu.exe` is missing, that now means the helper could not find a completed package yet; rerun `build` or `doctor` first.
 
 If you prefer to build manually inside MSYS2, the underlying command is still:
 
