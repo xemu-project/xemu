@@ -103,6 +103,7 @@ See [docs/networking.md](docs/networking.md) for architecture details.
 | Document | Purpose |
 |---|---|
 | [docs/getting-started.md](docs/getting-started.md) | Fast first-run guide for new users |
+| [docs/windows-11.md](docs/windows-11.md) | Fast Windows 11 x86-64 build and run path |
 | [docs/vision.md](docs/vision.md) | Project vision and strategic direction |
 | [ROADMAP.md](ROADMAP.md) | Development phases and priority tiers |
 | [docs/architecture.md](docs/architecture.md) | High-level component map |
@@ -114,6 +115,19 @@ See [docs/networking.md](docs/networking.md) for architecture details.
 ---
 
 ## Building
+
+### Windows 11 x86-64 quick path
+
+From a normal PowerShell window at the repo root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 all
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 run
+```
+
+This uses MSYS2 MinGW-w64 under the hood and packages the runnable build in `dist\xemu.exe`. For the full walkthrough, see [docs/windows-11.md](docs/windows-11.md).
+
+### Linux quick path
 
 ```bash
 # Install dependencies (Ubuntu/Debian example)
