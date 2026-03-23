@@ -141,7 +141,7 @@ static void pgraph_gl_process_pending(NV2AState *d)
             pgraph_gl_flush(d);
         }
         if (qatomic_read(&r->shader_cache_writeback_pending)) {
-            pgraph_gl_shader_write_cache_reload_list(&d->pgraph);
+            pgraph_gl_shader_flush_and_save_cache(&d->pgraph);
         }
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock(&d->pfifo.lock);

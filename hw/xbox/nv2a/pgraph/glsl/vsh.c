@@ -208,7 +208,7 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         "    return vec4(x, y, z, 1);\n"
         "}\n"
         "\n"
-        // Clamp to range [2^(-64), 2^64] or [-2^64, -2^(-64)].
+        /* Clamp to range [2^(-64), 2^64] or [-2^64, -2^(-64)]. */
         "float clampAwayZeroInf(float t) {\n"
         "  if (t > 0.0 || floatBitsToUint(t) == 0) {\n"
         "    t = clamp(t, uintBitsToFloat(0x1F800000), uintBitsToFloat(0x5F800000));\n"
@@ -225,9 +225,11 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         "  return mix(src, vec4(replacement), isnan(src));\n"
         "}\n"
         "\n"
-        // Xbox NV2A rasterizer appears to have 4 bit precision fixed-point
-        // fractional part and to convert floating-point coordinates by
-        // by truncating (not flooring).
+        /*
+         * Xbox NV2A rasterizer appears to have 4 bit precision fixed-point
+         * fractional part and to convert floating-point coordinates by
+         * truncating (not flooring).
+         */
         "vec2 roundScreenCoords(vec2 pos) {\n"
         "  return trunc(pos * 16.0f) / 16.0f;\n"
         "}\n");
@@ -448,7 +450,7 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         mstring_from_fmt("#version %d\n\n", opts.vulkan ? 450 : 400);
 
     if (opts.vulkan) {
-        // FIXME: Optimize uniforms
+        /* FIXME: Optimize uniforms */
         if (num_uniform_attrs > 0 &&
             opts.use_push_constants_for_uniform_attrs) {
             mstring_append_fmt(output,

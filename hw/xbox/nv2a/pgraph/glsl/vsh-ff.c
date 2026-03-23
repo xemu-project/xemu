@@ -206,7 +206,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 mstring_append(body, "{\n");
                 /* FIXME: u, r and m only have to be calculated once */
                 mstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
-                //FIXME: tNormal before or after normalization? Always normalize?
+                /* FIXME: tNormal before or after normalization? Always normalize? */
                 mstring_append(body, "  vec3 r = reflect(u, tNormal);\n");
 
                 /* FIXME: This would consume 1 division fewer and *might* be
@@ -257,7 +257,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         mstring_append(body, "  oB0 = backDiffuse;\n");
         mstring_append(body, "  oB1 = backSpecular;\n");
     } else {
-        //FIXME: Do 2 passes if we want 2 sided-lighting?
+        /* FIXME: Do 2 passes if we want 2 sided-lighting? */
         static char alpha_source_diffuse[] = "diffuse.a";
         static char alpha_source_specular[] = "specular.a";
         static char alpha_source_material[] = "material_alpha";

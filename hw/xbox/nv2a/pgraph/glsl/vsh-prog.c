@@ -45,12 +45,12 @@ typedef struct VshFieldMapping {
 } VshFieldMapping;
 
 static const VshFieldMapping field_mapping[] = {
-    // Field Name         DWORD BitPos BitSize
+    /* Field Name         DWORD BitPos BitSize */
     {  FLD_ILU,              1,   25,     3 },
     {  FLD_MAC,              1,   21,     4 },
     {  FLD_CONST,            1,   13,     8 },
     {  FLD_V,                1,    9,     4 },
-    // INPUT A
+    /* INPUT A */
     {  FLD_A_NEG,            1,    8,     1 },
     {  FLD_A_SWZ_X,          1,    6,     2 },
     {  FLD_A_SWZ_Y,          1,    4,     2 },
@@ -58,7 +58,7 @@ static const VshFieldMapping field_mapping[] = {
     {  FLD_A_SWZ_W,          1,    0,     2 },
     {  FLD_A_R,              2,   28,     4 },
     {  FLD_A_MUX,            2,   26,     2 },
-    // INPUT B
+    /* INPUT B */
     {  FLD_B_NEG,            2,   25,     1 },
     {  FLD_B_SWZ_X,          2,   23,     2 },
     {  FLD_B_SWZ_Y,          2,   21,     2 },
@@ -66,7 +66,7 @@ static const VshFieldMapping field_mapping[] = {
     {  FLD_B_SWZ_W,          2,   17,     2 },
     {  FLD_B_R,              2,   13,     4 },
     {  FLD_B_MUX,            2,   11,     2 },
-    // INPUT C
+    /* INPUT C */
     {  FLD_C_NEG,            2,   10,     1 },
     {  FLD_C_SWZ_X,          2,    8,     2 },
     {  FLD_C_SWZ_Y,          2,    6,     2 },
@@ -75,7 +75,7 @@ static const VshFieldMapping field_mapping[] = {
     {  FLD_C_R_HIGH,         2,    0,     2 },
     {  FLD_C_R_LOW,          3,   30,     2 },
     {  FLD_C_MUX,            3,   28,     2 },
-    // Output
+    /* Output */
     {  FLD_OUT_MAC_MASK,     3,   24,     4 },
     {  FLD_OUT_R,            3,   20,     4 },
     {  FLD_OUT_ILU_MASK,     3,   16,     4 },
@@ -83,7 +83,7 @@ static const VshFieldMapping field_mapping[] = {
     {  FLD_OUT_ORB,          3,   11,     1 },
     {  FLD_OUT_ADDRESS,      3,    3,     8 },
     {  FLD_OUT_MUX,          3,    2,     1 },
-    // Other
+    /* Other */
     {  FLD_A0X,              3,    1,     1 },
     {  FLD_FINAL,            3,    0,     1 }
 };
@@ -128,23 +128,23 @@ static const VshOpcodeParams mac_opcode_params[] = {
 
 
 static const char* mask_str[] = {
-            // xyzw xyzw
-    ",",     // 0000 ____
-    ",w",   // 0001 ___w
-    ",z",   // 0010 __z_
-    ",zw",  // 0011 __zw
-    ",y",   // 0100 _y__
-    ",yw",  // 0101 _y_w
-    ",yz",  // 0110 _yz_
-    ",yzw", // 0111 _yzw
-    ",x",   // 1000 x___
-    ",xw",  // 1001 x__w
-    ",xz",  // 1010 x_z_
-    ",xzw", // 1011 x_zw
-    ",xy",  // 1100 xy__
-    ",xyw", // 1101 xy_w
-    ",xyz", // 1110 xyz_
-    ",xyzw" // 1111 xyzw
+            /* xyzw xyzw */
+    ",",     /* 0000 ____ */
+    ",w",   /* 0001 ___w */
+    ",z",   /* 0010 __z_ */
+    ",zw",  /* 0011 __zw */
+    ",y",   /* 0100 _y__ */
+    ",yw",  /* 0101 _y_w */
+    ",yz",  /* 0110 _yz_ */
+    ",yzw", /* 0111 _yzw */
+    ",x",   /* 1000 x___ */
+    ",xw",  /* 1001 x__w */
+    ",xz",  /* 1010 x_z_ */
+    ",xzw", /* 1011 x_zw */
+    ",xy",  /* 1100 xy__ */
+    ",xyw", /* 1101 xy_w */
+    ",xyz", /* 1110 xyz_ */
+    ",xyzw" /* 1111 xyzw */
 };
 
 /* Writes to the oFog register apply the most significant masked component to
@@ -230,7 +230,7 @@ static const char* out_reg_name[] = {
     "A0.x",
 };
 
-// Retrieves a number of bits in the instruction token
+/* Retrieves a number of bits in the instruction token */
 static int vsh_get_from_token(const uint32_t *shader_token,
                               uint8_t subtoken,
                               uint8_t start_bit,
@@ -248,12 +248,12 @@ uint8_t vsh_get_field(const uint32_t *shader_token, VshFieldName field_name)
                                         field_mapping[field_name].bit_length));
 }
 
-// Converts the C register address to disassembly format
+/* Converts the C register address to disassembly format */
 static int16_t convert_c_register(const int16_t c_reg)
 {
     int16_t r = ((((c_reg >> 5) & 7) - 3) * 32) + (c_reg & 31);
     r += VSH_D3DSCM_CORRECTION; /* to map -96..95 to 0..191 */
-    return r; //FIXME: = c_reg?!
+    return r; /* FIXME: = c_reg?! */
 }
 
 static MString *decode_swizzle(const uint32_t *shader_token,
@@ -323,7 +323,7 @@ static MString *decode_opcode_input(const uint32_t *shader_token,
     case PARAM_C:
         reg_num = convert_c_register(vsh_get_field(shader_token, FLD_CONST));
         if (vsh_get_field(shader_token, FLD_A0X) > 0) {
-            //FIXME: does this really require the "correction" doe in convert_c_register?!
+            /* FIXME: does this really require the "correction" in convert_c_register?! */
             snprintf(tmp, sizeof(tmp), "c[A0+%d]", reg_num);
         } else {
             snprintf(tmp, sizeof(tmp), "c[%d]", reg_num);
@@ -407,7 +407,7 @@ static MString *decode_opcode(const uint32_t *shader_token,
             mstring_append_fmt(ret, "  %s(_temp_vec%s%s);\n",
                                opcode, mask_str[mask], inputs);
 
-            // Skip the leading comma
+            /* Skip the leading comma */
             const char *mask_components = &mask_str[mask][1];
             if (mask_components[0]) {
                 mstring_append_fmt(*suffix,
@@ -548,16 +548,11 @@ static const char* vsh_header =
      * https://www.opengl.org/registry/specs/NV/vertex_program1_1.txt
      */
     "\n"
-//QQQ #ifdef NICE_CODE
     "/* Converts the input to vec4, pads with last component */\n"
     "vec4 _in(float v) { return vec4(v); }\n"
     "vec4 _in(vec2 v) { return v.xyyy; }\n"
     "vec4 _in(vec3 v) { return v.xyzz; }\n"
     "vec4 _in(vec4 v) { return v.xyzw; }\n"
-//#else
-//    "/* Make sure input is always a vec4 */\n"
-//   "#define _in(v) vec4(v)\n"
-//#endif
     "\n"
     "#define INFINITY (1.0 / 0.0)\n"
     "\n"
@@ -570,9 +565,11 @@ static const char* vsh_header =
     "#define MUL(dest, mask, src0, src1) dest.mask = _MUL(_in(src0), _in(src1)).mask\n"
     "vec4 _MUL(vec4 src0, vec4 src1)\n"
     "{\n"
-    // Unfortunately mix() falls victim to the same handling of exceptional
-    // (inf/NaN) handling as a multiply, so per-component comparisons are used
-    // to guarantee HW behavior (anything * 0 must == 0).
+    /*
+     * Unfortunately mix() falls victim to the same handling of exceptional
+     * (inf/NaN) handling as a multiply, so per-component comparisons are used
+     * to guarantee HW behavior (anything * 0 must == 0).
+     */
     "  vec4 zero_components = sign(NaNToOne(src0)) * sign(NaNToOne(src1));\n"
     "  vec4 ret = src0 * src1;\n"
     "  if (zero_components.x == 0.0) { ret.x = 0.0; }\n"

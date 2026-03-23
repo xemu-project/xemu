@@ -29,6 +29,9 @@
 #include "debug.h"
 #include "renderer.h"
 
+#define SHADER_CACHE_SIZE (50 * 1024)
+#define SHADER_MODULE_CACHE_SIZE (50 * 1024)
+
 static GLenum get_gl_primitive_mode(enum ShaderPolygonMode polygon_mode, enum ShaderPrimitiveMode primitive_mode)
 {
     switch (primitive_mode) {
@@ -275,7 +278,7 @@ static void shader_write_lru_list_entry_to_disk(Lru *lru, LruNode *node, void *o
     }
 }
 
-void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg)
+void pgraph_gl_shader_flush_and_save_cache(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
 
@@ -546,10 +549,9 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
 
     shader_create_cache_folder();
 
-    /* FIXME: Make this configurable */
-    const size_t shader_cache_size = 50*1024;
+    const size_t shader_cache_size = SHADER_CACHE_SIZE;
     lru_init(&r->shader_cache);
-    r->shader_cache_entries = malloc(shader_cache_size * sizeof(ShaderBinding));
+    r->shader_cache_entries = g_malloc_n(shader_cache_size, sizeof(ShaderBinding));
     assert(r->shader_cache_entries != NULL);
     for (int i = 0; i < shader_cache_size; i++) {
         lru_add_free(&r->shader_cache, &r->shader_cache_entries[i].node);
@@ -562,8 +564,7 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     qemu_thread_create(&r->shader_disk_thread, "pgraph.renderer_state->shader_cache",
                        shader_reload_lru_from_disk, pg, QEMU_THREAD_JOINABLE);
 
-    /* FIXME: Make this configurable */
-    const size_t shader_module_cache_size = 50*1024;
+    const size_t shader_module_cache_size = SHADER_MODULE_CACHE_SIZE;
     lru_init(&r->shader_module_cache);
     r->shader_module_cache_entries =
         g_malloc_n(shader_module_cache_size, sizeof(ShaderModuleCacheEntry));
@@ -581,9 +582,9 @@ void pgraph_gl_finalize_shaders(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    // Clear out shader cache
-    pgraph_gl_shader_write_cache_reload_list(pg); // FIXME: also flushes, rename for clarity
-    free(r->shader_cache_entries);
+    /* Flush shader cache to disk and release entries */
+    pgraph_gl_shader_flush_and_save_cache(pg);
+    g_free(r->shader_cache_entries);
     r->shader_cache_entries = NULL;
 
     lru_flush(&r->shader_module_cache);
@@ -739,8 +740,8 @@ static void apply_uniform_updates(const UniformInfo *info, int *locs,
     assert(glGetError() == GL_NO_ERROR);
 }
 
-// FIXME: Dirty tracking
-// FIXME: Consider UBO to align with VK renderer
+/* FIXME: Dirty tracking */
+/* FIXME: Consider UBO to align with VK renderer */
 static void update_shader_uniforms(PGRAPHState *pg, ShaderBinding *binding)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
@@ -826,7 +827,7 @@ GLuint pgraph_gl_compile_shader(const char *vs_src, const char *fs_src)
     GLint status;
     char err_buf[512];
 
-    // Compile vertex shader
+    /* Compile vertex shader */
     GLuint vs = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vs, 1, &vs_src, NULL);
     glCompileShader(vs);
@@ -838,7 +839,7 @@ GLuint pgraph_gl_compile_shader(const char *vs_src, const char *fs_src)
         exit(1);
     }
 
-    // Compile fragment shader
+    /* Compile fragment shader */
     GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fs, 1, &fs_src, NULL);
     glCompileShader(fs);
@@ -850,14 +851,14 @@ GLuint pgraph_gl_compile_shader(const char *vs_src, const char *fs_src)
         exit(1);
     }
 
-    // Link vertex and fragment shaders
+    /* Link vertex and fragment shaders */
     GLuint prog = glCreateProgram();
     glAttachShader(prog, vs);
     glAttachShader(prog, fs);
     glLinkProgram(prog);
     glUseProgram(prog);
 
-    // Flag shaders for deletion (will still be retained for lifetime of prog)
+    /* Flag shaders for deletion (will still be retained for lifetime of prog) */
     glDeleteShader(vs);
     glDeleteShader(fs);
 
