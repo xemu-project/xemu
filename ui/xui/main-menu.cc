@@ -871,6 +871,17 @@ void MainMenuAudioView::Draw()
 
 }
 
+void MainMenuCompatView::Draw()
+{
+    SectionTitle("Graphics Issues Mode");
+    Toggle("Specular power fix", &g_config.compat.use_specular_power_fix,
+           "Improve specular lighting accuracy for Fable and other affected titles");
+    Toggle("Inline element limit", &g_config.compat.use_inline_element_limit,
+           "Clamp inline element draw calls instead of crashing; fixes Ninja Gaiden Black and similar titles");
+    Toggle("Clear surface fix (experimental)", &g_config.compat.use_clear_surface_fix,
+           "Apply memset-like CLEAR_SURFACE semantics; may reduce surface corruption in some titles");
+}
+
 NetworkInterface::NetworkInterface(pcap_if_t *pcap_desc, char *_friendlyname)
 {
     m_pcap_name = pcap_desc->name;
@@ -1845,6 +1856,7 @@ MainMenuScene::MainMenuScene()
       m_input_button("Input", ICON_FA_GAMEPAD),
       m_display_button("Display", ICON_FA_TV),
       m_audio_button("Audio", ICON_FA_VOLUME_HIGH),
+      m_compat_button("Graphics", ICON_FA_SLIDERS),
       m_network_button("Network", ICON_FA_NETWORK_WIRED),
       m_snapshots_button("Snapshots", ICON_FA_CLOCK_ROTATE_LEFT),
       m_system_button("System", ICON_FA_MICROCHIP),
@@ -1856,6 +1868,7 @@ MainMenuScene::MainMenuScene()
     m_tabs.push_back(&m_input_button);
     m_tabs.push_back(&m_display_button);
     m_tabs.push_back(&m_audio_button);
+    m_tabs.push_back(&m_compat_button);
     m_tabs.push_back(&m_network_button);
     m_tabs.push_back(&m_snapshots_button);
     m_tabs.push_back(&m_system_button);
@@ -1865,6 +1878,7 @@ MainMenuScene::MainMenuScene()
     m_views.push_back(&m_input_view);
     m_views.push_back(&m_display_view);
     m_views.push_back(&m_audio_view);
+    m_views.push_back(&m_compat_view);
     m_views.push_back(&m_network_view);
     m_views.push_back(&m_snapshots_view);
     m_views.push_back(&m_system_view);

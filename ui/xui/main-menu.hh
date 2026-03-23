@@ -77,6 +77,12 @@ public:
     void Draw() override;
 };
 
+class MainMenuCompatView : public virtual MainMenuTabView
+{
+public:
+    void Draw() override;
+};
+
 class NetworkInterface
 {
 public:
@@ -184,6 +190,7 @@ protected:
                                     m_input_button,
                                     m_display_button,
                                     m_audio_button,
+                                    m_compat_button,
                                     m_network_button,
                                     m_snapshots_button,
                                     m_system_button,
@@ -193,6 +200,7 @@ protected:
     MainMenuInputView               m_input_view;
     MainMenuDisplayView             m_display_view;
     MainMenuAudioView               m_audio_view;
+    MainMenuCompatView              m_compat_view;
     MainMenuNetworkView             m_network_view;
     MainMenuSnapshotsView           m_snapshots_view;
     MainMenuSystemView              m_system_view;

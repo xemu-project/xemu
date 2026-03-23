@@ -1872,12 +1872,17 @@ static float reconstruct_specular_power(const float *params) {
 
   float c0 = params[0];
   float c3 = params[3];
-  // FIXME: This handling is not correct, but is distinct without crashing.
-  // It does not appear possible for a DirectX-generated value to be positive,
-  // so while this differs from hardware behavior, it may be irrelevant in
-  // practice.
+  /* When the specular power fix is disabled, bail out with a tiny value
+   * rather than crashing. With the fix enabled, clamp to zero and allow
+   * the reconstruction path below to produce a more accurate result for
+   * titles like Fable where positive coefficients occasionally appear.
+   */
   if (c0 > 0.0f || c3 > 0.0f) {
-    return 0.0001f;
+    if (!g_config.compat.use_specular_power_fix) {
+      return 0.0001f;
+    }
+    c0 = MIN(c0, 0.0f);
+    c3 = MIN(c3, 0.0f);
   }
 
   float reconstructed_power = 0.f;
@@ -2713,12 +2718,31 @@ DEF_METHOD(NV097, DRAW_ARRAYS)
     int32_t count = GET_MASK(parameter, NV097_DRAW_ARRAYS_COUNT) + 1;
 
     if (pg->inline_elements_length) {
-        /* FIXME: HW throws an exception if the start index is > 0xFFFF. This
-         * would prevent this assert from firing for any reasonable choice of
-         * NV2A_MAX_BATCH_LENGTH (which must be larger to accommodate
-         * NV097_INLINE_ARRAY anyway)
+        /* HW throws an exception if the start index is > 0xFFFF. When the
+         * inline element limit fix is enabled, clamp the batch instead of
+         * asserting to avoid crashing titles like Ninja Gaiden Black that hit
+         * this edge case.
          */
-        assert((pg->inline_elements_length + count) < NV2A_MAX_BATCH_LENGTH);
+        if (g_config.compat.use_inline_element_limit) {
+            int32_t available =
+                (int32_t)NV2A_MAX_BATCH_LENGTH - (int32_t)pg->inline_elements_length;
+            if (available <= 0) {
+                /* Batch is full; drop all elements. The draw_arrays_prevent_connect
+                 * check below is skipped intentionally — no elements are being
+                 * appended, so no connection is attempted.
+                 */
+                NV2A_DPRINTF("inline elements batch full, skipping %d elements\n",
+                             count);
+                return;
+            }
+            if (count > available) {
+                NV2A_DPRINTF("inline elements clamped from %d to %d\n", count,
+                             available);
+                count = available;
+            }
+        } else {
+            assert((pg->inline_elements_length + count) < NV2A_MAX_BATCH_LENGTH);
+        }
         assert(!pg->draw_arrays_prevent_connect);
 
         for (unsigned int i = 0; i < count; i++) {
