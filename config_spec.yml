@@ -370,3 +370,14 @@ perf:
   cache_shaders:
     type: bool
     default: true
+
+compat:
+  use_specular_power_fix:
+    type: bool
+    default: true
+  use_inline_element_limit:
+    type: bool
+    default: true
+  use_clear_surface_fix:
+    type: bool
+    default: false

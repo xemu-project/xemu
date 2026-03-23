@@ -48,8 +48,8 @@ Focus games:
 - MechAssault
 
 Deliverables:
-- [ ] "Graphics Issues Mode" — per-game workaround toggles
-- [ ] Shader cache improvements
+- [x] "Graphics Issues Mode" — per-game workaround toggles (Graphics tab in settings)
+- [x] Shader cache improvements (existing cache_shaders setting in General tab)
 - [ ] Fix flickering and unreadable UI in priority titles
 
 ---
