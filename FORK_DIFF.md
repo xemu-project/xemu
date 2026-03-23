@@ -166,6 +166,16 @@ Each entry follows this template:
 
 ---
 
+### Windows 11 shell integration and OpenMidway UI touch-ups
+
+- **Area:** `ui/xemu.c`, `ui/xemu-os-utils-windows.c`, `ui/xui/`
+- **Status:** Active
+- **Upstream PR / issue:** N/A
+- **Description:** Improves the Windows host experience by assigning an explicit OpenMidway AppUserModelID, opting the SDL window into Windows 11 dark-titlebar and rounded-corner styling when the DWM APIs are available, and expanding the OS diagnostics string to include the Windows display version and build number for support/debug reports. The first-boot and About views were also updated to point users at OpenMidway project pages instead of legacy xemu branding.
+- **Files:** `ui/xemu.c`, `ui/xemu-os-utils.h`, `ui/xemu-os-utils-windows.c`, `ui/xui/welcome.cc`, `ui/xui/main-menu.cc`
+
+---
+
 ## Upstreamed / Reverted
 
 *(None yet — entries will be moved here once a divergence is merged into upstream xemu or intentionally reverted.)*

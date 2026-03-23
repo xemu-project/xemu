@@ -26,6 +26,11 @@ extern "C" {
 
 const char *xemu_get_os_info(void);
 
+#ifdef _WIN32
+void xemu_windows_set_app_user_model_id(void);
+void xemu_windows_apply_window_style(void *native_window);
+#endif
+
 #ifdef CONFIG_CPUID_H
 #include <cpuid.h>
 #endif

@@ -1749,11 +1749,11 @@ void MainMenuAboutView::Draw()
 
     ImGui::Text("Visit");
     ImGui::SameLine();
-    if (ImGui::SmallButton("https://xemu.app")) {
-        SDL_OpenURL("https://xemu.app");
+    if (ImGui::SmallButton("OpenMidway on GitHub")) {
+        SDL_OpenURL("https://github.com/awest813/OpenMidway");
     }
     ImGui::SameLine();
-    ImGui::Text("for more information");
+    ImGui::Text("for downloads, setup guides, and project updates");
 }
 
 MainMenuTabButton::MainMenuTabButton(std::string text, std::string icon)
