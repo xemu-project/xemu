@@ -420,7 +420,10 @@ typedef struct PGRAPHVkState {
     bool new_query_needed;
     bool query_in_flight;
     uint32_t zpass_pixel_count_result;
-    QSIMPLEQ_HEAD(, QueryReport) report_queue; // FIXME: Statically allocate
+    QSIMPLEQ_HEAD(, QueryReport) report_queue;
+    QueryReport *report_pool;
+    QSIMPLEQ_HEAD(, QueryReport) free_reports;
+    uint64_t *query_results_buf;
 
     SurfaceFormatInfo kelvin_surface_zeta_vk_map[3];
 
