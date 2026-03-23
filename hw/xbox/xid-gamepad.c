@@ -220,76 +220,82 @@ static const Property xid_properties[] = {
     DEFINE_PROP_UINT8("index", USBXIDGamepadState, device_index, 0),
 };
 
+static const VMStateField vmstate_xid_gamepad_report_fields[] = {
+    VMSTATE_UINT8(bReportId, XIDGamepadReport),
+    VMSTATE_UINT8(bLength, XIDGamepadReport),
+    VMSTATE_UINT16(wButtons, XIDGamepadReport),
+    VMSTATE_UINT8_ARRAY(bAnalogButtons, XIDGamepadReport, 8),
+    VMSTATE_INT16(sThumbLX, XIDGamepadReport),
+    VMSTATE_INT16(sThumbLY, XIDGamepadReport),
+    VMSTATE_INT16(sThumbRX, XIDGamepadReport),
+    VMSTATE_INT16(sThumbRY, XIDGamepadReport),
+    VMSTATE_END_OF_LIST()
+};
+
 static const VMStateDescription vmstate_xid_gamepad_report = {
     .name = "usb-xbox-gamepad-report",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (const VMStateField[]) {
-        VMSTATE_UINT8(bReportId, XIDGamepadReport),
-        VMSTATE_UINT8(bLength, XIDGamepadReport),
-        VMSTATE_UINT16(wButtons, XIDGamepadReport),
-        VMSTATE_UINT8_ARRAY(bAnalogButtons, XIDGamepadReport, 8),
-        VMSTATE_INT16(sThumbLX, XIDGamepadReport),
-        VMSTATE_INT16(sThumbLY, XIDGamepadReport),
-        VMSTATE_INT16(sThumbRX, XIDGamepadReport),
-        VMSTATE_INT16(sThumbRY, XIDGamepadReport),
-        VMSTATE_END_OF_LIST()
-    },
+    .fields = vmstate_xid_gamepad_report_fields,
+};
+
+static const VMStateField vmstate_xid_gamepad_output_report_fields[] = {
+    VMSTATE_UINT8(report_id, XIDGamepadOutputReport),
+    VMSTATE_UINT8(length, XIDGamepadOutputReport),
+    VMSTATE_UINT16(left_actuator_strength, XIDGamepadOutputReport),
+    VMSTATE_UINT16(right_actuator_strength, XIDGamepadOutputReport),
+    VMSTATE_END_OF_LIST()
 };
 
 static const VMStateDescription vmstate_xid_gamepad_output_report = {
     .name = "usb-xbox-gamepad-output-report",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (const VMStateField[]) {
-        VMSTATE_UINT8(report_id, XIDGamepadOutputReport),
-        VMSTATE_UINT8(length, XIDGamepadOutputReport),
-        VMSTATE_UINT16(left_actuator_strength, XIDGamepadOutputReport),
-        VMSTATE_UINT16(right_actuator_strength, XIDGamepadOutputReport),
-        VMSTATE_END_OF_LIST()
-    },
+    .fields = vmstate_xid_gamepad_output_report_fields,
+};
+
+static const VMStateField vmstate_usb_xbox_fields[] = {
+    VMSTATE_USB_DEVICE(dev, USBXIDGamepadState),
+    VMSTATE_STRUCT(in_state, USBXIDGamepadState, 2,
+                   vmstate_xid_gamepad_report, XIDGamepadReport),
+    VMSTATE_STRUCT(in_state_capabilities, USBXIDGamepadState, 2,
+                   vmstate_xid_gamepad_report, XIDGamepadReport),
+    VMSTATE_STRUCT(out_state, USBXIDGamepadState, 2,
+                   vmstate_xid_gamepad_output_report, XIDGamepadOutputReport),
+    VMSTATE_STRUCT(out_state_capabilities, USBXIDGamepadState, 2,
+                   vmstate_xid_gamepad_output_report,
+                   XIDGamepadOutputReport),
+    VMSTATE_UINT8_V(device_index, USBXIDGamepadState, 2),
+    VMSTATE_END_OF_LIST()
 };
 
 static const VMStateDescription vmstate_usb_xbox = {
     .name = TYPE_USB_XID_GAMEPAD,
     .version_id = 2,
     .minimum_version_id = 1,
-    .fields = (const VMStateField[]) {
-        VMSTATE_USB_DEVICE(dev, USBXIDGamepadState),
-        VMSTATE_STRUCT(in_state, USBXIDGamepadState, 2,
-                       vmstate_xid_gamepad_report, XIDGamepadReport),
-        VMSTATE_STRUCT(in_state_capabilities, USBXIDGamepadState, 2,
-                       vmstate_xid_gamepad_report, XIDGamepadReport),
-        VMSTATE_STRUCT(out_state, USBXIDGamepadState, 2,
-                       vmstate_xid_gamepad_output_report,
-                       XIDGamepadOutputReport),
-        VMSTATE_STRUCT(out_state_capabilities, USBXIDGamepadState, 2,
-                       vmstate_xid_gamepad_output_report,
-                       XIDGamepadOutputReport),
-        VMSTATE_UINT8_V(device_index, USBXIDGamepadState, 2),
-        VMSTATE_END_OF_LIST()
-    },
+    .fields = vmstate_usb_xbox_fields,
+};
+
+static const VMStateField vmstate_usb_xbox_s_fields[] = {
+    VMSTATE_USB_DEVICE(dev, USBXIDGamepadState),
+    VMSTATE_STRUCT(in_state, USBXIDGamepadState, 1,
+                   vmstate_xid_gamepad_report, XIDGamepadReport),
+    VMSTATE_STRUCT(in_state_capabilities, USBXIDGamepadState, 1,
+                   vmstate_xid_gamepad_report, XIDGamepadReport),
+    VMSTATE_STRUCT(out_state, USBXIDGamepadState, 1,
+                   vmstate_xid_gamepad_output_report, XIDGamepadOutputReport),
+    VMSTATE_STRUCT(out_state_capabilities, USBXIDGamepadState, 1,
+                   vmstate_xid_gamepad_output_report,
+                   XIDGamepadOutputReport),
+    VMSTATE_UINT8_V(device_index, USBXIDGamepadState, 1),
+    VMSTATE_END_OF_LIST()
 };
 
 static const VMStateDescription vmstate_usb_xbox_s = {
     .name = TYPE_USB_XID_GAMEPAD_S,
     .version_id = 1,
     .minimum_version_id = 0,
-    .fields = (const VMStateField[]) {
-        VMSTATE_USB_DEVICE(dev, USBXIDGamepadState),
-        VMSTATE_STRUCT(in_state, USBXIDGamepadState, 1,
-                       vmstate_xid_gamepad_report, XIDGamepadReport),
-        VMSTATE_STRUCT(in_state_capabilities, USBXIDGamepadState, 1,
-                       vmstate_xid_gamepad_report, XIDGamepadReport),
-        VMSTATE_STRUCT(out_state, USBXIDGamepadState, 1,
-                       vmstate_xid_gamepad_output_report,
-                       XIDGamepadOutputReport),
-        VMSTATE_STRUCT(out_state_capabilities, USBXIDGamepadState, 1,
-                       vmstate_xid_gamepad_output_report,
-                       XIDGamepadOutputReport),
-        VMSTATE_UINT8_V(device_index, USBXIDGamepadState, 1),
-        VMSTATE_END_OF_LIST()
-    },
+    .fields = vmstate_usb_xbox_s_fields,
 };
 
 static void usb_xbox_gamepad_class_init(ObjectClass *klass, const void *data)
