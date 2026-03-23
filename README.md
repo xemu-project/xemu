@@ -1,131 +1,104 @@
 # OpenMidway
 
-OpenMidway is a modern, user-friendly original Xbox emulator focused on:
-- Seamless online multiplayer (System Link, tunneling, real hardware)
-- Strong Windows support
-- Performance and stability on real-world PCs
-- Gradual improvements to compatibility and accuracy
+OpenMidway is a fork of [xemu](https://xemu.app) and QEMU that aims to
+make original Xbox emulation easier to use for everyday players while
+still improving compatibility over time.
 
-It is forked from [xemu](https://xemu.app) (which is itself based on QEMU).
+The project is currently centered on four practical goals:
 
----
+- get people to a first successful boot quickly,
+- improve the Windows experience,
+- make System Link / LAN play easier to set up,
+- and keep pushing more titles from broken to playable.
 
-## Why OpenMidway?
-
-Most emulators focus on accuracy first.
-
-OpenMidway focuses on:
-- "Can I play this with friends?"
-- "Does it run well on my PC?"
-- "Can I set it up in 5 minutes?"
+> OpenMidway does **not** ship Xbox firmware, hard-drive contents, or
+> game data. You must provide the files you are legally allowed to use.
 
 ---
 
-## Features (Planned)
+## Project status
 
-- One-click System Link setup
-- Multiplayer relay (room codes)
-- Improved GPU performance
-- Windows-first UX
-- Built-in diagnostics
+OpenMidway is an active fork with its own direction, documentation, and
+roadmap. The project still builds on upstream xemu/QEMU work, but it is
+explicitly prioritizing multiplayer usability, practical setup flow, and
+real-world performance.
 
----
+- **Vision:** [docs/vision.md](docs/vision.md)
+- **Roadmap:** [ROADMAP.md](ROADMAP.md)
+- **Architecture overview:** [docs/architecture.md](docs/architecture.md)
+- **Upstream differences:** [FORK_DIFF.md](FORK_DIFF.md)
 
-## Quick Start for New Users
-
-If you want the shortest path to a first successful boot:
-
-1. Build OpenMidway with the commands in [Building](#building) or use an existing build artifact.
-2. Gather your Xbox BIOS/boot ROM and your HDD/game image files in one easy-to-find folder.
-3. Launch OpenMidway and configure only the minimum required files first.
-4. Verify video, audio, and controller input before changing advanced settings.
-5. Save that working setup, then move on to networking or performance tuning.
-
-For a more detailed first-run walkthrough, use [docs/getting-started.md](docs/getting-started.md).
+If you just want to get running, start with the sections below instead
+of reading the full developer documentation first.
 
 ---
 
-## Based on
+## Start here
 
-This project is based on [xemu](https://xemu.app) and QEMU.
-
----
-
-## What OpenMidway Changes vs Upstream xemu
-
-| Area | Change |
+| If you want to... | Read this first |
 |---|---|
-| **Networking** | Added PROMISC mode support in nvnet; TX multi-packet processing fixed; graceful RX/TX overflow handling; BIT1 control register fix. Groundwork for System Link / LAN tunneling. |
-| **Audio (APU/DSP)** | Added `mcpx_apu_dsp_reset()` helper; separate opcode-cache, DMA, interrupt, and GP/EP register clearing on reset. |
-| **Audio (VP)** | `attenuate()` now uses a pre-computed 4096-entry lookup table to avoid repeated `powf()` calls during voice processing. |
-| **GPU (NV2A)** | PG_SET_MASK read-modify-write consolidation for consecutive register writes; ongoing pgraph accuracy improvements. |
-| **Fork tracking** | [`FORK_DIFF.md`](FORK_DIFF.md) records every intentional divergence from upstream xemu/QEMU. |
-
-See [FORK_DIFF.md](FORK_DIFF.md) for the full, always-up-to-date change log.
-
----
-
-## Supported Platforms
-
-| Platform | Status |
-|---|---|
-| **Linux (x86-64)** | Primary development target |
-| **macOS (x86-64 / Apple Silicon)** | Supported (Metal renderer path) |
-| **Windows 10/11 (x86-64)** | Supported |
+| Boot OpenMidway as quickly as possible | [Quick start](#quick-start) |
+| Build on Windows 11 | [docs/windows-11.md](docs/windows-11.md) |
+| Build on Linux or another development platform | [Build from source](#build-from-source) |
+| Understand System Link goals | [docs/networking.md](docs/networking.md) |
+| Report or triage compatibility | [docs/compatibility-triage.md](docs/compatibility-triage.md) |
+| Contribute code or documentation | [Contributing](#contributing) |
 
 ---
 
-## Compatibility Goals
+## What you need before first boot
 
-- **Tier 1 – Playable:** The game boots, runs without crashes, and is enjoyable to completion.
-- **Tier 2 – Functional:** The game boots and runs but may have minor graphical or audio glitches.
-- **Tier 3 – Broken:** The game crashes, hangs, or produces severe graphical corruption.
+Before launching OpenMidway, have these ready:
 
-Current focus is promoting as many titles as possible from Tier 3 → Tier 2 and Tier 2 → Tier 1. See [docs/compatibility-triage.md](docs/compatibility-triage.md) for the current triage process.
+- an original Xbox MCPX boot ROM / BIOS dump,
+- an Xbox HDD image or game image you are legally allowed to use,
+- a controller or keyboard mapping that works on your platform,
+- and either a local source build or a build artifact provided for your
+  branch or release.
 
----
-
-## Online Multiplayer Goals
-
-OpenMidway targets **System Link / LAN tunneling** — replicating the behavior of a physical Ethernet cable between consoles over the internet using standard tunneling protocols (e.g., UDP encapsulation). This approach is:
-
-- Legally straightforward: it mirrors traffic that the games themselves generate with no server-side Xbox Live authentication.
-- Compatible with existing tunneling tools (XLink Kai, Insignia system-link relay, and future built-in support).
-
-> **Legal note:** OpenMidway does **not** aim to re-implement or bypass native Xbox Live (Microsoft's proprietary online service). System Link / LAN tunneling operates entirely at the network layer without touching Xbox Live authentication, title licensing, or Microsoft's servers.
-
-See [docs/networking.md](docs/networking.md) for architecture details.
+Keeping those files in one clearly named folder makes first-run setup
+and troubleshooting much easier.
 
 ---
 
-## Documentation
+## Quick start
 
-| Document | Purpose |
-|---|---|
-| [docs/getting-started.md](docs/getting-started.md) | Fast first-run guide for new users |
-| [docs/windows-11.md](docs/windows-11.md) | Fast Windows 11 x86-64 build and run path |
-| [docs/vision.md](docs/vision.md) | Project vision and strategic direction |
-| [ROADMAP.md](ROADMAP.md) | Development phases and priority tiers |
-| [docs/architecture.md](docs/architecture.md) | High-level component map |
-| [docs/networking.md](docs/networking.md) | Networking subsystem and System Link tunneling design |
-| [docs/performance.md](docs/performance.md) | Known bottlenecks and optimization strategy |
-| [docs/compatibility-triage.md](docs/compatibility-triage.md) | How to triage and categorize game compatibility |
-| [FORK_DIFF.md](FORK_DIFF.md) | All intentional divergences from upstream xemu/QEMU |
+Use this order for the shortest path to a working setup:
+
+1. Build OpenMidway with the commands in
+   [Build from source](#build-from-source), or use an existing build
+   artifact if one is available.
+2. Put your BIOS/boot ROM and HDD or game files somewhere easy to find.
+3. Launch OpenMidway and configure only the required files first.
+4. Verify video, audio, and controller input before changing advanced
+   settings.
+5. Save that working setup before experimenting with networking or
+   renderer tweaks.
+
+For the step-by-step first-run checklist, read
+[docs/getting-started.md](docs/getting-started.md).
+
+If your end goal is online play, get a reliable single-player boot
+working first. That separates setup problems from networking problems.
 
 ---
 
-## Building
+## Build from source
 
 ### Windows 11 x86-64 quick path
 
-From a normal PowerShell window at the repo root:
+From a normal PowerShell window at the repository root:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 all
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\openmidway-win11.ps1 run
 ```
 
-This uses MSYS2 MinGW-w64 under the hood and packages the runnable build in `dist\xemu.exe`. For the full walkthrough, see [docs/windows-11.md](docs/windows-11.md).
+This uses MSYS2 MinGW-w64 under the hood and places the runnable build
+in `dist\xemu.exe`.
+
+For the full walkthrough, dependency notes, and manual fallback path,
+see [docs/windows-11.md](docs/windows-11.md).
 
 ### Linux quick path
 
@@ -139,24 +112,137 @@ sudo apt-get install -y git build-essential ninja-build python3-pip \
 make -j$(nproc)
 ```
 
-For first-time users, the easiest workflow is:
+After the build finishes:
 
-1. Finish the build.
-2. Read [docs/getting-started.md](docs/getting-started.md).
-3. Do one clean first boot before tuning performance or networking.
+1. read [docs/getting-started.md](docs/getting-started.md),
+2. do one clean first boot,
+3. and only then tune networking or performance settings.
 
-For detailed build instructions see [`docs/devel/build-environment.rst`](docs/devel/build-environment.rst).
+### Other supported platforms
+
+OpenMidway also targets:
+
+- **macOS (x86-64 / Apple Silicon)**
+- **Windows 10/11 (x86-64)**
+- **Linux (x86-64)** as the primary development target
+
+For broader platform notes and developer-oriented build details, see
+[docs/devel/build-environment.rst](docs/devel/build-environment.rst).
+
+---
+
+## Troubleshooting the first run
+
+The most common setup mistakes are simple ordering problems:
+
+- **Changed too many settings at once:** establish a known-good baseline
+  before tuning graphics, timing, or networking.
+- **Tried System Link before basic boot worked:** get one title booting
+  reliably with stable input, audio, and video first.
+- **Used an already-problematic title for validation:** confirm your
+  setup on a title that is known to behave well on your machine.
+
+Best next documents:
+
+- [docs/getting-started.md](docs/getting-started.md) for the first-run
+  checklist
+- [docs/networking.md](docs/networking.md) for System Link and LAN
+  tunneling design
+- [docs/performance.md](docs/performance.md) for optimization strategy
+- [docs/compatibility-triage.md](docs/compatibility-triage.md) for
+  reporting whether a title is playable, functional, or broken
+
+---
+
+## Documentation map
+
+| Document | Purpose |
+|---|---|
+| [docs/getting-started.md](docs/getting-started.md) | Fast first-run guide for new users |
+| [docs/windows-11.md](docs/windows-11.md) | Fast Windows 11 source-build path |
+| [docs/vision.md](docs/vision.md) | Project vision and strategic direction |
+| [ROADMAP.md](ROADMAP.md) | Development phases and priority tiers |
+| [docs/architecture.md](docs/architecture.md) | High-level component map |
+| [docs/networking.md](docs/networking.md) | Networking subsystem and System Link tunneling design |
+| [docs/performance.md](docs/performance.md) | Known bottlenecks and optimization strategy |
+| [docs/compatibility-triage.md](docs/compatibility-triage.md) | Compatibility triage process |
+| [FORK_DIFF.md](FORK_DIFF.md) | Intentional divergences from upstream xemu/QEMU |
+
+---
+
+## Compatibility goals
+
+OpenMidway uses three practical compatibility tiers:
+
+- **Tier 1 – Playable:** boots, runs without crashes, and is enjoyable
+  to completion.
+- **Tier 2 – Functional:** boots and runs, but has minor graphical or
+  audio issues.
+- **Tier 3 – Broken:** crashes, hangs, or has severe corruption.
+
+Current compatibility work is focused on moving more titles from Tier 3
+to Tier 2 and from Tier 2 to Tier 1. For the current reporting process,
+see [docs/compatibility-triage.md](docs/compatibility-triage.md).
+
+---
+
+## Multiplayer direction
+
+OpenMidway is focused on **System Link / LAN tunneling**, which mirrors
+the traffic a real Xbox would send over Ethernet rather than attempting
+to recreate Xbox Live.
+
+That direction is intended to be:
+
+- legally straightforward,
+- compatible with existing tunneling tools,
+- and a practical base for future built-in multiplayer UX.
+
+> **Legal note:** OpenMidway does **not** aim to re-implement or bypass
+> native Xbox Live authentication, licensing, or Microsoft servers.
+
+See [docs/networking.md](docs/networking.md) for the current networking
+architecture and design notes.
+
+---
+
+## What OpenMidway changes vs upstream xemu
+
+Selected project-specific changes currently documented in the tree:
+
+- **Networking:** PROMISC mode support in nvnet, TX multi-packet
+  processing fixes, graceful RX/TX overflow handling, and BIT1 control
+  register fixes.
+- **Audio (APU/DSP):** Added `mcpx_apu_dsp_reset()` and clearer
+  reset-state handling for opcode cache, DMA, interrupts, and GP/EP
+  registers.
+- **Audio (VP):** `attenuate()` uses a precomputed lookup table instead
+  of repeated `powf()` calls during voice processing.
+- **GPU (NV2A):** Ongoing pgraph accuracy and performance work,
+  including register update cleanup for repeated mask operations.
+- **Fork tracking:** [FORK_DIFF.md](FORK_DIFF.md) records intentional
+  divergences from upstream xemu/QEMU.
+
+See [FORK_DIFF.md](FORK_DIFF.md) for the full change log.
 
 ---
 
 ## Contributing
 
-Pull requests are welcome. Please read [`docs/devel/code-of-conduct.rst`](docs/devel/code-of-conduct.rst) and follow the coding style described in [`docs/devel/style.rst`](docs/devel/style.rst).
+Pull requests are welcome.
 
-When your change is an intentional divergence from upstream xemu or QEMU, add a corresponding entry to [FORK_DIFF.md](FORK_DIFF.md).
+Before contributing, please read:
+
+- [docs/devel/code-of-conduct.rst](docs/devel/code-of-conduct.rst)
+- [docs/devel/style.rst](docs/devel/style.rst)
+
+If your change is an intentional divergence from upstream xemu or QEMU,
+add a corresponding entry to [FORK_DIFF.md](FORK_DIFF.md).
 
 ---
 
 ## License
 
-OpenMidway is distributed under the GNU General Public License v2 (or later), the same as QEMU/xemu. See [COPYING](COPYING) and [LICENSE](LICENSE) for details.
+OpenMidway is distributed under the GNU General Public License v2 (or
+later), the same as QEMU/xemu. See [COPYING](COPYING) and
+[LICENSE](LICENSE) for details.
