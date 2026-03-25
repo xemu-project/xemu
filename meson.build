@@ -3997,6 +3997,17 @@ if have_block
     block_ss.add(files('replication.c'))
   endif
 
+  find_program('cmake', required: true)
+  chd_cmake_opt = cmake.subproject_options()
+  chd_cmake_opt.add_cmake_defines({
+    'WITH_SYSTEM_ZLIB': 'ON',
+    'WITH_SYSTEM_ZSTD': 'OFF',
+    'BUILD_SHARED_LIBS': 'OFF',
+  })
+  libchdr_sp = cmake.subproject('libchdr', options: chd_cmake_opt,
+                                required: true)
+  libchdr = libchdr_sp.dependency('chdr-static')
+
   subdir('nbd')
   subdir('scsi')
   subdir('block')
