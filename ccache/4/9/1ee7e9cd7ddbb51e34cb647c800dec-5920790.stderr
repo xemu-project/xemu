@@ -1,0 +1,15 @@
+In file included from ../subprojects/SDL3-3.4.2/include/SDL3/SDL.h:35,
+                 from ../ui/xui/xemu-hud.h:26,
+                 from ../ui/xemu.c:46:
+../subprojects/SDL3-3.4.2/include/SDL3/SDL_assert.h:131:25: warning: redundant redeclaration of '__debugbreak' [-Wredundant-decls]
+  131 |     extern void __cdecl __debugbreak(void);
+      |                         ^~~~~~~~~~~~
+In file included from /usr/local/mxe/usr/x86_64-w64-mingw32.static/include/vadefs.h:9,
+                 from /usr/local/mxe/usr/x86_64-w64-mingw32.static/include/_mingw_stdarg.h:14,
+                 from /usr/local/mxe/usr/x86_64-w64-mingw32.static/include/stdarg.h:140,
+                 from /usr/local/mxe/usr/lib/gcc/x86_64-w64-mingw32.static/15.2.0/include/stdarg.h:1,
+                 from /xemu/include/qemu/osdep.h:108,
+                 from ../ui/xemu.c:30:
+/usr/local/mxe/usr/x86_64-w64-mingw32.static/include/_mingw.h:605:36: note: previous definition of '__debugbreak' with type 'void(void)'
+  605 | __MINGW_INTRIN_INLINE void __cdecl __debugbreak(void)
+      |                                    ^~~~~~~~~~~~
