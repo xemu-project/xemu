@@ -31,19 +31,16 @@
 #define CCI_MAGIC_LE 0x4D494343u
 #define CCI_HDR_SIZE 32u
 
-/* Set XEMU_CCI_DEBUG=1 for probe + per-sector read logs (very noisy). */
-static bool cci_verbose(void)
-{
-    static int inited, on;
+/* Set to 1 (or build with -DDEBUG_XEMU_CCI=1) for noisy probe / per-read traces. */
+#ifndef DEBUG_XEMU_CCI
+#define DEBUG_XEMU_CCI 0
+#endif
 
-    if (!inited) {
-        const char *e = getenv("XEMU_CCI_DEBUG");
-
-        on = e && e[0] && e[0] != '0';
-        inited = 1;
-    }
-    return on;
-}
+#if DEBUG_XEMU_CCI
+# define CCI_DPRINTF(fmt, ...) printf("cci: " fmt "\n", ## __VA_ARGS__)
+#else
+# define CCI_DPRINTF(fmt, ...) do { } while (0)
+#endif
 
 #define cci_log(...) error_report("cci: " __VA_ARGS__)
 
@@ -208,17 +205,16 @@ static int coroutine_fn cci_read_one_sector(BdrvChild *ch, uint32_t *index,
     }
     span = (uint32_t)(pos1 - pos0);
 
-    if (cci_verbose()) {
-        cci_log("read_sector: lba=%" PRIu64 " raw=%s span=%" PRIu32
+    CCI_DPRINTF("read_sector: lba=%" PRIu64 " raw=%s span=%" PRIu32
                 " file_off=%" PRIu64 "-%" PRIu64,
                 lba, lz4f ? "lz4" : "raw", span, pos0, pos1);
-    }
 
     if (span == CCI_LOGICAL_SECTOR_SIZE && !lz4f) {
         ret = bdrv_co_pread(ch, (int64_t)pos0,
                             CCI_LOGICAL_SECTOR_SIZE, out, 0);
-        if (ret < 0 && cci_verbose()) {
-            cci_log("read_sector: raw pread lba=%" PRIu64 " ret=%d", lba, ret);
+        if (ret < 0) {
+            CCI_DPRINTF("read_sector: raw pread lba=%" PRIu64 " ret=%d",
+                        lba, ret);
         }
         return ret < 0 ? ret : 0;
     }
@@ -263,10 +259,8 @@ static int coroutine_fn cci_read_one_sector(BdrvChild *ch, uint32_t *index,
                 qemu_vfree(buf);
                 return -EIO;
             }
-            if (cci_verbose()) {
-                cci_log("read_sector: LZ4 lba=%" PRIu64 " comp_len=%d trail=%u",
+            CCI_DPRINTF("read_sector: LZ4 lba=%" PRIu64 " comp_len=%d trail=%u",
                         lba, comp_len, trail);
-            }
             ret = LZ4_decompress_safe((const char *)buf + 1,
                                       (char *)out, comp_len,
                                       CCI_LOGICAL_SECTOR_SIZE);
@@ -323,20 +317,9 @@ cci_co_preadv(BlockDriverState *bs, int64_t offset, int64_t bytes,
     first_lba = (uint64_t)offset / CCI_LOGICAL_SECTOR_SIZE;
     last_lba = (uint64_t)(end - 1) / CCI_LOGICAL_SECTOR_SIZE;
 
-    {
-        static unsigned preadv_count;
-
-        if (preadv_count < 16u) {
-            cci_log("preadv[%u]: offset=%" PRId64 " bytes=%" PRId64
-                    " lba %" PRIu64 "-%" PRIu64,
-                    preadv_count, offset, bytes, first_lba, last_lba);
-            preadv_count++;
-        } else if (cci_verbose()) {
-            cci_log("preadv: offset=%" PRId64 " bytes=%" PRId64
-                    " lba %" PRIu64 "-%" PRIu64,
-                    offset, bytes, first_lba, last_lba);
-        }
-    }
+    CCI_DPRINTF("preadv: offset=%" PRId64 " bytes=%" PRId64
+                " lba %" PRIu64 "-%" PRIu64,
+                offset, bytes, first_lba, last_lba);
 
     secbuf = qemu_try_blockalign(bs, CCI_LOGICAL_SECTOR_SIZE);
     if (!secbuf) {
@@ -442,17 +425,15 @@ static void cci_close(BlockDriverState *bs)
 static int cci_probe(const uint8_t *buf, int buf_size, const char *filename)
 {
     if (buf_size >= 4 && ldl_le_p(buf) == CCI_MAGIC_LE) {
-        if (cci_verbose()) {
-            cci_log("probe: magic match score=200");
-        }
+        CCI_DPRINTF("probe: magic match score=200");
         return 200;
     }
     if (filename) {
         char *base = g_path_get_basename(filename);
         bool match = strisend(base, ".cci");
 
-        if (match && cci_verbose()) {
-            cci_log("probe: .cci suffix score=100 (%s)", base);
+        if (match) {
+            CCI_DPRINTF("probe: .cci suffix score=100 (%s)", base);
         }
         g_free(base);
         if (match) {
