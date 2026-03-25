@@ -118,6 +118,24 @@ int stristart(const char *str, const char *val, const char **ptr)
     return 1;
 }
 
+int strisend(const char *str, const char *val)
+{
+    size_t sl = strlen(str), vl = strlen(val);
+    size_t i;
+
+    if (sl < vl) {
+        return 0;
+    }
+    str += sl - vl;
+    for (i = 0; i < vl; i++) {
+        if (qemu_toupper((unsigned char)str[i]) !=
+            qemu_toupper((unsigned char)val[i])) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /* XXX: use host strnlen if available ? */
 int qemu_strnlen(const char *s, int max_len)
 {

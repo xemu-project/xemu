@@ -15,7 +15,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/bswap.h"
-#include "qemu/ctype.h"
+#include "qemu/cutils.h"
 #include "block/block_int.h"
 #include "block/block-io.h"
 #include "block/qdict.h"
@@ -59,24 +59,6 @@ static void cci_clear(BDRVCciState *s)
     s->index = NULL;
     s->n_index = 0;
     s->total_sectors = 0;
-}
-
-static bool cci_suffix_ci(const char *name, const char *suf)
-{
-    size_t nl = strlen(name), sl = strlen(suf);
-    size_t i;
-
-    if (nl < sl) {
-        return false;
-    }
-    name += nl - sl;
-    for (i = 0; i < sl; i++) {
-        if (qemu_tolower((unsigned char)name[i]) !=
-            qemu_tolower((unsigned char)suf[i])) {
-            return false;
-        }
-    }
-    return true;
 }
 
 static int cci_load(BlockDriverState *bs, Error **errp)
@@ -274,8 +256,7 @@ static int coroutine_fn cci_read_one_sector(BdrvChild *ch, uint32_t *index,
             unsigned int trail = buf[0];
             int comp_len = (int)span - 1 - (int)trail;
 
-            if (trail >= span - 1 || comp_len < 1 ||
-                comp_len > (int)span - 1) {
+            if (trail >= span - 1 || comp_len < 1) {
                 cci_log("read_sector: lba=%" PRIu64 " bad trail=%u span=%"
                         PRIu32 " comp_len=%d",
                         lba, trail, span, comp_len);
@@ -460,8 +441,6 @@ static void cci_close(BlockDriverState *bs)
 
 static int cci_probe(const uint8_t *buf, int buf_size, const char *filename)
 {
-    const char *base;
-
     if (buf_size >= 4 && ldl_le_p(buf) == CCI_MAGIC_LE) {
         if (cci_verbose()) {
             cci_log("probe: magic match score=200");
@@ -469,20 +448,14 @@ static int cci_probe(const uint8_t *buf, int buf_size, const char *filename)
         return 200;
     }
     if (filename) {
-        base = strrchr(filename, '/');
-        base = base ? base + 1 : filename;
-#ifdef _WIN32
-        {
-            const char *b2 = strrchr(base, '\\');
-            if (b2) {
-                base = b2 + 1;
-            }
+        char *base = g_path_get_basename(filename);
+        bool match = strisend(base, ".cci");
+
+        if (match && cci_verbose()) {
+            cci_log("probe: .cci suffix score=100 (%s)", base);
         }
-#endif
-        if (cci_suffix_ci(base, ".cci")) {
-            if (cci_verbose()) {
-                cci_log("probe: .cci suffix score=100 (%s)", base);
-            }
+        g_free(base);
+        if (match) {
             return 100;
         }
     }
@@ -498,7 +471,6 @@ static void cci_child_perm(BlockDriverState *bs, BdrvChild *c,
     bdrv_default_perms(bs, c, role, reopen_queue, parent_perm,
                        parent_shared, nperm, nshared);
     *nperm &= ~(BLK_PERM_WRITE | BLK_PERM_RESIZE);
-    *nperm |= parent_perm & (BLK_PERM_WRITE | BLK_PERM_RESIZE);
 }
 
 static int coroutine_fn GRAPH_RDLOCK
