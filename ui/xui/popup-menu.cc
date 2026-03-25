@@ -394,6 +394,7 @@ public:
                      file_path.extension() == ".cci")) {
                     sorted_file_names.insert(
                         { file_path.stem().string(), file_path.string() });
+                }
             }
         }
     }
