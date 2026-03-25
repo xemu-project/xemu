@@ -35,7 +35,6 @@
 #include "qemu-version.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-block.h"
-#include "qapi/system.h"
 #include "qemu/cutils.h"
 #include "qobject/qdict.h"
 #include "ui/console.h"
@@ -1404,7 +1403,8 @@ void xemu_load_disc(const char *path, Error **errp)
     xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
 
     if (strisend(path, ".cci")) {
-        xemu_cci_blockdev_change_dvd_medium(path, &error);
+        qmp_blockdev_change_medium("ide0-cd1", NULL, path, "cci", false, false,
+                                   false, 0, &error);
     } else {
         qmp_blockdev_change_medium("ide0-cd1", NULL, path, "raw", false, false,
                                    false, 0, &error);

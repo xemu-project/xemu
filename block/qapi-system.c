@@ -34,7 +34,6 @@
 
 #include "block/block_int.h"
 #include "qapi/error.h"
-#include "qapi/system.h"
 #include "qapi/qapi-commands-block.h"
 #include "qobject/qdict.h"
 #include "system/block-backend.h"
@@ -572,69 +571,4 @@ void qmp_block_latency_histogram_set(
             return;
         }
     }
-}
-
-void xemu_cci_blockdev_change_dvd_medium(const char *path, Error **errp)
-{
-    static const char ide_cd[] = "ide0-cd1";
-    BlockBackend *blk;
-    BlockDriverState *medium_bs = NULL;
-    int bdrv_flags;
-    bool detect_zeroes;
-    int rc;
-    QDict *options = NULL;
-    Error *err = NULL;
-
-    if (!path || !*path) {
-        error_setg(errp, "CCI disc path is empty");
-        return;
-    }
-
-    blk = qmp_get_blk(ide_cd, NULL, errp);
-    if (!blk) {
-        goto fail;
-    }
-
-    if (blk_bs(blk)) {
-        blk_update_root_state(blk);
-    }
-
-    bdrv_flags = blk_get_open_flags_from_root_state(blk);
-    bdrv_flags &= ~(BDRV_O_TEMPORARY | BDRV_O_SNAPSHOT | BDRV_O_NO_BACKING |
-                    BDRV_O_PROTOCOL | BDRV_O_AUTO_RDONLY);
-
-    options = qdict_new();
-    detect_zeroes = blk_get_detect_zeroes_from_root_state(blk);
-    qdict_put_str(options, "detect-zeroes", detect_zeroes ? "on" : "off");
-    qdict_put_str(options, "driver", "cci");
-
-    medium_bs = bdrv_open(path, NULL, options, bdrv_flags, errp);
-    if (!medium_bs) {
-        goto fail;
-    }
-
-    rc = do_open_tray(ide_cd, NULL, false, &err);
-    if (rc && rc != -ENOSYS) {
-        error_propagate(errp, err);
-        goto fail;
-    }
-    error_free(err);
-    err = NULL;
-
-    blockdev_remove_medium(ide_cd, NULL, &err);
-    if (err) {
-        error_propagate(errp, err);
-        goto fail;
-    }
-
-    qmp_blockdev_insert_anon_medium(blk, medium_bs, &err);
-    if (err) {
-        error_propagate(errp, err);
-        goto fail;
-    }
-
-    qmp_blockdev_close_tray(ide_cd, NULL, errp);
-
-fail:
-    bdrv_unref(medium_bs);
 }
