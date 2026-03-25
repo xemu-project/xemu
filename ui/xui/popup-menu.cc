@@ -388,15 +388,12 @@ public:
             for (const auto &file :
                  std::filesystem::directory_iterator(directory)) {
                 const auto &file_path = file.path();
-                if (std::filesystem::is_regular_file(file_path)) {
-                    std::string ext = file_path.extension().string();
-                    std::transform(ext.begin(), ext.end(), ext.begin(),
-                                   [](unsigned char c){ return std::tolower(c); });
-                    if (ext == ".iso" || ext == ".xiso" || ext == ".cci") {
-                        sorted_file_names.insert(
-                            { file_path.stem().string(), file_path.string() });
-                    }
-                }
+                if (std::filesystem::is_regular_file(file_path) &&
+                    (file_path.extension() == ".iso" ||
+                     file_path.extension() == ".xiso" ||
+                     file_path.extension() == ".cci")) {
+                    sorted_file_names.insert(
+                        { file_path.stem().string(), file_path.string() });
             }
         }
     }
