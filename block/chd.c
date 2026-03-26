@@ -23,6 +23,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/cutils.h"
 #include "qapi/error.h"
 #include "block/block-io.h"
 #include "block/block_int.h"
@@ -57,6 +58,28 @@ typedef struct BDRVChdState {
     uint8_t sector_cache[2048];
     uint32_t cache_lba;
 } BDRVChdState;
+
+/*
+ * libchdr opens by host path (stdio). The file child is a protocol BDS; its
+ * path lives in filename/exact_filename, not backing_file (which
+ * bdrv_get_full_backing_filename() uses).
+ */
+static char *chd_dup_host_path(BlockDriverState *file_bs, Error **errp)
+{
+    bdrv_refresh_filename(file_bs);
+
+    if (file_bs->exact_filename[0]) {
+        return g_strdup(file_bs->exact_filename);
+    }
+    if (file_bs->filename[0] && !strstart(file_bs->filename, "json:", NULL)) {
+        return g_strdup(file_bs->filename);
+    }
+
+    error_setg(errp,
+               "CHD needs a plain local file path for libchdr "
+               "(file node has no resolvable path)");
+    return NULL;
+}
 
 static uint32_t chd_track_sector_size(const char *type)
 {
@@ -146,8 +169,8 @@ static int chd_probe(const uint8_t *buf, int buf_size, const char *filename)
     return 10;
 }
 
-static int chd_open(BlockDriverState *bs, QDict *options, int flags,
-                    Error **errp)
+static int chd_bdrv_open(BlockDriverState *bs, QDict *options, int flags,
+                         Error **errp)
 {
     BDRVChdState *s = bs->opaque;
     char *path = NULL;
@@ -172,8 +195,13 @@ static int chd_open(BlockDriverState *bs, QDict *options, int flags,
 
     GRAPH_RDLOCK_GUARD_MAINLOOP();
 
-    path = bdrv_get_full_backing_filename(bs->file->bs, errp);
+    path = chd_dup_host_path(bs->file->bs, errp);
     if (!path) {
+        if (errp && *errp) {
+            error_report("CHD: %s", error_get_pretty(*errp));
+        } else {
+            error_report("CHD: could not resolve host path for libchdr");
+        }
         return -EINVAL;
     }
 
@@ -182,6 +210,7 @@ static int chd_open(BlockDriverState *bs, QDict *options, int flags,
     path = NULL;
 
     if (cerr != CHDERR_NONE) {
+        error_report("CHD: libchdr open failed: %s", chd_error_string(cerr));
         error_setg(errp, "Could not open CHD: %s", chd_error_string(cerr));
         return -EINVAL;
     }
@@ -362,7 +391,7 @@ out:
     return ret;
 }
 
-static void chd_close(BlockDriverState *bs)
+static void chd_bdrv_close(BlockDriverState *bs)
 {
     BDRVChdState *s = bs->opaque;
 
@@ -377,11 +406,11 @@ static BlockDriver bdrv_chd = {
     .format_name            = "chd",
     .instance_size          = sizeof(BDRVChdState),
     .bdrv_probe             = chd_probe,
-    .bdrv_open              = chd_open,
+    .bdrv_open              = chd_bdrv_open,
     .bdrv_child_perm        = bdrv_default_perms,
     .bdrv_refresh_limits    = chd_refresh_limits,
     .bdrv_co_preadv         = chd_co_preadv,
-    .bdrv_close             = chd_close,
+    .bdrv_close             = chd_bdrv_close,
     .is_format              = true,
 };
 
