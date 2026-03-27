@@ -35,6 +35,7 @@
 #include "qemu-version.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-block.h"
+#include "qemu/cutils.h"
 #include "qobject/qdict.h"
 #include "ui/console.h"
 #include "ui/input.h"
@@ -1401,8 +1402,13 @@ void xemu_load_disc(const char *path, Error **errp)
     xbox_smc_eject_button();
     xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
 
-    qmp_blockdev_change_medium("ide0-cd1", NULL, path, "raw", false, false,
-                               false, 0, &error);
+    if (strisend(path, ".cci")) {
+        qmp_blockdev_change_medium("ide0-cd1", NULL, path, "cci", false, false,
+                                   false, 0, &error);
+    } else {
+        qmp_blockdev_change_medium("ide0-cd1", NULL, path, "raw", false, false,
+                                   false, 0, &error);
+    }
     if (error) {
         error_propagate(errp, error);
     } else {
