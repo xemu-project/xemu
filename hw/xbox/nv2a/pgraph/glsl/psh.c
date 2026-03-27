@@ -619,15 +619,10 @@ static void add_final_stage_code(struct PixelShader *ps, struct FCInputInfo fina
 
 static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES mode, int i)
 {
-    const char *sampler2D = "sampler2D";
-    const char *sampler3D = "sampler3D";
-    const char *samplerCube = "samplerCube";
     const struct PshState *state = ps->state;
     int dim = state->dim_tex[i];
 
-    /* FIXME: Cleanup */
     switch (mode) {
-    default:
     case PS_TEXTUREMODES_NONE:
         return NULL;
 
@@ -637,11 +632,11 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
                 return "usampler2D";
             }
             if (state->tex_cubemap[i]) {
-                return samplerCube;
+                return "samplerCube";
             }
-            return sampler2D;
+            return "sampler2D";
         }
-        if (dim == 3) return sampler3D;
+        if (dim == 3) return "sampler3D";
         assert(!"Unhandled texture dimensions");
         return NULL;
 
@@ -652,8 +647,8 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
             fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
             assert(!"Shadow map support not implemented for this mode");
         }
-        if (dim == 2) return sampler2D;
-        if (dim == 3 && mode != PS_TEXTUREMODES_DOT_ST) return sampler3D;
+        if (dim == 2) return "sampler2D";
+        if (dim == 3 && mode != PS_TEXTUREMODES_DOT_ST) return "sampler3D";
         assert(!"Unhandled texture dimensions");
         return NULL;
 
@@ -663,9 +658,9 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
             return "usampler2D";
         }
         if (state->shadow_map[i]) {
-            return sampler2D;
+            return "sampler2D";
         }
-        return dim == 2 ? sampler2D : sampler3D;
+        return dim == 2 ? "sampler2D" : "sampler3D";
 
     case PS_TEXTUREMODES_CUBEMAP:
     case PS_TEXTUREMODES_DOT_RFLCT_DIFF:
@@ -676,10 +671,7 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
             assert(!"Shadow map support not implemented for this mode");
         }
         assert(dim == 2);
-        if (state->tex_cubemap[i]) {
-            return samplerCube;
-        }
-        return sampler2D;
+        return state->tex_cubemap[i] ? "samplerCube" : "sampler2D";
 
     case PS_TEXTUREMODES_DPNDNT_AR:
     case PS_TEXTUREMODES_DPNDNT_GB:
@@ -688,7 +680,11 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
             assert(!"Shadow map support not implemented for this mode");
         }
         assert(dim == 2);
-        return sampler2D;
+        return "sampler2D";
+
+    default:
+        assert(!"Unhandled texture mode");
+        return NULL;
     }
 }
 
