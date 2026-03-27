@@ -180,10 +180,37 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     }
 
     for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
-        mstring_append_fmt(body, "/* Texgen for stage %d */\n",
-                           i);
+        mstring_append_fmt(body, "/* Texgen for stage %d */\n", i);
+
+        /* Hoist shared u/r/invM computation if any component uses sphere or
+         * reflection mapping (these modes all depend on the same reflected
+         * view vector, so compute it once per texture unit). */
+        bool has_sphere_or_reflect = false;
+        bool has_sphere = false;
+        for (j = 0; j < 4; j++) {
+            enum VshTexgen tg = state->fixed_function.texgen[i][j];
+            if (tg == TEXGEN_SPHERE_MAP || tg == TEXGEN_REFLECTION_MAP) {
+                has_sphere_or_reflect = true;
+            }
+            if (tg == TEXGEN_SPHERE_MAP) {
+                has_sphere = true;
+            }
+        }
+        if (has_sphere_or_reflect) {
+            /* tNormal is already normalized when normalization is enabled;
+             * reflect() requires a unit normal for correct results. */
+            mstring_append_fmt(body,
+                "vec3 texgenU%d = normalize(tPosition.xyz);\n"
+                "vec3 texgenR%d = reflect(texgenU%d, tNormal);\n",
+                i, i, i);
+        }
+        if (has_sphere) {
+            mstring_append_fmt(body,
+                "float texgenInvM%d = 1.0 / (2.0 * length(texgenR%d + vec3(0.0, 0.0, 1.0)));\n",
+                i, i);
+        }
+
         /* Set each component individually */
-        /* FIXME: could be nicer if some channels share the same texgen */
         for (j = 0; j < 4; j++) {
             /* TODO: TexGen View Model missing! */
             char c = "xyzw"[j];
@@ -203,33 +230,13 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 break;
             case TEXGEN_SPHERE_MAP:
                 assert(j < 2);  /* Channels S,T only! */
-                mstring_append(body, "{\n");
-                /* FIXME: u, r and m only have to be calculated once */
-                mstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
-                /* FIXME: tNormal before or after normalization? Always normalize? */
-                mstring_append(body, "  vec3 r = reflect(u, tNormal);\n");
-
-                /* FIXME: This would consume 1 division fewer and *might* be
-                 *        faster than length:
-                 *   // [z=1/(2*x) => z=1/x*0.5]
-                 *   vec3 ro = r + vec3(0.0, 0.0, 1.0);
-                 *   float m = inversesqrt(dot(ro,ro))*0.5;
-                 */
-
-                mstring_append(body, "  float invM = 1.0 / (2.0 * length(r + vec3(0.0, 0.0, 1.0)));\n");
-                mstring_append_fmt(body, "  oT%d.%c = r.%c * invM + 0.5;\n",
-                                   i, c, c);
-                mstring_append(body, "}\n");
+                mstring_append_fmt(body, "oT%d.%c = texgenR%d.%c * texgenInvM%d + 0.5;\n",
+                                   i, c, i, c, i);
                 break;
             case TEXGEN_REFLECTION_MAP:
                 assert(j < 3); /* Channels S,T,R only! */
-                mstring_append(body, "{\n");
-                /* FIXME: u and r only have to be calculated once, can share the one from SPHERE_MAP */
-                mstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
-                mstring_append(body, "  vec3 r = reflect(u, tNormal);\n");
-                mstring_append_fmt(body, "  oT%d.%c = r.%c;\n",
-                                   i, c, c);
-                mstring_append(body, "}\n");
+                mstring_append_fmt(body, "oT%d.%c = texgenR%d.%c;\n",
+                                   i, c, i, c);
                 break;
             case TEXGEN_NORMAL_MAP:
                 assert(j < 3); /* Channels S,T,R only! */
@@ -257,7 +264,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         mstring_append(body, "  oB0 = backDiffuse;\n");
         mstring_append(body, "  oB1 = backSpecular;\n");
     } else {
-        /* FIXME: Do 2 passes if we want 2 sided-lighting? */
         static char alpha_source_diffuse[] = "diffuse.a";
         static char alpha_source_specular[] = "specular.a";
         static char alpha_source_material[] = "material_alpha";
@@ -287,6 +293,14 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
         mstring_append(body, "oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n");
 
+        /* Two-sided lighting: back face gets the same ambient/emission
+         * initialization as the front face, then a separate per-light pass
+         * using the negated normal and back-face specular power. */
+        mstring_append(body,
+            "oB0 = oD0;\n"
+            "oB1 = oD1;\n"
+            "vec3 negTNormal = -tNormal;\n");
+
         if (state->fixed_function.local_eye) {
             mstring_append(body,
                 "vec3 VPeye = normalize(eyePosition.xyz / eyePosition.w - tPosition.xyz / tPosition.w);\n"
@@ -314,7 +328,9 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                     "                                 + lightLocalAttenuation[%d].z * d * d);\n"
                     "    vec3 halfVector = normalize(VP + %s);\n"
                     "    float nDotVP = max(0.0, dot(tNormal, VP));\n"
-                    "    float nDotHV = max(0.0, dot(tNormal, halfVector));\n",
+                    "    float nDotHV = max(0.0, dot(tNormal, halfVector));\n"
+                    "    float nDotVP_b = max(0.0, dot(negTNormal, VP));\n"
+                    "    float nDotHV_b = max(0.0, dot(negTNormal, halfVector));\n",
                     i, i, i, i, i,
                     state->fixed_function.local_eye ? "VPeye" : "vec3(0.0, 0.0, 0.0)"
                 );
@@ -329,16 +345,19 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                     "  {\n"
                     "    float attenuation = 1.0;\n"
                     "    vec3 lightDirection = normalize(lightInfiniteDirection[%d]);\n"
-                    "    float nDotVP = max(0.0, dot(tNormal, lightDirection));\n",
+                    "    float nDotVP = max(0.0, dot(tNormal, lightDirection));\n"
+                    "    float nDotVP_b = max(0.0, dot(negTNormal, lightDirection));\n",
                     i);
                 if (state->fixed_function.local_eye) {
                     mstring_append(body,
                         "    float nDotHV = max(0.0, dot(tNormal, normalize(lightDirection + VPeye)));\n"
+                        "    float nDotHV_b = max(0.0, dot(negTNormal, normalize(lightDirection + VPeye)));\n"
                     );
                 } else {
                     mstring_append_fmt(body,
-                        "    float nDotHV = max(0.0, dot(tNormal, lightInfiniteHalfVector[%d]));\n",
-                        i
+                        "    float nDotHV = max(0.0, dot(tNormal, lightInfiniteHalfVector[%d]));\n"
+                        "    float nDotHV_b = max(0.0, dot(negTNormal, lightInfiniteHalfVector[%d]));\n",
+                        i, i
                     );
                 }
                 break;
@@ -374,51 +393,62 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 "    } else {\n"
                 "      pf = pow(nDotHV, specularPower);\n"
                 "    }\n"
+                "    float pf_b;\n"
+                "    if (nDotVP_b == 0.0 || nDotHV_b == 0.0) {\n"
+                "      pf_b = 0.0;\n"
+                "    } else {\n"
+                "      pf_b = pow(nDotHV_b, specularPowerBack);\n"
+                "    }\n"
                 "    vec3 lightAmbient = lightAmbientColor(%d) * attenuation;\n"
                 "    vec3 lightDiffuse = lightDiffuseColor(%d) * attenuation * nDotVP;\n"
-                "    vec3 lightSpecular = lightSpecularColor(%d) * attenuation * pf;\n",
-                i, i, i);
+                "    vec3 lightSpecular = lightSpecularColor(%d) * attenuation * pf;\n"
+                "    vec3 lightDiffuse_b = lightDiffuseColor(%d) * attenuation * nDotVP_b;\n"
+                "    vec3 lightSpecular_b = lightSpecularColor(%d) * attenuation * pf_b;\n",
+                i, i, i, i, i);
 
             mstring_append(body,
-                "    oD0.xyz += lightAmbient;\n");
+                "    oD0.xyz += lightAmbient;\n"
+                "    oB0.xyz += lightAmbient;\n");
 
             switch (state->fixed_function.diffuse_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
                 mstring_append(body,
-                               "    oD0.xyz += lightDiffuse;\n");
+                               "    oD0.xyz += lightDiffuse;\n"
+                               "    oB0.xyz += lightDiffuse_b;\n");
                 break;
             case MATERIAL_COLOR_SRC_DIFFUSE:
                 mstring_append(body,
-                               "    oD0.xyz += diffuse.xyz * lightDiffuse;\n");
+                               "    oD0.xyz += diffuse.xyz * lightDiffuse;\n"
+                               "    oB0.xyz += diffuse.xyz * lightDiffuse_b;\n");
                 break;
             case MATERIAL_COLOR_SRC_SPECULAR:
                 mstring_append(body,
-                               "    oD0.xyz += specular.xyz * lightDiffuse;\n");
+                               "    oD0.xyz += specular.xyz * lightDiffuse;\n"
+                               "    oB0.xyz += specular.xyz * lightDiffuse_b;\n");
                 break;
             }
 
             switch (state->fixed_function.specular_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
                 mstring_append(body,
-                               "    oD1.xyz += lightSpecular;\n");
+                               "    oD1.xyz += lightSpecular;\n"
+                               "    oB1.xyz += lightSpecular_b;\n");
                 break;
             case MATERIAL_COLOR_SRC_DIFFUSE:
                 mstring_append(body,
-                               "    oD1.xyz += diffuse.xyz * lightSpecular;\n");
+                               "    oD1.xyz += diffuse.xyz * lightSpecular;\n"
+                               "    oB1.xyz += diffuse.xyz * lightSpecular_b;\n");
                 break;
             case MATERIAL_COLOR_SRC_SPECULAR:
                 mstring_append(body,
-                               "    oD1.xyz += specular.xyz * lightSpecular;\n");
+                               "    oD1.xyz += specular.xyz * lightSpecular;\n"
+                               "    oB1.xyz += specular.xyz * lightSpecular_b;\n");
                 break;
             }
 
             mstring_append(body, "  }\n"
                                  "}\n");
         }
-
-        /* TODO: Implement two-sided lighting */
-        mstring_append(body, "  oB0 = backDiffuse;\n");
-        mstring_append(body, "  oB1 = backSpecular;\n");
     }
 
     if (!state->specular_enable) {
