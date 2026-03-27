@@ -40,7 +40,9 @@ block_ss.add(files(
   'throttle-groups.c',
   'write-threshold.c',
   'chd.c',
-), zstd, zlib, libchdr)
+  'cci.c',
+  'lz4.c',
+), zstd, zlib)
 
 system_ss.add(when: 'CONFIG_TCG', if_true: files('blkreplay.c'))
 system_ss.add(files('block-ram-registrar.c'))
