@@ -42,6 +42,7 @@ extern Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
 extern GLuint g_icon_tex;
 
 void InitCustomRendering(void);
+void CleanupCustomRendering(void);
 void RenderLogo(uint32_t time);
 void RenderController(float frame_x, float frame_y, uint32_t primary_color,
                       uint32_t secondary_color, ControllerState *state);

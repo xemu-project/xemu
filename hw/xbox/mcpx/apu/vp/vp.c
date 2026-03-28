@@ -894,11 +894,9 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
     size_t block_size;
 
     int adpcm_block_index = -1;
-    uint32_t adpcm_block[36*2/4];
-    // TODO (Phase 9 perf): Move adpcm_decoded to MCPXAPUVoiceFilter so the
-    // scratch buffer is allocated once per voice rather than on every call to
-    // voice_get_samples.  Keep it out of VMState (scratch only).
-    int16_t adpcm_decoded[65*2];
+    MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
+    uint32_t *adpcm_block = filter->adpcm_block;
+    int16_t *adpcm_decoded = filter->adpcm_decoded;
 
     // FIXME: Only update if necessary
     struct McpxApuDebugVoice *dbg = &g_dbg.vp.v[v];
@@ -1879,6 +1877,12 @@ void mcpx_apu_vp_init(MCPXAPUState *d)
 
 void mcpx_apu_vp_finalize(MCPXAPUState *d)
 {
+    for (int v = 0; v < MCPX_HW_MAX_VOICES; v++) {
+        if (d->vp.filters[v].resampler != NULL) {
+            src_delete(d->vp.filters[v].resampler);
+            d->vp.filters[v].resampler = NULL;
+        }
+    }
     voice_work_finalize(d);
 }
 

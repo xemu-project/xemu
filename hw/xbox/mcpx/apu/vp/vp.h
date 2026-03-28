@@ -46,6 +46,10 @@ typedef struct MCPXAPUVoiceFilter {
     SRC_STATE *resampler;
     sv_filter svf[2];
     HrtfFilter hrtf;
+    /* Scratch buffers for ADPCM decoding, allocated once per voice instead of
+     * on the stack in every voice_get_samples() call (Phase 9 perf). */
+    uint32_t adpcm_block[36 * 2 / 4];
+    int16_t adpcm_decoded[65 * 2];
 } MCPXAPUVoiceFilter;
 
 typedef struct VoiceWorkItem {

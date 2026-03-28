@@ -73,6 +73,9 @@ void MultiplayerWizard::Tick()
     // real relay-client library is wired up.
     static float phase = 0.0f;
     phase += 0.018f;
+    if (phase > 2.0f * (float)M_PI) {
+        phase -= 2.0f * (float)M_PI;
+    }
     m_relay_latency_ms  = 55.0f + 20.0f * sinf(phase);
     m_relay_packet_loss = fmaxf(0.0f, 1.5f + 1.0f * sinf(phase * 1.3f));
 }
