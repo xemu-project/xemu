@@ -3033,6 +3033,7 @@ DEF_METHOD(NV097, SET_TRANSFORM_EXECUTION_MODE)
              GET_MASK(parameter,
                       NV097_SET_TRANSFORM_EXECUTION_MODE_RANGE_MODE));
     pgraph_reg_w(pg, NV_PGRAPH_CSV0_D, csv0_d);
+    pg->program_data_dirty = true;
 }
 
 DEF_METHOD(NV097, SET_TRANSFORM_PROGRAM_CXT_WRITE_EN)

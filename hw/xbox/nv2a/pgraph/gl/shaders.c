@@ -430,7 +430,7 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
 
     READ_OR_ERR(&gl_vendor_len, sizeof(gl_vendor_len));
 
-    cached_gl_vendor = g_malloc(gl_vendor_len);
+    cached_gl_vendor = g_malloc(gl_vendor_len + 1);
     READ_OR_ERR(cached_gl_vendor, gl_vendor_len);
     if (strcmp(cached_gl_vendor, shader_gl_vendor) != 0) {
         fclose(shader_file);

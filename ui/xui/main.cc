@@ -162,6 +162,7 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
 
 void xemu_hud_cleanup(void)
 {
+    CleanupCustomRendering();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
@@ -265,7 +266,7 @@ void xemu_hud_update(void)
         last_mouse_move = now;
     }
 
-    // FIXME: Handle time wrap around
+    /* Unsigned subtraction handles 32-bit tick wrap-around correctly. */
     if (g_config.display.ui.hide_cursor && (now - last_mouse_move) > 3000) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_None);
     }

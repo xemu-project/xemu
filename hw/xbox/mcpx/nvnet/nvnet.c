@@ -418,6 +418,8 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
                   cur_desc_addr, desc.buffer_addr, desc.length, desc.flags);
 
     if (desc.flags & NV_RX_AVAIL) {
+        bool truncated = false;
+
         if ((desc.length + 1) < size) {
             /* Packet is larger than the descriptor buffer; truncate to avoid
              * overflowing the guest buffer.  Log the original size so that the
@@ -426,6 +428,7 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
                           "buffer size %u\n", size, desc.length + 1);
             trace_nvnet_rx_oversized(size);
             size = desc.length + 1;
+            truncated = true;
         }
 
         trace_nvnet_rx_dma(desc.buffer_addr, size);
@@ -433,6 +436,9 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
 
         desc.length = size;
         desc.flags = NV_RX_BIT4 | NV_RX_DESCRIPTORVALID;
+        if (truncated) {
+            desc.flags |= NV_RX_OVERFLOW;
+        }
         store_ring_desc(s, cur_desc_addr, desc);
 
         set_intr_status(s, NVNET_IRQ_STATUS_RX);
@@ -635,6 +641,10 @@ static ssize_t nvnet_receive_iov(NetClientState *nc, const struct iovec *iov,
     if (is_packet_oversized(size)) {
         trace_nvnet_rx_oversized(size);
         return size;
+    }
+
+    if (size > sizeof(s->rx_dma_buf)) {
+        size = sizeof(s->rx_dma_buf);
     }
 
     iov_to_buf(iov, iovcnt, 0, s->rx_dma_buf, size);
@@ -868,7 +878,6 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
              * setup register is ready so the driver can proceed. */
             set_reg(s, NVNET_UNKNOWN_SETUP_REG5,
                     NVNET_UNKNOWN_SETUP_REG5_BIT31);
-            break;
         } else if (val == 0) {
             /* forcedeth waits for this bit to be set... */
             set_reg(s, NVNET_UNKNOWN_SETUP_REG5,

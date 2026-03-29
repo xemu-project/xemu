@@ -36,6 +36,10 @@ MonitorWindow::MonitorWindow()
 }
 MonitorWindow::~MonitorWindow()
 {
+    for (int i = 0; i < History.Size; i++) {
+        free(History[i]);
+    }
+    History.clear();
 }
 
 void MonitorWindow::Draw()
@@ -99,7 +103,7 @@ void MonitorWindow::Draw()
             Strtrim(s);
             if (s[0])
                 ExecCommand(s);
-            strcpy(s, "");
+            s[0] = '\0';
             reclaim_focus = true;
         }
         ImGui::PopFont();

@@ -459,6 +459,54 @@ void InitCustomRendering(void)
     g_framebuffer_shader = NewDecalShader(ShaderType::BlitGamma);
 }
 
+void DeleteDecalShader(DecalShader *s)
+{
+    if (!s) return;
+    glDeleteProgram(s->prog);
+    glDeleteBuffers(1, &s->vbo);
+    glDeleteBuffers(1, &s->ebo);
+    glDeleteVertexArrays(1, &s->vao);
+    delete s;
+}
+
+void CleanupCustomRendering(void)
+{
+    delete controller_fbo;
+    controller_fbo = NULL;
+    delete xmu_fbo;
+    xmu_fbo = NULL;
+    delete logo_fbo;
+    logo_fbo = NULL;
+
+    if (g_controller_duke_tex) {
+        glDeleteTextures(1, &g_controller_duke_tex);
+        g_controller_duke_tex = 0;
+    }
+    if (g_controller_s_tex) {
+        glDeleteTextures(1, &g_controller_s_tex);
+        g_controller_s_tex = 0;
+    }
+    if (g_logo_tex) {
+        glDeleteTextures(1, &g_logo_tex);
+        g_logo_tex = 0;
+    }
+    if (g_xmu_tex) {
+        glDeleteTextures(1, &g_xmu_tex);
+        g_xmu_tex = 0;
+    }
+    if (g_icon_tex) {
+        glDeleteTextures(1, &g_icon_tex);
+        g_icon_tex = 0;
+    }
+
+    DeleteDecalShader(g_decal_shader);
+    g_decal_shader = NULL;
+    DeleteDecalShader(g_logo_shader);
+    g_logo_shader = NULL;
+    DeleteDecalShader(g_framebuffer_shader);
+    g_framebuffer_shader = NULL;
+}
+
 static void RenderMeter(DecalShader *s, float x, float y, float width,
                         float height, float p, uint32_t color_bg,
                         uint32_t color_fg)
