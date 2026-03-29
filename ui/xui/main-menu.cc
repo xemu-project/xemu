@@ -57,21 +57,26 @@ void MainMenuGeneralView::Draw()
 #if defined(_WIN32)
     SectionTitle("Updates");
     Toggle("Check for updates", &g_config.general.updates.check,
-           "Check for updates whenever xemu is opened");
+           "Automatically check for new OpenMidway versions on startup");
 #endif
 
 #if defined(__x86_64__)
     SectionTitle("Performance");
     Toggle("Hard FPU emulation", &g_config.perf.hard_fpu,
            "Use hardware-accelerated floating point emulation (requires restart)");
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    HelpMarker("Enables native x87 FPU instructions instead of software "
+               "emulation. Significantly improves performance but requires "
+               "an application restart to take effect.");
+    ImGui::PopFont();
 #endif
 
     Toggle("Cache shaders to disk", &g_config.perf.cache_shaders,
-           "Reduce stutter in games by caching previously generated shaders");
+           "Reduce stutter by caching compiled GPU shaders between sessions");
 
     SectionTitle("Miscellaneous");
     Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
-           "Skip the full Xbox boot animation sequence");
+           "Jump past the Xbox boot animation for faster game loading");
     FilePicker("Screenshot output directory", g_config.general.screenshot_dir,
                nullptr, 0, true, [](const char *path) {
                    xemu_settings_set_string(&g_config.general.screenshot_dir, path);
@@ -80,8 +85,6 @@ void MainMenuGeneralView::Draw()
                [](const char *path) {
                    xemu_settings_set_string(&g_config.general.games_dir, path);
                });
-    // toggle("Throttle DVD/HDD speeds", &g_config.general.throttle_io,
-    //        "Limit DVD/HDD throughput to approximate Xbox load times");
 }
 
 bool MainMenuInputView::ConsumeRebindEvent(SDL_Event *event)
@@ -748,7 +751,7 @@ void MainMenuDisplayView::Draw()
                  "Vulkan\0"
 #endif
                  ,
-                 "Select desired renderer implementation");
+                 "Graphics API used for rendering");
 
     // Renderer auto-selection: pick the best available backend.
     ImGui::PushFont(g_font_mgr.m_menu_font_small);
@@ -772,8 +775,8 @@ void MainMenuDisplayView::Draw()
     ImGui::PopFont();
     int rendering_scale = nv2a_get_surface_scale_factor() - 1;
     if (ChevronCombo("Internal resolution scale", &rendering_scale,
-                     "1x\0"
-                     "2x\0"
+                     "1x (Native)\0"
+                     "2x (Recommended)\0"
                      "3x\0"
                      "4x\0"
                      "5x\0"
@@ -782,21 +785,21 @@ void MainMenuDisplayView::Draw()
                      "8x\0"
                      "9x\0"
                      "10x\0",
-                     "Increase surface scaling factor for higher quality")) {
+                     "Higher values look sharper but use more GPU memory")) {
         nv2a_set_surface_scale_factor(rendering_scale+1);
     }
 
     SectionTitle("Window");
     bool fs = xemu_is_fullscreen();
-    if (Toggle("Fullscreen", &fs, "Enable fullscreen now")) {
+    if (Toggle("Fullscreen", &fs, "Toggle fullscreen mode now")) {
         xemu_toggle_fullscreen();
     }
     Toggle("Fullscreen on startup",
            &g_config.display.window.fullscreen_on_startup,
-           "Start xemu in fullscreen when opened");
+           "Automatically enter fullscreen when OpenMidway launches");
     Toggle("Exclusive fullscreen",
            &g_config.display.window.fullscreen_exclusive,
-           "May improve responsiveness, but slows window switching");
+           "Take exclusive control of the display for lower input latency");
     if (ChevronCombo("Window size", &g_config.display.window.startup_size,
                      "Last Used\0"
                      "640x480\0"
@@ -860,26 +863,56 @@ void MainMenuDisplayView::Draw()
 void MainMenuAudioView::Draw()
 {
     SectionTitle("Volume");
-    char buf[32];
-    snprintf(buf, sizeof(buf), "Limit output volume (%d%%)",
+    char buf[64];
+    snprintf(buf, sizeof(buf), "Maximum output volume: %d%%",
              (int)(g_config.audio.volume_limit * 100));
     Slider("Output volume limit", &g_config.audio.volume_limit, buf);
 
     SectionTitle("Quality");
     Toggle("Real-time DSP processing", &g_config.audio.use_dsp,
-           "Enable improved audio accuracy (experimental)");
-
+           "Enable hardware-accurate audio DSP emulation (experimental, may increase CPU usage)");
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    HelpMarker("When enabled, the Xbox audio DSP is emulated cycle-accurately. "
+               "This improves audio quality in some games but uses more CPU. "
+               "Disable if you experience audio crackling or performance drops.");
+    ImGui::PopFont();
 }
 
 void MainMenuCompatView::Draw()
 {
-    SectionTitle("Graphics Issues Mode");
+    SectionTitle("Graphics Fixes");
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.94f, 0.94f, 0.94f, 0.50f));
+    ImGui::TextWrapped(
+        "Enable these if specific games have graphical issues. "
+        "Leave them off unless needed, as they may affect other titles.");
+    ImGui::PopStyleColor();
+    ImGui::PopFont();
+    ImGui::Dummy(g_viewport_mgr.Scale(ImVec2(0, 4)));
+
     Toggle("Specular power fix", &g_config.compat.use_specular_power_fix,
-           "Improve specular lighting accuracy for Fable and other affected titles");
+           "Corrects specular lighting (Fable, others)");
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    HelpMarker("Fixes bright or washed-out specular highlights caused by "
+               "incorrect power function handling in the GPU shader pipeline. "
+               "Known to help: Fable, Fable: The Lost Chapters.");
+    ImGui::PopFont();
+
     Toggle("Inline element limit", &g_config.compat.use_inline_element_limit,
-           "Clamp inline element draw calls instead of crashing; fixes Ninja Gaiden Black and similar titles");
-    Toggle("Clear surface fix (experimental)", &g_config.compat.use_clear_surface_fix,
-           "Apply memset-like CLEAR_SURFACE semantics; may reduce surface corruption in some titles");
+           "Prevents crashes from oversized draw calls (Ninja Gaiden Black)");
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    HelpMarker("Clamps the number of inline vertex elements per draw call to "
+               "prevent buffer overflows. Known to help: Ninja Gaiden Black, "
+               "Dead or Alive Ultimate.");
+    ImGui::PopFont();
+
+    Toggle("Clear surface fix", &g_config.compat.use_clear_surface_fix,
+           "Experimental - reduces surface corruption in some titles");
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    HelpMarker("Applies stricter CLEAR_SURFACE semantics matching real Xbox "
+               "hardware behavior. May fix garbage pixels or flickering "
+               "backgrounds in some games. Experimental - test per-game.");
+    ImGui::PopFont();
 }
 
 NetworkInterface::NetworkInterface(pcap_if_t *pcap_desc, char *_friendlyname)
@@ -1614,25 +1647,96 @@ static bool IsConfiguredFilePresent(const char *path)
     return path && path[0] && g_file_test(path, G_FILE_TEST_EXISTS);
 }
 
-static void DrawSetupStatusRow(const char *label, bool ready,
-                               const char *ready_text,
-                               const char *missing_text)
+static const char *FormatFileSize(const char *path)
 {
-    const ImVec4 color = ready
-        ? ImVec4(0.35f, 0.85f, 0.45f, 1.0f)
-        : ImVec4(0.95f, 0.35f, 0.35f, 1.0f);
-    const char *icon = ready ? ICON_FA_CIRCLE_CHECK : ICON_FA_TRIANGLE_EXCLAMATION;
-    const char *status = ready ? ready_text : missing_text;
+    static char buf[64];
+    if (!path || !path[0]) return NULL;
+    GStatBuf st;
+    if (g_stat(path, &st) != 0) return NULL;
+    if (st.st_size < 1024)
+        snprintf(buf, sizeof(buf), "%d B", (int)st.st_size);
+    else if (st.st_size < 1024 * 1024)
+        snprintf(buf, sizeof(buf), "%.1f KB", st.st_size / 1024.0);
+    else
+        snprintf(buf, sizeof(buf), "%.1f MB", st.st_size / (1024.0 * 1024.0));
+    return buf;
+}
+
+static void DrawSetupStatusRow(const char *label, bool ready, bool required,
+                               const char *path)
+{
+    float scale = g_viewport_mgr.m_scale;
+
+    const ImVec4 color_ok   = ImVec4(0.35f, 0.85f, 0.45f, 1.0f);
+    const ImVec4 color_warn = ImVec4(0.95f, 0.55f, 0.35f, 1.0f);
+    const ImVec4 color_opt  = ImVec4(0.55f, 0.55f, 0.55f, 0.8f);
+
+    ImVec4 color;
+    const char *icon;
+    if (ready) {
+        color = color_ok;
+        icon = ICON_FA_CIRCLE_CHECK;
+    } else if (required) {
+        color = color_warn;
+        icon = ICON_FA_CIRCLE_EXCLAMATION;
+    } else {
+        color = color_opt;
+        icon = ICON_FA_CIRCLE;
+    }
 
     ImGui::TextColored(color, "%s", icon);
     ImGui::SameLine();
     ImGui::Text("%s", label);
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", status);
+
+    if (ready) {
+        const char *size_str = FormatFileSize(path);
+        if (size_str) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(%s)", size_str);
+        }
+    } else if (required) {
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Text, color_warn);
+        ImGui::Text("- Required");
+        ImGui::PopStyleColor();
+    } else {
+        ImGui::SameLine();
+        ImGui::TextDisabled("- Optional");
+    }
+}
+
+static void DrawProgressBar(int done, int total, float width)
+{
+    float scale = g_viewport_mgr.m_scale;
+    float height = 6.0f * scale;
+    float rounding = height * 0.5f;
+    float fraction = (total > 0) ? (float)done / (float)total : 0.0f;
+
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImDrawList *draw_list = ImGui::GetWindowDrawList();
+
+    // Background track
+    draw_list->AddRectFilled(
+        pos, ImVec2(pos.x + width, pos.y + height),
+        IM_COL32(40, 40, 40, 255), rounding);
+
+    // Filled portion
+    if (fraction > 0.0f) {
+        ImU32 fill_color = (done == total)
+            ? IM_COL32(66, 190, 70, 255)   // green when complete
+            : IM_COL32(220, 160, 50, 255);  // amber when partial
+        draw_list->AddRectFilled(
+            pos, ImVec2(pos.x + width * fraction, pos.y + height),
+            fill_color, rounding);
+    }
+
+    ImGui::Dummy(ImVec2(width, height));
 }
 
 void MainMenuSystemView::Draw()
 {
+    float scale = g_viewport_mgr.m_scale;
+
     static const SDL_DialogFileFilter rom_file_filters[] = {
         { ".bin Files", "bin" },
         { ".rom Files", "rom" },
@@ -1643,38 +1747,65 @@ void MainMenuSystemView::Draw()
         { "All Files", "*" }
     };
 
+    // Restart warning banner
     if (m_dirty) {
-        ImGui::TextColored(ImVec4(1, 0, 0, 1),
-                           "Application restart required to apply settings");
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.5f, 0.15f, 0.1f, 0.6f));
+        ImGui::BeginChild("##restart_banner", ImVec2(-1, 32 * scale), true);
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4 * scale);
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
+                           ICON_FA_ROTATE "  Restart required to apply changes");
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+        ImGui::Dummy(ImVec2(0, 4 * scale));
     }
 
     if ((int)g_config.sys.avpack == CONFIG_SYS_AVPACK_NONE) {
-        ImGui::TextColored(ImVec4(1,0,0,1), "Setting AV Pack to NONE disables video output.");
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
+                           ICON_FA_TRIANGLE_EXCLAMATION "  AV Pack set to NONE - video output is disabled");
     }
 
     bool bootrom_ready = IsConfiguredFilePresent(g_config.sys.files.bootrom_path);
     bool flashrom_ready = IsConfiguredFilePresent(g_config.sys.files.flashrom_path);
     bool hdd_ready = IsConfiguredFilePresent(g_config.sys.files.hdd_path);
-    bool core_setup_ready = bootrom_ready && flashrom_ready && hdd_ready;
+    bool eeprom_ready = IsConfiguredFilePresent(g_config.sys.files.eeprom_path);
+    int files_done = (int)bootrom_ready + (int)flashrom_ready + (int)hdd_ready;
+    bool core_setup_ready = (files_done == 3);
 
     SectionTitle("Setup Readiness");
-    ImGui::PushFont(g_font_mgr.m_menu_font_small);
-    DrawSetupStatusRow("MCPX Boot ROM", bootrom_ready, "Configured", "Choose a file below");
-    DrawSetupStatusRow("Flash ROM (BIOS)", flashrom_ready, "Configured", "Choose a file below");
-    DrawSetupStatusRow("Hard Disk", hdd_ready, "Configured", "Choose a file below");
-    DrawSetupStatusRow("EEPROM", IsConfiguredFilePresent(g_config.sys.files.eeprom_path),
-                       "Configured (optional)", "Optional");
 
-    ImGui::Dummy(g_viewport_mgr.Scale(ImVec2(0, 4)));
-    ImGui::TextWrapped(core_setup_ready
-        ? "Core files are configured. If a game still fails to boot, verify controller input and only then tune graphics or networking."
-        : "Finish the three required file paths below before troubleshooting graphics or System Link. That gives you the shortest path to a first successful boot.");
-    Hyperlink("Open first-run guide", "https://github.com/awest813/OpenMidway/blob/main/docs/getting-started.md");
+    // Progress bar
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    if (core_setup_ready) {
+        ImGui::TextColored(ImVec4(0.35f, 0.85f, 0.45f, 1.0f),
+                           ICON_FA_CIRCLE_CHECK "  All required files configured");
+    } else {
+        ImGui::TextColored(ImVec4(0.95f, 0.65f, 0.35f, 1.0f),
+                           ICON_FA_CIRCLE_EXCLAMATION "  %d of 3 required files configured", files_done);
+    }
+    DrawProgressBar(files_done, 3, ImGui::GetColumnWidth());
+    ImGui::Dummy(ImVec2(0, 4 * scale));
+
+    DrawSetupStatusRow("MCPX Boot ROM", bootrom_ready, true,
+                       g_config.sys.files.bootrom_path);
+    DrawSetupStatusRow("Flash ROM (BIOS)", flashrom_ready, true,
+                       g_config.sys.files.flashrom_path);
+    DrawSetupStatusRow("Hard Disk", hdd_ready, true,
+                       g_config.sys.files.hdd_path);
+    DrawSetupStatusRow("EEPROM", eeprom_ready, false,
+                       g_config.sys.files.eeprom_path);
+
+    ImGui::Dummy(g_viewport_mgr.Scale(ImVec2(0, 6)));
+    if (!core_setup_ready) {
+        ImGui::TextWrapped(
+            "Configure the three required files below. This is all you need "
+            "for a first successful boot.");
+    }
+    Hyperlink(ICON_FA_BOOK "  Setup guide", "https://github.com/awest813/OpenMidway/blob/main/docs/getting-started.md");
 #if defined(_WIN32)
     ImGui::SameLine();
     ImGui::TextDisabled("|");
     ImGui::SameLine();
-    Hyperlink("Open Windows 11 build guide", "https://github.com/awest813/OpenMidway/blob/main/docs/windows-11.md");
+    Hyperlink(ICON_FA_DESKTOP "  Windows guide", "https://github.com/awest813/OpenMidway/blob/main/docs/windows-11.md");
 #endif
     ImGui::PopFont();
 
@@ -1684,40 +1815,61 @@ void MainMenuSystemView::Draw()
             "System Memory", &g_config.sys.mem_limit,
             "64 MiB (Default)\0"
             "128 MiB\0",
-            "Increase to 128 MiB for debug or homebrew applications")) {
+            "Most games use 64 MiB; increase for debug or homebrew apps")) {
         m_dirty = true;
     }
 
     if (ChevronCombo(
             "AV Pack", &g_config.sys.avpack,
             "SCART\0HDTV (Default)\0VGA\0RFU\0S-Video\0Composite\0None\0",
-            "Select the attached AV pack")) {
+            "Selects the virtual AV pack - HDTV gives best output")) {
         m_dirty = true;
     }
 
     SectionTitle("Files");
+
+    // Inline help for each file picker
     FilePicker("MCPX Boot ROM", g_config.sys.files.bootrom_path,
                rom_file_filters, 3, false, [this](const char *path) {
                    xemu_settings_set_string(&g_config.sys.files.bootrom_path, path);
                    m_dirty = true;
                    g_main_menu.UpdateAboutViewConfigInfo();
                });
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    HelpMarker("The MCPX ROM is a 512-byte boot ROM dumped from the Xbox's "
+               "southbridge chip. Select a .bin file.");
+    ImGui::PopFont();
+
     FilePicker("Flash ROM (BIOS)", g_config.sys.files.flashrom_path,
                rom_file_filters, 3, false, [this](const char *path) {
                    xemu_settings_set_string(&g_config.sys.files.flashrom_path, path);
                    m_dirty = true;
                    g_main_menu.UpdateAboutViewConfigInfo();
                });
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    HelpMarker("The Flash ROM (BIOS) is typically 256 KB or 1 MB. This is the "
+               "Xbox kernel/dashboard firmware image.");
+    ImGui::PopFont();
+
     FilePicker("Hard Disk", g_config.sys.files.hdd_path,
                qcow_file_filters, 2, false, [this](const char *path) {
                    xemu_settings_set_string(&g_config.sys.files.hdd_path, path);
                    m_dirty = true;
                });
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    HelpMarker("A QCOW2 disk image representing the Xbox hard drive. Contains "
+               "the dashboard and game saves.");
+    ImGui::PopFont();
+
     FilePicker("EEPROM", g_config.sys.files.eeprom_path,
                rom_file_filters, 3, false, [this](const char *path) {
                    xemu_settings_set_string(&g_config.sys.files.eeprom_path, path);
                    m_dirty = true;
                });
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    HelpMarker("Optional - A 256-byte EEPROM dump. If not provided, a default "
+               "will be generated. Needed for online play (Insignia).");
+    ImGui::PopFont();
 }
 
 MainMenuAboutView::MainMenuAboutView() : m_config_info_text{ NULL }
@@ -1807,13 +1959,10 @@ void MainMenuAboutView::Draw()
 
     SectionTitle("Community");
 
-    ImGui::Text("Visit");
-    ImGui::SameLine();
-    if (ImGui::SmallButton("OpenMidway on GitHub")) {
-        SDL_OpenURL("https://github.com/awest813/OpenMidway");
-    }
-    ImGui::SameLine();
-    ImGui::Text("for downloads, setup guides, and project updates");
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    Hyperlink(ICON_FA_LINK "  OpenMidway on GitHub - downloads, guides, and updates",
+              "https://github.com/awest813/OpenMidway");
+    ImGui::PopFont();
 }
 
 MainMenuTabButton::MainMenuTabButton(std::string text, std::string icon)
@@ -1895,17 +2044,17 @@ void MainMenuScene::ShowSettings()
 
 void MainMenuScene::ShowSnapshots()
 {
-    SetNextViewIndexWithFocus(5);
+    SetNextViewIndexWithFocus(6);
 }
 
 void MainMenuScene::ShowSystem()
 {
-    SetNextViewIndexWithFocus(6);
+    SetNextViewIndexWithFocus(7);
 }
 
 void MainMenuScene::ShowAbout()
 {
-    SetNextViewIndexWithFocus(7);
+    SetNextViewIndexWithFocus(8);
 }
 
 void MainMenuScene::SetNextViewIndexWithFocus(int i)

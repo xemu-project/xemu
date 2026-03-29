@@ -22,8 +22,16 @@ class FirstBootWindow
 {
 public:
     bool is_open;
+    int m_step;       // 0=welcome, 1=files, 2=settings, 3=ready
+    bool m_did_open_file_picker;
     FirstBootWindow();
     void Draw();
+    void DrawStepIndicator(int total_steps, int current_step);
+    void DrawWelcomeStep();
+    void DrawFilesStep();
+    void DrawSettingsStep();
+    void DrawReadyStep();
+    bool AreRequiredFilesConfigured();
 };
 
 extern FirstBootWindow first_boot_window;
