@@ -27,6 +27,8 @@
 #include "viewport-manager.hh"
 #include "scene-manager.hh"
 #include "popup-menu.hh"
+#include "popup-menu-draw.hh"
+#include "menu-system.hh"
 #include "input-manager.hh"
 #include "xemu-hud.h"
 #include "IconsFontAwesome6.h"
@@ -41,119 +43,6 @@ void PopupMenuItemDelegate::LostFocus() {}
 void PopupMenuItemDelegate::PushFocus() {}
 void PopupMenuItemDelegate::PopFocus() {}
 bool PopupMenuItemDelegate::DidPop() { return false; }
-
-static bool PopupMenuButton(std::string text, std::string icon = "")
-{
-    ImGui::PushFont(g_font_mgr.m_menu_font);
-    auto button_text = string_format("%s %s", icon.c_str(), text.c_str());
-    bool status = ImGui::Button(button_text.c_str(), ImVec2(-FLT_MIN, 0));
-    ImGui::PopFont();
-    return status;
-}
-
-static bool PopupMenuCheck(std::string text, std::string icon = "", bool v = false)
-{
-    bool status = PopupMenuButton(text, icon);
-    if (v) {
-        ImGui::PushFont(g_font_mgr.m_menu_font);
-        const ImVec2 p0 = ImGui::GetItemRectMin();
-        const ImVec2 p1 = ImGui::GetItemRectMax();
-        const char *check_icon = ICON_FA_CHECK;
-        ImVec2 ts_icon = ImGui::CalcTextSize(check_icon);
-        ImDrawList *draw_list = ImGui::GetWindowDrawList();
-        ImGuiStyle &style = ImGui::GetStyle();
-        draw_list->AddText(ImVec2(p1.x - style.FramePadding.x - ts_icon.x,
-                                  p0.y + (p1.y - p0.y - ts_icon.y) / 2),
-                           ImGui::GetColorU32(ImGuiCol_Text), check_icon);
-        ImGui::PopFont();
-    }
-    return status;
-}
-
-static bool PopupMenuSubmenuButton(std::string text, std::string icon = "")
-{
-    bool status = PopupMenuButton(text, icon);
-
-    ImGui::PushFont(g_font_mgr.m_menu_font);
-    const ImVec2 p0 = ImGui::GetItemRectMin();
-    const ImVec2 p1 = ImGui::GetItemRectMax();
-    const char *right_icon = ICON_FA_CHEVRON_RIGHT;
-    ImVec2 ts_icon = ImGui::CalcTextSize(right_icon);
-    ImDrawList *draw_list = ImGui::GetWindowDrawList();
-    ImGuiStyle &style = ImGui::GetStyle();
-    draw_list->AddText(ImVec2(p1.x - style.FramePadding.x - ts_icon.x,
-                              p0.y + (p1.y - p0.y - ts_icon.y) / 2),
-                       ImGui::GetColorU32(ImGuiCol_Text), right_icon);
-    ImGui::PopFont();
-    return status;
-}
-
-static bool PopupMenuToggle(std::string text, std::string icon = "", bool *v = nullptr)
-{
-    bool l_v = false;
-    if (v == NULL) v = &l_v;
-
-    ImGuiStyle &style = ImGui::GetStyle();
-    bool status = PopupMenuButton(text, icon);
-    ImVec2 p_min = ImGui::GetItemRectMin();
-    ImVec2 p_max = ImGui::GetItemRectMax();
-    if (status) *v = !*v;
-
-    ImGui::PushFont(g_font_mgr.m_menu_font);
-    float title_height = ImGui::GetTextLineHeight();
-    ImGui::PopFont();
-
-    float toggle_height = title_height * 0.75;
-    ImVec2 toggle_size(toggle_height * 1.75, toggle_height);
-    ImVec2 toggle_pos(p_max.x - toggle_size.x - style.FramePadding.x,
-                      p_min.y + (title_height - toggle_size.y)/2 + style.FramePadding.y);
-    DrawToggle(*v, ImGui::IsItemHovered(), toggle_pos, toggle_size);
-
-    return status;
-}
-
-static bool PopupMenuSlider(std::string text, std::string icon = "", float *v = NULL)
-{
-    bool status = PopupMenuButton(text, icon);
-    ImVec2 p_min = ImGui::GetItemRectMin();
-    ImVec2 p_max = ImGui::GetItemRectMax();
-
-    ImGuiStyle &style = ImGui::GetStyle();
-
-    float new_v = *v;
-
-    if (ImGui::IsItemHovered()) {
-        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow) ||
-            ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft) ||
-            ImGui::IsKeyPressed(ImGuiKey_GamepadLStickLeft) ||
-            ImGui::IsKeyPressed(ImGuiKey_GamepadRStickLeft)) new_v -= 0.05;
-        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow) ||
-            ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight) ||
-            ImGui::IsKeyPressed(ImGuiKey_GamepadLStickRight) ||
-            ImGui::IsKeyPressed(ImGuiKey_GamepadRStickRight)) new_v += 0.05;
-    }
-
-    ImGui::PushFont(g_font_mgr.m_menu_font);
-    float title_height = ImGui::GetTextLineHeight();
-    ImGui::PopFont();
-
-    float toggle_height = title_height * 0.75;
-    ImVec2 slider_size(toggle_height * 3.75, toggle_height);
-    ImVec2 slider_pos(p_max.x - slider_size.x - style.FramePadding.x,
-                      p_min.y + (title_height - slider_size.y)/2 + style.FramePadding.y);
-
-    if (ImGui::IsItemActive()) {
-        ImVec2 mouse = ImGui::GetMousePos();
-        new_v = GetSliderValueForMousePos(mouse, slider_pos, slider_size);
-    }
-
-    DrawSlider(*v, ImGui::IsItemActive() || ImGui::IsItemHovered(), slider_pos,
-               slider_size);
-
-    *v = fmin(fmax(0, new_v), 1.0);
-
-    return status;
-}
 
 PopupMenu::PopupMenu() : m_animation(0.12, 0.12), m_ease_direction(0, 0)
 {
@@ -261,54 +150,9 @@ bool PopupMenu::DrawItems(PopupMenuItemDelegate &nav)
     return false;
 }
 
-class DisplayModePopupMenu : public virtual PopupMenu {
-public:
-    bool DrawItems(PopupMenuItemDelegate &nav) override
-    {
-        const char *values[] = {
-            "Center", "Scale", "Stretch"
-        };
-
-        for (int i = 0; i < CONFIG_DISPLAY_UI_FIT__COUNT; i++) {
-            bool selected = g_config.display.ui.fit == i;
-            if (m_focus && selected) ImGui::SetKeyboardFocusHere();
-            if (PopupMenuCheck(values[i], "", selected))
-                g_config.display.ui.fit = i;
-        }
-
-        return false;
-    }
-};
-
-class AspectRatioPopupMenu : public virtual PopupMenu {
-public:
-    bool DrawItems(PopupMenuItemDelegate &nav) override
-    {
-        const char *values[] = {
-            "Native",
-            "Auto (Default)",
-            "4:3",
-            "16:9"
-        };
-
-        for (int i = 0; i < CONFIG_DISPLAY_UI_ASPECT_RATIO__COUNT; i++) {
-            bool selected = g_config.display.ui.aspect_ratio == i;
-            if (m_focus && selected) ImGui::SetKeyboardFocusHere();
-            if (PopupMenuCheck(values[i], "", selected))
-                g_config.display.ui.aspect_ratio = i;
-        }
-
-        return false;
-    }
-};
-
 extern MainMenuScene g_main_menu;
 
 class SettingsPopupMenu : public virtual PopupMenu {
-protected:
-    DisplayModePopupMenu display_mode;
-    AspectRatioPopupMenu aspect_ratio;
-
 public:
     bool DrawItems(PopupMenuItemDelegate &nav) override
     {
@@ -317,19 +161,7 @@ public:
         if (m_focus && !m_pop_focus) {
             ImGui::SetKeyboardFocusHere();
         }
-        PopupMenuSlider("Volume", ICON_FA_VOLUME_HIGH, &g_config.audio.volume_limit);
-        bool fs = xemu_is_fullscreen();
-        if (PopupMenuToggle("Fullscreen", ICON_FA_WINDOW_MAXIMIZE, &fs)) {
-            xemu_toggle_fullscreen();
-        }
-        if (PopupMenuSubmenuButton("Display Mode", ICON_FA_EXPAND)) {
-            nav.PushFocus();
-            nav.PushMenu(display_mode);
-        }
-        if (PopupMenuSubmenuButton("Aspect Ratio", ICON_FA_EXPAND)) {
-            nav.PushFocus();
-            nav.PushMenu(aspect_ratio);
-        }
+        MenuDrawViewItems(false);
         if (PopupMenuButton("Snapshots...", ICON_FA_CLOCK_ROTATE_LEFT)) {
             nav.ClearMenuStack();
             g_scene_mgr.PushScene(g_main_menu);
@@ -405,10 +237,58 @@ public:
     }
 };
 
+class ViewPopupMenu : public virtual PopupMenu {
+public:
+    bool DrawItems(PopupMenuItemDelegate &nav) override
+    {
+        if (m_focus && !m_pop_focus) {
+            ImGui::SetKeyboardFocusHere();
+        }
+        MenuDrawViewItems(false);
+        if (m_pop_focus) {
+            nav.PopFocus();
+        }
+        return false;
+    }
+};
+
+class DebugPopupMenu : public virtual PopupMenu {
+public:
+    bool DrawItems(PopupMenuItemDelegate &nav) override
+    {
+        if (m_focus && !m_pop_focus) {
+            ImGui::SetKeyboardFocusHere();
+        }
+        MenuDrawDebugItems(false);
+        if (m_pop_focus) {
+            nav.PopFocus();
+        }
+        return false;
+    }
+};
+
+class HelpPopupMenu : public virtual PopupMenu {
+public:
+    bool DrawItems(PopupMenuItemDelegate &nav) override
+    {
+        if (m_focus && !m_pop_focus) {
+            ImGui::SetKeyboardFocusHere();
+        }
+        MenuDrawHelpItems(false, &nav);
+        if (m_pop_focus) {
+            nav.PopFocus();
+        }
+        return false;
+    }
+};
+
 class RootPopupMenu : public virtual PopupMenu {
 protected:
     SettingsPopupMenu settings;
     GamesPopupMenu games;
+    ViewPopupMenu view_menu;
+    DebugPopupMenu debug_menu;
+    HelpPopupMenu help_menu;
     bool refocus_first_item;
 
 public:
@@ -461,6 +341,18 @@ public:
         if (PopupMenuSubmenuButton("Settings", ICON_FA_GEARS)) {
             nav.PushFocus();
             nav.PushMenu(settings);
+        }
+        if (PopupMenuSubmenuButton("View", ICON_FA_TV)) {
+            nav.PushFocus();
+            nav.PushMenu(view_menu);
+        }
+        if (PopupMenuSubmenuButton("Debug", ICON_FA_BUG)) {
+            nav.PushFocus();
+            nav.PushMenu(debug_menu);
+        }
+        if (PopupMenuSubmenuButton("Help", ICON_FA_CIRCLE_QUESTION)) {
+            nav.PushFocus();
+            nav.PushMenu(help_menu);
         }
         if (PopupMenuButton("Restart", ICON_FA_ARROWS_ROTATE)) {
             ActionReset();
