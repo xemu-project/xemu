@@ -78,7 +78,6 @@ package_macos() {
     # Bundle Vulkan/MoltenVK runtime if available
     if command -v brew &>/dev/null; then
         brew_prefix="$(brew --prefix)"
-        mvk_icd="${brew_prefix}/Cellar/molten-vk/$(ls "${brew_prefix}/Cellar/molten-vk/" 2>/dev/null | head -1)/etc/vulkan/icd.d/MoltenVK_icd.json"
         mvk_lib="${brew_prefix}/lib/libMoltenVK.dylib"
         vk_loader="${brew_prefix}/lib/libvulkan.1.dylib"
 

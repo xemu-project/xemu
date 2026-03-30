@@ -597,8 +597,6 @@ void pgraph_vk_determine_gpu_properties(NV2AState *d)
         pgraph_vk_gpu_properties.geom_shader_winding.tri_strip0 = 0;
         pgraph_vk_gpu_properties.geom_shader_winding.tri_strip1 = 0;
         pgraph_vk_gpu_properties.geom_shader_winding.tri_fan = 0;
-        fprintf(stderr,
-                "VK geometry shader winding (default, no GS): 0, 0, 0, 0\n");
         return;
     }
 

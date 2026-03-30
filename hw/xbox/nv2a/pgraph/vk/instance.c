@@ -176,8 +176,8 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
                     "MoltenVK_icd.json", NULL);
                 char *icd_real = realpath(icd_path, NULL);
                 if (icd_real) {
-                    setenv("VK_ICD_FILENAMES", icd_real, 1);
-                    setenv("VK_DRIVER_FILES", icd_real, 1);
+                    setenv("VK_ICD_FILENAMES", icd_real, 0);
+                    setenv("VK_DRIVER_FILES", icd_real, 0);
                     free(icd_real);
                 }
                 g_free(icd_path);
