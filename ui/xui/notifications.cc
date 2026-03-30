@@ -18,6 +18,7 @@
 //
 #include "notifications.hh"
 #include "common.hh"
+#include "viewport-manager.hh"
 
 #include "../xemu-notifications.h"
 
@@ -73,16 +74,20 @@ void NotificationManager::Draw()
     }
     if (ImGui::BeginPopupModal("Error", NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
+        float scale = g_viewport_mgr.m_scale;
         ImGui::Text("%s", m_error_queue[0]);
-        ImGui::Dummy(ImVec2(0,16));
-        ImGui::SetItemDefaultFocus();
+        ImGui::Dummy(ImVec2(0, 16 * scale));
         ImGuiStyle &style = ImGui::GetStyle();
-        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+2*style.FramePadding.x));
-        if (ImGui::Button("Ok", ImVec2(120, 0))) {
+        float btn_w = 120 * scale;
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth() - (btn_w + 2 * style.FramePadding.x));
+        if (ImGui::Button("Ok", ImVec2(btn_w, 0)) ||
+            ImGui::IsKeyPressed(ImGuiKey_Escape) ||
+            ImGui::IsKeyPressed(ImGuiKey_Enter)) {
             ImGui::CloseCurrentPopup();
             free((void*)m_error_queue[0]);
             m_error_queue.pop_front();
         }
+        ImGui::SetItemDefaultFocus();
         ImGui::EndPopup();
     }
 }
@@ -93,7 +98,7 @@ void NotificationManager::DrawNotification(float t, const char *msg)
         return;
     }
 
-    const float DISTANCE = 10.0f;
+    const float DISTANCE = 10.0f * g_viewport_mgr.m_scale;
     static int corner = 1;
     ImGuiIO& io = ImGui::GetIO();
     if (corner != -1)
@@ -104,16 +109,16 @@ void NotificationManager::DrawNotification(float t, const char *msg)
         ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pos_pivot);
     }
 
-    const float fade_in  = 0.1;
-    const float fade_out = 0.9;
+    const float fade_out = 0.1;  // t approaches 0 at end: fade out
+    const float fade_in  = 0.9; // t starts near 1: fade in
     float fade = 0;
 
-    if (t < fade_in) {
-        // Linear fade in
-        fade = t/fade_in;
-    } else if (t >= fade_out) {
-        // Linear fade out
-        fade = 1-(t-fade_out)/(1-fade_out);
+    if (t < fade_out) {
+        // Linear fade out (notification expiring)
+        fade = t/fade_out;
+    } else if (t >= fade_in) {
+        // Linear fade in (notification appearing)
+        fade = 1-(t-fade_in)/(1-fade_in);
     } else {
         // Constant
         fade = 1.0;

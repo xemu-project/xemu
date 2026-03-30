@@ -137,7 +137,7 @@ void MonitorWindow::ExecCommand(const char* command_line)
         }
     History.push_back(Strdup(command_line));
 
-    // On commad input, we scroll to bottom even if AutoScroll==false
+    // On command input, we scroll to bottom even if AutoScroll==false
     ScrollToBottom = true;
 }
 

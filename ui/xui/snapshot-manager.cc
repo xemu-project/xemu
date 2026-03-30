@@ -20,6 +20,7 @@
 #include "common.hh"
 #include "notifications.hh"
 #include "snapshot-manager.hh"
+#include "viewport-manager.hh"
 #include "xemu-hud.h"
 
 SnapshotManager g_snapshot_mgr;
@@ -131,9 +132,11 @@ void SnapshotManager::DrawSnapshotDiscLoadDialog()
     ImGui::Spacing();
     ImGui::Text("Would you like to load it now?");
     
-    ImGui::Dummy(ImVec2(0,16));
+    float scale = g_viewport_mgr.m_scale;
+    ImGui::Dummy(ImVec2(0, 16 * scale));
 
-    if (ImGui::Button("Yes", ImVec2(120, 0))) {
+    float btn_w = 120 * scale;
+    if (ImGui::Button("Yes", ImVec2(btn_w, 0))) {
         xemu_eject_disc(NULL);
         
         Error *err = NULL;
@@ -149,13 +152,13 @@ void SnapshotManager::DrawSnapshotDiscLoadDialog()
     }
     
     ImGui::SameLine();
-    if (ImGui::Button("No", ImVec2(120, 0))) {
+    if (ImGui::Button("No", ImVec2(btn_w, 0))) {
         LoadSnapshot(m_pending_load_name.c_str());
         ImGui::CloseCurrentPopup();
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+    if (ImGui::Button("Cancel", ImVec2(btn_w, 0))) {
         ImGui::CloseCurrentPopup();
     }
 

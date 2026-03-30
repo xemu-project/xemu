@@ -89,8 +89,8 @@ static void InitializeStyle()
     c[ImGuiCol_MenuBarBg]             = ImVec4(0.14f, 0.14f, 0.14f, 0.00f);
     c[ImGuiCol_ScrollbarBg]           = ImVec4(0.16f, 0.16f, 0.16f, 0.00f);
     c[ImGuiCol_ScrollbarGrab]         = ImVec4(0.30f, 0.30f, 0.30f, 1.00f);
-    c[ImGuiCol_ScrollbarGrabHovered]  = ImVec4(0.24f, 0.60f, 0.00f, 1.00f);
-    c[ImGuiCol_ScrollbarGrabActive]   = ImVec4(0.24f, 0.60f, 0.00f, 1.00f);
+    c[ImGuiCol_ScrollbarGrabHovered]  = ImVec4(0.28f, 0.68f, 0.05f, 1.00f);
+    c[ImGuiCol_ScrollbarGrabActive]   = ImVec4(0.22f, 0.54f, 0.00f, 1.00f);
     c[ImGuiCol_CheckMark]             = ImVec4(0.26f, 0.66f, 0.23f, 1.00f);
     c[ImGuiCol_SliderGrab]            = ImVec4(0.90f, 0.90f, 0.90f, 1.00f);
     c[ImGuiCol_SliderGrabActive]      = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
@@ -98,8 +98,8 @@ static void InitializeStyle()
     c[ImGuiCol_ButtonHovered]         = ImVec4(0.24f, 0.60f, 0.00f, 1.00f);
     c[ImGuiCol_ButtonActive]          = ImVec4(0.26f, 0.66f, 0.23f, 1.00f);
     c[ImGuiCol_Header]                = ImVec4(0.24f, 0.60f, 0.00f, 1.00f);
-    c[ImGuiCol_HeaderHovered]         = ImVec4(0.24f, 0.60f, 0.00f, 1.00f);
-    c[ImGuiCol_HeaderActive]          = ImVec4(0.24f, 0.60f, 0.00f, 1.00f);
+    c[ImGuiCol_HeaderHovered]         = ImVec4(0.28f, 0.68f, 0.05f, 1.00f);
+    c[ImGuiCol_HeaderActive]          = ImVec4(0.22f, 0.54f, 0.00f, 1.00f);
     c[ImGuiCol_Separator]             = ImVec4(1.00f, 1.00f, 1.00f, 0.25f);
     c[ImGuiCol_SeparatorHovered]      = ImVec4(0.13f, 0.87f, 0.16f, 0.78f);
     c[ImGuiCol_SeparatorActive]       = ImVec4(0.25f, 0.75f, 0.10f, 1.00f);
@@ -230,7 +230,7 @@ void xemu_hud_update(void)
 
     if (g_config.display.ui.show_menubar && !first_boot_window.is_open) {
         // Auto-hide main menu after 5s of inactivity
-        static uint32_t last_check = 0;
+        static uint32_t last_check = SDL_GetTicks();
         float alpha = 1.0;
         const uint32_t timeout = 5000;
         const float fade_duration = 1000.0;

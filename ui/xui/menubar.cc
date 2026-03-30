@@ -33,7 +33,7 @@
 #include "hw/xbox/nv2a/debug.h"
 #endif
 
-extern float g_main_menu_height; // FIXME
+extern float g_main_menu_height; // Set in ShowMainMenu(), consumed by overlays
 
 #ifdef CONFIG_RENDERDOC
 bool g_capture_renderdoc_frame = false;
