@@ -39,9 +39,7 @@ ShaderState pgraph_glsl_get_shader_state(PGRAPHState *pg)
 bool pgraph_glsl_check_shader_state_dirty(PGRAPHState *pg,
                                           const ShaderState *state)
 {
-    if (pg->program_data_dirty) {
-        return true;
-    }
+    /* Decoupled Vertex Shader architecture skips program re-compilations */
 
     unsigned int regs[] = {
         NV_PGRAPH_COMBINECTL,      NV_PGRAPH_COMBINESPECFOG0,

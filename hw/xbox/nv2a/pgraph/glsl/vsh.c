@@ -525,6 +525,19 @@ void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
         values->surfaceSize[0][1] = height;
     }
 
+    if (!state->is_fixed_function) {
+        if (locs[VshUniform_programData] != -1) {
+            QEMU_BUILD_BUG_MSG(sizeof(values->programData) !=
+                                   sizeof(state->programmable.program_data),
+                               "Uniform value size inconsistency");
+            memcpy(values->programData, state->programmable.program_data,
+                   sizeof(state->programmable.program_data));
+        }
+        if (locs[VshUniform_programLength] != -1) {
+            values->programLength[0] = state->programmable.program_length;
+        }
+    }
+
     if (state->is_fixed_function) {
         if (locs[VshUniform_ltctxa] != -1) {
             QEMU_BUILD_BUG_MSG(sizeof(values->ltctxa) != sizeof(pg->ltctxa),

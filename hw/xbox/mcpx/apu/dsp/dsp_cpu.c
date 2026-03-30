@@ -134,11 +134,202 @@ static const int registers_mask[64] = {
 
 typedef bool (*match_func_t)(uint32_t op);
 
+typedef enum {
+    OP_ADD_HASH_XX_D_0,
+    OP_ADD_HASH_XXXX_D_1,
+    OP_AND_HASH_XX_D_2,
+    OP_AND_HASH_XXXX_D_3,
+    OP_ANDI_HASH_XX_D_4,
+    OP_ASL_HASH_II_S2_D_5,
+    OP_ASL_S1_S2_D_6,
+    OP_ASR_HASH_II_S2_D_7,
+    OP_ASR_S1_S2_D_8,
+    OP_BCC_XXXX_9,
+    OP_BCC_XXX_10,
+    OP_BCC_RN_11,
+    OP_BCHG_HASH_N_X_OR_Y_EA_12,
+    OP_BCHG_HASH_N_X_OR_Y_AA_13,
+    OP_BCHG_HASH_N_X_OR_Y_PP_14,
+    OP_BCHG_HASH_N_X_OR_Y_QQ_15,
+    OP_BCHG_HASH_N_D_16,
+    OP_BCLR_HASH_N_X_OR_Y_EA_17,
+    OP_BCLR_HASH_N_X_OR_Y_AA_18,
+    OP_BCLR_HASH_N_X_OR_Y_PP_19,
+    OP_BCLR_HASH_N_X_OR_Y_QQ_20,
+    OP_BCLR_HASH_N_D_21,
+    OP_BRA_XXXX_22,
+    OP_BRA_XXX_23,
+    OP_BRA_RN_24,
+    OP_BRCLR_HASH_N_X_OR_Y_EA_XXXX_25,
+    OP_BRCLR_HASH_N_X_OR_Y_AA_XXXX_26,
+    OP_BRCLR_HASH_N_X_OR_Y_PP_XXXX_27,
+    OP_BRCLR_HASH_N_X_OR_Y_QQ_XXXX_28,
+    OP_BRCLR_HASH_N_S_XXXX_29,
+    OP_BRKCC_30,
+    OP_BRSET_HASH_N_X_OR_Y_EA_XXXX_31,
+    OP_BRSET_HASH_N_X_OR_Y_AA_XXXX_32,
+    OP_BRSET_HASH_N_X_OR_Y_PP_XXXX_33,
+    OP_BRSET_HASH_N_X_OR_Y_QQ_XXXX_34,
+    OP_BRSET_HASH_N_S_XXXX_35,
+    OP_BSCC_XXXX_36,
+    OP_BSCC_XXX_37,
+    OP_BSCC_RN_38,
+    OP_BSCLR_HASH_N_X_OR_Y_EA_XXXX_39,
+    OP_BSCLR_HASH_N_X_OR_Y_AA_XXXX_40,
+    OP_BSCLR_HASH_N_X_OR_Y_QQ_XXXX_41,
+    OP_BSCLR_HASH_N_X_OR_Y_PP_XXXX_42,
+    OP_BSCLR_HASH_N_S_XXXX_43,
+    OP_BSET_HASH_N_X_OR_Y_EA_44,
+    OP_BSET_HASH_N_X_OR_Y_AA_45,
+    OP_BSET_HASH_N_X_OR_Y_PP_46,
+    OP_BSET_HASH_N_X_OR_Y_QQ_47,
+    OP_BSET_HASH_N_D_48,
+    OP_BSR_XXXX_49,
+    OP_BSR_XXX_50,
+    OP_BSR_RN_51,
+    OP_BSSET_HASH_N_X_OR_Y_EA_XXXX_52,
+    OP_BSSET_HASH_N_X_OR_Y_AA_XXXX_53,
+    OP_BSSET_HASH_N_X_OR_Y_PP_XXXX_54,
+    OP_BSSET_HASH_N_X_OR_Y_QQ_XXXX_55,
+    OP_BSSET_HASH_N_S_XXXX_56,
+    OP_BTST_HASH_N_X_OR_Y_EA_57,
+    OP_BTST_HASH_N_X_OR_Y_AA_58,
+    OP_BTST_HASH_N_X_OR_Y_PP_59,
+    OP_BTST_HASH_N_X_OR_Y_QQ_60,
+    OP_BTST_HASH_N_D_61,
+    OP_CLB_S_D_62,
+    OP_CMP_HASH_XX_S2_63,
+    OP_CMP_HASH_XXXX_S2_64,
+    OP_CMPU_S1_S2_65,
+    OP_DEBUG_66,
+    OP_DEBUGCC_67,
+    OP_DEC_D_68,
+    OP_DIV_S_D_69,
+    OP_DMAC_S1_S2_D_70,
+    OP_DO_X_OR_Y_EA_EXPR_71,
+    OP_DO_X_OR_Y_AA_EXPR_72,
+    OP_DO_HASH_XXX_EXPR_73,
+    OP_DO_S_EXPR_74,
+    OP_DO_F_75,
+    OP_DOR_X_OR_Y_EA_LABEL_76,
+    OP_DOR_X_OR_Y_AA_LABEL_77,
+    OP_DOR_HASH_XXX_LABEL_78,
+    OP_DOR_S_LABEL_79,
+    OP_DOR_F_80,
+    OP_ENDDO_81,
+    OP_EOR_HASH_XX_D_82,
+    OP_EOR_HASH_XXXX_D_83,
+    OP_EXTRACT_S1_S2_D_84,
+    OP_EXTRACT_HASH_CO_S2_D_85,
+    OP_EXTRACTU_S1_S2_D_86,
+    OP_EXTRACTU_HASH_CO_S2_D_87,
+    OP_ILL_88,
+    OP_INC_D_89,
+    OP_INSERT_S1_S2_D_90,
+    OP_INSERT_HASH_CO_S2_D_91,
+    OP_JCC_XXX_92,
+    OP_JCC_EA_93,
+    OP_JCLR_HASH_N_X_OR_Y_EA_XXXX_94,
+    OP_JCLR_HASH_N_X_OR_Y_AA_XXXX_95,
+    OP_JCLR_HASH_N_X_OR_Y_PP_XXXX_96,
+    OP_JCLR_HASH_N_X_OR_Y_QQ_XXXX_97,
+    OP_JCLR_HASH_N_S_XXXX_98,
+    OP_JMP_EA_99,
+    OP_JMP_XXX_100,
+    OP_JSCC_XXX_101,
+    OP_JSCC_EA_102,
+    OP_JSCLR_HASH_N_X_OR_Y_EA_XXXX_103,
+    OP_JSCLR_HASH_N_X_OR_Y_AA_XXXX_104,
+    OP_JSCLR_HASH_N_X_OR_Y_PP_XXXX_105,
+    OP_JSCLR_HASH_N_X_OR_Y_QQ_XXXX_106,
+    OP_JSCLR_HASH_N_S_XXXX_107,
+    OP_JSET_HASH_N_X_OR_Y_EA_XXXX_108,
+    OP_JSET_HASH_N_X_OR_Y_AA_XXXX_109,
+    OP_JSET_HASH_N_X_OR_Y_PP_XXXX_110,
+    OP_JSET_HASH_N_X_OR_Y_QQ_XXXX_111,
+    OP_JSET_HASH_N_S_XXXX_112,
+    OP_JSR_EA_113,
+    OP_JSR_XXX_114,
+    OP_JSSET_HASH_N_X_OR_Y_EA_XXXX_115,
+    OP_JSSET_HASH_N_X_OR_Y_AA_XXXX_116,
+    OP_JSSET_HASH_N_X_OR_Y_PP_XXXX_117,
+    OP_JSSET_HASH_N_X_OR_Y_QQ_XXXX_118,
+    OP_JSSET_HASH_N_S_XXXX_119,
+    OP_LRA_RN_D_120,
+    OP_LRA_XXXX_D_121,
+    OP_LSL_HASH_II_D_122,
+    OP_LSL_S_D_123,
+    OP_LSR_HASH_II_D_124,
+    OP_LSR_S_D_125,
+    OP_LUA_EA_D_126,
+    OP_LUA_(RN_PLUS_AA)_D_127,
+    OP_MAC_S_HASH_N_D_128,
+    OP_MACI_HASH_XXXX_S_D_129,
+    OP_MAC_S_U_S1_S2_D_130,
+    OP_MACR_S1_S2_D_131,
+    OP_MACRI_HASH_XXXX_S_D_132,
+    OP_MERGE_S_D_133,
+    OP_MOVE_X_(RN_PLUS_XXXX)_<MINUS>_R_134,
+    OP_MOVE_Y_(RN_PLUS_XXXX)_<MINUS>_R_135,
+    OP_MOVE_X_(RN_PLUS_XXX)_<MINUS>_R_136,
+    OP_MOVE_Y_(RN_PLUS_XXX)_<MINUS>_R_137,
+    OP_MOVEC_X_OR_Y_EA_<MINUS>_R_138,
+    OP_MOVEC_X_OR_Y_AA_<MINUS>_R_139,
+    OP_MOVEC_R1_R2_140,
+    OP_MOVEC_HASH_XX_D1_141,
+    OP_MOVEM_P_EA_<MINUS>_R_142,
+    OP_MOVEM_P_EA_<MINUS>_R_143,
+    OP_MOVEP_X_OR_Y_EA_<MINUS>_X_OR_Y_PP_144,
+    OP_MOVEP_X_OR_Y_EA_<MINUS>_X_QQ_145,
+    OP_MOVEP_X_OR_Y_EA_<MINUS>_Y_QQ_146,
+    OP_MOVEP_X_OR_Y_PP_<MINUS>_P_EA_147,
+    OP_MOVEP_X_OR_Y_QQ_<MINUS>_P_EA_148,
+    OP_MOVEP_X_OR_Y_PP_<MINUS>_R_149,
+    OP_MOVEP_X_QQ_<MINUS>_R_150,
+    OP_MOVEP_Y_QQ_<MINUS>_R_151,
+    OP_MPY_S_HASH_N_D_152,
+    OP_MPY_S_U_S1_S2_D_153,
+    OP_MPYI_HASH_XXXX_S_D_154,
+    OP_MPYR_S_HASH_N_D_155,
+    OP_MPYRI_HASH_XXXX_S_D_156,
+    OP_NOP_157,
+    OP_NORM_RN_D_158,
+    OP_NORMF_S_D_159,
+    OP_OR_HASH_XX_D_160,
+    OP_OR_HASH_XXXX_D_161,
+    OP_ORI_HASH_XX_D_162,
+    OP_PFLUSH_163,
+    OP_PFLUSHUN_164,
+    OP_PFREE_165,
+    OP_PLOCK_EA_166,
+    OP_PLOCKR_XXXX_167,
+    OP_PUNLOCK_EA_168,
+    OP_PUNLOCKR_XXXX_169,
+    OP_REP_X_OR_Y_EA_170,
+    OP_REP_X_OR_Y_AA_171,
+    OP_REP_HASH_XXX_172,
+    OP_REP_S_173,
+    OP_RESET_174,
+    OP_RTI_175,
+    OP_RTS_176,
+    OP_STOP_177,
+    OP_SUB_HASH_XX_D_178,
+    OP_SUB_HASH_XXXX_D_179,
+    OP_TCC_S1_D1_180,
+    OP_TCC_S1D2_S2D2_181,
+    OP_TCC_S2_D2_182,
+    OP_TRAP_183,
+    OP_TRAPCC_184,
+    OP_VSL_185,
+    OP_WAIT_186,
+    OP_UNDEFINED
+} DspOpcodeID;
+
 typedef struct OpcodeEntry {
+    DspOpcodeID id;
     const char* template;
     const char* name;
     dis_func_t dis_func;
-    emu_func_t emu_func;
     match_func_t match_func;
 } OpcodeEntry;
 
@@ -153,193 +344,193 @@ static bool match_MMMRRR(uint32_t op)
 }
 
 static const OpcodeEntry nonparallel_opcodes[] = {
-    { "0000000101iiiiii1000d000", "add #xx, D", dis_add_imm, emu_add_imm },
-    { "00000001010000001100d000", "add #xxxx, D", dis_add_long, emu_add_long },
-    { "0000000101iiiiii1000d110", "and #xx, D", dis_and_imm, emu_and_imm },
-    { "00000001010000001100d110", "and #xxxx, D", dis_and_long, emu_and_long },
-    { "00000000iiiiiiii101110EE", "andi #xx, D", dis_andi, emu_andi },
-    { "0000110000011101SiiiiiiD", "asl #ii, S2, D", dis_asl_imm, emu_asl_imm },
-    { "0000110000011110010SsssD", "asl S1, S2, D", NULL, NULL },
-    { "0000110000011100SiiiiiiD", "asr #ii, S2, D", dis_asr_imm, emu_asr_imm },
-    { "0000110000011110011SsssD", "asr S1, S2, D", NULL, NULL },
-    { "00001101000100000100CCCC", "bcc xxxx", dis_bcc_long, emu_bcc_long }, //??
-    { "00000101CCCC01aaaa0aaaaa", "bcc xxx", dis_bcc_imm, emu_bcc_imm },
-    { "0000110100011RRR0100CCCC", "bcc Rn", NULL, NULL },
-    { "0000101101MMMRRR0S00bbbb", "bchg #n, [X or Y]:ea", dis_bchg_ea, emu_bchg_ea, match_MMMRRR },
-    { "0000101100aaaaaa0S00bbbb", "bchg #n, [X or Y]:aa", dis_bchg_aa, emu_bchg_aa },
-    { "0000101110pppppp0S00bbbb", "bchg #n, [X or Y]:pp", dis_bchg_pp, emu_bchg_pp },
-    { "0000000101qqqqqq0S0bbbbb", "bchg #n, [X or Y]:qq", NULL, NULL },
-    { "0000101111DDDDDD010bbbbb", "bchg, #n, D", dis_bchg_reg, emu_bchg_reg },
-    { "0000101001MMMRRR0S00bbbb", "bclr #n, [X or Y]:ea", dis_bclr_ea, emu_bclr_ea, match_MMMRRR },
-    { "0000101000aaaaaa0S00bbbb", "bclr #n, [X or Y]:aa", dis_bclr_aa, emu_bclr_aa },
-    { "0000101010pppppp0S00bbbb", "bclr #n, [X or Y]:pp", dis_bclr_pp, emu_bclr_pp },
-    { "0000000100qqqqqq0S00bbbb", "bclr #n, [X or Y]:qq", NULL, NULL },
-    { "0000101011DDDDDD010bbbbb", "bclr #n, D", dis_bclr_reg, emu_bclr_reg },
-    { "000011010001000011000000", "bra xxxx", dis_bra_long, emu_bra_long },
-    { "00000101000011aaaa0aaaaa", "bra xxx", dis_bra_imm, emu_bra_imm },
-    { "0000110100011RRR11000000", "bra Rn", NULL, NULL },
-    { "0000110010MMMRRR0S0bbbbb", "brclr #n, [X or Y]:ea, xxxx", NULL, NULL, match_MMMRRR },
-    { "0000110010aaaaaa1S0bbbbb", "brclr #n, [X or Y]:aa, xxxx", NULL, NULL },
-    { "0000110011pppppp0S0bbbbb", "brclr #n, [X or Y]:pp, xxxx", dis_brclr_pp, emu_brclr_pp },
-    { "0000010010qqqqqq0S0bbbbb", "brclr #n, [X or Y]:qq, xxxx", NULL, NULL },
-    { "0000110011DDDDDD100bbbbb", "brclr #n, S, xxxx", dis_brclr_reg, emu_brclr_reg },
-    { "00000000000000100001CCCC", "brkcc", NULL, NULL },
-    { "0000110010MMMRRR0S1bbbbb", "brset #n, [X or Y]:ea, xxxx", NULL, NULL, match_MMMRRR },
-    { "0000110010aaaaaa1S1bbbbb", "brset #n, [X or Y]:aa, xxxx", NULL, NULL },
-    { "0000110011pppppp0S1bbbbb", "brset #n, [X or Y]:pp, xxxx", dis_brset_pp, emu_brset_pp },
-    { "0000010010qqqqqq0S1bbbbb", "brset #n, [X or Y]:qq, xxxx", NULL, NULL },
-    { "0000110011DDDDDD101bbbbb", "brset #n, S, xxxx", dis_brset_reg, emu_brset_reg },
-    { "00001101000100000000CCCC", "bscc xxxx", NULL, NULL },
-    { "00000101CCCC00aaaa0aaaaa", "bscc xxx", NULL, NULL },
-    { "0000110100011RRR0000CCCC", "bscc Rn", NULL, NULL },
-    { "0000110110MMMRRR0S0bbbbb", "bsclr #n, [X or Y]:ea, xxxx", NULL, NULL, match_MMMRRR },
-    { "0000110110aaaaaa1S0bbbbb", "bsclr #n, [X or Y]:aa, xxxx", NULL, NULL },
-    { "0000010010qqqqqq1S0bbbbb", "bsclr #n, [X or Y]:qq, xxxx", NULL, NULL },
-    { "0000110111pppppp0S0bbbbb", "bsclr #n, [X or Y]:pp, xxxx", NULL, NULL },
-    { "0000110111DDDDDD100bbbbb", "bsclr, #n, S, xxxx", NULL, NULL },
-    { "0000101001MMMRRR0S1bbbbb", "bset #n, [X or Y]:ea", dis_bset_ea, emu_bset_ea, match_MMMRRR },
-    { "0000101000aaaaaa0S1bbbbb", "bset #n, [X or Y]:aa", dis_bset_aa, emu_bset_aa },
-    { "0000101010pppppp0S1bbbbb", "bset #n, [X or Y]:pp", dis_bset_pp, emu_bset_pp },
-    { "0000000100qqqqqq0S1bbbbb", "bset #n, [X or Y]:qq", NULL, NULL },
-    { "0000101011DDDDDD011bbbbb", "bset, #n, D", dis_bset_reg, emu_bset_reg },
-    { "000011010001000010000000", "bsr xxxx", dis_bsr_long, emu_bsr_long },
-    { "00000101000010aaaa0aaaaa", "bsr xxx", dis_bsr_imm, emu_bsr_imm },
-    { "0000110100011RRR10000000", "bsr Rn", NULL, NULL },
-    { "0000110110MMMRRR0S1bbbbb", "bsset #n, [X or Y]:ea, xxxx", NULL, NULL, match_MMMRRR },
-    { "0000110110aaaaaa1S1bbbbb", "bsset #n, [X or Y]:aa, xxxx", NULL, NULL },
-    { "0000110111pppppp0S1bbbbb", "bsset #n, [X or Y]:pp, xxxx", NULL, NULL },
-    { "0000010010qqqqqq1S1bbbbb", "bsset #n, [X or Y]:qq, xxxx", NULL, NULL },
-    { "0000110111DDDDDD101bbbbb", "bsset #n, S, xxxx", NULL, NULL },
-    { "0000101101MMMRRR0S10bbbb", "btst #n, [X or Y]:ea", dis_btst_ea, emu_btst_ea, match_MMMRRR },
-    { "0000101100aaaaaa0S10bbbb", "btst #n, [X or Y]:aa", dis_btst_aa, emu_btst_aa },
-    { "0000101110pppppp0S10bbbb", "btst #n, [X or Y]:pp", dis_btst_pp, emu_btst_pp },
-    { "0000000101qqqqqq0S10bbbb", "btst #n, [X or Y]:qq", NULL, NULL },
-    { "0000101111DDDDDD0110bbbb", "btst #n, D", dis_btst_reg, emu_btst_reg },
-    { "0000110000011110000000SD", "clb S, D", NULL, NULL },
-    { "0000000101iiiiii1000d101", "cmp #xx, S2", dis_cmp_imm, emu_cmp_imm },
-    { "00000001010000001100d101", "cmp #xxxx, S2", dis_cmp_long, emu_cmp_long },
-    { "00001100000111111111gggd", "cmpu S1, S2", dis_cmpu, emu_cmpu },
-    { "000000000000001000000000", "debug", NULL, NULL },
-    { "00000000000000110000CCCC", "debugcc", NULL, NULL },
-    { "00000000000000000000101d", "dec D", NULL /*dis_dec*/, emu_dec },
-    { "000000011000000001JJd000", "div S, D", dis_div, emu_div },
-    { "000000010010010s1sdkQQQQ", "dmac S1, S2, D", NULL, NULL },
-    { "0000011001MMMRRR0S000000", "do [X or Y]:ea, expr", dis_do_ea, emu_do_ea, match_MMMRRR },
-    { "0000011000aaaaaa0S000000", "do [X or Y]:aa, expr", dis_do_aa, emu_do_aa },
-    { "00000110iiiiiiii1000hhhh", "do #xxx, expr", dis_do_imm, emu_do_imm },
-    { "0000011011DDDDDD00000000", "do S, expr", dis_do_reg, emu_do_reg },
-    { "000000000000001000000011", "do_f", NULL, NULL },
-    { "0000011001MMMRRR0S010000", "dor [X or Y]:ea, label", NULL, NULL, match_MMMRRR },
-    { "0000011000aaaaaa0S010000", "dor [X or Y]:aa, label", NULL, NULL },
-    { "00000110iiiiiiii1001hhhh", "dor #xxx, label", dis_dor_imm, emu_dor_imm },
-    { "0000011011DDDDDD00010000", "dor S, label", dis_dor_reg, emu_dor_reg },
-    { "000000000000001000000010", "dor_f", NULL, NULL },
-    { "000000000000000010001100", "enddo", NULL, emu_enddo },
-    { "0000000101iiiiii1000d011", "eor #xx, D", NULL, NULL },
-    { "00000001010000001100d011", "eor #xxxx, D", NULL, NULL },
-    { "0000110000011010000sSSSD", "extract S1, S2, D", NULL, NULL },
-    { "0000110000011000000s000D", "extract #CO, S2, D", NULL, NULL },
-    { "0000110000011010100sSSSD", "extractu S1, S2, D", NULL, NULL },
-    { "0000110000011000100s000D", "extractu #CO, S2, D", NULL, NULL },
-    { "000000000000000000000101", "ill", NULL, emu_illegal },
-    { "00000000000000000000100d", "inc D", NULL, emu_inc },
-    { "00001100000110110qqqSSSD", "insert S1, S2, D", NULL, NULL },
-    { "00001100000110010qqq000D", "insert #CO, S2, D", NULL, NULL },
-    { "00001110CCCCaaaaaaaaaaaa", "jcc xxx", dis_jcc_imm, emu_jcc_imm },
-    { "0000101011MMMRRR1010CCCC", "jcc ea", dis_jcc_ea, emu_jcc_ea, match_MMMRRR },
-    { "0000101001MMMRRR1S00bbbb", "jclr #n, [X or Y]:ea, xxxx", dis_jclr_ea, emu_jclr_ea, match_MMMRRR },
-    { "0000101000aaaaaa1S00bbbb", "jclr #n, [X or Y]:aa, xxxx", dis_jclr_aa, emu_jclr_aa },
-    { "0000101010pppppp1S00bbbb", "jclr #n, [X or Y]:pp, xxxx", dis_jclr_pp, emu_jclr_pp },
-    { "0000000110qqqqqq1S00bbbb", "jclr #n, [X or Y]:qq, xxxx", NULL, NULL },
-    { "0000101011DDDDDD0000bbbb", "jclr #n, S, xxxx", dis_jclr_reg, emu_jclr_reg },
-    { "0000101011MMMRRR10000000", "jmp ea", dis_jmp_ea, emu_jmp_ea, match_MMMRRR },
-    { "000011000000aaaaaaaaaaaa", "jmp xxx", dis_jmp_imm, emu_jmp_imm },
-    { "00001111CCCCaaaaaaaaaaaa", "jscc xxx", dis_jscc_imm, emu_jscc_imm },
-    { "0000101111MMMRRR1010CCCC", "jscc ea", dis_jscc_ea, emu_jscc_ea, match_MMMRRR },
-    { "0000101101MMMRRR1S00bbbb", "jsclr #n, [X or Y]:ea, xxxx", dis_jsclr_ea, emu_jsclr_ea, match_MMMRRR },
-    { "0000101100MMMRRR1S00bbbb", "jsclr #n, [X or Y]:aa, xxxx", dis_jsclr_aa, emu_jsclr_aa, match_MMMRRR },
-    { "0000101110pppppp1S0bbbbb", "jsclr #n, [X or Y]:pp, xxxx", dis_jsclr_pp, emu_jsclr_pp },
-    { "0000000111qqqqqq1S0bbbbb", "jsclr #n, [X or Y]:qq, xxxx", NULL, NULL },
-    { "0000101111DDDDDD000bbbbb", "jsclr #n, S, xxxx", dis_jsclr_reg, emu_jsclr_reg },
-    { "0000101001MMMRRR1S10bbbb", "jset #n, [X or Y]:ea, xxxx", dis_jset_ea, emu_jset_ea, match_MMMRRR },
-    { "0000101000MMMRRR1S10bbbb", "jset #n, [X or Y]:aa, xxxx", dis_jset_aa, emu_jset_aa, match_MMMRRR },
-    { "0000101010pppppp1S10bbbb", "jset #n, [X or Y]:pp, xxxx", dis_jset_pp, emu_jset_pp },
-    { "0000000110qqqqqq1S10bbbb", "jset #n, [X or Y]:qq, xxxx", NULL, NULL },
-    { "0000101011DDDDDD0010bbbb", "jset #n, S, xxxx", dis_jset_reg, emu_jset_reg },
-    { "0000101111MMMRRR10000000", "jsr ea", dis_jsr_ea, emu_jsr_ea, match_MMMRRR },
-    { "000011010000aaaaaaaaaaaa", "jsr xxx", dis_jsr_imm, emu_jsr_imm },
-    { "0000101101MMMRRR1S10bbbb", "jsset #n, [X or Y]:ea, xxxx", dis_jsset_ea, emu_jsset_ea, match_MMMRRR },
-    { "0000101100aaaaaa1S10bbbb", "jsset #n, [X or Y]:aa, xxxx", dis_jsset_aa, emu_jsset_aa },
-    { "0000101110pppppp1S1bbbbb", "jsset #n, [X or Y]:pp, xxxx", dis_jsset_pp, emu_jsset_pp },
-    { "0000000111qqqqqq1S1bbbbb", "jsset #n, [X or Y]:qq, xxxx", NULL, NULL },
-    { "0000101111DDDDDD001bbbbb", "jsset #n, S, xxxx", dis_jsset_reg, emu_jsset_reg },
-    { "0000010011000RRR000ddddd", "lra Rn, D", NULL, NULL },
-    { "0000010001000000010ddddd", "lra xxxx, D", NULL, NULL },
-    { "000011000001111010iiiiiD", "lsl #ii, D", dis_lsl_imm, emu_lsl_imm },
-    { "00001100000111100001sssD", "lsl S, D", NULL, NULL },
-    { "000011000001111011iiiiiD", "lsr #ii, D", NULL, NULL },
-    { "00001100000111100011sssD", "lsr S, D", NULL, NULL },
-    { "00000100010MMRRR000ddddd", "lua ea, D", dis_lua, emu_lua },
-    { "0000010000aaaRRRaaaadddd", "lua (Rn + aa), D", dis_lua_rel, emu_lua_rel },
-    { "00000001000sssss11QQdk10", "mac S, #n, D", NULL, NULL },
-    { "000000010100000111qqdk10", "maci #xxxx, S, D", NULL, NULL },
-    { "00000001001001101sdkQQQQ", "mac_s_u S1, S2, D", NULL, NULL },
-    { "00000001000sssss11QQdk11", "macr S1, S2, D", NULL, NULL },
-    { "000000010100000111qqdk11", "macri #xxxx, S, D", NULL, NULL },
-    { "00001100000110111000sssD", "merge S, D", NULL, NULL },
-    { "0000101001110RRR1WDDDDDD", "move X:(Rn + xxxx) <-> R", dis_move_x_long, emu_move_x_long },
-    { "0000101101110RRR1WDDDDDD", "move Y:(Rn + xxxx) <-> R", NULL, NULL },
-    { "0000001aaaaaaRRR1a0WDDDD", "move X:(Rn + xxx) <-> R", dis_move_x_imm, emu_move_x_imm },
-    { "0000001aaaaaaRRR1a1WDDDD", "move Y:(Rn + xxx) <-> R", dis_move_y_imm, emu_move_y_imm },
-    { "00000101W1MMMRRR0s1ddddd", "movec [X or Y]:ea <-> R", dis_movec_ea, emu_movec_ea, match_MMMRRR },
-    { "00000101W0aaaaaa0s1ddddd", "movec [X or Y]:aa <-> R", dis_movec_aa, emu_movec_aa, match_MMMRRR },
-    { "00000100W1eeeeee101ddddd", "movec R1, R2", dis_movec_reg, emu_movec_reg },
-    { "00000101iiiiiiii101ddddd", "movec #xx, D1", dis_movec_imm, emu_movec_imm },
-    { "00000111W1MMMRRR10dddddd", "movem P:ea <-> R", dis_movem_ea, emu_movem_ea, match_MMMRRR },
-    { "00000111W0aaaaaa00dddddd", "movem P:ea <-> R", dis_movem_aa, emu_movem_aa, match_MMMRRR },
-    { "0000100sW1MMMRRR1Spppppp", "movep [X or Y]:ea <-> [X or Y]:pp", dis_movep_23, emu_movep_23, match_MMMRRR },
-    { "00000111W1MMMRRR0Sqqqqqq", "movep [X or Y]:ea <-> X:qq", dis_movep_x_qq, emu_movep_x_qq, match_MMMRRR },
-    { "00000111W0MMMRRR1Sqqqqqq", "movep [X or Y]:ea <-> Y:qq", NULL, NULL, match_MMMRRR },
-    { "0000100sW1MMMRRR01pppppp", "movep [X or Y]:pp <-> P:ea", dis_movep_1, emu_movep_1, match_MMMRRR },
-    { "000000001WMMMRRR0sqqqqqq", "movep [X or Y]:qq <-> P:ea", NULL, NULL, match_MMMRRR },
-    { "0000100sW1dddddd00pppppp", "movep [X or Y]:pp <-> R", dis_movep_0, emu_movep_0 },
-    { "00000100W1dddddd1q0qqqqq", "movep X:qq <-> R", NULL, NULL },
-    { "00000100W1dddddd0q1qqqqq", "movep Y:qq <-> R", NULL, NULL },
-    { "00000001000sssss11QQdk00", "mpy S, #n, D", NULL, NULL },
-    { "00000001001001111sdkQQQQ", "mpy_s_u S1, S2, D", NULL, NULL },
-    { "000000010100000111qqdk00", "mpyi #xxxx, S, D", dis_mpyi, emu_mpyi },
-    { "00000001000sssss11QQdk01", "mpyr S, #n, D", NULL, NULL },
-    { "000000010100000111qqdk01", "mpyri #xxxx, S, D", NULL, NULL },
-    { "000000000000000000000000", "nop", NULL, emu_nop},
-    { "0000000111011RRR0001d101", "norm Rn, D", dis_norm, emu_norm },
-    { "00001100000111100010sssD", "normf S, D", NULL, NULL },
-    { "0000000101iiiiii1000d010", "or #xx, D", NULL, NULL },
-    { "00000001010000001100d010", "or #xxxx, D", dis_or_long, emu_or_long },
-    { "00000000iiiiiiii111110EE", "ori #xx, D", dis_ori, emu_ori },
-    { "000000000000000000000011", "pflush", NULL, NULL },
-    { "000000000000000000000001", "pflushun", NULL, NULL },
-    { "000000000000000000000010", "pfree", NULL, NULL },
-    { "0000101111MMMRRR10000001", "plock ea", NULL, NULL, match_MMMRRR },
-    { "000000000000000000001111", "plockr xxxx", NULL, NULL },
-    { "0000101011MMMRRR10000001", "punlock ea", NULL, NULL, match_MMMRRR },
-    { "000000000000000000001110", "punlockr xxxx", NULL, NULL },
-    { "0000011001MMMRRR0S100000", "rep [X or Y]:ea", dis_rep_ea, emu_rep_ea, match_MMMRRR },
-    { "0000011000aaaaaa0S100000", "rep [X or Y]:aa", dis_rep_aa, emu_rep_aa },
-    { "00000110iiiiiiii1010hhhh", "rep #xxx", dis_rep_imm, emu_rep_imm },
-    { "0000011011dddddd00100000", "rep S", dis_rep_reg, emu_rep_reg },
-    { "000000000000000010000100", "reset", NULL, emu_reset },
-    { "000000000000000000000100", "rti", NULL, emu_rti },
-    { "000000000000000000001100", "rts", NULL, emu_rts },
-    { "000000000000000010000111", "stop", NULL, emu_stop },
-    { "0000000101iiiiii1000d100", "sub #xx, D", dis_sub_imm, emu_sub_imm },
-    { "00000001010000001100d100", "sub #xxxx, D", dis_sub_long, emu_sub_long },
-    { "00000010CCCC00000JJJd000", "tcc S1, D1", dis_tcc, emu_tcc },
-    { "00000011CCCC0ttt0JJJdTTT", "tcc S1,D2 S2,D2", dis_tcc, emu_tcc },
-    { "00000010CCCC1ttt00000TTT", "tcc S2, D2", dis_tcc, emu_tcc },
-    { "000000000000000000000110", "trap", NULL, NULL },
-    { "00000000000000000001CCCC", "trapcc", NULL, NULL },
-    { "0000101S11MMMRRR110i0000", "vsl", NULL, NULL, match_MMMRRR },
-    { "000000000000000010000110", "wait", NULL, emu_wait },
+    { OP_ADD_HASH_XX_D_0, "0000000101iiiiii1000d000", "add #xx, D", dis_add_imm },
+    { OP_ADD_HASH_XXXX_D_1, "00000001010000001100d000", "add #xxxx, D", dis_add_long },
+    { OP_AND_HASH_XX_D_2, "0000000101iiiiii1000d110", "and #xx, D", dis_and_imm },
+    { OP_AND_HASH_XXXX_D_3, "00000001010000001100d110", "and #xxxx, D", dis_and_long },
+    { OP_ANDI_HASH_XX_D_4, "00000000iiiiiiii101110EE", "andi #xx, D", dis_andi },
+    { OP_ASL_HASH_II_S2_D_5, "0000110000011101SiiiiiiD", "asl #ii, S2, D", dis_asl_imm },
+    { OP_ASL_S1_S2_D_6, "0000110000011110010SsssD", "asl S1, S2, D", NULL },
+    { OP_ASR_HASH_II_S2_D_7, "0000110000011100SiiiiiiD", "asr #ii, S2, D", dis_asr_imm },
+    { OP_ASR_S1_S2_D_8, "0000110000011110011SsssD", "asr S1, S2, D", NULL },
+    { OP_BCC_XXXX_9, "00001101000100000100CCCC", "bcc xxxx", dis_bcc_long },  //??
+    { OP_BCC_XXX_10, "00000101CCCC01aaaa0aaaaa", "bcc xxx", dis_bcc_imm },
+    { OP_BCC_RN_11, "0000110100011RRR0100CCCC", "bcc Rn", NULL },
+    { OP_BCHG_HASH_N_X_OR_Y_EA_12, "0000101101MMMRRR0S00bbbb", "bchg #n, [X or Y]:ea", dis_bchg_ea, match_MMMRRR },
+    { OP_BCHG_HASH_N_X_OR_Y_AA_13, "0000101100aaaaaa0S00bbbb", "bchg #n, [X or Y]:aa", dis_bchg_aa },
+    { OP_BCHG_HASH_N_X_OR_Y_PP_14, "0000101110pppppp0S00bbbb", "bchg #n, [X or Y]:pp", dis_bchg_pp },
+    { OP_BCHG_HASH_N_X_OR_Y_QQ_15, "0000000101qqqqqq0S0bbbbb", "bchg #n, [X or Y]:qq", NULL },
+    { OP_BCHG_HASH_N_D_16, "0000101111DDDDDD010bbbbb", "bchg, #n, D", dis_bchg_reg },
+    { OP_BCLR_HASH_N_X_OR_Y_EA_17, "0000101001MMMRRR0S00bbbb", "bclr #n, [X or Y]:ea", dis_bclr_ea, match_MMMRRR },
+    { OP_BCLR_HASH_N_X_OR_Y_AA_18, "0000101000aaaaaa0S00bbbb", "bclr #n, [X or Y]:aa", dis_bclr_aa },
+    { OP_BCLR_HASH_N_X_OR_Y_PP_19, "0000101010pppppp0S00bbbb", "bclr #n, [X or Y]:pp", dis_bclr_pp },
+    { OP_BCLR_HASH_N_X_OR_Y_QQ_20, "0000000100qqqqqq0S00bbbb", "bclr #n, [X or Y]:qq", NULL },
+    { OP_BCLR_HASH_N_D_21, "0000101011DDDDDD010bbbbb", "bclr #n, D", dis_bclr_reg },
+    { OP_BRA_XXXX_22, "000011010001000011000000", "bra xxxx", dis_bra_long },
+    { OP_BRA_XXX_23, "00000101000011aaaa0aaaaa", "bra xxx", dis_bra_imm },
+    { OP_BRA_RN_24, "0000110100011RRR11000000", "bra Rn", NULL },
+    { OP_BRCLR_HASH_N_X_OR_Y_EA_XXXX_25, "0000110010MMMRRR0S0bbbbb", "brclr #n, [X or Y]:ea, xxxx", NULL, match_MMMRRR },
+    { OP_BRCLR_HASH_N_X_OR_Y_AA_XXXX_26, "0000110010aaaaaa1S0bbbbb", "brclr #n, [X or Y]:aa, xxxx", NULL },
+    { OP_BRCLR_HASH_N_X_OR_Y_PP_XXXX_27, "0000110011pppppp0S0bbbbb", "brclr #n, [X or Y]:pp, xxxx", dis_brclr_pp },
+    { OP_BRCLR_HASH_N_X_OR_Y_QQ_XXXX_28, "0000010010qqqqqq0S0bbbbb", "brclr #n, [X or Y]:qq, xxxx", NULL },
+    { OP_BRCLR_HASH_N_S_XXXX_29, "0000110011DDDDDD100bbbbb", "brclr #n, S, xxxx", dis_brclr_reg },
+    { OP_BRKCC_30, "00000000000000100001CCCC", "brkcc", NULL },
+    { OP_BRSET_HASH_N_X_OR_Y_EA_XXXX_31, "0000110010MMMRRR0S1bbbbb", "brset #n, [X or Y]:ea, xxxx", NULL, match_MMMRRR },
+    { OP_BRSET_HASH_N_X_OR_Y_AA_XXXX_32, "0000110010aaaaaa1S1bbbbb", "brset #n, [X or Y]:aa, xxxx", NULL },
+    { OP_BRSET_HASH_N_X_OR_Y_PP_XXXX_33, "0000110011pppppp0S1bbbbb", "brset #n, [X or Y]:pp, xxxx", dis_brset_pp },
+    { OP_BRSET_HASH_N_X_OR_Y_QQ_XXXX_34, "0000010010qqqqqq0S1bbbbb", "brset #n, [X or Y]:qq, xxxx", NULL },
+    { OP_BRSET_HASH_N_S_XXXX_35, "0000110011DDDDDD101bbbbb", "brset #n, S, xxxx", dis_brset_reg },
+    { OP_BSCC_XXXX_36, "00001101000100000000CCCC", "bscc xxxx", NULL },
+    { OP_BSCC_XXX_37, "00000101CCCC00aaaa0aaaaa", "bscc xxx", NULL },
+    { OP_BSCC_RN_38, "0000110100011RRR0000CCCC", "bscc Rn", NULL },
+    { OP_BSCLR_HASH_N_X_OR_Y_EA_XXXX_39, "0000110110MMMRRR0S0bbbbb", "bsclr #n, [X or Y]:ea, xxxx", NULL, match_MMMRRR },
+    { OP_BSCLR_HASH_N_X_OR_Y_AA_XXXX_40, "0000110110aaaaaa1S0bbbbb", "bsclr #n, [X or Y]:aa, xxxx", NULL },
+    { OP_BSCLR_HASH_N_X_OR_Y_QQ_XXXX_41, "0000010010qqqqqq1S0bbbbb", "bsclr #n, [X or Y]:qq, xxxx", NULL },
+    { OP_BSCLR_HASH_N_X_OR_Y_PP_XXXX_42, "0000110111pppppp0S0bbbbb", "bsclr #n, [X or Y]:pp, xxxx", NULL },
+    { OP_BSCLR_HASH_N_S_XXXX_43, "0000110111DDDDDD100bbbbb", "bsclr, #n, S, xxxx", NULL },
+    { OP_BSET_HASH_N_X_OR_Y_EA_44, "0000101001MMMRRR0S1bbbbb", "bset #n, [X or Y]:ea", dis_bset_ea, match_MMMRRR },
+    { OP_BSET_HASH_N_X_OR_Y_AA_45, "0000101000aaaaaa0S1bbbbb", "bset #n, [X or Y]:aa", dis_bset_aa },
+    { OP_BSET_HASH_N_X_OR_Y_PP_46, "0000101010pppppp0S1bbbbb", "bset #n, [X or Y]:pp", dis_bset_pp },
+    { OP_BSET_HASH_N_X_OR_Y_QQ_47, "0000000100qqqqqq0S1bbbbb", "bset #n, [X or Y]:qq", NULL },
+    { OP_BSET_HASH_N_D_48, "0000101011DDDDDD011bbbbb", "bset, #n, D", dis_bset_reg },
+    { OP_BSR_XXXX_49, "000011010001000010000000", "bsr xxxx", dis_bsr_long },
+    { OP_BSR_XXX_50, "00000101000010aaaa0aaaaa", "bsr xxx", dis_bsr_imm },
+    { OP_BSR_RN_51, "0000110100011RRR10000000", "bsr Rn", NULL },
+    { OP_BSSET_HASH_N_X_OR_Y_EA_XXXX_52, "0000110110MMMRRR0S1bbbbb", "bsset #n, [X or Y]:ea, xxxx", NULL, match_MMMRRR },
+    { OP_BSSET_HASH_N_X_OR_Y_AA_XXXX_53, "0000110110aaaaaa1S1bbbbb", "bsset #n, [X or Y]:aa, xxxx", NULL },
+    { OP_BSSET_HASH_N_X_OR_Y_PP_XXXX_54, "0000110111pppppp0S1bbbbb", "bsset #n, [X or Y]:pp, xxxx", NULL },
+    { OP_BSSET_HASH_N_X_OR_Y_QQ_XXXX_55, "0000010010qqqqqq1S1bbbbb", "bsset #n, [X or Y]:qq, xxxx", NULL },
+    { OP_BSSET_HASH_N_S_XXXX_56, "0000110111DDDDDD101bbbbb", "bsset #n, S, xxxx", NULL },
+    { OP_BTST_HASH_N_X_OR_Y_EA_57, "0000101101MMMRRR0S10bbbb", "btst #n, [X or Y]:ea", dis_btst_ea, match_MMMRRR },
+    { OP_BTST_HASH_N_X_OR_Y_AA_58, "0000101100aaaaaa0S10bbbb", "btst #n, [X or Y]:aa", dis_btst_aa },
+    { OP_BTST_HASH_N_X_OR_Y_PP_59, "0000101110pppppp0S10bbbb", "btst #n, [X or Y]:pp", dis_btst_pp },
+    { OP_BTST_HASH_N_X_OR_Y_QQ_60, "0000000101qqqqqq0S10bbbb", "btst #n, [X or Y]:qq", NULL },
+    { OP_BTST_HASH_N_D_61, "0000101111DDDDDD0110bbbb", "btst #n, D", dis_btst_reg },
+    { OP_CLB_S_D_62, "0000110000011110000000SD", "clb S, D", NULL },
+    { OP_CMP_HASH_XX_S2_63, "0000000101iiiiii1000d101", "cmp #xx, S2", dis_cmp_imm },
+    { OP_CMP_HASH_XXXX_S2_64, "00000001010000001100d101", "cmp #xxxx, S2", dis_cmp_long },
+    { OP_CMPU_S1_S2_65, "00001100000111111111gggd", "cmpu S1, S2", dis_cmpu },
+    { OP_DEBUG_66, "000000000000001000000000", "debug", NULL },
+    { OP_DEBUGCC_67, "00000000000000110000CCCC", "debugcc", NULL },
+    { OP_DEC_D_68, "00000000000000000000101d", "dec D", NULL /*dis_dec*/ },
+    { OP_DIV_S_D_69, "000000011000000001JJd000", "div S, D", dis_div },
+    { OP_DMAC_S1_S2_D_70, "000000010010010s1sdkQQQQ", "dmac S1, S2, D", NULL },
+    { OP_DO_X_OR_Y_EA_EXPR_71, "0000011001MMMRRR0S000000", "do [X or Y]:ea, expr", dis_do_ea, match_MMMRRR },
+    { OP_DO_X_OR_Y_AA_EXPR_72, "0000011000aaaaaa0S000000", "do [X or Y]:aa, expr", dis_do_aa },
+    { OP_DO_HASH_XXX_EXPR_73, "00000110iiiiiiii1000hhhh", "do #xxx, expr", dis_do_imm },
+    { OP_DO_S_EXPR_74, "0000011011DDDDDD00000000", "do S, expr", dis_do_reg },
+    { OP_DO_F_75, "000000000000001000000011", "do_f", NULL },
+    { OP_DOR_X_OR_Y_EA_LABEL_76, "0000011001MMMRRR0S010000", "dor [X or Y]:ea, label", NULL, match_MMMRRR },
+    { OP_DOR_X_OR_Y_AA_LABEL_77, "0000011000aaaaaa0S010000", "dor [X or Y]:aa, label", NULL },
+    { OP_DOR_HASH_XXX_LABEL_78, "00000110iiiiiiii1001hhhh", "dor #xxx, label", dis_dor_imm },
+    { OP_DOR_S_LABEL_79, "0000011011DDDDDD00010000", "dor S, label", dis_dor_reg },
+    { OP_DOR_F_80, "000000000000001000000010", "dor_f", NULL },
+    { OP_ENDDO_81, "000000000000000010001100", "enddo", NULL },
+    { OP_EOR_HASH_XX_D_82, "0000000101iiiiii1000d011", "eor #xx, D", NULL },
+    { OP_EOR_HASH_XXXX_D_83, "00000001010000001100d011", "eor #xxxx, D", NULL },
+    { OP_EXTRACT_S1_S2_D_84, "0000110000011010000sSSSD", "extract S1, S2, D", NULL },
+    { OP_EXTRACT_HASH_CO_S2_D_85, "0000110000011000000s000D", "extract #CO, S2, D", NULL },
+    { OP_EXTRACTU_S1_S2_D_86, "0000110000011010100sSSSD", "extractu S1, S2, D", NULL },
+    { OP_EXTRACTU_HASH_CO_S2_D_87, "0000110000011000100s000D", "extractu #CO, S2, D", NULL },
+    { OP_ILL_88, "000000000000000000000101", "ill", NULL },
+    { OP_INC_D_89, "00000000000000000000100d", "inc D", NULL },
+    { OP_INSERT_S1_S2_D_90, "00001100000110110qqqSSSD", "insert S1, S2, D", NULL },
+    { OP_INSERT_HASH_CO_S2_D_91, "00001100000110010qqq000D", "insert #CO, S2, D", NULL },
+    { OP_JCC_XXX_92, "00001110CCCCaaaaaaaaaaaa", "jcc xxx", dis_jcc_imm },
+    { OP_JCC_EA_93, "0000101011MMMRRR1010CCCC", "jcc ea", dis_jcc_ea, match_MMMRRR },
+    { OP_JCLR_HASH_N_X_OR_Y_EA_XXXX_94, "0000101001MMMRRR1S00bbbb", "jclr #n, [X or Y]:ea, xxxx", dis_jclr_ea, match_MMMRRR },
+    { OP_JCLR_HASH_N_X_OR_Y_AA_XXXX_95, "0000101000aaaaaa1S00bbbb", "jclr #n, [X or Y]:aa, xxxx", dis_jclr_aa },
+    { OP_JCLR_HASH_N_X_OR_Y_PP_XXXX_96, "0000101010pppppp1S00bbbb", "jclr #n, [X or Y]:pp, xxxx", dis_jclr_pp },
+    { OP_JCLR_HASH_N_X_OR_Y_QQ_XXXX_97, "0000000110qqqqqq1S00bbbb", "jclr #n, [X or Y]:qq, xxxx", NULL },
+    { OP_JCLR_HASH_N_S_XXXX_98, "0000101011DDDDDD0000bbbb", "jclr #n, S, xxxx", dis_jclr_reg },
+    { OP_JMP_EA_99, "0000101011MMMRRR10000000", "jmp ea", dis_jmp_ea, match_MMMRRR },
+    { OP_JMP_XXX_100, "000011000000aaaaaaaaaaaa", "jmp xxx", dis_jmp_imm },
+    { OP_JSCC_XXX_101, "00001111CCCCaaaaaaaaaaaa", "jscc xxx", dis_jscc_imm },
+    { OP_JSCC_EA_102, "0000101111MMMRRR1010CCCC", "jscc ea", dis_jscc_ea, match_MMMRRR },
+    { OP_JSCLR_HASH_N_X_OR_Y_EA_XXXX_103, "0000101101MMMRRR1S00bbbb", "jsclr #n, [X or Y]:ea, xxxx", dis_jsclr_ea, match_MMMRRR },
+    { OP_JSCLR_HASH_N_X_OR_Y_AA_XXXX_104, "0000101100MMMRRR1S00bbbb", "jsclr #n, [X or Y]:aa, xxxx", dis_jsclr_aa, match_MMMRRR },
+    { OP_JSCLR_HASH_N_X_OR_Y_PP_XXXX_105, "0000101110pppppp1S0bbbbb", "jsclr #n, [X or Y]:pp, xxxx", dis_jsclr_pp },
+    { OP_JSCLR_HASH_N_X_OR_Y_QQ_XXXX_106, "0000000111qqqqqq1S0bbbbb", "jsclr #n, [X or Y]:qq, xxxx", NULL },
+    { OP_JSCLR_HASH_N_S_XXXX_107, "0000101111DDDDDD000bbbbb", "jsclr #n, S, xxxx", dis_jsclr_reg },
+    { OP_JSET_HASH_N_X_OR_Y_EA_XXXX_108, "0000101001MMMRRR1S10bbbb", "jset #n, [X or Y]:ea, xxxx", dis_jset_ea, match_MMMRRR },
+    { OP_JSET_HASH_N_X_OR_Y_AA_XXXX_109, "0000101000MMMRRR1S10bbbb", "jset #n, [X or Y]:aa, xxxx", dis_jset_aa, match_MMMRRR },
+    { OP_JSET_HASH_N_X_OR_Y_PP_XXXX_110, "0000101010pppppp1S10bbbb", "jset #n, [X or Y]:pp, xxxx", dis_jset_pp },
+    { OP_JSET_HASH_N_X_OR_Y_QQ_XXXX_111, "0000000110qqqqqq1S10bbbb", "jset #n, [X or Y]:qq, xxxx", NULL },
+    { OP_JSET_HASH_N_S_XXXX_112, "0000101011DDDDDD0010bbbb", "jset #n, S, xxxx", dis_jset_reg },
+    { OP_JSR_EA_113, "0000101111MMMRRR10000000", "jsr ea", dis_jsr_ea, match_MMMRRR },
+    { OP_JSR_XXX_114, "000011010000aaaaaaaaaaaa", "jsr xxx", dis_jsr_imm },
+    { OP_JSSET_HASH_N_X_OR_Y_EA_XXXX_115, "0000101101MMMRRR1S10bbbb", "jsset #n, [X or Y]:ea, xxxx", dis_jsset_ea, match_MMMRRR },
+    { OP_JSSET_HASH_N_X_OR_Y_AA_XXXX_116, "0000101100aaaaaa1S10bbbb", "jsset #n, [X or Y]:aa, xxxx", dis_jsset_aa },
+    { OP_JSSET_HASH_N_X_OR_Y_PP_XXXX_117, "0000101110pppppp1S1bbbbb", "jsset #n, [X or Y]:pp, xxxx", dis_jsset_pp },
+    { OP_JSSET_HASH_N_X_OR_Y_QQ_XXXX_118, "0000000111qqqqqq1S1bbbbb", "jsset #n, [X or Y]:qq, xxxx", NULL },
+    { OP_JSSET_HASH_N_S_XXXX_119, "0000101111DDDDDD001bbbbb", "jsset #n, S, xxxx", dis_jsset_reg },
+    { OP_LRA_RN_D_120, "0000010011000RRR000ddddd", "lra Rn, D", NULL },
+    { OP_LRA_XXXX_D_121, "0000010001000000010ddddd", "lra xxxx, D", NULL },
+    { OP_LSL_HASH_II_D_122, "000011000001111010iiiiiD", "lsl #ii, D", dis_lsl_imm },
+    { OP_LSL_S_D_123, "00001100000111100001sssD", "lsl S, D", NULL },
+    { OP_LSR_HASH_II_D_124, "000011000001111011iiiiiD", "lsr #ii, D", NULL },
+    { OP_LSR_S_D_125, "00001100000111100011sssD", "lsr S, D", NULL },
+    { OP_LUA_EA_D_126, "00000100010MMRRR000ddddd", "lua ea, D", dis_lua },
+    { OP_LUA_(RN_PLUS_AA)_D_127, "0000010000aaaRRRaaaadddd", "lua (Rn + aa), D", dis_lua_rel },
+    { OP_MAC_S_HASH_N_D_128, "00000001000sssss11QQdk10", "mac S, #n, D", NULL },
+    { OP_MACI_HASH_XXXX_S_D_129, "000000010100000111qqdk10", "maci #xxxx, S, D", NULL },
+    { OP_MAC_S_U_S1_S2_D_130, "00000001001001101sdkQQQQ", "mac_s_u S1, S2, D", NULL },
+    { OP_MACR_S1_S2_D_131, "00000001000sssss11QQdk11", "macr S1, S2, D", NULL },
+    { OP_MACRI_HASH_XXXX_S_D_132, "000000010100000111qqdk11", "macri #xxxx, S, D", NULL },
+    { OP_MERGE_S_D_133, "00001100000110111000sssD", "merge S, D", NULL },
+    { OP_MOVE_X_(RN_PLUS_XXXX)_<MINUS>_R_134, "0000101001110RRR1WDDDDDD", "move X:(Rn + xxxx) <-> R", dis_move_x_long },
+    { OP_MOVE_Y_(RN_PLUS_XXXX)_<MINUS>_R_135, "0000101101110RRR1WDDDDDD", "move Y:(Rn + xxxx) <-> R", NULL },
+    { OP_MOVE_X_(RN_PLUS_XXX)_<MINUS>_R_136, "0000001aaaaaaRRR1a0WDDDD", "move X:(Rn + xxx) <-> R", dis_move_x_imm },
+    { OP_MOVE_Y_(RN_PLUS_XXX)_<MINUS>_R_137, "0000001aaaaaaRRR1a1WDDDD", "move Y:(Rn + xxx) <-> R", dis_move_y_imm },
+    { OP_MOVEC_X_OR_Y_EA_<MINUS>_R_138, "00000101W1MMMRRR0s1ddddd", "movec [X or Y]:ea <-> R", dis_movec_ea, match_MMMRRR },
+    { OP_MOVEC_X_OR_Y_AA_<MINUS>_R_139, "00000101W0aaaaaa0s1ddddd", "movec [X or Y]:aa <-> R", dis_movec_aa, match_MMMRRR },
+    { OP_MOVEC_R1_R2_140, "00000100W1eeeeee101ddddd", "movec R1, R2", dis_movec_reg },
+    { OP_MOVEC_HASH_XX_D1_141, "00000101iiiiiiii101ddddd", "movec #xx, D1", dis_movec_imm },
+    { OP_MOVEM_P_EA_<MINUS>_R_142, "00000111W1MMMRRR10dddddd", "movem P:ea <-> R", dis_movem_ea, match_MMMRRR },
+    { OP_MOVEM_P_EA_<MINUS>_R_143, "00000111W0aaaaaa00dddddd", "movem P:ea <-> R", dis_movem_aa, match_MMMRRR },
+    { OP_MOVEP_X_OR_Y_EA_<MINUS>_X_OR_Y_PP_144, "0000100sW1MMMRRR1Spppppp", "movep [X or Y]:ea <-> [X or Y]:pp", dis_movep_23, match_MMMRRR },
+    { OP_MOVEP_X_OR_Y_EA_<MINUS>_X_QQ_145, "00000111W1MMMRRR0Sqqqqqq", "movep [X or Y]:ea <-> X:qq", dis_movep_x_qq, match_MMMRRR },
+    { OP_MOVEP_X_OR_Y_EA_<MINUS>_Y_QQ_146, "00000111W0MMMRRR1Sqqqqqq", "movep [X or Y]:ea <-> Y:qq", NULL, match_MMMRRR },
+    { OP_MOVEP_X_OR_Y_PP_<MINUS>_P_EA_147, "0000100sW1MMMRRR01pppppp", "movep [X or Y]:pp <-> P:ea", dis_movep_1, match_MMMRRR },
+    { OP_MOVEP_X_OR_Y_QQ_<MINUS>_P_EA_148, "000000001WMMMRRR0sqqqqqq", "movep [X or Y]:qq <-> P:ea", NULL, match_MMMRRR },
+    { OP_MOVEP_X_OR_Y_PP_<MINUS>_R_149, "0000100sW1dddddd00pppppp", "movep [X or Y]:pp <-> R", dis_movep_0 },
+    { OP_MOVEP_X_QQ_<MINUS>_R_150, "00000100W1dddddd1q0qqqqq", "movep X:qq <-> R", NULL },
+    { OP_MOVEP_Y_QQ_<MINUS>_R_151, "00000100W1dddddd0q1qqqqq", "movep Y:qq <-> R", NULL },
+    { OP_MPY_S_HASH_N_D_152, "00000001000sssss11QQdk00", "mpy S, #n, D", NULL },
+    { OP_MPY_S_U_S1_S2_D_153, "00000001001001111sdkQQQQ", "mpy_s_u S1, S2, D", NULL },
+    { OP_MPYI_HASH_XXXX_S_D_154, "000000010100000111qqdk00", "mpyi #xxxx, S, D", dis_mpyi },
+    { OP_MPYR_S_HASH_N_D_155, "00000001000sssss11QQdk01", "mpyr S, #n, D", NULL },
+    { OP_MPYRI_HASH_XXXX_S_D_156, "000000010100000111qqdk01", "mpyri #xxxx, S, D", NULL },
+    { OP_NOP_157, "000000000000000000000000", "nop", NULL },
+    { OP_NORM_RN_D_158, "0000000111011RRR0001d101", "norm Rn, D", dis_norm },
+    { OP_NORMF_S_D_159, "00001100000111100010sssD", "normf S, D", NULL },
+    { OP_OR_HASH_XX_D_160, "0000000101iiiiii1000d010", "or #xx, D", NULL },
+    { OP_OR_HASH_XXXX_D_161, "00000001010000001100d010", "or #xxxx, D", dis_or_long },
+    { OP_ORI_HASH_XX_D_162, "00000000iiiiiiii111110EE", "ori #xx, D", dis_ori },
+    { OP_PFLUSH_163, "000000000000000000000011", "pflush", NULL },
+    { OP_PFLUSHUN_164, "000000000000000000000001", "pflushun", NULL },
+    { OP_PFREE_165, "000000000000000000000010", "pfree", NULL },
+    { OP_PLOCK_EA_166, "0000101111MMMRRR10000001", "plock ea", NULL, match_MMMRRR },
+    { OP_PLOCKR_XXXX_167, "000000000000000000001111", "plockr xxxx", NULL },
+    { OP_PUNLOCK_EA_168, "0000101011MMMRRR10000001", "punlock ea", NULL, match_MMMRRR },
+    { OP_PUNLOCKR_XXXX_169, "000000000000000000001110", "punlockr xxxx", NULL },
+    { OP_REP_X_OR_Y_EA_170, "0000011001MMMRRR0S100000", "rep [X or Y]:ea", dis_rep_ea, match_MMMRRR },
+    { OP_REP_X_OR_Y_AA_171, "0000011000aaaaaa0S100000", "rep [X or Y]:aa", dis_rep_aa },
+    { OP_REP_HASH_XXX_172, "00000110iiiiiiii1010hhhh", "rep #xxx", dis_rep_imm },
+    { OP_REP_S_173, "0000011011dddddd00100000", "rep S", dis_rep_reg },
+    { OP_RESET_174, "000000000000000010000100", "reset", NULL },
+    { OP_RTI_175, "000000000000000000000100", "rti", NULL },
+    { OP_RTS_176, "000000000000000000001100", "rts", NULL },
+    { OP_STOP_177, "000000000000000010000111", "stop", NULL },
+    { OP_SUB_HASH_XX_D_178, "0000000101iiiiii1000d100", "sub #xx, D", dis_sub_imm },
+    { OP_SUB_HASH_XXXX_D_179, "00000001010000001100d100", "sub #xxxx, D", dis_sub_long },
+    { OP_TCC_S1_D1_180, "00000010CCCC00000JJJd000", "tcc S1, D1", dis_tcc },
+    { OP_TCC_S1D2_S2D2_181, "00000011CCCC0ttt0JJJdTTT", "tcc S1,D2 S2,D2", dis_tcc },
+    { OP_TCC_S2_D2_182, "00000010CCCC1ttt00000TTT", "tcc S2, D2", dis_tcc },
+    { OP_TRAP_183, "000000000000000000000110", "trap", NULL },
+    { OP_TRAPCC_184, "00000000000000000001CCCC", "trapcc", NULL },
+    { OP_VSL_185, "0000101S11MMMRRR110i0000", "vsl", NULL, match_MMMRRR },
+    { OP_WAIT_186, "000000000000000010000110", "wait", NULL },
 };
 
 static bool matches_initialised;
@@ -631,11 +822,117 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
             op = lookup_opcode(dsp->cur_inst);
             dsp->pram_opcache[dsp->pc] = op;
         }
-        if (op->emu_func) {
-            op->emu_func(dsp);
-        } else {
-            DPRINTF("%x - %s\n", dsp->cur_inst, op->name);
-            emu_undefined(dsp);
+        switch (op->id) {
+            case OP_ADD_HASH_XX_D_0: emu_add_imm(dsp); break;
+            case OP_ADD_HASH_XXXX_D_1: emu_add_long(dsp); break;
+            case OP_AND_HASH_XX_D_2: emu_and_imm(dsp); break;
+            case OP_AND_HASH_XXXX_D_3: emu_and_long(dsp); break;
+            case OP_ANDI_HASH_XX_D_4: emu_andi(dsp); break;
+            case OP_ASL_HASH_II_S2_D_5: emu_asl_imm(dsp); break;
+            case OP_ASR_HASH_II_S2_D_7: emu_asr_imm(dsp); break;
+            case OP_BCC_XXXX_9: emu_bcc_long(dsp); break;
+            case OP_BCC_XXX_10: emu_bcc_imm(dsp); break;
+            case OP_BCHG_HASH_N_X_OR_Y_EA_12: emu_bchg_ea(dsp); break;
+            case OP_BCHG_HASH_N_X_OR_Y_AA_13: emu_bchg_aa(dsp); break;
+            case OP_BCHG_HASH_N_X_OR_Y_PP_14: emu_bchg_pp(dsp); break;
+            case OP_BCHG_HASH_N_D_16: emu_bchg_reg(dsp); break;
+            case OP_BCLR_HASH_N_X_OR_Y_EA_17: emu_bclr_ea(dsp); break;
+            case OP_BCLR_HASH_N_X_OR_Y_AA_18: emu_bclr_aa(dsp); break;
+            case OP_BCLR_HASH_N_X_OR_Y_PP_19: emu_bclr_pp(dsp); break;
+            case OP_BCLR_HASH_N_D_21: emu_bclr_reg(dsp); break;
+            case OP_BRA_XXXX_22: emu_bra_long(dsp); break;
+            case OP_BRA_XXX_23: emu_bra_imm(dsp); break;
+            case OP_BRCLR_HASH_N_X_OR_Y_PP_XXXX_27: emu_brclr_pp(dsp); break;
+            case OP_BRCLR_HASH_N_S_XXXX_29: emu_brclr_reg(dsp); break;
+            case OP_BRSET_HASH_N_X_OR_Y_PP_XXXX_33: emu_brset_pp(dsp); break;
+            case OP_BRSET_HASH_N_S_XXXX_35: emu_brset_reg(dsp); break;
+            case OP_BSET_HASH_N_X_OR_Y_EA_44: emu_bset_ea(dsp); break;
+            case OP_BSET_HASH_N_X_OR_Y_AA_45: emu_bset_aa(dsp); break;
+            case OP_BSET_HASH_N_X_OR_Y_PP_46: emu_bset_pp(dsp); break;
+            case OP_BSET_HASH_N_D_48: emu_bset_reg(dsp); break;
+            case OP_BSR_XXXX_49: emu_bsr_long(dsp); break;
+            case OP_BSR_XXX_50: emu_bsr_imm(dsp); break;
+            case OP_BTST_HASH_N_X_OR_Y_EA_57: emu_btst_ea(dsp); break;
+            case OP_BTST_HASH_N_X_OR_Y_AA_58: emu_btst_aa(dsp); break;
+            case OP_BTST_HASH_N_X_OR_Y_PP_59: emu_btst_pp(dsp); break;
+            case OP_BTST_HASH_N_D_61: emu_btst_reg(dsp); break;
+            case OP_CMP_HASH_XX_S2_63: emu_cmp_imm(dsp); break;
+            case OP_CMP_HASH_XXXX_S2_64: emu_cmp_long(dsp); break;
+            case OP_CMPU_S1_S2_65: emu_cmpu(dsp); break;
+            case OP_DEC_D_68: emu_dec(dsp); break;
+            case OP_DIV_S_D_69: emu_div(dsp); break;
+            case OP_DO_X_OR_Y_EA_EXPR_71: emu_do_ea(dsp); break;
+            case OP_DO_X_OR_Y_AA_EXPR_72: emu_do_aa(dsp); break;
+            case OP_DO_HASH_XXX_EXPR_73: emu_do_imm(dsp); break;
+            case OP_DO_S_EXPR_74: emu_do_reg(dsp); break;
+            case OP_DOR_HASH_XXX_LABEL_78: emu_dor_imm(dsp); break;
+            case OP_DOR_S_LABEL_79: emu_dor_reg(dsp); break;
+            case OP_ENDDO_81: emu_enddo(dsp); break;
+            case OP_ILL_88: emu_illegal(dsp); break;
+            case OP_INC_D_89: emu_inc(dsp); break;
+            case OP_JCC_XXX_92: emu_jcc_imm(dsp); break;
+            case OP_JCC_EA_93: emu_jcc_ea(dsp); break;
+            case OP_JCLR_HASH_N_X_OR_Y_EA_XXXX_94: emu_jclr_ea(dsp); break;
+            case OP_JCLR_HASH_N_X_OR_Y_AA_XXXX_95: emu_jclr_aa(dsp); break;
+            case OP_JCLR_HASH_N_X_OR_Y_PP_XXXX_96: emu_jclr_pp(dsp); break;
+            case OP_JCLR_HASH_N_S_XXXX_98: emu_jclr_reg(dsp); break;
+            case OP_JMP_EA_99: emu_jmp_ea(dsp); break;
+            case OP_JMP_XXX_100: emu_jmp_imm(dsp); break;
+            case OP_JSCC_XXX_101: emu_jscc_imm(dsp); break;
+            case OP_JSCC_EA_102: emu_jscc_ea(dsp); break;
+            case OP_JSCLR_HASH_N_X_OR_Y_EA_XXXX_103: emu_jsclr_ea(dsp); break;
+            case OP_JSCLR_HASH_N_X_OR_Y_AA_XXXX_104: emu_jsclr_aa(dsp); break;
+            case OP_JSCLR_HASH_N_X_OR_Y_PP_XXXX_105: emu_jsclr_pp(dsp); break;
+            case OP_JSCLR_HASH_N_S_XXXX_107: emu_jsclr_reg(dsp); break;
+            case OP_JSET_HASH_N_X_OR_Y_EA_XXXX_108: emu_jset_ea(dsp); break;
+            case OP_JSET_HASH_N_X_OR_Y_AA_XXXX_109: emu_jset_aa(dsp); break;
+            case OP_JSET_HASH_N_X_OR_Y_PP_XXXX_110: emu_jset_pp(dsp); break;
+            case OP_JSET_HASH_N_S_XXXX_112: emu_jset_reg(dsp); break;
+            case OP_JSR_EA_113: emu_jsr_ea(dsp); break;
+            case OP_JSR_XXX_114: emu_jsr_imm(dsp); break;
+            case OP_JSSET_HASH_N_X_OR_Y_EA_XXXX_115: emu_jsset_ea(dsp); break;
+            case OP_JSSET_HASH_N_X_OR_Y_AA_XXXX_116: emu_jsset_aa(dsp); break;
+            case OP_JSSET_HASH_N_X_OR_Y_PP_XXXX_117: emu_jsset_pp(dsp); break;
+            case OP_JSSET_HASH_N_S_XXXX_119: emu_jsset_reg(dsp); break;
+            case OP_LSL_HASH_II_D_122: emu_lsl_imm(dsp); break;
+            case OP_LUA_EA_D_126: emu_lua(dsp); break;
+            case OP_LUA_(RN_PLUS_AA)_D_127: emu_lua_rel(dsp); break;
+            case OP_MOVE_X_(RN_PLUS_XXXX)_<MINUS>_R_134: emu_move_x_long(dsp); break;
+            case OP_MOVE_X_(RN_PLUS_XXX)_<MINUS>_R_136: emu_move_x_imm(dsp); break;
+            case OP_MOVE_Y_(RN_PLUS_XXX)_<MINUS>_R_137: emu_move_y_imm(dsp); break;
+            case OP_MOVEC_X_OR_Y_EA_<MINUS>_R_138: emu_movec_ea(dsp); break;
+            case OP_MOVEC_X_OR_Y_AA_<MINUS>_R_139: emu_movec_aa(dsp); break;
+            case OP_MOVEC_R1_R2_140: emu_movec_reg(dsp); break;
+            case OP_MOVEC_HASH_XX_D1_141: emu_movec_imm(dsp); break;
+            case OP_MOVEM_P_EA_<MINUS>_R_142: emu_movem_ea(dsp); break;
+            case OP_MOVEM_P_EA_<MINUS>_R_143: emu_movem_aa(dsp); break;
+            case OP_MOVEP_X_OR_Y_EA_<MINUS>_X_OR_Y_PP_144: emu_movep_23(dsp); break;
+            case OP_MOVEP_X_OR_Y_EA_<MINUS>_X_QQ_145: emu_movep_x_qq(dsp); break;
+            case OP_MOVEP_X_OR_Y_PP_<MINUS>_P_EA_147: emu_movep_1(dsp); break;
+            case OP_MOVEP_X_OR_Y_PP_<MINUS>_R_149: emu_movep_0(dsp); break;
+            case OP_MPYI_HASH_XXXX_S_D_154: emu_mpyi(dsp); break;
+            case OP_NOP_157: emu_nop(dsp); break;
+            case OP_NORM_RN_D_158: emu_norm(dsp); break;
+            case OP_OR_HASH_XXXX_D_161: emu_or_long(dsp); break;
+            case OP_ORI_HASH_XX_D_162: emu_ori(dsp); break;
+            case OP_REP_X_OR_Y_EA_170: emu_rep_ea(dsp); break;
+            case OP_REP_X_OR_Y_AA_171: emu_rep_aa(dsp); break;
+            case OP_REP_HASH_XXX_172: emu_rep_imm(dsp); break;
+            case OP_REP_S_173: emu_rep_reg(dsp); break;
+            case OP_RESET_174: emu_reset(dsp); break;
+            case OP_RTI_175: emu_rti(dsp); break;
+            case OP_RTS_176: emu_rts(dsp); break;
+            case OP_STOP_177: emu_stop(dsp); break;
+            case OP_SUB_HASH_XX_D_178: emu_sub_imm(dsp); break;
+            case OP_SUB_HASH_XXXX_D_179: emu_sub_long(dsp); break;
+            case OP_TCC_S1_D1_180: emu_tcc(dsp); break;
+            case OP_TCC_S1D2_S2D2_181: emu_tcc(dsp); break;
+            case OP_TCC_S2_D2_182: emu_tcc(dsp); break;
+            case OP_WAIT_186: emu_wait(dsp); break;
+            default:
+                DPRINTF("%x - %s\n", dsp->cur_inst, op->name);
+                emu_undefined(dsp);
+                break;
         }
     } else {
         /* Do parallel move read */

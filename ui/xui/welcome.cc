@@ -27,26 +27,238 @@
 #include "xemu-version.h"
 #include "main-menu.hh"
 #include "font-manager.hh"
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <filesystem>
+#include <string>
+
+namespace {
+
+constexpr uintmax_t kMcpxBootRomSize = 512;
+constexpr uintmax_t kFlashRomSmallSize = 256 * 1024;
+constexpr uintmax_t kFlashRomLargeSize = 1024 * 1024;
+
+static bool IsConfiguredFileReady(const char *path)
+{
+    return path && path[0] && g_file_test(path, G_FILE_TEST_EXISTS);
+}
+
+static std::string ToLowerAscii(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return (char)std::tolower(c); });
+    return value;
+}
+
+static std::string GetFirstBootSuggestedFolder()
+{
+    const std::array<const char *, 4> paths = {
+        g_config.sys.files.hdd_path,
+        g_config.sys.files.flashrom_path,
+        g_config.sys.files.bootrom_path,
+        g_config.general.games_dir,
+    };
+
+    for (const char *path_str : paths) {
+        if (!path_str || !path_str[0]) {
+            continue;
+        }
+
+        std::error_code ec;
+        std::filesystem::path path(path_str);
+        if (std::filesystem::is_directory(path, ec)) {
+            return (path / "").string();
+        }
+
+        auto parent = path.parent_path();
+        if (!parent.empty() && std::filesystem::exists(parent, ec)) {
+            return (parent / "").string();
+        }
+    }
+
+    return {};
+}
+
+static void DrawWizardPanel(const char *id, const char *title,
+                            const char *body, ImVec4 bg, ImVec4 border,
+                            const char *icon = nullptr)
+{
+    float scale = g_viewport_mgr.m_scale;
+    float padding = 14.0f * scale;
+    float content_width = ImGui::GetContentRegionAvail().x - padding * 2;
+
+    ImGui::PushFont(g_font_mgr.m_menu_font_medium);
+    float title_height = ImGui::GetTextLineHeight();
+    ImGui::PopFont();
+
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    float body_height = ImGui::CalcTextSize(body, nullptr, false, content_width).y;
+    ImGui::PopFont();
+    float height = padding * 2 + title_height + body_height + 10.0f * scale;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f * scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, bg);
+    ImGui::PushStyleColor(ImGuiCol_Border, border);
+    if (ImGui::BeginChild(id, ImVec2(0, height), true,
+                          ImGuiWindowFlags_AlwaysUseWindowPadding)) {
+        ImGui::PushFont(g_font_mgr.m_menu_font_medium);
+        if (icon) {
+            ImGui::Text("%s  %s", icon, title);
+        } else {
+            ImGui::Text("%s", title);
+        }
+        ImGui::PopFont();
+
+        ImGui::PushFont(g_font_mgr.m_menu_font_small);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.94f, 0.94f, 0.94f, 0.78f));
+        ImGui::TextWrapped("%s", body);
+        ImGui::PopStyleColor();
+        ImGui::PopFont();
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar(2);
+}
+
+}
 
 FirstBootWindow::FirstBootWindow()
 {
     is_open = false;
     m_step = 0;
     m_did_open_file_picker = false;
+    m_files_step_success = false;
+    m_settings_step_success = false;
 }
 
 bool FirstBootWindow::AreRequiredFilesConfigured()
 {
-    bool bootrom = g_config.sys.files.bootrom_path &&
-                   g_config.sys.files.bootrom_path[0] &&
-                   g_file_test(g_config.sys.files.bootrom_path, G_FILE_TEST_EXISTS);
-    bool flashrom = g_config.sys.files.flashrom_path &&
-                    g_config.sys.files.flashrom_path[0] &&
-                    g_file_test(g_config.sys.files.flashrom_path, G_FILE_TEST_EXISTS);
-    bool hdd = g_config.sys.files.hdd_path &&
-               g_config.sys.files.hdd_path[0] &&
-               g_file_test(g_config.sys.files.hdd_path, G_FILE_TEST_EXISTS);
+    bool bootrom = IsConfiguredFileReady(g_config.sys.files.bootrom_path);
+    bool flashrom = IsConfiguredFileReady(g_config.sys.files.flashrom_path);
+    bool hdd = IsConfiguredFileReady(g_config.sys.files.hdd_path);
     return bootrom && flashrom && hdd;
+}
+
+int FirstBootWindow::GetConfiguredRequiredFileCount()
+{
+    int count = 0;
+    count += IsConfiguredFileReady(g_config.sys.files.bootrom_path) ? 1 : 0;
+    count += IsConfiguredFileReady(g_config.sys.files.flashrom_path) ? 1 : 0;
+    count += IsConfiguredFileReady(g_config.sys.files.hdd_path) ? 1 : 0;
+    return count;
+}
+
+int FirstBootWindow::AutoDetectRequiredFilesFromFolder(const char *folder_path)
+{
+    if (!folder_path || !folder_path[0]) {
+        return 0;
+    }
+
+    std::filesystem::path root(folder_path);
+    std::error_code ec;
+    if (!std::filesystem::is_directory(root, ec)) {
+        return 0;
+    }
+
+    std::filesystem::path bootrom_path;
+    std::filesystem::path flashrom_path;
+    std::filesystem::path hdd_path;
+
+    for (const auto &entry : std::filesystem::directory_iterator(
+             root, std::filesystem::directory_options::skip_permission_denied,
+             ec)) {
+        if (ec) {
+            break;
+        }
+
+        if (!entry.is_regular_file(ec) || ec) {
+            continue;
+        }
+
+        auto extension = ToLowerAscii(entry.path().extension().string());
+        auto file_size = entry.file_size(ec);
+        if (ec) {
+            continue;
+        }
+
+        if (bootrom_path.empty() &&
+            (extension == ".bin" || extension == ".rom") &&
+            file_size == kMcpxBootRomSize) {
+            bootrom_path = entry.path();
+            continue;
+        }
+
+        if (flashrom_path.empty() &&
+            (extension == ".bin" || extension == ".rom" || extension == ".img") &&
+            (file_size == kFlashRomSmallSize ||
+             file_size == kFlashRomLargeSize)) {
+            flashrom_path = entry.path();
+            continue;
+        }
+
+        if (hdd_path.empty() && extension == ".qcow2") {
+            hdd_path = entry.path();
+        }
+    }
+
+    int detected = 0;
+    int updated = 0;
+    if (!bootrom_path.empty()) {
+        detected++;
+    }
+    if (!flashrom_path.empty()) {
+        detected++;
+    }
+    if (!hdd_path.empty()) {
+        detected++;
+    }
+
+    if (!bootrom_path.empty() &&
+        !IsConfiguredFileReady(g_config.sys.files.bootrom_path)) {
+        xemu_settings_set_string(&g_config.sys.files.bootrom_path,
+                                 bootrom_path.string().c_str());
+        updated++;
+    }
+    if (!flashrom_path.empty() &&
+        !IsConfiguredFileReady(g_config.sys.files.flashrom_path)) {
+        xemu_settings_set_string(&g_config.sys.files.flashrom_path,
+                                 flashrom_path.string().c_str());
+        updated++;
+    }
+    if (!hdd_path.empty() &&
+        !IsConfiguredFileReady(g_config.sys.files.hdd_path)) {
+        xemu_settings_set_string(&g_config.sys.files.hdd_path,
+                                 hdd_path.string().c_str());
+        updated++;
+    }
+
+    if (updated > 0) {
+        g_main_menu.UpdateAboutViewConfigInfo();
+    }
+
+    return detected;
+}
+
+void FirstBootWindow::ApplyWindowsRecommendedSettings()
+{
+#ifdef CONFIG_VULKAN
+    g_config.display.renderer = CONFIG_DISPLAY_RENDERER_VULKAN;
+#else
+    g_config.display.renderer = CONFIG_DISPLAY_RENDERER_OPENGL;
+#endif
+    g_config.display.window.fullscreen_on_startup = false;
+    g_config.display.window.vsync = true;
+    g_config.display.ui.auto_scale = true;
+    g_config.display.ui.show_notifications = true;
+    g_config.display.ui.use_animations = true;
+    g_config.perf.cache_shaders = true;
+    g_config.input.auto_bind = true;
+#if defined(__x86_64__)
+    g_config.perf.hard_fpu = true;
+#endif
+    nv2a_set_surface_scale_factor(2);
 }
 
 void FirstBootWindow::DrawStepIndicator(int total_steps, int current_step)
@@ -118,6 +330,19 @@ void FirstBootWindow::DrawWelcomeStep()
 
     ImGui::Dummy(ImVec2(0, 12 * scale));
 
+    DrawWizardPanel(
+        "##welcome_windows_panel",
+        "Built for Windows 10 and 11 players",
+        "Keep your Boot ROM, BIOS, and HDD image in one folder, then let "
+        "OpenMidway scan that folder for you. The wizard also includes a "
+        "Windows-friendly defaults pass so first boot is smoother on desktops "
+        "and laptops.",
+        ImVec4(0.10f, 0.16f, 0.11f, 0.96f),
+        ImVec4(0.22f, 0.48f, 0.24f, 0.90f),
+        ICON_FA_DESKTOP);
+
+    ImGui::Dummy(ImVec2(0, 12 * scale));
+
     // Show required files list with icons
     float indent = 60 * scale;
     ImGui::SetCursorPosX(indent);
@@ -164,6 +389,7 @@ void FirstBootWindow::DrawWelcomeStep()
 void FirstBootWindow::DrawFilesStep()
 {
     float scale = g_viewport_mgr.m_scale;
+    int configured_files = GetConfiguredRequiredFileCount();
 
     ImGui::PushFont(g_font_mgr.m_menu_font_medium);
     const char *title = ICON_FA_FOLDER_OPEN "  Select Required Files";
@@ -183,6 +409,103 @@ void FirstBootWindow::DrawFilesStep()
 
     ImGui::Dummy(ImVec2(0, 12 * scale));
 
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f * scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.09f, 0.09f, 0.09f, 0.96f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.20f, 0.20f, 0.20f, 0.90f));
+    float files_panel_height = 120.0f * scale;
+    if (!m_files_step_message.empty()) {
+        files_panel_height += 20.0f * scale;
+    }
+    if (ImGui::BeginChild("##files_progress_panel",
+                          ImVec2(0, files_panel_height), true,
+                          ImGuiWindowFlags_AlwaysUseWindowPadding)) {
+        ImGui::PushFont(g_font_mgr.m_menu_font_medium);
+        if (configured_files == 3) {
+            ImGui::TextColored(ImVec4(0.35f, 0.85f, 0.45f, 1.0f),
+                               ICON_FA_CIRCLE_CHECK "  Required files ready");
+        } else {
+            ImGui::TextColored(ImVec4(0.95f, 0.72f, 0.35f, 1.0f),
+                               ICON_FA_FOLDER_TREE "  %d of 3 required files ready",
+                               configured_files);
+        }
+        ImGui::PopFont();
+
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.23f, 0.70f, 0.24f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.18f, 0.18f, 0.18f, 1.0f));
+        ImGui::ProgressBar(configured_files / 3.0f, ImVec2(-FLT_MIN, 8 * scale), "");
+        ImGui::PopStyleColor(2);
+
+        ImGui::Dummy(ImVec2(0, 8 * scale));
+
+        ImGui::PushFont(g_font_mgr.m_menu_font_small);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.94f, 0.94f, 0.94f, 0.75f));
+        ImGui::TextWrapped(
+            "Windows tip: if your Boot ROM, BIOS, and HDD image already live "
+            "in one folder, scan that folder first and let the wizard fill in "
+            "the matching files automatically.");
+        ImGui::PopStyleColor();
+        ImGui::PopFont();
+
+        std::string suggested_folder = GetFirstBootSuggestedFolder();
+        float button_width = 220 * scale;
+        if (ImGui::Button(ICON_FA_WAND_MAGIC_SPARKLES "  Scan folder for required files",
+                          ImVec2(button_width, 0))) {
+            ShowOpenFolderDialog(
+                suggested_folder.empty() ? nullptr : suggested_folder.c_str(),
+                [this](const char *folder_path) {
+                    int configured_before = GetConfiguredRequiredFileCount();
+                    int found = AutoDetectRequiredFilesFromFolder(folder_path);
+                    int configured_after = GetConfiguredRequiredFileCount();
+                    std::string folder_name = std::filesystem::path(folder_path)
+                                                  .filename()
+                                                  .string();
+                    if (folder_name.empty()) {
+                        folder_name = folder_path;
+                    }
+
+                    m_files_step_success = found > 0;
+                    if (found == 0) {
+                        m_files_step_message =
+                            "No matching Boot ROM, BIOS, or .qcow2 HDD image "
+                            "was found in that folder.";
+                    } else if (configured_after > configured_before &&
+                               configured_after == 3) {
+                        m_files_step_message = string_format(
+                            "Found the remaining required files in %s and filled every setup field.",
+                            folder_name.c_str());
+                    } else if (configured_after > configured_before) {
+                        m_files_step_message = string_format(
+                            "Found %d matching file%s in %s. Review the remaining field%s below.",
+                            found, found == 1 ? "" : "s",
+                            folder_name.c_str(),
+                            configured_after == 2 ? "" : "s");
+                    } else {
+                        m_files_step_message =
+                            "Matching files were found, but your current selections were already filled so nothing was replaced.";
+                    }
+                });
+        }
+        ImGui::SameLine();
+        Hyperlink(ICON_FA_BOOK "  Open setup guide",
+                  "https://github.com/awest813/OpenMidway/blob/main/docs/getting-started.md");
+
+        if (!m_files_step_message.empty()) {
+            ImGui::Dummy(ImVec2(0, 8 * scale));
+            ImVec4 text_color = m_files_step_success
+                ? ImVec4(0.50f, 0.88f, 0.55f, 1.0f)
+                : ImVec4(0.95f, 0.72f, 0.35f, 1.0f);
+            ImGui::PushFont(g_font_mgr.m_menu_font_small);
+            ImGui::TextColored(text_color, "%s", m_files_step_message.c_str());
+            ImGui::PopFont();
+        }
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar(2);
+
+    ImGui::Dummy(ImVec2(0, 12 * scale));
+
     Separator();
 
     static const SDL_DialogFileFilter rom_file_filters[] = {
@@ -196,7 +519,7 @@ void FirstBootWindow::DrawFilesStep()
     };
 
     // Helper lambda to draw a file row with status icon
-    auto DrawFileRow = [&](const char *label, const char *icon, const char *path,
+    auto DrawFileRow = [&](const char *label, const char *path,
                            const SDL_DialogFileFilter *filters, int nfilters,
                            const char *hint, char **config_path) {
         bool ready = path && path[0] && g_file_test(path, G_FILE_TEST_EXISTS);
@@ -229,7 +552,7 @@ void FirstBootWindow::DrawFilesStep()
         }
     };
 
-    DrawFileRow("MCPX Boot ROM", ICON_FA_MICROCHIP,
+    DrawFileRow("MCPX Boot ROM",
                 g_config.sys.files.bootrom_path,
                 rom_file_filters, 3,
                 "Required - 512 byte Xbox boot ROM dump",
@@ -237,7 +560,7 @@ void FirstBootWindow::DrawFilesStep()
 
     ImGui::Dummy(ImVec2(0, 4 * scale));
 
-    DrawFileRow("Flash ROM (BIOS)", ICON_FA_MEMORY,
+    DrawFileRow("Flash ROM (BIOS)",
                 g_config.sys.files.flashrom_path,
                 rom_file_filters, 3,
                 "Required - 256 KB or 1 MB Xbox BIOS image",
@@ -245,7 +568,7 @@ void FirstBootWindow::DrawFilesStep()
 
     ImGui::Dummy(ImVec2(0, 4 * scale));
 
-    DrawFileRow("Hard Disk Image", ICON_FA_HARD_DRIVE,
+    DrawFileRow("Hard Disk Image",
                 g_config.sys.files.hdd_path,
                 qcow_file_filters, 2,
                 "Required - Xbox HDD image in .qcow2 format",
@@ -316,10 +639,59 @@ void FirstBootWindow::DrawSettingsStep()
 
     ImGui::Dummy(ImVec2(0, 12 * scale));
 
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f * scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f * scale);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.14f, 0.18f, 0.96f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.20f, 0.38f, 0.52f, 0.90f));
+    float preset_panel_height = 108.0f * scale;
+    if (!m_settings_step_message.empty()) {
+        preset_panel_height += 20.0f * scale;
+    }
+    if (ImGui::BeginChild("##settings_preset_panel",
+                          ImVec2(0, preset_panel_height), true,
+                          ImGuiWindowFlags_AlwaysUseWindowPadding)) {
+        ImGui::PushFont(g_font_mgr.m_menu_font_medium);
+        ImGui::Text("%s  Recommended for Windows 10/11", ICON_FA_WAND_MAGIC_SPARKLES);
+        ImGui::PopFont();
+
+        ImGui::PushFont(g_font_mgr.m_menu_font_small);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.94f, 0.94f, 0.94f, 0.78f));
+        ImGui::TextWrapped(
+            "Applies a balanced first-run preset: best available renderer, "
+            "2x internal resolution, shader caching, VSync, automatic "
+            "controller binding, and adaptive UI scaling.");
+        ImGui::PopStyleColor();
+        ImGui::PopFont();
+
+        if (ImGui::Button(
+                ICON_FA_DESKTOP "  Apply recommended Windows defaults",
+                ImVec2(0, 0))) {
+            ApplyWindowsRecommendedSettings();
+            m_settings_step_success = true;
+            m_settings_step_message =
+                "Recommended Windows defaults applied. You can still adjust any setting below.";
+        }
+
+        if (!m_settings_step_message.empty()) {
+            ImGui::Dummy(ImVec2(0, 8 * scale));
+            ImGui::PushFont(g_font_mgr.m_menu_font_small);
+            ImGui::TextColored(ImVec4(0.56f, 0.84f, 0.96f, 1.0f),
+                               "%s", m_settings_step_message.c_str());
+            ImGui::PopFont();
+        }
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar(2);
+
+    ImGui::Dummy(ImVec2(0, 12 * scale));
+
     SectionTitle("Display");
     Toggle("Fullscreen on startup",
            &g_config.display.window.fullscreen_on_startup,
            "Launch in fullscreen mode each time you open OpenMidway");
+    Toggle("Vertical refresh sync", &g_config.display.window.vsync,
+           "Reduce tearing on most Windows displays by syncing to monitor refresh");
 
     int rendering_scale = nv2a_get_surface_scale_factor() - 1;
     if (ChevronCombo("Resolution scale", &rendering_scale,
@@ -414,7 +786,19 @@ void FirstBootWindow::DrawReadyStep()
     ImGui::PopStyleColor();
     ImGui::PopFont();
 
-    ImGui::Dummy(ImVec2(0, 24 * scale));
+    ImGui::Dummy(ImVec2(0, 20 * scale));
+
+    DrawWizardPanel(
+        "##ready_panel",
+        "What to do next",
+        "Load a game disc image and confirm audio, video, and controller "
+        "input on one title before changing advanced graphics or networking "
+        "settings. Press F1 any time to come back to Settings.",
+        ImVec4(0.09f, 0.10f, 0.12f, 0.96f),
+        ImVec4(0.22f, 0.30f, 0.36f, 0.90f),
+        ICON_FA_ROCKET);
+
+    ImGui::Dummy(ImVec2(0, 12 * scale));
 
     // Games directory picker
     ImGui::PushFont(g_font_mgr.m_menu_font_small);
@@ -463,7 +847,7 @@ void FirstBootWindow::Draw()
     if (!is_open) return;
 
     float scale = g_viewport_mgr.m_scale;
-    ImVec2 size(520 * scale, 0);  // auto-height
+    ImVec2 size(560 * scale, 0);  // auto-height
     ImGuiIO& io = ImGui::GetIO();
 
     ImVec2 window_pos = ImVec2((io.DisplaySize.x - size.x) / 2,
@@ -501,7 +885,7 @@ void FirstBootWindow::Draw()
     default: m_step = 0; break;
     }
 
-    ImGui::Dummy(ImVec2(520 * scale, 8 * scale));
+    ImGui::Dummy(ImVec2(560 * scale, 8 * scale));
 
     ImGui::End();
     ImGui::PopStyleColor();

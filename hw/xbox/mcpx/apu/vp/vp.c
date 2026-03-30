@@ -1453,7 +1453,7 @@ static void voice_process(MCPXAPUState *d,
             int16_t fc = voice_get_mask(
                 d, v, NV_PAVS_VOICE_TAR_FCA + (ch % channels) * 4,
                 NV_PAVS_VOICE_TAR_FCA_FC0);
-            float fc_f = clampf(pow(2, fc / 4096.0), 0.003906f, 1.0f);
+            float fc_f = clampf(exp2f(fc / 4096.0f), 0.003906f, 1.0f);
             uint16_t q = voice_get_mask(
                 d, v, NV_PAVS_VOICE_TAR_FCA + (ch % channels) * 4,
                 NV_PAVS_VOICE_TAR_FCA_FC1);

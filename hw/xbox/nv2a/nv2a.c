@@ -25,27 +25,27 @@
 void nv2a_update_irq(NV2AState *d)
 {
     /* PFIFO */
-    if (d->pfifo.pending_interrupts & d->pfifo.enabled_interrupts) {
-        d->pmc.pending_interrupts |= NV_PMC_INTR_0_PFIFO;
+    if (qatomic_read(&d->pfifo.pending_interrupts) & qatomic_read(&d->pfifo.enabled_interrupts)) {
+        qatomic_or(&d->pmc.pending_interrupts, NV_PMC_INTR_0_PFIFO);
     } else {
-        d->pmc.pending_interrupts &= ~NV_PMC_INTR_0_PFIFO;
+        qatomic_and(&d->pmc.pending_interrupts, ~NV_PMC_INTR_0_PFIFO);
     }
 
     /* PCRTC */
-    if (d->pcrtc.pending_interrupts & d->pcrtc.enabled_interrupts) {
-        d->pmc.pending_interrupts |= NV_PMC_INTR_0_PCRTC;
+    if (qatomic_read(&d->pcrtc.pending_interrupts) & qatomic_read(&d->pcrtc.enabled_interrupts)) {
+        qatomic_or(&d->pmc.pending_interrupts, NV_PMC_INTR_0_PCRTC);
     } else {
-        d->pmc.pending_interrupts &= ~NV_PMC_INTR_0_PCRTC;
+        qatomic_and(&d->pmc.pending_interrupts, ~NV_PMC_INTR_0_PCRTC);
     }
 
     /* PGRAPH */
-    if (d->pgraph.pending_interrupts & d->pgraph.enabled_interrupts) {
-        d->pmc.pending_interrupts |= NV_PMC_INTR_0_PGRAPH;
+    if (qatomic_read(&d->pgraph.pending_interrupts) & qatomic_read(&d->pgraph.enabled_interrupts)) {
+        qatomic_or(&d->pmc.pending_interrupts, NV_PMC_INTR_0_PGRAPH);
     } else {
-        d->pmc.pending_interrupts &= ~NV_PMC_INTR_0_PGRAPH;
+        qatomic_and(&d->pmc.pending_interrupts, ~NV_PMC_INTR_0_PGRAPH);
     }
 
-    if (d->pmc.pending_interrupts && d->pmc.enabled_interrupts) {
+    if (qatomic_read(&d->pmc.pending_interrupts) && qatomic_read(&d->pmc.enabled_interrupts)) {
         trace_nv2a_irq(d->pmc.pending_interrupts);
         nv2a_profile_inc_counter(NV2A_PROF_IRQ_RAISED);
         pci_irq_assert(PCI_DEVICE(d));
@@ -265,10 +265,10 @@ static void nv2a_init_vga(NV2AState *d)
 
 static void nv2a_lock_fifo(NV2AState *d)
 {
-    qemu_mutex_lock(&d->pfifo.lock);
-    qemu_cond_broadcast(&d->pfifo.fifo_cond);
     bql_unlock();
-    qemu_cond_wait(&d->pfifo.fifo_idle_cond, &d->pfifo.lock);
+    qemu_event_reset(&d->pfifo.fifo_idle_event);
+    pfifo_kick(d);
+    qemu_event_wait(&d->pfifo.fifo_idle_event);
     bql_lock();
     qemu_mutex_lock(&d->pgraph.lock);
 }
@@ -277,7 +277,6 @@ static void nv2a_unlock_fifo(NV2AState *d)
 {
     pfifo_kick(d);
     qemu_mutex_unlock(&d->pgraph.lock);
-    qemu_mutex_unlock(&d->pfifo.lock);
 }
 
 static void nv2a_reset(NV2AState *d)
@@ -354,9 +353,8 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
                                     &d->block_mmio[i]);
     }
 
-    qemu_mutex_init(&d->pfifo.lock);
-    qemu_cond_init(&d->pfifo.fifo_cond);
-    qemu_cond_init(&d->pfifo.fifo_idle_cond);
+    qemu_event_init(&d->pfifo.fifo_event, false);
+    qemu_event_init(&d->pfifo.fifo_idle_event, false);
 }
 
 static void nv2a_exitfn(PCIDevice *dev)
@@ -364,9 +362,9 @@ static void nv2a_exitfn(PCIDevice *dev)
     NV2AState *d;
     d = NV2A_DEVICE(dev);
 
-    d->exiting = true;
+    qatomic_set(&d->exiting, true);
 
-    qemu_cond_broadcast(&d->pfifo.fifo_cond);
+    qemu_event_set(&d->pfifo.fifo_event);
     qemu_thread_join(&d->pfifo.thread);
 
     pgraph_destroy(&d->pgraph);

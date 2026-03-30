@@ -93,7 +93,9 @@ void pgraph_glsl_set_vsh_state(PGRAPHState *pg, VshState *state);
     DECL(S, pointParams, float, 8)                           \
     DECL(S, specularPower, float, 1)                         \
     DECL(S, specularPowerBack, float, 1)                     \
-    DECL(S, surfaceSize, vec2, 1)
+    DECL(S, surfaceSize, vec2, 1)                            \
+    DECL(S, programData, uvec4, NV2A_MAX_TRANSFORM_PROGRAM_LENGTH) \
+    DECL(S, programLength, int, 1)
 
 DECL_UNIFORM_TYPES(VshUniform, VSH_UNIFORM_DECL_X)
 

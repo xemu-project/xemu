@@ -48,7 +48,7 @@ static inline void setup_svf(sv_filter *sv, float fs, float fc, float q, int t) 
 static inline void setup_svf(sv_filter *sv, float fc, float q, int t) {
     sv->f = fc;
     sv->q = q;
-    sv->qnrm = sqrt(sv->q/2.0+0.01);
+    sv->qnrm = sqrtf(sv->q/2.0f+0.01f);
     switch(t) {
     case F_LP:
         sv->op = &(sv->l);

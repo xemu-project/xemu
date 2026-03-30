@@ -74,7 +74,7 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
     }
 
     if (d->monitor.stream) {
-        float vu = pow(fmax(0.0, fmin(g_config.audio.volume_limit, 1.0)), M_E);
+        float vu = powf(fmaxf(0.0f, fminf(g_config.audio.volume_limit, 1.0f)), (float)M_E);
         SDL_SetAudioStreamGain(d->monitor.stream, vu);
         SDL_PutAudioStreamData(d->monitor.stream, d->monitor.frame_buf,
                             sizeof(d->monitor.frame_buf));

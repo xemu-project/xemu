@@ -97,10 +97,8 @@ typedef struct NV2AState {
         uint32_t pending_interrupts;
         uint32_t enabled_interrupts;
         uint32_t regs[0x2000];
-        QemuMutex lock;
-        QemuThread thread;
-        QemuCond fifo_cond;
-        QemuCond fifo_idle_cond;
+        QemuEvent fifo_event;
+        QemuEvent fifo_idle_event;
         bool fifo_kick;
         bool halt;
     } pfifo;

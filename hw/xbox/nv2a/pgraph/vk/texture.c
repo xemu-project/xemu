@@ -1281,7 +1281,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
             pgraph_argb_pack32_to_rgba_float(border_color_pack32, rgba);
             for (int i = 0; i < 4; i++) {
                 custom_border_color_create_info.customBorderColor.uint32[i] =
-                    (uint32_t)((double)rgba[i] * (double)0xffffffff);
+                    (uint32_t)(rgba[i] * 4294967295.0f);
             }
         } else {
             pgraph_argb_pack32_to_rgba_float(

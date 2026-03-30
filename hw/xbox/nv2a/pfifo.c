@@ -38,25 +38,21 @@ uint64_t pfifo_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
 
-    qemu_mutex_lock(&d->pfifo.lock);
-
     uint64_t r = 0;
     switch (addr) {
     case NV_PFIFO_INTR_0:
-        r = d->pfifo.pending_interrupts;
+        r = qatomic_read(&d->pfifo.pending_interrupts);
         break;
     case NV_PFIFO_INTR_EN_0:
-        r = d->pfifo.enabled_interrupts;
+        r = qatomic_read(&d->pfifo.enabled_interrupts);
         break;
     case NV_PFIFO_RUNOUT_STATUS:
         r = NV_PFIFO_RUNOUT_STATUS_LOW_MARK; /* low mark empty */
         break;
     default:
-        r = d->pfifo.regs[addr];
+        r = qatomic_read(&d->pfifo.regs[addr]);
         break;
     }
-
-    qemu_mutex_unlock(&d->pfifo.lock);
 
     nv2a_reg_log_read(NV_PFIFO, addr, size, r);
     return r;
@@ -68,31 +64,27 @@ void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
     nv2a_reg_log_write(NV_PFIFO, addr, size, val);
 
-    qemu_mutex_lock(&d->pfifo.lock);
-
     switch (addr) {
     case NV_PFIFO_INTR_0:
-        d->pfifo.pending_interrupts &= ~val;
+        qatomic_and(&d->pfifo.pending_interrupts, ~val);
         nv2a_update_irq(d);
         break;
     case NV_PFIFO_INTR_EN_0:
-        d->pfifo.enabled_interrupts = val;
+        qatomic_set(&d->pfifo.enabled_interrupts, val);
         nv2a_update_irq(d);
         break;
     default:
-        d->pfifo.regs[addr] = val;
+        qatomic_set(&d->pfifo.regs[addr], val);
         break;
     }
 
     pfifo_kick(d);
-
-    qemu_mutex_unlock(&d->pfifo.lock);
 }
 
 void pfifo_kick(NV2AState *d)
 {
-    d->pfifo.fifo_kick = true;
-    qemu_cond_broadcast(&d->pfifo.fifo_cond);
+    qatomic_set(&d->pfifo.fifo_kick, true);
+    qemu_event_set(&d->pfifo.fifo_event);
 }
 
 static bool can_fifo_access(NV2AState *d) {
@@ -184,10 +176,6 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         SET_MASK(*engine_reg, 3 << (4*subchannel), entry.engine);
         SET_MASK(*pull1, NV_PFIFO_CACHE1_PULL1_ENGINE, entry.engine);
 
-        // TODO: this is fucked
-        qemu_mutex_unlock(&d->pfifo.lock);
-        qemu_mutex_lock(&d->pgraph.lock);
-
         // Switch contexts if necessary
         if (can_fifo_access(d)) {
             pgraph_context_switch(d, entry.channel_id);
@@ -199,7 +187,6 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         }
 
         qemu_mutex_unlock(&d->pgraph.lock);
-        qemu_mutex_lock(&d->pfifo.lock);
 
     } else if (method >= 0x100) {
         // method passed to engine
@@ -219,10 +206,6 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         assert(engine == ENGINE_GRAPHICS);
         SET_MASK(*pull1, NV_PFIFO_CACHE1_PULL1_ENGINE, engine);
 
-        // TODO: this is fucked
-        qemu_mutex_unlock(&d->pfifo.lock);
-        qemu_mutex_lock(&d->pgraph.lock);
-
         if (can_fifo_access(d)) {
             num_proc =
                 pgraph_method(d, subchannel, method, parameter, parameters,
@@ -230,7 +213,6 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         }
 
         qemu_mutex_unlock(&d->pgraph.lock);
-        qemu_mutex_lock(&d->pfifo.lock);
     } else {
         assert(false);
     }
@@ -443,7 +425,7 @@ static void pfifo_run_pusher(NV2AState *d)
 
         SET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_STATUS, 1); /* suspended */
 
-        d->pfifo.pending_interrupts |= NV_PFIFO_INTR_0_DMA_PUSHER;
+        qatomic_or(&d->pfifo.pending_interrupts, NV_PFIFO_INTR_0_DMA_PUSHER);
         nv2a_update_irq(d);
     }
 }
@@ -456,30 +438,27 @@ void *pfifo_thread(void *arg)
 
     rcu_register_thread();
 
-    qemu_mutex_lock(&d->pfifo.lock);
     while (true) {
-        d->pfifo.fifo_kick = false;
+        qatomic_set(&d->pfifo.fifo_kick, false);
+        qemu_event_reset(&d->pfifo.fifo_event);
 
         pgraph_process_pending(d);
 
-        if (!d->pfifo.halt) {
+        if (!qatomic_read(&d->pfifo.halt)) {
             pfifo_run_pusher(d);
         }
 
         pgraph_process_pending_reports(d);
 
-        if (!d->pfifo.fifo_kick) {
-            qemu_cond_broadcast(&d->pfifo.fifo_idle_cond);
-
-            // Both the pusher and puller are waiting for some action
-            qemu_cond_wait(&d->pfifo.fifo_cond, &d->pfifo.lock);
+        if (!qatomic_read(&d->pfifo.fifo_kick)) {
+            qemu_event_set(&d->pfifo.fifo_idle_event);
+            qemu_event_wait(&d->pfifo.fifo_event);
         }
 
-        if (d->exiting) {
+        if (qatomic_read(&d->exiting)) {
             break;
         }
     }
-    qemu_mutex_unlock(&d->pfifo.lock);
 
     rcu_unregister_thread();
 
