@@ -90,6 +90,17 @@ package_linux() {
     fi
 }
 
+package_freebsd() {
+    rm -rf dist
+    mkdir -p dist
+    cp build/qemu-system-i386 dist/xemu
+    if test -e "${project_source_dir}/XEMU_LICENSE"; then
+      cp "${project_source_dir}/XEMU_LICENSE" dist/LICENSE.txt
+    else
+      python3 ./scripts/gen-license.py > dist/LICENSE.txt
+    fi
+}
+
 postbuild=''
 debug_opts=''
 build_cflags=''
@@ -199,6 +210,12 @@ case "$platform" in # Adjust compilation options based on platform
         opts="$opts --disable-werror"
         postbuild='package_linux'
         ;;
+    FreeBSD)
+	echo 'Compiling for FreeBSD...'
+	sys_cflags='-Wno-error=redundant-decls'
+	opts="$opts --disable-werror"
+	postbuild='package_freebsd'
+	;;
     Darwin)
         echo "Compiling for MacOS for $target_arch..."
         if [ "$target_arch" == "arm64" ]; then
@@ -269,6 +286,10 @@ set -x # Print commands from now on
     ${opts} \
     "$@"
 
-time make -j"${job_count}" ${target} 2>&1 | tee build.log
+if [[ "$OSTYPE" == "freebsd"* ]]; then
+    time gmake -j"${job_count}" ${target} 2>&1 | tee build.log
+else
+    time make -j"${job_count}" ${target} 2>&1 | tee build.log
+fi
 
 "${postbuild}" # call post build functions
