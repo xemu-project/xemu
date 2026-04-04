@@ -90,17 +90,6 @@ package_linux() {
     fi
 }
 
-package_freebsd() {
-    rm -rf dist
-    mkdir -p dist
-    cp build/qemu-system-i386 dist/xemu
-    if test -e "${project_source_dir}/XEMU_LICENSE"; then
-      cp "${project_source_dir}/XEMU_LICENSE" dist/LICENSE.txt
-    else
-      python3 ./scripts/gen-license.py > dist/LICENSE.txt
-    fi
-}
-
 postbuild=''
 debug_opts=''
 build_cflags=''
@@ -211,11 +200,11 @@ case "$platform" in # Adjust compilation options based on platform
         postbuild='package_linux'
         ;;
     FreeBSD)
-	echo 'Compiling for FreeBSD...'
-	sys_cflags='-Wno-error=redundant-decls'
-	opts="$opts --disable-werror"
-	postbuild='package_freebsd'
-	;;
+        echo 'Compiling for FreeBSD...'
+        sys_cflags='-Wno-error=redundant-decls'
+        opts="$opts --disable-werror"
+        postbuild='package_linux'
+        ;;
     Darwin)
         echo "Compiling for MacOS for $target_arch..."
         if [ "$target_arch" == "arm64" ]; then

@@ -115,9 +115,7 @@ if have_block
     freebsd_dep = []
     # FreeBSD 1500000 and higher has Linux-compatible inotify
     if host_os == 'freebsd'
-      freebsd_version = run_command('sysctl', '-n', 'kern.osreldate').stdout().strip()
-      freebsd_ver_int = freebsd_version.to_int()
-      if freebsd_ver_int < 1500000
+      if freebsd_version_int < 1500000
         freebsd_dep = inotify
       endif
     endif

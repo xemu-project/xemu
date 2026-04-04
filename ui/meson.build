@@ -45,9 +45,7 @@ if host_os == 'darwin'
   xemu_ss.add(xemu_cocoa)
 endif
 
-if host_os == 'linux'
-  xemu_ss.add([gtk, files('xemu-os-utils-linux.c')])
-elif host_os == 'freebsd'
+if host_os == 'linux' or host_os == 'freebsd'
   xemu_ss.add([gtk, files('xemu-os-utils-linux.c')])
 elif host_os == 'windows'
   xemu_ss.add(files('xemu-os-utils-windows.c'))

@@ -279,6 +279,13 @@ enable_modules = get_option('modules') \
            error_message: 'Modules are incompatible with static linking') \
   .allowed()
 
+# Check version if FreeBSD host
+freebsd_version_int = 0
+if host_os == 'freebsd'
+  freebsd_version_str = run_command('sysctl', '-n', 'kern.osreldate').stdout().strip()
+  freebsd_version_int = freebsd_version_str.to_int()
+endif
+
 #######################################
 # Variables for host and accelerators #
 #######################################
@@ -2867,9 +2874,7 @@ have_inotify_init1 = cc.has_header_symbol('sys/inotify.h', 'inotify_init1')
 inotify = not_found
 # FreeBSD 1500000 and higher has Linux-compatible inotify
 if (have_inotify_init or have_inotify_init1) and host_os == 'freebsd'
-  freebsd_version = run_command('sysctl', '-n', 'kern.osreldate').stdout().strip()
-  freebsd_ver_int = freebsd_version.to_int()
-  if freebsd_ver_int < 1500000
+  if freebsd_version_int < 1500000
     # libinotify-kqueue
     inotify = cc.find_library('inotify')
     if have_inotify_init
