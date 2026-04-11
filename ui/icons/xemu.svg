@@ -2,23 +2,23 @@
 <!-- Created with Inkscape (http://www.inkscape.org/) -->
 
 <svg
-   xmlns:dc="http://purl.org/dc/elements/1.1/"
-   xmlns:cc="http://creativecommons.org/ns#"
-   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-   xmlns:svg="http://www.w3.org/2000/svg"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    width="512"
    height="512"
    viewBox="0 0 135.46666 135.46667"
    version="1.1"
    id="svg1668"
-   inkscape:version="0.92.3 (2405546, 2018-03-11)"
+   inkscape:version="1.4.3 (0d15f75042, 2025-12-25)"
    sodipodi:docname="xemu.svg"
    inkscape:export-filename="/home/mborgerson/Desktop/xemu_work/logo.png"
    inkscape:export-xdpi="96"
-   inkscape:export-ydpi="96">
+   inkscape:export-ydpi="96"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
   <defs
      id="defs1662" />
   <sodipodi:namedview
@@ -29,19 +29,21 @@
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
      inkscape:zoom="0.7"
-     inkscape:cx="362.99244"
-     inkscape:cy="434.86231"
+     inkscape:cx="362.85714"
+     inkscape:cy="435"
      inkscape:document-units="mm"
-     inkscape:current-layer="layer2"
+     inkscape:current-layer="layer1"
      showgrid="false"
      units="px"
      showguides="true"
      inkscape:window-width="1920"
-     inkscape:window-height="1025"
+     inkscape:window-height="1022"
      inkscape:window-x="0"
-     inkscape:window-y="27"
+     inkscape:window-y="0"
      inkscape:window-maximized="1"
-     inkscape:pagecheckerboard="true" />
+     inkscape:pagecheckerboard="true"
+     inkscape:showpageshadow="2"
+     inkscape:deskcolor="#d1d1d1" />
   <metadata
      id="metadata1665">
     <rdf:RDF>
@@ -50,7 +52,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -76,16 +78,10 @@
          cy="229.55666"
          r="57.286186" />
     </g>
-    <text
-       xml:space="preserve"
-       style="font-style:normal;font-weight:normal;font-size:63.40210342px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;display:inline;opacity:1;fill:#81dc8a;fill-opacity:1;stroke:#81dc8a;stroke-width:0.59907502;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;"
-       x="30.239998"
-       y="238.38223"
-       id="text879-9-3"><tspan
-         sodipodi:role="line"
-         id="tspan877-1-5"
-         x="30.239998"
-         y="238.38223"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:38.04126358px;font-family:'ubuntu mono';-inkscape-font-specification:'ubuntu mono';fill:#81dc8a;fill-opacity:1;stroke:#81dc8a;stroke-width:0.59907502;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;">xemu</tspan></text>
+    <path
+       style="font-size:38.0413px;line-height:1.25;font-family:'ubuntu mono';-inkscape-font-specification:'ubuntu mono';letter-spacing:0px;word-spacing:0px;fill:#81dc8a;stroke:#81dc8a;stroke-width:0.599075"
+       d="m 44.695693,238.38223 q -0.380413,-0.76082 -0.951033,-1.67381 -0.532578,-0.913 -1.17928,-1.86403 -0.646703,-0.98907 -1.369487,-1.9401 -0.684744,-0.95104 -1.369487,-1.78795 -0.684744,0.87495 -1.44557,1.82599 -0.760826,0.95103 -1.48361,1.9401 -0.684744,0.95104 -1.293405,1.86403 -0.60866,0.91299 -1.027115,1.63577 h -3.23351 q 1.255363,-2.28248 3.043304,-4.67908 1.825982,-2.43464 3.575882,-4.60299 l -6.352897,-8.36909 h 3.537841 l 4.755163,6.16269 4.374749,-6.16269 h 3.347635 l -5.820319,8.17888 q 1.711858,2.24444 3.423717,4.67908 1.7499,2.43464 2.967221,4.7932 z m 14.417653,-18.06962 q 3.575882,0 5.515989,2.24444 1.940106,2.2064 1.940106,6.73331 v 1.1032 H 53.939729 q 0.190206,2.73897 1.787941,4.18454 1.635776,1.40753 4.564956,1.40753 1.673818,0 2.853098,-0.26629 1.17928,-0.26629 1.787941,-0.57062 l 0.418454,2.66289 q -0.570619,0.30433 -2.05423,0.64671 -1.483611,0.34237 -3.347634,0.34237 -2.282479,0 -4.032378,-0.68475 -1.711859,-0.72278 -2.853098,-1.9401 -1.141239,-1.21732 -1.711859,-2.89114 -0.570619,-1.71186 -0.570619,-3.69001 0,-2.35856 0.722785,-4.10846 0.722784,-1.7499 1.902065,-2.89114 1.17928,-1.14124 2.662891,-1.71186 1.483611,-0.57062 3.043304,-0.57062 z m 4.260626,7.53218 q 0,-2.24443 -1.179281,-3.53784 -1.17928,-1.33144 -3.119386,-1.33144 -1.103198,0 -2.016189,0.41845 -0.87495,0.41845 -1.521652,1.1032 -0.646703,0.68474 -1.027116,1.55969 -0.380413,0.87495 -0.494537,1.78794 z m 6.467021,-6.61918 q 2.282478,-0.87495 4.298667,-0.87495 1.103198,0 2.05423,0.34237 0.989074,0.30433 1.673818,0.98907 1.635776,-1.33144 3.499799,-1.33144 0.912992,0 1.711859,0.34237 0.836909,0.34237 1.445569,1.02711 0.646703,0.68475 1.027116,1.71186 0.380413,1.02712 0.380413,2.3966 v 12.55363 h -2.853098 v -12.62971 q 0,-1.36949 -0.608661,-2.09227 -0.608661,-0.72279 -1.521652,-0.72279 -0.456496,0 -0.951032,0.22825 -0.494537,0.22825 -0.912992,0.72279 0.228248,0.87495 0.228248,1.9401 v 5.74424 h -2.853098 v -5.78228 q 0,-1.33144 -0.418454,-2.09227 -0.418454,-0.76083 -1.635776,-0.76083 -0.760826,0 -1.711858,0.34238 v 15.10239 h -2.853098 z m 33.780677,16.66209 q -1.02712,0.26628 -2.73898,0.57062 -1.673814,0.30433 -3.956292,0.30433 -2.016189,0 -3.347635,-0.57062 -1.331445,-0.60866 -2.168354,-1.67382 -0.836909,-1.1032 -1.17928,-2.58681 -0.342372,-1.48361 -0.342372,-3.27155 v -9.92878 h 3.119387 v 9.24403 q 0,3.27156 0.951032,4.64104 0.989074,1.36949 3.271552,1.36949 0.494537,0 0.989074,-0.038 0.532578,-0.038 0.989074,-0.0761 0.456496,-0.0761 0.798864,-0.11413 0.34238,-0.0761 0.4565,-0.11412 v -14.91219 h 3.15743 z"
+       id="text879-9-3"
+       aria-label="xemu" />
   </g>
 </svg>
