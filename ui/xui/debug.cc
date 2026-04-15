@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+#include <inttypes.h>
 #include "debug.hh"
 #include "common.hh"
 #include "misc.hh"
@@ -228,6 +229,72 @@ void DebugApuWindow::Draw()
     if (color) ImGui::PopStyleColor();
 
     ImGui::Text("Frames:      %04d", dbg->frames_processed);
+    if (ImGui::TreeNode("Throttle")) {
+        ImGui::Text("Deviation: %" PRId64 "/%" PRId64 "/%" PRId64 " us",
+                    dbg->throttle.deviation.min_us,
+                    dbg->throttle.deviation.avg_us,
+                    dbg->throttle.deviation.max_us);
+        ImGui::Text("Latency:   %.1f/%.1f/%.1f ms",
+                    dbg->throttle.latency.min_ms,
+                    dbg->throttle.latency.avg_ms,
+                    dbg->throttle.latency.max_ms);
+        float high = dbg->throttle.latency.high_ms;
+        if (high > 0) {
+            float scale = fmax(high, dbg->throttle.latency.max_ms);
+            float h = ImGui::GetFrameHeight() * 0.25f;
+
+            ImGui::Text("Queue/Pacing:");
+            ImVec2 pos = ImGui::GetCursorScreenPos();
+            float w = ImGui::GetContentRegionAvail().x;
+            float low_x = pos.x + w * (dbg->throttle.latency.low_ms / scale);
+            float high_x = pos.x + w * (high / scale);
+            float min_x = pos.x + w * (dbg->throttle.latency.min_ms / scale);
+            float avg_x = pos.x + w * (dbg->throttle.latency.avg_ms / scale);
+            float max_x = pos.x + w * (dbg->throttle.latency.max_ms / scale);
+            const ImU32 col_bg   = IM_COL32(40, 40, 40, 255);
+            const ImU32 col_band = IM_COL32(60, 120, 60, 255);
+            const ImU32 col_avg  = IM_COL32(100, 220, 100, 255);
+            const ImU32 col_low  = IM_COL32(255, 255, 0, 180);
+            const ImU32 col_high = IM_COL32(255, 80, 80, 180);
+
+            ImDrawList *dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(pos, ImVec2(pos.x + w, pos.y + h), col_bg);
+            dl->AddRectFilled(ImVec2(min_x, pos.y), ImVec2(max_x, pos.y + h),
+                              col_band);
+            dl->AddLine(ImVec2(low_x, pos.y), ImVec2(low_x, pos.y + h),
+                        col_low, 1.0f);
+            dl->AddLine(ImVec2(avg_x, pos.y), ImVec2(avg_x, pos.y + h),
+                        col_avg, 2.0f);
+            dl->AddLine(ImVec2(high_x, pos.y), ImVec2(high_x, pos.y + h),
+                        col_high, 1.0f);
+            ImGui::Dummy(ImVec2(w, h));
+
+            pos.y += h * 1.25;
+
+            const ImU32 col_speedup = col_low;
+            const ImU32 col_ok      = col_band;
+            const ImU32 col_backoff = col_high;
+            float sp = dbg->throttle.pacing.speedup;
+            float ok = dbg->throttle.pacing.ok;
+            float bo = dbg->throttle.pacing.backoff;
+            float sp_x = pos.x + w * sp;
+            float ok_x = sp_x + w * ok;
+            dl->AddRectFilled(pos, ImVec2(pos.x + w, pos.y + h), col_bg);
+            if (sp > 0) {
+                dl->AddRectFilled(pos, ImVec2(sp_x, pos.y + h), col_speedup);
+            }
+            if (ok > 0) {
+                dl->AddRectFilled(ImVec2(sp_x, pos.y), ImVec2(ok_x, pos.y + h),
+                                  col_ok);
+            }
+            if (bo > 0) {
+                dl->AddRectFilled(ImVec2(ok_x, pos.y), ImVec2(pos.x + w, pos.y + h),
+                                  col_backoff);
+            }
+            ImGui::Dummy(ImVec2(w, h));
+        }
+        ImGui::TreePop();
+    }
     ImGui::Text("VP:          %4d us", dbg->vp.total_worker_time_us);
     if (ImGui::TreeNode("VP Workers")) {
         ImGui::Text(" W: #  us");

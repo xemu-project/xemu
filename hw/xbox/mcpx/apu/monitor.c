@@ -42,7 +42,22 @@ void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
         return;
     }
 
-    SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(d->monitor.stream));
+    SDL_AudioDeviceID dev = SDL_GetAudioStreamDevice(d->monitor.stream);
+
+    SDL_AudioSpec dev_spec;
+    int dev_buf_frames = 0;
+    int dev_drain_bytes = 0;
+    if (SDL_GetAudioDeviceFormat(dev, &dev_spec, &dev_buf_frames)) {
+        dev_drain_bytes = dev_buf_frames * spec.channels *
+                          SDL_AUDIO_BYTESIZE(spec.format) *
+                          spec.freq / dev_spec.freq;
+    }
+    int frame_bytes = sizeof(d->monitor.frame_buf);
+    int drain = MAX(dev_drain_bytes, frame_bytes);
+    d->monitor.queued_bytes_low = drain;
+    d->monitor.queued_bytes_high = 3 * drain;
+
+    SDL_ResumeAudioDevice(dev);
 }
 
 void mcpx_apu_monitor_finalize(MCPXAPUState *d)

@@ -102,35 +102,102 @@ static const MemoryRegionOps mcpx_apu_mmio_ops = {
     .write = mcpx_apu_write,
 };
 
+static void throttle_update_debug(MCPXAPUState *d, int64_t now_us)
+{
+    if (d->throttle.deviation.last_us > 0) {
+        int64_t dev = (now_us - d->throttle.deviation.last_us) - EP_FRAME_US;
+        if (d->throttle.deviation.count == 0) {
+            d->throttle.deviation.min_us = d->throttle.deviation.max_us = dev;
+        } else {
+            d->throttle.deviation.min_us = MIN(dev, d->throttle.deviation.min_us);
+            d->throttle.deviation.max_us = MAX(dev, d->throttle.deviation.max_us);
+        }
+        d->throttle.deviation.sum_us += dev;
+        d->throttle.deviation.count++;
+    }
+    d->throttle.deviation.last_us = now_us;
+}
+
+static void throttle_publish_debug(MCPXAPUState *d)
+{
+    int pacing_sum = d->throttle.pacing.backoff + d->throttle.pacing.ok +
+                     d->throttle.pacing.speedup;
+    if (d->throttle.deviation.count == 0 || pacing_sum == 0) {
+        return;
+    }
+    g_dbg.throttle.pacing.backoff = (float)d->throttle.pacing.backoff / pacing_sum;
+    g_dbg.throttle.pacing.ok = (float)d->throttle.pacing.ok / pacing_sum;
+    g_dbg.throttle.pacing.speedup = (float)d->throttle.pacing.speedup / pacing_sum;
+    g_dbg.throttle.deviation.min_us = d->throttle.deviation.min_us;
+    g_dbg.throttle.deviation.avg_us = d->throttle.deviation.sum_us / d->throttle.deviation.count;
+    g_dbg.throttle.deviation.max_us = d->throttle.deviation.max_us;
+    if (d->throttle.queued_bytes_count > 0) {
+        g_dbg.throttle.latency.min_ms = d->throttle.queued_bytes_min / (float)MONITOR_BYTES_PER_MS;
+        g_dbg.throttle.latency.avg_ms = d->throttle.queued_bytes_sum /
+            (d->throttle.queued_bytes_count * (float)MONITOR_BYTES_PER_MS);
+        g_dbg.throttle.latency.max_ms = d->throttle.queued_bytes_max / (float)MONITOR_BYTES_PER_MS;
+        g_dbg.throttle.latency.low_ms = d->monitor.queued_bytes_low / (float)MONITOR_BYTES_PER_MS;
+        g_dbg.throttle.latency.high_ms = d->monitor.queued_bytes_high / (float)MONITOR_BYTES_PER_MS;
+    }
+    d->throttle.pacing.backoff = d->throttle.pacing.ok = d->throttle.pacing.speedup = 0;
+    d->throttle.deviation.min_us = d->throttle.deviation.max_us = d->throttle.deviation.sum_us = 0;
+    d->throttle.deviation.count = 0;
+    d->throttle.queued_bytes_min = d->throttle.queued_bytes_max = 0;
+    d->throttle.queued_bytes_sum = 0;
+    d->throttle.queued_bytes_count = 0;
+}
+
+static void throttle_record_queue(MCPXAPUState *d, int queued_bytes)
+{
+    if (d->throttle.queued_bytes_count == 0) {
+        d->throttle.queued_bytes_min = d->throttle.queued_bytes_max = queued_bytes;
+    } else {
+        d->throttle.queued_bytes_min = MIN(queued_bytes, d->throttle.queued_bytes_min);
+        d->throttle.queued_bytes_max = MAX(queued_bytes, d->throttle.queued_bytes_max);
+    }
+    d->throttle.queued_bytes_sum += queued_bytes;
+    d->throttle.queued_bytes_count++;
+    if (queued_bytes >= d->monitor.queued_bytes_high) {
+        d->throttle.pacing.backoff++;
+    } else if (queued_bytes <= d->monitor.queued_bytes_low) {
+        d->throttle.pacing.speedup++;
+    } else {
+        d->throttle.pacing.ok++;
+    }
+}
+
 static void throttle(MCPXAPUState *d)
 {
     if (d->ep_frame_div % 8) {
         return;
     }
 
-    const int64_t ep_frame_us = 5333; /* 256/48000 sec (~5.33ms) */
     int64_t start_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-    int queued = -1;
+    throttle_update_debug(d, start_us);
+    int queued_bytes = -1;
 
     if (d->monitor.stream) {
-        while (!d->pause_requested) {
-            const int queued_max = 6 * sizeof(d->monitor.frame_buf);
-            queued = SDL_GetAudioStreamQueued(d->monitor.stream);
-            if (queued >= queued_max) {
-                qemu_cond_timedwait(&d->cond, &d->lock, ep_frame_us / 1000);
-            } else {
+        queued_bytes = SDL_GetAudioStreamQueued(d->monitor.stream);
+        if (queued_bytes >= 0) {
+            throttle_record_queue(d, queued_bytes);
+        }
+        while (!d->pause_requested && queued_bytes >= d->monitor.queued_bytes_high) {
+            qemu_cond_timedwait(&d->cond, &d->lock, EP_FRAME_US / 1000);
+            if (d->pause_requested) {
                 break;
             }
+            queued_bytes = SDL_GetAudioStreamQueued(d->monitor.stream);
         }
     }
 
-    if (queued < 0) {
+    if (queued_bytes < 0 || queued_bytes > d->monitor.queued_bytes_low) {
+        int64_t now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
         if (d->next_frame_time_us == 0 ||
-            start_us - d->next_frame_time_us > ep_frame_us) {
-            d->next_frame_time_us = start_us;
+            now_us - d->next_frame_time_us > EP_FRAME_US) {
+            d->next_frame_time_us = now_us;
         }
         while (!d->pause_requested) {
-            int64_t now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+            now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
             int64_t remaining_ms = (d->next_frame_time_us - now_us) / 1000;
             if (remaining_ms > 0) {
                 qemu_cond_timedwait(&d->cond, &d->lock, remaining_ms);
@@ -138,7 +205,14 @@ static void throttle(MCPXAPUState *d)
                 break;
             }
         }
-        d->next_frame_time_us += ep_frame_us;
+        d->next_frame_time_us += EP_FRAME_US;
+
+        /* Avoid drift toward watermark */
+        if (queued_bytes >= 0) {
+            int mid = (d->monitor.queued_bytes_low +
+                       d->monitor.queued_bytes_high) / 2;
+            d->next_frame_time_us += (queued_bytes > mid) - (queued_bytes < mid);
+        }
     }
 
     d->sleep_acc_us += qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_us;
@@ -162,6 +236,7 @@ static void se_frame(MCPXAPUState *d)
          */
         g_dbg.utilization = 1.0 - d->sleep_acc_us / (elapsed_ms * 1000.0);
         g_dbg.frames_processed = (int)(d->frame_count * 1000.0 / elapsed_ms + 0.5);
+        throttle_publish_debug(d);
 
         d->frame_count_time_ms = now_ms;
         d->frame_count = 0;

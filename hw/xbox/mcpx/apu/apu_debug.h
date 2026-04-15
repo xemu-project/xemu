@@ -76,6 +76,18 @@ struct McpxApuDebug
     struct McpxApuDebugDsp gp, ep;
     int frames_processed;
     float utilization;
+    struct {
+        struct {
+            float backoff, ok, speedup;
+        } pacing;
+        struct {
+            int64_t min_us, avg_us, max_us;
+        } deviation;
+        struct {
+            float min_ms, avg_ms, max_ms;
+            float low_ms, high_ms;
+        } latency;
+    } throttle;
     bool gp_realtime, ep_realtime;
 };
 
