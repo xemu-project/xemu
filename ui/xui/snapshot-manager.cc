@@ -122,18 +122,18 @@ void SnapshotManager::DrawSnapshotDiscLoadDialog()
         return;
     }
 
-    ImGui::Text("The DVD drive disc image mounted when the snapshot was created does not appear to be loaded:");
+    ImGui::Text("%s", _("The DVD drive disc image mounted when the snapshot was created does not appear to be loaded:"));
     ImGui::Spacing();
     ImGui::Indent();
-    ImGui::Text("Current Image: %s", m_current_disc_path.length() ? m_current_disc_path.c_str() : "(None)");
-    ImGui::Text("Expected Image: %s", m_target_disc_path.length() ? m_target_disc_path.c_str() : "(None)");
+    ImGui::Text(_("Current Image: %s"), m_current_disc_path.length() ? m_current_disc_path.c_str() : _("(None)"));
+    ImGui::Text(_("Expected Image: %s"), m_target_disc_path.length() ? m_target_disc_path.c_str() : _("(None)"));
     ImGui::Unindent();
     ImGui::Spacing();
-    ImGui::Text("Would you like to load it now?");
+    ImGui::Text("%s", _("Would you like to load it now?"));
     
     ImGui::Dummy(ImVec2(0,16));
 
-    if (ImGui::Button("Yes", ImVec2(120, 0))) {
+    if (ImGui::Button(_("Yes"), ImVec2(120, 0))) {
         xemu_eject_disc(NULL);
         
         Error *err = NULL;
@@ -149,13 +149,13 @@ void SnapshotManager::DrawSnapshotDiscLoadDialog()
     }
     
     ImGui::SameLine();
-    if (ImGui::Button("No", ImVec2(120, 0))) {
+    if (ImGui::Button(_("No"), ImVec2(120, 0))) {
         LoadSnapshot(m_pending_load_name.c_str());
         ImGui::CloseCurrentPopup();
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+    if (ImGui::Button(_("Cancel"), ImVec2(120, 0))) {
         ImGui::CloseCurrentPopup();
     }
 

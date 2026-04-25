@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+#include "i18n.hh"
 #include "widgets.hh"
 #include "misc.hh"
 #include "font-manager.hh"
@@ -47,7 +48,7 @@ void SectionTitle(const char *title)
 {
     ImGui::Spacing();
     ImGui::PushFont(g_font_mgr.m_menu_font_medium);
-    ImGui::Text("%s", title);
+    ImGui::Text("%s", _(title));
     ImGui::PopFont();
     Separator();
 }
@@ -82,14 +83,14 @@ void WidgetTitleDescription(const char *title, const char *description,
 
     ImGui::PushFont(g_font_mgr.m_menu_font_medium);
     float title_height = ImGui::GetTextLineHeight();
-    draw_list->AddText(text_pos, ImGui::GetColorU32(ImGuiCol_Text), title);
+    draw_list->AddText(text_pos, ImGui::GetColorU32(ImGuiCol_Text), _(title));
     ImGui::PopFont();
 
     if (description) {
         text_pos.y += title_height + style.ItemInnerSpacing.y;
 
         ImGui::PushFont(g_font_mgr.m_default_font);
-        draw_list->AddText(text_pos, ImGui::GetColorU32(ImVec4(0.94f, 0.94f, 0.94f, 0.70f)), description);
+        draw_list->AddText(text_pos, ImGui::GetColorU32(ImVec4(0.94f, 0.94f, 0.94f, 0.70f)), _(description));
         ImGui::PopFont();
     }
 }
@@ -306,7 +307,7 @@ void FilePicker(const char *str_id, const char *current_path,
     ImGuiStyle &style = ImGui::GetStyle();
     ImVec2 p = ImGui::GetCursorScreenPos();
     ImVec2 cursor = ImGui::GetCursorPos();
-    const char *desc = (current_path && strlen(current_path)) ? current_path : "(None Selected)";
+    const char *desc = (current_path && strlen(current_path)) ? current_path : _("(None Selected)");
     ImVec2 bb(ImGui::GetColumnWidth(),
               GetWidgetTitleDescriptionHeight(str_id, desc));
     ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));

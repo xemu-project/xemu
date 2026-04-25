@@ -56,21 +56,21 @@ void MainMenuGeneralView::Draw()
 #if defined(_WIN32)
     SectionTitle("Updates");
     Toggle("Check for updates", &g_config.general.updates.check,
-           "Check for updates whenever xemu is opened");
+           _("Check for updates whenever xemu is opened"));
 #endif
 
 #if defined(__x86_64__)
     SectionTitle("Performance");
     Toggle("Hard FPU emulation", &g_config.perf.hard_fpu,
-           "Use hardware-accelerated floating point emulation (requires restart)");
+           _("Use hardware-accelerated floating point emulation (requires restart)"));
 #endif
 
     Toggle("Cache shaders to disk", &g_config.perf.cache_shaders,
-           "Reduce stutter in games by caching previously generated shaders");
+           _("Reduce stutter in games by caching previously generated shaders"));
 
     SectionTitle("Miscellaneous");
     Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
-           "Skip the full Xbox boot animation sequence");
+           _("Skip the full Xbox boot animation sequence"));
     FilePicker("Screenshot output directory", g_config.general.screenshot_dir,
                nullptr, 0, true, [](const char *path) {
                    xemu_settings_set_string(&g_config.general.screenshot_dir, path);
@@ -204,7 +204,7 @@ void MainMenuInputView::Draw()
     ImGui::Columns(2, "", false);
     ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.25);
 
-    ImGui::Text("Emulated Device");
+    ImGui::Text("%s", _("Emulated Device"));
     ImGui::SameLine(0, 0);
     ImGui::NextColumn();
 
@@ -243,7 +243,7 @@ void MainMenuInputView::Draw()
     // Render input device combo
     //
 
-    ImGui::Text("Input Device");
+    ImGui::Text("%s", _("Input Device"));
     ImGui::SameLine(0, 0);
     ImGui::NextColumn();
 
@@ -480,7 +480,7 @@ void MainMenuInputView::Draw()
 
                 // Button to generate a new XMU
                 ImGui::PushID(i);
-                if (ImGui::Button("New Image", ImVec2(250, 0))) {
+                if (ImGui::Button(_("New Image"), ImVec2(250, 0))) {
                     int port = active;
                     int slot = i;
                     ShowSaveFileDialog(img_file_filters, 2, nullptr, [port, slot](const char *new_path) {
@@ -558,7 +558,7 @@ void MainMenuInputView::Draw()
                         .invert_axis_right_y);
         }
 
-        if (ImGui::Button("Reset to Default")) {
+        if (ImGui::Button(_("Reset to Default"))) {
             xemu_input_reset_input_mapping(bound_state);
         }
 
@@ -766,7 +766,7 @@ void MainMenuDisplayView::Draw()
 
     SectionTitle("Window");
     bool fs = xemu_is_fullscreen();
-    if (Toggle("Fullscreen", &fs, "Enable fullscreen now")) {
+    if (Toggle("Fullscreen", &fs, _("Enable fullscreen now"))) {
         xemu_toggle_fullscreen();
     }
     Toggle("Fullscreen on startup",
@@ -983,7 +983,7 @@ void MainMenuNetworkView::DrawPcapOptions(bool appearing)
         ImGui::Text("%s", msg);
         ImGui::Dummy(ImVec2(0,10*g_viewport_mgr.m_scale));
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_viewport_mgr.m_scale)/2);
-        if (ImGui::Button("Install npcap", ImVec2(120*g_viewport_mgr.m_scale, 0))) {
+        if (ImGui::Button(_("Install Npcap"), ImVec2(120*g_viewport_mgr.m_scale, 0))) {
             SDL_OpenURL("https://nmap.org/npcap/");
         }
 #endif
@@ -1064,7 +1064,7 @@ void MainMenuNetworkView::DrawNatOptions(bool appearing)
 
             ImGui::TableSetColumnIndex(3);
             ImGui::PushID(row);
-            if (ImGui::Button("Remove")) {
+            if (ImGui::Button(_("Remove"))) {
                 remove_net_nat_forward_ports(row);
             }
             ImGui::PopID();
@@ -1090,7 +1090,7 @@ void MainMenuNetworkView::DrawNatOptions(bool appearing)
         ImGui::Combo("###protocol", &protocol, "TCP\0UDP\0");
 
         ImGui::TableSetColumnIndex(3);
-        if (ImGui::Button("Add")) {
+        if (ImGui::Button(_("Add"))) {
             int host, guest;
             if (sscanf(buf, "%d", &host) == 1 &&
                 sscanf(buf2, "%d", &guest) == 1) {
@@ -1660,13 +1660,13 @@ void MainMenuAboutView::Draw()
 
     SectionTitle("Community");
 
-    ImGui::Text("Visit");
+    ImGui::Text("%s", _("Visit"));
     ImGui::SameLine();
     if (ImGui::SmallButton("https://xemu.app")) {
         SDL_OpenURL("https://xemu.app");
     }
     ImGui::SameLine();
-    ImGui::Text("for more information");
+    ImGui::Text("%s", _("for more information"));
 }
 
 MainMenuTabButton::MainMenuTabButton(std::string text, std::string icon)

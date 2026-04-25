@@ -78,7 +78,7 @@ void NotificationManager::Draw()
         ImGui::SetItemDefaultFocus();
         ImGuiStyle &style = ImGui::GetStyle();
         ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+2*style.FramePadding.x));
-        if (ImGui::Button("Ok", ImVec2(120, 0))) {
+        if (ImGui::Button(_("OK"), ImVec2(120, 0))) {
             ImGui::CloseCurrentPopup();
             free((void*)m_error_queue[0]);
             m_error_queue.pop_front();
@@ -126,7 +126,7 @@ void NotificationManager::DrawNotification(float t, const char *msg)
     ImGui::PushStyleColor(ImGuiCol_Border, color);
     ImGui::PushStyleColor(ImGuiCol_Text, color);
     ImGui::SetNextWindowBgAlpha(0.90f * fade);
-    if (ImGui::Begin("Notification", NULL,
+    if (ImGui::Begin(_("Notification"), NULL,
         ImGuiWindowFlags_Tooltip |
         ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoDecoration |
