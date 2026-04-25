@@ -31,6 +31,8 @@
 #include <string>
 #include <memory>
 
+extern "C" char *get_relocated_path(const char *dir);
+
 #include "actions.hh"
 #include "common.hh"
 #include "xemu-hud.h"
