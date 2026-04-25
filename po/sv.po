@@ -5,8 +5,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: QEMU 2.12.91\n"
-"Report-Msgid-Bugs-To: qemu-devel@nongnu.org\n"
-"POT-Creation-Date: 2026-04-25 20:02+0200\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-04-25 20:32+0200\n"
 "PO-Revision-Date: 2026-04-25 20:00+0200\n"
 "Last-Translator: Daniel Nylander <daniel@danielnylander.se>\n"
 "Language-Team: Swedish <tp-sv@listor.tp-sv.se>\n"
@@ -170,14 +170,6 @@ msgstr "Hoppa över hela Xbox-startanimationen"
 msgid "Skip startup animation"
 msgstr "Hoppa över startanimation"
 
-#: ui/xui/main-menu.cc:74
-msgid "Screenshot output directory"
-msgstr "Utdatamapp för skärmbilder"
-
-#: ui/xui/main-menu.cc:78
-msgid "Games directory"
-msgstr "Spelmapp"
-
 #: ui/xui/main-menu.cc:107
 msgid "Controllers"
 msgstr "Handkontroller"
@@ -197,10 +189,6 @@ msgstr "Expansionsplatser"
 #: ui/xui/main-menu.cc:483
 msgid "New Image"
 msgstr "Ny avbild"
-
-#: ui/xui/main-menu.cc:502
-msgid "Image"
-msgstr "Avbild"
 
 #: ui/xui/main-menu.cc:522
 msgid "Mapping"
@@ -254,7 +242,7 @@ msgstr "Fönster"
 msgid "Enable fullscreen now"
 msgstr "Aktivera helskärm nu"
 
-#: ui/xui/main-menu.cc:769 ui/xui/popup-menu.cc:317
+#: ui/xui/main-menu.cc:769
 msgid "Fullscreen"
 msgstr "Helskärm"
 
@@ -342,22 +330,6 @@ msgstr "Systemkonfiguration"
 msgid "Files"
 msgstr "Filer"
 
-#: ui/xui/main-menu.cc:1552
-msgid "MCPX Boot ROM"
-msgstr "MCPX-start-ROM"
-
-#: ui/xui/main-menu.cc:1558
-msgid "Flash ROM (BIOS)"
-msgstr "Flash-ROM (BIOS)"
-
-#: ui/xui/main-menu.cc:1564
-msgid "Hard Disk"
-msgstr "Hårddisk"
-
-#: ui/xui/main-menu.cc:1569
-msgid "EEPROM"
-msgstr "EEPROM"
-
 #: ui/xui/main-menu.cc:1637
 msgid "Build Information"
 msgstr "Bygginformation"
@@ -393,66 +365,6 @@ msgstr "OK"
 #: ui/xui/notifications.cc:129
 msgid "Notification"
 msgstr "Avisering"
-
-#: ui/xui/popup-menu.cc:320
-msgid "Display Mode"
-msgstr "Visningsläge"
-
-#: ui/xui/popup-menu.cc:324
-msgid "Aspect Ratio"
-msgstr "Bildförhållande"
-
-#: ui/xui/popup-menu.cc:328
-msgid "Snapshots..."
-msgstr "Ögonblicksbilder…"
-
-#: ui/xui/popup-menu.cc:333
-msgid "All settings..."
-msgstr "Alla inställningar…"
-
-#: ui/xui/popup-menu.cc:372
-msgid "No games found"
-msgstr "Inga spel hittades"
-
-#: ui/xui/popup-menu.cc:425
-msgid "Pause"
-msgstr "Pausa"
-
-#: ui/xui/popup-menu.cc:430
-msgid "Resume"
-msgstr "Fortsätt"
-
-#: ui/xui/popup-menu.cc:435
-msgid "Screenshot"
-msgstr "Skärmbild"
-
-#: ui/xui/popup-menu.cc:439
-msgid "Save Snapshot"
-msgstr "Spara ögonblicksbild"
-
-#: ui/xui/popup-menu.cc:444
-msgid "Games"
-msgstr "Spel"
-
-#: ui/xui/popup-menu.cc:448
-msgid "Eject Disc"
-msgstr "Mata ut skiva"
-
-#: ui/xui/popup-menu.cc:452
-msgid "Load Disc..."
-msgstr "Läs in skiva…"
-
-#: ui/xui/popup-menu.cc:456 ui/xui/welcome.cc:60
-msgid "Settings"
-msgstr "Inställningar"
-
-#: ui/xui/popup-menu.cc:460 ui/xui/update.cc:123
-msgid "Restart"
-msgstr "Starta om"
-
-#: ui/xui/popup-menu.cc:464
-msgid "Exit"
-msgstr "Avsluta"
 
 #: ui/xui/snapshot-manager.cc:125
 msgid ""
@@ -506,6 +418,10 @@ msgstr "Aktuell version: %s"
 msgid "Latest version: %s"
 msgstr "Senaste version: %s"
 
+#: ui/xui/update.cc:123
+msgid "Restart"
+msgstr "Starta om"
+
 #: ui/xui/update.cc:131
 msgid "Check for Update"
 msgstr "Sök efter uppdatering"
@@ -518,6 +434,70 @@ msgstr "Första start"
 msgid "Configure machine settings to get started"
 msgstr "Konfigurera maskininställningarna för att komma igång"
 
+#: ui/xui/welcome.cc:60
+msgid "Settings"
+msgstr "Inställningar"
+
 #: ui/xui/widgets.cc:310
 msgid "(None Selected)"
 msgstr "(Inget valt)"
+
+#~ msgid "Screenshot output directory"
+#~ msgstr "Utdatamapp för skärmbilder"
+
+#~ msgid "Games directory"
+#~ msgstr "Spelmapp"
+
+#~ msgid "Image"
+#~ msgstr "Avbild"
+
+#~ msgid "MCPX Boot ROM"
+#~ msgstr "MCPX-start-ROM"
+
+#~ msgid "Flash ROM (BIOS)"
+#~ msgstr "Flash-ROM (BIOS)"
+
+#~ msgid "Hard Disk"
+#~ msgstr "Hårddisk"
+
+#~ msgid "EEPROM"
+#~ msgstr "EEPROM"
+
+#~ msgid "Display Mode"
+#~ msgstr "Visningsläge"
+
+#~ msgid "Aspect Ratio"
+#~ msgstr "Bildförhållande"
+
+#~ msgid "Snapshots..."
+#~ msgstr "Ögonblicksbilder…"
+
+#~ msgid "All settings..."
+#~ msgstr "Alla inställningar…"
+
+#~ msgid "No games found"
+#~ msgstr "Inga spel hittades"
+
+#~ msgid "Pause"
+#~ msgstr "Pausa"
+
+#~ msgid "Resume"
+#~ msgstr "Fortsätt"
+
+#~ msgid "Screenshot"
+#~ msgstr "Skärmbild"
+
+#~ msgid "Save Snapshot"
+#~ msgstr "Spara ögonblicksbild"
+
+#~ msgid "Games"
+#~ msgstr "Spel"
+
+#~ msgid "Eject Disc"
+#~ msgstr "Mata ut skiva"
+
+#~ msgid "Load Disc..."
+#~ msgstr "Läs in skiva…"
+
+#~ msgid "Exit"
+#~ msgstr "Avsluta"

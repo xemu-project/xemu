@@ -56,21 +56,21 @@ void MainMenuGeneralView::Draw()
 #if defined(_WIN32)
     SectionTitle("Updates");
     Toggle("Check for updates", &g_config.general.updates.check,
-           _("Check for updates whenever xemu is opened"));
+           N_("Check for updates whenever xemu is opened"));
 #endif
 
 #if defined(__x86_64__)
     SectionTitle("Performance");
     Toggle("Hard FPU emulation", &g_config.perf.hard_fpu,
-           _("Use hardware-accelerated floating point emulation (requires restart)"));
+           N_("Use hardware-accelerated floating point emulation (requires restart)"));
 #endif
 
     Toggle("Cache shaders to disk", &g_config.perf.cache_shaders,
-           _("Reduce stutter in games by caching previously generated shaders"));
+           N_("Reduce stutter in games by caching previously generated shaders"));
 
     SectionTitle("Miscellaneous");
     Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
-           _("Skip the full Xbox boot animation sequence"));
+           N_("Skip the full Xbox boot animation sequence"));
     FilePicker("Screenshot output directory", g_config.general.screenshot_dir,
                nullptr, 0, true, [](const char *path) {
                    xemu_settings_set_string(&g_config.general.screenshot_dir, path);
@@ -766,7 +766,7 @@ void MainMenuDisplayView::Draw()
 
     SectionTitle("Window");
     bool fs = xemu_is_fullscreen();
-    if (Toggle("Fullscreen", &fs, _("Enable fullscreen now"))) {
+    if (Toggle("Fullscreen", &fs, N_("Enable fullscreen now"))) {
         xemu_toggle_fullscreen();
     }
     Toggle("Fullscreen on startup",
