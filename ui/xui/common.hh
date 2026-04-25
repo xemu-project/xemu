@@ -35,6 +35,7 @@
 
 extern "C" {
 // Include necessary QEMU headers
+#include "qemu/cutils.h"
 #include "qapi/error.h"
 #include "system/runstate.h"
 #include "hw/xbox/mcpx/apu/apu_debug.h"
@@ -48,6 +49,8 @@ extern "C" {
 #undef atomic_fetch_or
 #undef atomic_fetch_sub
 }
+
+#include "i18n.hh"
 
 extern bool g_screenshot_pending;
 extern float g_main_menu_height;

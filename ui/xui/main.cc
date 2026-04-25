@@ -128,8 +128,19 @@ static void InitializeStyle()
     g_base_style = s;
 }
 
+static void xemu_i18n_init(void)
+{
+    setlocale(LC_ALL, "");
+    char *dir = get_relocated_path(CONFIG_QEMU_LOCALEDIR);
+    bindtextdomain(GETTEXT_PACKAGE, dir);
+    bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8");
+    textdomain(GETTEXT_PACKAGE);
+    g_free(dir);
+}
+
 void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
 {
+    xemu_i18n_init();
     xemu_monitor_init();
     g_vsync = g_config.display.window.vsync;
 
