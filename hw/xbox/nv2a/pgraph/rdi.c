@@ -46,7 +46,7 @@ void pgraph_rdi_write(PGRAPHState *pg, unsigned int select,
     switch(select) {
     case RDI_INDEX_VTX_CONSTANTS0:
     case RDI_INDEX_VTX_CONSTANTS1:
-        assert(!"Untested select: RDI_INDEX_VTX_CONSTANTS1"); /* Untested */
+        assert(!"Untested vertex constants select"); /* Untested */
         assert((address / 4) < NV2A_VERTEXSHADER_CONSTANTS);
         pg->vsh_constants_dirty[address / 4] |=
             (val != pg->vsh_constants[address / 4][3 - address % 4]);
