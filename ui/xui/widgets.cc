@@ -414,13 +414,15 @@ bool ChevronCombo(const char *label, int *current_item,
 
     // Call the getter to obtain the preview string which is a parameter to BeginCombo()
     const char* preview_value = NULL;
-    if (*current_item >= 0 && *current_item < items_count)
+    if (*current_item >= 0 && *current_item < items_count) {
         items_getter(data, *current_item, &preview_value);
+    }
+    const char *translated_preview_value = preview_value ? _(preview_value) : NULL;
 
     ImGui::SetNextItemWidth(combo_width);
     ImGui::PushFont(g_font_mgr.m_menu_font_small);
     ImGui::PushID(label);
-    if (ImGui::BeginCombo("###chevron_combo", preview_value, ImGuiComboFlags_NoArrowButton)) {
+    if (ImGui::BeginCombo("###chevron_combo", translated_preview_value, ImGuiComboFlags_NoArrowButton)) {
         // Display items
         // FIXME-OPT: Use clipper (but we need to disable it on the appearing frame to make sure our call to SetItemDefaultFocus() is processed)
         for (int i = 0; i < items_count; i++)
@@ -430,7 +432,7 @@ bool ChevronCombo(const char *label, int *current_item,
             const char* item_text;
             if (!items_getter(data, i, &item_text))
                 item_text = "*Unknown item*";
-            if (ImGui::Selectable(item_text, item_selected))
+            if (ImGui::Selectable(_(item_text), item_selected))
             {
                 value_changed = true;
                 *current_item = i;

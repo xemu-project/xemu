@@ -442,6 +442,126 @@ msgstr "Inställningar"
 msgid "(None Selected)"
 msgstr "(Inget valt)"
 
+#: ui/xui/main-menu.cc:0
+msgid "General"
+msgstr "Allmänt"
+
+#: ui/xui/main-menu.cc:0
+msgid "Input"
+msgstr "Inmatning"
+
+#: ui/xui/main-menu.cc:0
+msgid "Display"
+msgstr "Bild"
+
+#: ui/xui/main-menu.cc:0
+msgid "Audio"
+msgstr "Ljud"
+
+#: ui/xui/main-menu.cc:0
+msgid "Network"
+msgstr "Nätverk"
+
+#: ui/xui/main-menu.cc:0
+msgid "System"
+msgstr "System"
+
+#: ui/xui/main-menu.cc:0
+msgid "About"
+msgstr "Om"
+
+#: ui/xui/main-menu.cc:0
+msgid "System Memory"
+msgstr "Systemminne"
+
+#: ui/xui/main-menu.cc:0
+msgid "64 MiB (Default)"
+msgstr "64 MiB (standard)"
+
+#: ui/xui/main-menu.cc:0
+msgid "128 MiB"
+msgstr "128 MiB"
+
+#: ui/xui/main-menu.cc:0
+msgid "Increase to 128 MiB for debug or homebrew applications"
+msgstr "Öka till 128 MiB för felsökning eller egenutvecklade program"
+
+#: ui/xui/main-menu.cc:0
+msgid "AV Pack"
+msgstr "AV-paket"
+
+#: ui/xui/main-menu.cc:0
+msgid "SCART"
+msgstr "SCART"
+
+#: ui/xui/main-menu.cc:0
+msgid "HDTV (Default)"
+msgstr "HDTV (standard)"
+
+#: ui/xui/main-menu.cc:0
+msgid "VGA"
+msgstr "VGA"
+
+#: ui/xui/main-menu.cc:0
+msgid "RFU"
+msgstr "RFU"
+
+#: ui/xui/main-menu.cc:0
+msgid "S-Video"
+msgstr "S-video"
+
+#: ui/xui/main-menu.cc:0
+msgid "Composite"
+msgstr "Komposit"
+
+#: ui/xui/main-menu.cc:0
+msgid "None"
+msgstr "Inget"
+
+#: ui/xui/main-menu.cc:0
+msgid "Select the attached AV pack"
+msgstr "Välj anslutet AV-paket"
+
+#: ui/xui/main-menu.cc:0
+msgid "MCPX Boot ROM"
+msgstr "MCPX-start-ROM"
+
+#: ui/xui/main-menu.cc:0
+msgid "Flash ROM (BIOS)"
+msgstr "Flash-ROM (BIOS)"
+
+#: ui/xui/main-menu.cc:0
+msgid "Hard Disk"
+msgstr "Hårddisk"
+
+#: ui/xui/main-menu.cc:0
+msgid "EEPROM"
+msgstr "EEPROM"
+
+#: ui/xui/main-menu.cc:0
+msgid "Application restart required to apply settings"
+msgstr "Programmet måste startas om för att tillämpa inställningarna"
+
+#: ui/xui/main-menu.cc:0
+msgid "Setting AV Pack to NONE disables video output."
+msgstr "Om AV-paketet anges till Inget inaktiveras videoutmatningen."
+
+#: ui/xui/main-menu.cc:0
+msgid "Xbox Controller"
+msgstr "Xbox-handkontroll"
+
+#: ui/xui/main-menu.cc:0
+msgid "Xbox Controller S"
+msgstr "Xbox-handkontroll S"
+
+#: ui/xui/main-menu.cc:0
+msgid "Not Connected"
+msgstr "Inte ansluten"
+
+#: ui/xui/main-menu.cc:0
+msgid "Please select an available input device"
+msgstr "Välj en tillgänglig inmatningsenhet"
+
 #~ msgid "Screenshot output directory"
 #~ msgstr "Utdatamapp för skärmbilder"
 
@@ -450,18 +570,6 @@ msgstr "(Inget valt)"
 
 #~ msgid "Image"
 #~ msgstr "Avbild"
-
-#~ msgid "MCPX Boot ROM"
-#~ msgstr "MCPX-start-ROM"
-
-#~ msgid "Flash ROM (BIOS)"
-#~ msgstr "Flash-ROM (BIOS)"
-
-#~ msgid "Hard Disk"
-#~ msgstr "Hårddisk"
-
-#~ msgid "EEPROM"
-#~ msgstr "EEPROM"
 
 #~ msgid "Display Mode"
 #~ msgstr "Visningsläge"
