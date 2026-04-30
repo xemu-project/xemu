@@ -35,6 +35,8 @@
 #include "thirdparty/renderdoc_app.h"
 #endif
 
+#include <SDL3/SDL.h>
+
 #define CHECK_GL_ERROR() do { \
   GLenum error = glGetError(); \
   if (error != GL_NO_ERROR) {  \
@@ -43,14 +45,15 @@
   } \
 } while(0)
 
-static bool has_GL_GREMEDY_frame_terminator = false;
-static bool has_GL_KHR_debug = false;
+static PFNGLPUSHDEBUGGROUPPROC _glPushDebugGroup = NULL;
+static PFNGLPOPDEBUGGROUPPROC _glPopDebugGroup = NULL;
+static PFNGLFRAMETERMINATORGREMEDYPROC _glFrameTerminatorGREMEDY = NULL;
+static PFNGLDEBUGMESSAGEINSERTPROC _glDebugMessageInsert = NULL;
+static PFNGLOBJECTLABELPROC _glObjectLabel = NULL;
 
 void gl_debug_initialize(void)
 {
-    has_GL_KHR_debug = glo_check_extension("GL_KHR_debug");
-    has_GL_GREMEDY_frame_terminator = glo_check_extension("GL_GREMEDY_frame_terminator");
-
+    bool has_GL_KHR_debug = glo_check_extension("GL_KHR_debug");
     if (has_GL_KHR_debug) {
 #if defined(__APPLE__)
         /* On macOS, calling glEnable(GL_DEBUG_OUTPUT) will result in error
@@ -63,10 +66,41 @@ void gl_debug_initialize(void)
          * debug functions which we depend on will still work as expected,
          * so skip the call for this platform.
          */
+        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+
+        /* epoxy's stub function sometimes loses extension context so
+         * functions are manually resolved immediately
+         */
+        _glPushDebugGroup =
+            (PFNGLPUSHDEBUGGROUPPROC)SDL_GL_GetProcAddress("glPushDebugGroup");
+        _glPopDebugGroup =
+            (PFNGLPOPDEBUGGROUPPROC)SDL_GL_GetProcAddress("glPopDebugGroup");
+        _glDebugMessageInsert =
+            (PFNGLDEBUGMESSAGEINSERTPROC)SDL_GL_GetProcAddress(
+                "glDebugMessageInsert");
+        _glObjectLabel =
+            (PFNGLOBJECTLABELPROC)SDL_GL_GetProcAddress("glObjectLabel");
 #else
-       glEnable(GL_DEBUG_OUTPUT);
-       assert(glGetError() == GL_NO_ERROR);
-#endif
+        _glPushDebugGroup = glPushDebugGroup;
+        _glPopDebugGroup = glPopDebugGroup;
+        _glDebugMessageInsert = glDebugMessageInsert;
+        _glObjectLabel = glObjectLabel;
+        glEnable(GL_DEBUG_OUTPUT);
+       CHECK_GL_ERROR();
+#endif // defined(__APPLE__)
+
+    }
+
+    bool has_GL_GREMEDY_frame_terminator =
+        glo_check_extension("GL_GREMEDY_frame_terminator");
+    if (has_GL_GREMEDY_frame_terminator) {
+#if defined(__APPLE__)
+        _glFrameTerminatorGREMEDY =
+            (PFNGLFRAMETERMINATORGREMEDYPROC)SDL_GL_GetProcAddress(
+                "glFrameTerminatorGREMEDY");
+#else
+        _glFrameTerminatorGREMEDY = glFrameTerminatorGREMEDY;
+#endif // defined(__APPLE__)
     }
 
 #ifdef CONFIG_RENDERDOC
@@ -76,7 +110,7 @@ void gl_debug_initialize(void)
 
 void gl_debug_message(bool cc, const char *fmt, ...)
 {
-    if (!has_GL_KHR_debug) {
+    if (!_glDebugMessageInsert) {
         return;
     }
 
@@ -88,8 +122,8 @@ void gl_debug_message(bool cc, const char *fmt, ...)
     assert(n <= sizeof(buffer));
     va_end(ap);
 
-    glDebugMessageInsert(GL_DEBUG_SOURCE_APPLICATION, GL_DEBUG_TYPE_MARKER,
-                         0, GL_DEBUG_SEVERITY_NOTIFICATION, n, buffer);
+    _glDebugMessageInsert(GL_DEBUG_SOURCE_APPLICATION, GL_DEBUG_TYPE_MARKER, 0,
+                          GL_DEBUG_SEVERITY_NOTIFICATION, n, buffer);
     if (cc) {
         fwrite(buffer, sizeof(char), n, stdout);
         fputc('\n', stdout);
@@ -99,7 +133,7 @@ void gl_debug_message(bool cc, const char *fmt, ...)
 void gl_debug_group_begin(const char *fmt, ...)
 {
     /* Debug group begin */
-    if (has_GL_KHR_debug) {
+    if (_glPushDebugGroup) {
         size_t n;
         char buffer[1024];
         va_list ap;
@@ -108,27 +142,27 @@ void gl_debug_group_begin(const char *fmt, ...)
         assert(n <= sizeof(buffer));
         va_end(ap);
 
-        glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, n, buffer);
+        _glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, n, buffer);
     }
 
     /* Check for errors before starting real commands in group */
-    assert(glGetError() == GL_NO_ERROR);
+    CHECK_GL_ERROR();
 }
 
 void gl_debug_group_end(void)
 {
     /* Check for errors when leaving group */
-    assert(glGetError() == GL_NO_ERROR);
+    CHECK_GL_ERROR();
 
     /* Debug group end */
-    if (has_GL_KHR_debug) {
-        glPopDebugGroup();
+    if (_glPopDebugGroup) {
+        _glPopDebugGroup();
     }
 }
 
 void gl_debug_label(GLenum target, GLuint name, const char *fmt, ...)
 {
-    if (!has_GL_KHR_debug) {
+    if (!_glObjectLabel) {
         return;
     }
 
@@ -140,10 +174,9 @@ void gl_debug_label(GLenum target, GLuint name, const char *fmt, ...)
     assert(n <= sizeof(buffer));
     va_end(ap);
 
-    glObjectLabel(target, name, n, buffer);
+    _glObjectLabel(target, name, n, buffer);
 
-    GLenum err = glGetError();
-    assert(err == GL_NO_ERROR);
+    CHECK_GL_ERROR();
 }
 
 void gl_debug_frame_terminator(void)
@@ -188,8 +221,8 @@ void gl_debug_frame_terminator(void)
         }
     }
 #endif
-    if (has_GL_GREMEDY_frame_terminator) {
-        glFrameTerminatorGREMEDY();
+    if (_glFrameTerminatorGREMEDY) {
+        _glFrameTerminatorGREMEDY();
         CHECK_GL_ERROR();
     }
 }
