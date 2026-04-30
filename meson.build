@@ -279,6 +279,13 @@ enable_modules = get_option('modules') \
            error_message: 'Modules are incompatible with static linking') \
   .allowed()
 
+# Check version if FreeBSD host
+freebsd_version_int = 0
+if host_os == 'freebsd'
+  freebsd_version_str = run_command('sysctl', '-n', 'kern.osreldate').stdout().strip()
+  freebsd_version_int = freebsd_version_str.to_int()
+endif
+
 #######################################
 # Variables for host and accelerators #
 #######################################
@@ -1679,8 +1686,13 @@ if sdl.found()
     sdl = declare_dependency(compile_args: '-Wno-undef',
                              dependencies: sdl.partial_dependency(compile_args: true, link_args: true, links: true, includes: true))
   endif
-  sdl_image = dependency('SDL3_image', required: get_option('sdl_image'),
+  if host_os == 'freebsd'
+    sdl_image = dependency('sdl3-image', required: get_option('sdl_image'),
+			 method: 'pkg-config')
+  else
+    sdl_image = dependency('SDL3_image', required: get_option('sdl_image'),
                          method: 'pkg-config')
+  endif
 else
   if get_option('sdl_image').enabled()
     error('sdl-image required, but SDL was @0@'.format(
@@ -1861,6 +1873,8 @@ if not get_option('opengl').auto() or have_system or have_vhost_user_gpu
     opengl_libs=['-lopengl32', '-lgdi32']
   elif host_os == 'linux'
     opengl_libs=['-lGL']
+  elif host_os == 'freebsd'
+    opengl_libs=['-L/usr/local/lib', '-lGL']
   else
     error('Unknown GL platform')
   endif
@@ -2858,14 +2872,17 @@ config_host_data.set('CONFIG_ASAN_IFACE_FIBER', have_asan_fiber)
 have_inotify_init = cc.has_header_symbol('sys/inotify.h', 'inotify_init')
 have_inotify_init1 = cc.has_header_symbol('sys/inotify.h', 'inotify_init1')
 inotify = not_found
+# FreeBSD 1500000 and higher has Linux-compatible inotify
 if (have_inotify_init or have_inotify_init1) and host_os == 'freebsd'
-  # libinotify-kqueue
-  inotify = cc.find_library('inotify')
-  if have_inotify_init
-    have_inotify_init = inotify.found()
-  endif
-  if have_inotify_init1
-    have_inotify_init1 = inotify.found()
+  if freebsd_version_int < 1500000
+    # libinotify-kqueue
+    inotify = cc.find_library('inotify')
+    if have_inotify_init
+      have_inotify_init = inotify.found()
+    endif
+    if have_inotify_init1
+      have_inotify_init1 = inotify.found()
+    endif
   endif
 endif
 config_host_data.set('CONFIG_INOTIFY', have_inotify_init)

@@ -199,6 +199,12 @@ case "$platform" in # Adjust compilation options based on platform
         opts="$opts --disable-werror"
         postbuild='package_linux'
         ;;
+    FreeBSD)
+        echo 'Compiling for FreeBSD...'
+        sys_cflags='-Wno-error=redundant-decls'
+        opts="$opts --disable-werror"
+        postbuild='package_linux'
+        ;;
     Darwin)
         echo "Compiling for MacOS for $target_arch..."
         if [ "$target_arch" == "arm64" ]; then
@@ -269,6 +275,10 @@ set -x # Print commands from now on
     ${opts} \
     "$@"
 
-time make -j"${job_count}" ${target} 2>&1 | tee build.log
+if [[ "$OSTYPE" == "freebsd"* ]]; then
+    time gmake -j"${job_count}" ${target} 2>&1 | tee build.log
+else
+    time make -j"${job_count}" ${target} 2>&1 | tee build.log
+fi
 
 "${postbuild}" # call post build functions
