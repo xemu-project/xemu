@@ -1257,6 +1257,7 @@ static void setup_nvidia_profile(void)
             .profile_name = L"xemu",
             .executable_name = exe_name,
             .threaded_optimization = false,
+            .present_method = OGL_CPL_PREFER_DXPRESENT_PREFER_DISABLED,
         });
         nvapi_finalize();
     }
