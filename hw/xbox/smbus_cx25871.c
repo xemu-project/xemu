@@ -117,3 +117,13 @@ void smbus_cx25871_init(I2CBus *smbus, int address)
     qdev_prop_set_uint8(dev, "address", address);
     qdev_realize_and_unref(dev, (BusState *)smbus, &error_fatal);
 }
+
+void smbus_cx25871_notify_vblank(void)
+{
+    Object *obj = object_resolve_path_type("", TYPE_SMBUS_CX25871, NULL);
+    if (obj) {
+        SMBusCX25871Device *cx = SMBUS_CX25871(obj);
+        cx->registers[0x06] =
+            (cx->registers[0x06] & 0xF0) | ((cx->registers[0x06] + 1) & 0x03);
+    }
+}
