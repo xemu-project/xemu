@@ -369,7 +369,7 @@ LIBS = [
         pkg_win="sdl3",
         pkg_mac="sdl3",
         pkg_ubuntu="libsdl3-dev",
-        version="3.4.2",
+        version="3.4.8",
     ),
     Lib(
         "glib-2.0",
