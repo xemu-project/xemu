@@ -1,7 +1,7 @@
 project(
   'sdl3',
   'c',
-  version: '3.4.2',
+  version: '3.4.8',
   license: 'zlib',
   meson_version: '>=1.6',
   default_options: ['c_std=none'],
@@ -476,4 +476,3 @@ sdl3_dep = declare_dependency(
 )
 
 meson.override_dependency('sdl3', sdl3_dep)
-
