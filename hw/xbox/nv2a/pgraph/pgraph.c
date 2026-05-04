@@ -1121,7 +1121,7 @@ DEF_METHOD(NV097, SET_FOG_MODE)
     case NV097_SET_FOG_MODE_V_LINEAR_ABS:
         mode = NV_PGRAPH_CONTROL_3_FOG_MODE_LINEAR_ABS; break;
     default:
-        assert(false);
+        assert(!"Invalid or unimplemented fog mode");
         break;
     }
     PG_SET_MASK(NV_PGRAPH_CONTROL_3, NV_PGRAPH_CONTROL_3_FOG_MODE,
@@ -1143,7 +1143,7 @@ DEF_METHOD(NV097, SET_FOG_GEN_MODE)
     case NV097_SET_FOG_GEN_MODE_V_FOG_X:
         mode = NV_PGRAPH_CSV0_D_FOGGENMODE_FOG_X; break;
     default:
-        assert(false);
+        assert(!"Invalid fog gen mode");
         break;
     }
     PG_SET_MASK(NV_PGRAPH_CSV0_D, NV_PGRAPH_CSV0_D_FOGGENMODE, mode);
@@ -1490,7 +1490,7 @@ static unsigned int kelvin_map_stencil_op(uint32_t parameter)
     case NV097_SET_STENCIL_OP_V_DECR:
         op = NV_PGRAPH_CONTROL_2_STENCIL_OP_V_DECR; break;
     default:
-        assert(false);
+        assert(!"Invalid kelvin map stencil operation");
         break;
     }
     return op;
@@ -1562,7 +1562,7 @@ static unsigned int kelvin_map_polygon_mode(uint32_t parameter)
     case NV097_SET_FRONT_POLYGON_MODE_V_FILL:
         mode = NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_FILL; break;
     default:
-        assert(false);
+        assert(!"Invalid kelvin map polygon mode");
         break;
     }
     return mode;
@@ -1603,7 +1603,7 @@ DEF_METHOD(NV097, SET_CULL_FACE)
     case NV097_SET_CULL_FACE_V_FRONT_AND_BACK:
         face = NV_PGRAPH_SETUPRASTER_CULLCTRL_FRONT_AND_BACK; break;
     default:
-        assert(false);
+        assert(!"Invalid cull face parameter");
         break;
     }
     PG_SET_MASK(NV_PGRAPH_SETUPRASTER, NV_PGRAPH_SETUPRASTER_CULLCTRL, face);
@@ -1675,7 +1675,7 @@ static unsigned int kelvin_map_texgen(uint32_t parameter, unsigned int channel)
         assert(channel < 3);
         texgen = NV_PGRAPH_CSV1_A_T0_S_NORMAL_MAP; break;
     default:
-        assert(false);
+        assert(!"Invalid kelvin map texgen parameter");
         break;
     }
     return texgen;
@@ -2067,7 +2067,7 @@ DEF_METHOD_INC(NV097, SET_BACK_LIGHT_AMBIENT_COLOR)
         pg->ltctxb_dirty[NV_IGRAPH_XF_LTCTXB_L0_BSPC + slot*6] = true;
         break;
     default:
-        assert(false);
+        assert(!"Invalid back light type");
         break;
     }
 }
@@ -2135,7 +2135,7 @@ DEF_METHOD_INC(NV097, SET_LIGHT_AMBIENT_COLOR)
         pg->light_local_attenuation[slot][part] = *(float*)&parameter;
         break;
     default:
-        assert(false);
+        assert(!"Invalid light source prop or unhandled back light prop");
         break;
     }
 }
@@ -2440,7 +2440,7 @@ DEF_METHOD_INC(NV097, SET_VERTEX_DATA_ARRAY_FORMAT)
         break;
     default:
         fprintf(stderr, "Unknown vertex type: 0x%x\n", attr->format);
-        assert(false);
+        assert(!"Unknown vertex type");
         break;
     }
 
@@ -3133,7 +3133,7 @@ void pgraph_get_clear_depth_stencil_value(PGRAPHState *pg, float *depth,
     default:
         fprintf(stderr, "Unknown zeta surface format: 0x%x\n",
                 pg->surface_shape.zeta_format);
-        assert(false);
+        assert(!"Unknown zeta surface format");
         break;
     }
 }
