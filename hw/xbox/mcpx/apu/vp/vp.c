@@ -569,6 +569,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         }
         break;
     default:
+        DPRINTF("Unrecognized method: 0x%08x\n", method);
         assert(!"Unrecognized VP method - could be unimplemented or invalid");
         break;
     }

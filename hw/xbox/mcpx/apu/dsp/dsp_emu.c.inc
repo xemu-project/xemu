@@ -32,7 +32,7 @@ static void emu_undefined(dsp_core_t* dsp)
     /* Add some artificial CPU cycles to avoid being stuck in an infinite loop */
     dsp->instr_cycle += 100;
     if (dsp->exception_debugging) {
-        assert(!"Illegal dsp instruction - see error above");
+        assert(!"Illegal dsp instruction");
     }
 }
 

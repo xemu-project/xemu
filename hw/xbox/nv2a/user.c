@@ -57,7 +57,7 @@ uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
             }
         } else {
             /* ramfc */
-            assert(!"Invalid channel id");
+            assert(!"Unsupported: channel_id != cur_channel_id");
         }
     } else {
         /* PIO Mode */
@@ -100,7 +100,8 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
                 d->pfifo.regs[NV_PFIFO_CACHE1_REF] = val;
                 break;
             default:
-                assert(!"Unknown user register");
+                NV2A_DPRINTF(true, "Unsupported NV_USER write: channel=%u offset=0x%04x\n", channel_id, (unsigned)(addr & 0xFFFF));
+                assert(!"Unsupported NV_USER DMA register write offset");
                 break;
             }
 
