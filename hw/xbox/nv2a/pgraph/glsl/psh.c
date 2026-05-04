@@ -225,8 +225,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             z_format ? DEPTH_FORMAT_F24 : DEPTH_FORMAT_D24;
         break;
     default:
-        fprintf(stderr, "Unknown zeta surface format: 0x%x\n",
-                pg->surface_shape.zeta_format);
+        fprintf(stderr, "Unknown zeta surface format: 0x%x\n", pg->surface_shape.zeta_format);
         assert(!"Unknown zeta surface format");
         break;
     }
@@ -643,9 +642,7 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
             return sampler2D;
         }
         if (dim == 3) return sampler3D;
-        fprintf(stderr,
-                "Unhandled texture dimensions in get_sampler_type: mode=%d stage=%d dim=%d\n",
-                mode, i, dim);
+        fprintf(stderr, "Unhandled texture dimensions in get_sampler_type: mode=%d stage=%d dim=%d\n", mode, i, dim);
         assert(!"Unhandled texture dimensions");
         return NULL;
 
@@ -658,8 +655,7 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
         }
         if (dim == 2) return sampler2D;
         if (dim == 3 && mode != PS_TEXTUREMODES_DOT_ST) return sampler3D;
-        fprintf(stderr,
-                "Unhandled texture dimensions in get_sampler_type: mode=%d stage=%d dim=%d\n", mode, i, dim);
+        fprintf(stderr, "Unhandled texture dimensions in get_sampler_type: mode=%d stage=%d dim=%d\n", mode, i, dim);
         assert(!"Unhandled texture dimensions");
         return NULL;
 
