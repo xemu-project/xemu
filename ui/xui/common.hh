@@ -48,5 +48,7 @@ extern "C" {
 #undef atomic_fetch_sub
 }
 
+#include "i18n.hh"
+
 extern bool g_screenshot_pending;
 extern float g_main_menu_height;
