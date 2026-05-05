@@ -4,7 +4,7 @@ source_url = https://github.com/libsdl-org/SDL/releases/download/release-3.4.8/S
 source_filename = SDL3-3.4.8.tar.gz
 source_hash = e9fff7467fb60f037e6708da18b25560649e4c63edc2a69bb871b960d9cbfbba
 source_fallback_url = https://github.com/libsdl-org/SDL/releases/download/release-3.4.8/SDL3-3.4.8.tar.gz
-patch_directory = sdl3
+method = cmake
 
 [provide]
 dependency_names = sdl3
