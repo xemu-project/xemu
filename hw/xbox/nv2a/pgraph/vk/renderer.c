@@ -19,7 +19,7 @@
 
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "renderer.h"
-
+#include "hw/xbox/nv2a/pgraph/surface.h"
 #include "gloffscreen.h"
 
 #if HAVE_EXTERNAL_MEMORY
@@ -218,7 +218,6 @@ static PGRAPHRenderer pgraph_vk_renderer = {
         .flip_stall = pgraph_vk_flip_stall,
         .flush_draw = pgraph_vk_flush_draw,
         .get_report = pgraph_vk_get_report,
-        .image_blit = pgraph_vk_image_blit,
         .pre_savevm_trigger = pgraph_vk_pre_savevm_trigger,
         .pre_savevm_wait = pgraph_vk_pre_savevm_wait,
         .pre_shutdown_trigger = pgraph_vk_pre_shutdown_trigger,
@@ -226,6 +225,8 @@ static PGRAPHRenderer pgraph_vk_renderer = {
         .process_pending = pgraph_vk_process_pending,
         .process_pending_reports = pgraph_vk_process_pending_reports,
         .surface_update = pgraph_vk_surface_update,
+        .surface_get = pgraph_vk_surface_get,
+        .surface_download_if_dirty = pgraph_vk_surface_download_if_dirty,
         .set_surface_scale_factor = pgraph_vk_set_surface_scale_factor,
         .get_surface_scale_factor = pgraph_vk_get_surface_scale_factor,
         .get_framebuffer_surface = pgraph_vk_get_framebuffer_surface,
