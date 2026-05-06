@@ -75,6 +75,47 @@ package_macos() {
     plutil -replace CFBundleShortVersionString -string "${xemu_version}" dist/xemu.app/Contents/Info.plist
     plutil -replace CFBundleVersion            -string "${xemu_version}" dist/xemu.app/Contents/Info.plist
 
+    # Bundle Vulkan/MoltenVK runtime if available
+    if command -v brew &>/dev/null; then
+        brew_prefix="$(brew --prefix)"
+        mvk_lib="${brew_prefix}/lib/libMoltenVK.dylib"
+        vk_loader="${brew_prefix}/lib/libvulkan.1.dylib"
+
+        if [ -f "$mvk_lib" ] && [ -f "$vk_loader" ]; then
+            echo "Bundling Vulkan/MoltenVK runtime..."
+            vk_lib_dest="dist/xemu.app/Contents/Libraries/${target_arch}"
+            vk_icd_dest="dist/xemu.app/Contents/Resources/vulkan/icd.d"
+
+            # Copy Vulkan loader and MoltenVK
+            cp "$vk_loader" "${vk_lib_dest}/libvulkan.1.dylib"
+            cp "$mvk_lib" "${vk_lib_dest}/libMoltenVK.dylib"
+            codesign -s - -f "${vk_lib_dest}/libvulkan.1.dylib"
+            codesign -s - -f "${vk_lib_dest}/libMoltenVK.dylib"
+
+            # Create ICD manifest pointing to bundled MoltenVK
+            mkdir -p "$vk_icd_dest"
+            cat > "${vk_icd_dest}/MoltenVK_icd.json" << 'ICDJSON'
+{
+    "file_format_version" : "1.0.0",
+    "ICD": {
+        "library_path": "../../../Libraries/__ARCH__/libMoltenVK.dylib",
+        "api_version" : "1.2.0",
+        "is_portability_driver" : true
+    }
+}
+ICDJSON
+            sed -i '' "s/__ARCH__/${target_arch}/g" "${vk_icd_dest}/MoltenVK_icd.json"
+
+            # Set VK_ICD_FILENAMES in Info.plist so the Vulkan loader finds MoltenVK.
+            # Note: LSEnvironment values are resolved relative to /, so we cannot
+            # use @executable_path here. The programmatic setenv in instance.c
+            # handles the Finder launch case; this is a fallback for edge cases.
+            plutil -replace LSEnvironment -json "{\"VK_DRIVER_FILES\": \"../Resources/vulkan/icd.d/MoltenVK_icd.json\"}" dist/xemu.app/Contents/Info.plist
+        else
+            echo "Warning: MoltenVK/Vulkan loader not found, Vulkan renderer will not be available"
+        fi
+    fi
+
     codesign --force --deep --preserve-metadata=entitlements,requirements,flags,runtime --sign - "${exe_path}"
     python3 ./scripts/gen-license.py --version-file=macos-libs/$target_arch/INSTALLED > dist/LICENSE.txt
 }
@@ -232,6 +273,10 @@ case "$platform" in # Adjust compilation options based on platform
         fi
         sys_ldflags='-headerpad_max_install_names'
         export PKG_CONFIG_LIBDIR="${lib_prefix}/lib/pkgconfig"
+        # Add Homebrew pkg-config path for Vulkan/MoltenVK if available
+        if command -v brew &>/dev/null; then
+            export PKG_CONFIG_LIBDIR="${PKG_CONFIG_LIBDIR}:$(brew --prefix)/lib/pkgconfig"
+        fi
         opts="$opts --disable-cocoa --cross-prefix="
         postbuild='package_macos'
         ;;
