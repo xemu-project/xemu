@@ -35,6 +35,7 @@
 #include "qemu-version.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-block.h"
+#include "qemu/cutils.h"
 #include "qobject/qdict.h"
 #include "ui/console.h"
 #include "ui/input.h"
@@ -1394,16 +1395,36 @@ void xemu_eject_disc(Error **errp)
     xbox_smc_update_tray_state();
 }
 
+static const char *xemu_disc_blockdrv_for_path(const char *path)
+{
+    size_t len;
+
+    if (!path) {
+        return "raw";
+    }
+    len = strlen(path);
+    if (len >= 4) {
+        const char *s = path + len - 4;
+
+        if (g_ascii_strcasecmp(s, ".chd") == 0) {
+            return "chd";
+        }
+    }
+    return "raw";
+}
+
 void xemu_load_disc(const char *path, Error **errp)
 {
     Error *error = NULL;
+    const char *fmt = xemu_disc_blockdrv_for_path(path);
 
     // Ensure an eject sequence is always triggered so Xbox software reloads
     xbox_smc_eject_button();
     xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
 
-    qmp_blockdev_change_medium("ide0-cd1", NULL, path, "raw", false, false,
+    qmp_blockdev_change_medium("ide0-cd1", NULL, path, fmt, false, false,
                                false, 0, &error);
+
     if (error) {
         error_propagate(errp, error);
     } else {
