@@ -902,7 +902,6 @@ int qemu_main_loop(void)
     while (!main_loop_should_exit(&status)) {
         main_loop_wait(false);
     }
-
     return status;
 }
 

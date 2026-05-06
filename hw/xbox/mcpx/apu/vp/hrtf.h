@@ -48,6 +48,13 @@ static inline void hrtf_filter_init(HrtfFilter *f)
     memset(f, 0, sizeof(*f));
 }
 
+static inline void hrtf_filter_clear_history(HrtfFilter *f)
+{
+    f->buf_pos = 0;
+    memset(f->ch[0].buf, 0, sizeof(f->ch[0].buf));
+    memset(f->ch[1].buf, 0, sizeof(f->ch[1].buf));
+}
+
 static inline void
 hrtf_filter_set_target_params(HrtfFilter *f, float hrir_coeff[2][HRTF_NUM_TAPS],
                               float itd)

@@ -33,7 +33,6 @@
 #include "qemu/main-loop.h"
 #include "qemu/thread.h"
 #include "system/runstate.h"
-#include "qemu/fifo8.h"
 #include "ui/xemu-settings.h"
 
 #include "trace.h"
@@ -82,6 +81,9 @@ typedef struct MCPXAPUState {
     QemuThread apu_thread;
     QemuMutex lock;
     QemuCond cond;
+    QemuCond idle_cond;
+    bool pause_requested;
+    bool is_idle;
 
     MemoryRegion *ram;
     uint8_t *ram_ptr;
@@ -94,16 +96,30 @@ typedef struct MCPXAPUState {
     uint32_t regs[0x20000];
 
     int ep_frame_div;
-    int sleep_acc;
+    int sleep_acc_us;
     int frame_count;
-    int64_t frame_count_time;
+    int64_t frame_count_time_ms;
+    int64_t next_frame_time_us;
+
+    struct {
+        struct {
+            int backoff, ok, speedup;
+        } pacing;
+        struct {
+            int64_t last_us;
+            int64_t min_us, max_us, sum_us;
+            int count;
+        } deviation;
+        int queued_bytes_min, queued_bytes_max;
+        int64_t queued_bytes_sum;
+        int queued_bytes_count;
+    } throttle;
 
     struct {
         McpxApuDebugMonitorPoint point;
-        int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes), 8 buffered
-        QemuSpin fifo_lock;
-        Fifo8 fifo;
+        int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes)
         SDL_AudioStream *stream;
+        int queued_bytes_low, queued_bytes_high;
     } monitor;
 } MCPXAPUState;
 
@@ -114,5 +130,9 @@ extern uint64_t g_dbg_muted_voices[4];
 
 void mcpx_debug_begin_frame(void);
 void mcpx_debug_end_frame(void);
+
+void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp);
+void mcpx_apu_monitor_finalize(MCPXAPUState *d);
+void mcpx_apu_monitor_frame(MCPXAPUState *d);
 
 #endif

@@ -30,7 +30,9 @@ static void RunOnMainThread(std::function<void()> &&func)
             [](void *userdata) {
                 std::unique_ptr<std::function<void()>> f(
                     static_cast<std::function<void()> *>(userdata));
+                xemu_main_loop_lock();
                 (*f)();
+                xemu_main_loop_unlock();
             },
             p, false)) {
         delete p;
@@ -67,6 +69,10 @@ static std::string NormalizeDefaultLocation(const char *default_location)
 #elif defined(SDL_PLATFORM_WINDOWS) || defined(SDL_PLATFORM_MACOS)
         if (std::filesystem::is_directory(path)) {
             return (path / "").string();
+        }
+        // Prevent a crash in SDL3 file dialog
+        if (!std::filesystem::exists(path)) {
+            return {};
         }
 #endif
     } catch (...) {

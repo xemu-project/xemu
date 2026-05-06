@@ -20,7 +20,7 @@ jobs:
       pkg_version: ${{ steps.version.outputs.pkg_version }}
     steps:
     - name: Clone tree
-      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
       with:
         fetch-depth: 0
         ref: ${{ inputs.ref }}
@@ -50,7 +50,7 @@ jobs:
         zstd "${tar_filename}"
         echo "pkg_filename=${tar_filename}.zst" >> $GITHUB_OUTPUT
     - name: Upload source package artifact
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
       with:
         name: src
         path: ${{ steps.package.outputs.pkg_filename }}
