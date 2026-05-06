@@ -17,11 +17,16 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include <inttypes.h>
+#include <algorithm>
+#include <numeric>
+#include <vector>
+
 #include "debug.hh"
 #include "common.hh"
 #include "misc.hh"
 #include "font-manager.hh"
 #include "viewport-manager.hh"
+#include "actions.hh"
 
 #define MAX_VOICES 256
 
@@ -348,6 +353,33 @@ DebugVideoWindow::DebugVideoWindow()
     m_position_restored = false;
     m_resize_init_complete = false;
     m_prev_scale = g_viewport_mgr.m_scale;
+
+    m_hovered_counter_index = -1;
+    m_legend_sort_mode = LegendSortMode::DEFAULT;
+
+    m_legend_names.reserve(NV2A_PROF__COUNT + NUM_EXTRA_COUNTERS);
+    m_counter_index_to_value.reserve(NV2A_PROF__COUNT + NUM_EXTRA_COUNTERS);
+    for (int i = 0; i < NV2A_PROF__COUNT + NUM_EXTRA_COUNTERS; ++i) {
+        m_counter_visible[i] = true;
+        if (i < NV2A_PROF__COUNT) {
+            m_legend_names.push_back(nv2a_profile_get_counter_name(i));
+        } else if (i == INDEX_MSPF) {
+            m_legend_names.push_back("MSPF");
+        }
+        m_counter_index_to_value.push_back({ i, 0 });
+    }
+
+    m_legend_indices_sorted_az.resize(m_legend_names.size());
+    std::iota(m_legend_indices_sorted_az.begin(), m_legend_indices_sorted_az.end(), 0);
+    std::sort(m_legend_indices_sorted_az.begin(), m_legend_indices_sorted_az.end(), [&](size_t a, size_t b) {
+        return g_ascii_strcasecmp(m_legend_names[a], m_legend_names[b]) < 0;
+    });
+}
+
+static int LastFrameHistoryIndex()
+{
+    return (g_nv2a_stats.frame_ptr + NV2A_PROF_NUM_FRAMES - 1) %
+           NV2A_PROF_NUM_FRAMES;
 }
 
 void DebugVideoWindow::Draw()
@@ -375,13 +407,18 @@ void DebugVideoWindow::Draw()
     m_prev_scale = g_viewport_mgr.m_scale;
 
     if (ImGui::Begin("Video Debug", &m_is_open)) {
+        bool running = runstate_is_running();
+        if (ImGui::Button(running ? "Pause emulation" : "Resume")) {
+            ActionTogglePause();
+        }
+
         double x_start, x_end;
         static ImPlotAxisFlags rt_axis = ImPlotAxisFlags_NoTickLabels;
         ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(5,5));
         ImPlot::PushStyleVar(ImPlotStyleVar_FillAlpha, 0.25f);
         static ScrollingBuffer fps;
         static float t = 0;
-        if (runstate_is_running()) {
+        if (running) {
             t += ImGui::GetIO().DeltaTime;
             fps.AddPoint(t, g_nv2a_stats.increment_fps);
         }
@@ -416,7 +453,7 @@ void DebugVideoWindow::Draw()
             ImPlot::SetupAxesLimits(x_start, x_end, 0, 100, ImPlotCond_Always);
             ImPlot::PlotShaded("##mspf", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 0, 1, x_start, 0, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
             ImPlot::PlotLine("##mspf", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 1, x_start, 0, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
-            ImPlot::Annotation(x_start, 100, ImPlot::GetLastItemColor(), ImVec2(0,0), true, "MSPF: %d", g_nv2a_stats.frame_history[(g_nv2a_stats.frame_ptr - 1) % NV2A_PROF_NUM_FRAMES].mspf);
+            ImPlot::Annotation(x_start, 100, ImPlot::GetLastItemColor(), ImVec2(0,0), true, "MSPF: %d", g_nv2a_stats.frame_history[LastFrameHistoryIndex()].mspf);
             ImPlot::EndPlot();
         }
         ImPlot::PopStyleColor();
@@ -428,35 +465,7 @@ void DebugVideoWindow::Draw()
 
         if (g_config.display.debug.video.advanced_tree_state) {
             ImGui::SetNextWindowBgAlpha(alpha);
-            if (ImPlot::BeginPlot("##ScrollingDraws", ImVec2(-1,-1))) {
-                ImPlot::SetupAxes(NULL, NULL, ImPlotAxisFlags_None, ImPlotAxisFlags_AutoFit);
-                ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Log10);
-
-                ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 1500);
-                ImPlot::SetupAxisLimits(ImAxis_X1, 0, NV2A_PROF_NUM_FRAMES);
-
-                ImGui::PushID(0);
-                ImPlot::PushStyleColor(ImPlotCol_Line, ImPlot::GetColormapColor(0));
-                ImPlot::PushStyleColor(ImPlotCol_Fill, ImPlot::GetColormapColor(0));
-                ImPlot::PlotLine("MSPF", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 1, 0, 0, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
-                ImPlot::PopStyleColor(2);
-                ImGui::PopID();
-
-                for (int i = 0; i < NV2A_PROF__COUNT; i++) {
-                    ImGui::PushID(i+1);
-                    char title[64];
-                    snprintf(title, sizeof(title), "%s: %d",
-                        nv2a_profile_get_counter_name(i),
-                        nv2a_profile_get_counter_value(i));
-                    ImPlot::PushStyleColor(ImPlotCol_Line, ImPlot::GetColormapColor(i+1));
-                    ImPlot::PushStyleColor(ImPlotCol_Fill, ImPlot::GetColormapColor(i+1));
-                    ImPlot::PlotLine(title, &g_nv2a_stats.frame_history[0].counters[i], NV2A_PROF_NUM_FRAMES, 1, 0, 0, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
-                    ImPlot::PopStyleColor(2);
-                    ImGui::PopID();
-                }
-
-                ImPlot::EndPlot();
-            }
+            DrawAdvancedContent();
             ImGui::TreePop();
         }
 
@@ -479,6 +488,263 @@ void DebugVideoWindow::Draw()
     }
     ImGui::End();
     ImGui::PopStyleColor(5);
+}
+
+// Custom axis scale: log10(1 + x). Maps 0 -> 0 instead of 0 -> -inf so that
+// counters that are zero for a frame draw a line to the bottom of the graph
+// rather than creating a gap that looks like missing data.
+static double AdvPlotForward(double v, void *)
+{
+    return std::log10(1.0 + std::max(0.0, v));
+}
+
+static double AdvPlotInverse(double v, void *)
+{
+    return std::pow(10.0, v) - 1.0;
+}
+
+static int AdvPlotFormatter(double value, char *buf, int size, void *)
+{
+    if (value < 0.5) {
+        return snprintf(buf, size, "0");
+    }
+    return snprintf(buf, size, "%.4g", value);
+}
+
+int DebugVideoWindow::FindHoveredPlotLineIndex()
+{
+    ImPlotPoint mouse_pos = ImPlot::GetPlotMousePos();
+    int x_idx = std::round(mouse_pos.x);
+
+    if (x_idx < 0 || x_idx >= NV2A_PROF_NUM_FRAMES || mouse_pos.y < 0) {
+        return -1;
+    }
+
+    int data_idx = (g_nv2a_stats.frame_ptr + x_idx) % NV2A_PROF_NUM_FRAMES;
+    float best_dist = 0.1f;
+    int best_item = -1;
+    // Use the same log1p metric as the plot so hover distances are consistent.
+    float log_mouse_y = std::log10(1.0f + std::max(0.0f, (float)mouse_pos.y));
+
+    for (int i = 0; i < NV2A_PROF__COUNT + NUM_EXTRA_COUNTERS; ++i) {
+        if (!m_counter_visible[i]) {
+            continue;
+        }
+
+        float val;
+        if (i < NV2A_PROF__COUNT) {
+            val = g_nv2a_stats.frame_history[data_idx].counters[i];
+        } else {
+            val = g_nv2a_stats.frame_history[data_idx].mspf;
+        }
+
+        if (val < 0) {
+            continue;
+        }
+
+        float dist = std::fabs(std::log10(1.0f + val) - log_mouse_y);
+        if (dist < best_dist) {
+            best_dist = dist;
+            best_item = i;
+        }
+    }
+
+    return best_item;
+}
+
+void DebugVideoWindow::DrawAdvancedContent()
+{
+    int new_hovered_counter_index = -1;
+    if (ImGui::BeginTable("##AdvancedCounters", 2, ImGuiTableFlags_Resizable)) {
+        ImGui::TableSetupColumn("Legend", ImGuiTableColumnFlags_WidthFixed,
+                                200 * g_viewport_mgr.m_scale);
+        ImGui::TableSetupColumn("Plot", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+
+        static const char *sort_modes[] = { "Default", "A-Z", "Z-A", "Value" };
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Sort");
+        ImGui::SameLine();
+        float button_width =
+            ImGui::CalcTextSize("0").x + ImGui::GetStyle().FramePadding.x * 2;
+        ImGui::SetNextItemWidth(
+            -(button_width * 2 + ImGui::GetStyle().ItemSpacing.x * 2));
+        int sort_mode = static_cast<int>(m_legend_sort_mode);
+        if (ImGui::Combo("##SortMode", &sort_mode, sort_modes,
+                         IM_ARRAYSIZE(sort_modes))) {
+            m_legend_sort_mode = static_cast<LegendSortMode>(sort_mode);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("1")) {
+            for (int i = 0; i < NV2A_PROF__COUNT + NUM_EXTRA_COUNTERS; ++i) {
+                m_counter_visible[i] = true;
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("0")) {
+            for (int i = 0; i < NV2A_PROF__COUNT + NUM_EXTRA_COUNTERS; ++i) {
+                m_counter_visible[i] = false;
+            }
+        }
+
+        ImGui::BeginChild("##AdvancedLegend", ImVec2(0, -1), false,
+                          ImGuiWindowFlags_AlwaysVerticalScrollbar);
+
+        ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(1, 1, 1, 0.1f));
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(1, 1, 1, 0.2f));
+
+        auto DrawLegendItem = [this, &new_hovered_counter_index](int idx,
+                                                                 int val) {
+            bool enabled = m_counter_visible[idx];
+            bool hovered = (m_hovered_counter_index == idx);
+
+            ImVec4 text_col;
+            if (enabled) {
+                text_col = hovered ? ImVec4(1.0f, 1.0f, 1.0f, 1.0f) :
+                                     ImVec4(0.8f, 0.8f, 0.8f, 1.0f);
+            } else {
+                text_col = ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
+            }
+
+            ImGui::PushFont(g_font_mgr.m_fixed_width_font);
+
+            float swatch_size = ImGui::GetTextLineHeight();
+            float spacing = ImGui::GetStyle().ItemSpacing.x;
+            ImVec2 p = ImGui::GetCursorScreenPos();
+
+            if (enabled) {
+                ImVec4 swatch_col = ImPlot::GetColormapColor(idx);
+                ImGui::GetWindowDrawList()->AddRectFilled(
+                    p, ImVec2(p.x + swatch_size, p.y + swatch_size),
+                    ImColor(swatch_col));
+            }
+
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + swatch_size +
+                                 spacing);
+
+            ImGui::PushStyleColor(ImGuiCol_Text, text_col);
+            char buf[256];
+            snprintf(buf, sizeof(buf), "%s: %d###Lgnd%d", m_legend_names[idx],
+                     val, idx);
+
+            ImGui::Selectable(buf, &m_counter_visible[idx]);
+            if (ImGui::IsItemHovered()) {
+                new_hovered_counter_index = idx;
+            }
+
+            if (hovered && enabled) {
+                ImVec2 min = ImGui::GetItemRectMin();
+                ImVec2 max = ImGui::GetItemRectMax();
+                ImGui::GetWindowDrawList()->AddLine(
+                    ImVec2(min.x, max.y - 1), ImVec2(max.x, max.y - 1),
+                    ImGui::GetColorU32(ImGuiCol_TitleBgActive), 2.0f);
+            }
+
+            ImGui::PopStyleColor();
+            ImGui::PopFont();
+        };
+
+        auto GetCurrentVal = [](int idx) {
+            if (idx < NV2A_PROF__COUNT) {
+                return nv2a_profile_get_counter_value(idx);
+            } else if (idx == INDEX_MSPF) {
+                return g_nv2a_stats.frame_history[LastFrameHistoryIndex()].mspf;
+            }
+            return 0;
+        };
+
+        if (m_legend_sort_mode == LegendSortMode::ALPHABETICAL_AZ) {
+            for (const auto &index : m_legend_indices_sorted_az) {
+                DrawLegendItem(index, GetCurrentVal(index));
+            }
+        } else if (m_legend_sort_mode == LegendSortMode::ALPHABETICAL_ZA) {
+            for (auto it = m_legend_indices_sorted_az.rbegin();
+                 it != m_legend_indices_sorted_az.rend(); ++it) {
+                DrawLegendItem(*it, GetCurrentVal(*it));
+            }
+        } else if (m_legend_sort_mode == LegendSortMode::VALUE) {
+            for (int i = 0; i < NV2A_PROF__COUNT + NUM_EXTRA_COUNTERS; ++i) {
+                m_counter_index_to_value[i] = { i, GetCurrentVal(i) };
+            }
+
+            std::sort(
+                m_counter_index_to_value.begin(),
+                m_counter_index_to_value.end(),
+                [](const auto &a, const auto &b) { return a.value > b.value; });
+
+            for (int i = 0; i < NV2A_PROF__COUNT + NUM_EXTRA_COUNTERS; ++i) {
+                const auto &entry = m_counter_index_to_value[i];
+                DrawLegendItem(entry.index, entry.value);
+            }
+        } else {
+            DrawLegendItem(
+                INDEX_MSPF,
+                g_nv2a_stats.frame_history[LastFrameHistoryIndex()].mspf);
+            for (int i = 0; i < NV2A_PROF__COUNT; ++i) {
+                DrawLegendItem(i, GetCurrentVal(i));
+            }
+        }
+
+        ImGui::Dummy(ImVec2(0, 10 * g_viewport_mgr.m_scale));
+
+        ImGui::PopStyleColor(3);
+        ImGui::EndChild();
+
+        ImGui::TableNextColumn();
+
+        ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0, 0.1f));
+        if (ImPlot::BeginPlot("##AdvancedCountersPlot", ImVec2(-1, -1),
+                              ImPlotFlags_NoLegend)) {
+            ImPlot::SetupAxes(NULL, NULL, ImPlotAxisFlags_None,
+                              ImPlotAxisFlags_AutoFit);
+            // log10(1+x) scale: zero maps to 0 rather than -inf, so counters
+            // that hit zero draw to the bottom instead of leaving a gap.
+            ImPlot::SetupAxisScale(ImAxis_Y1, AdvPlotForward, AdvPlotInverse);
+            ImPlot::SetupAxisFormat(ImAxis_Y1, AdvPlotFormatter);
+            ImPlot::SetupAxisLimits(ImAxis_X1, 0, NV2A_PROF_NUM_FRAMES);
+
+            if (ImPlot::IsPlotHovered()) {
+                new_hovered_counter_index = FindHoveredPlotLineIndex();
+            }
+
+            int effective_hover = (new_hovered_counter_index != -1) ?
+                                      new_hovered_counter_index :
+                                      m_hovered_counter_index;
+
+            for (int i = 0; i < NV2A_PROF__COUNT + NUM_EXTRA_COUNTERS; ++i) {
+                if (!m_counter_visible[i]) {
+                    continue;
+                }
+                ImGui::PushID(i);
+                float weight = (effective_hover == i) ? 4.0f : 1.5f;
+                ImPlot::PushStyleVar(ImPlotStyleVar_LineWeight, weight);
+                ImPlot::PushStyleColor(ImPlotCol_Line,
+                                       ImPlot::GetColormapColor(i));
+                if (i < NV2A_PROF__COUNT) {
+                    ImPlot::PlotLine(
+                        "##counter", &g_nv2a_stats.frame_history[0].counters[i],
+                        NV2A_PROF_NUM_FRAMES, 1, 0, 0, g_nv2a_stats.frame_ptr,
+                        sizeof(g_nv2a_stats.frame_working));
+                } else {
+                    ImPlot::PlotLine(
+                        "##counter", &g_nv2a_stats.frame_history[0].mspf,
+                        NV2A_PROF_NUM_FRAMES, 1, 0, 0, g_nv2a_stats.frame_ptr,
+                        sizeof(g_nv2a_stats.frame_working));
+                }
+                ImPlot::PopStyleColor();
+                ImPlot::PopStyleVar();
+                ImGui::PopID();
+            }
+
+            ImPlot::EndPlot();
+        }
+        ImPlot::PopStyleVar();
+        ImGui::EndTable();
+    }
+
+    m_hovered_counter_index = new_hovered_counter_index;
 }
 
 DebugApuWindow apu_window;
