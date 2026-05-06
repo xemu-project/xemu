@@ -1331,7 +1331,7 @@ static void dis_lua(dsp_core_t* dsp)
     char addr_name[12];
 
     dis_calc_ea(dsp, (dsp->disasm_cur_inst>>8) & BITMASK(5), addr_name);
-    uint32_t numreg = dsp->disasm_cur_inst & BITMASK(4);
+    uint32_t numreg = dsp->disasm_cur_inst & BITMASK(5);
 
     sprintf(dsp->disasm_str_instr,"lua %s,%s", addr_name, registers_name[numreg]);
 }

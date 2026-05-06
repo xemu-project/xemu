@@ -32,6 +32,10 @@ jobs:
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
       with:
         name: src
+    - name: Install curl
+      run: |
+        apt-get update
+        apt-get install -qy curl
     - name: Install zstd
       if: ${{ matrix.arch == 'arm64' }}
       run: apt-get install zstd
