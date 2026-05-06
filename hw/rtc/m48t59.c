@@ -28,15 +28,15 @@
 #include "hw/qdev-properties.h"
 #include "hw/rtc/m48t59.h"
 #include "qemu/timer.h"
-#include "sysemu/runstate.h"
-#include "sysemu/rtc.h"
-#include "sysemu/sysemu.h"
+#include "system/runstate.h"
+#include "system/rtc.h"
+#include "system/system.h"
 #include "hw/sysbus.h"
 #include "qapi/error.h"
 #include "qemu/bcd.h"
 #include "qemu/module.h"
 #include "trace.h"
-#include "sysemu/watchdog.h"
+#include "system/watchdog.h"
 
 #include "m48t59-internal.h"
 #include "migration/vmstate.h"
@@ -618,12 +618,11 @@ static void m48txx_sysbus_toggle_lock(Nvram *obj, int lock)
     m48t59_toggle_lock(&d->state, lock);
 }
 
-static Property m48t59_sysbus_properties[] = {
+static const Property m48t59_sysbus_properties[] = {
     DEFINE_PROP_INT32("base-year", M48txxSysBusState, state.base_year, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void m48txx_sysbus_class_init(ObjectClass *klass, void *data)
+static void m48txx_sysbus_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     NvramClass *nc = NVRAM_CLASS(klass);
@@ -637,10 +636,11 @@ static void m48txx_sysbus_class_init(ObjectClass *klass, void *data)
     nc->toggle_lock = m48txx_sysbus_toggle_lock;
 }
 
-static void m48txx_sysbus_concrete_class_init(ObjectClass *klass, void *data)
+static void m48txx_sysbus_concrete_class_init(ObjectClass *klass,
+                                              const void *data)
 {
     M48txxSysBusDeviceClass *u = M48TXX_SYS_BUS_CLASS(klass);
-    M48txxInfo *info = data;
+    const M48txxInfo *info = data;
 
     u->info = *info;
 }
@@ -658,7 +658,7 @@ static const TypeInfo m48txx_sysbus_type_info = {
     .instance_init = m48t59_init1,
     .abstract = true,
     .class_init = m48txx_sysbus_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_NVRAM },
         { }
     }
@@ -679,7 +679,7 @@ static void m48t59_register_types(void)
     for (i = 0; i < ARRAY_SIZE(m48txx_sysbus_info); i++) {
         sysbus_type_info.name = m48txx_sysbus_info[i].bus_name;
         sysbus_type_info.class_data = &m48txx_sysbus_info[i];
-        type_register(&sysbus_type_info);
+        type_register_static(&sysbus_type_info);
     }
 }
 

@@ -168,7 +168,7 @@ static void ipmi_kcs_handle_event(IPMIInterface *ii)
             ik->outpos = 0;
             bk->handle_command(ik->bmc, ik->inmsg, ik->inlen, sizeof(ik->inmsg),
                                ik->waiting_rsp);
-            goto out_noibf;
+            return;
         } else if (ik->cmd_reg == IPMI_KCS_WRITE_END_CMD) {
             ik->cmd_reg = -1;
             ik->write_end = 1;
@@ -197,8 +197,6 @@ static void ipmi_kcs_handle_event(IPMIInterface *ii)
     ik->cmd_reg = -1;
     ik->data_in_reg = -1;
     IPMI_KCS_SET_IBF(ik->status_reg, 0);
- out_noibf:
-    return;
 }
 
 static void ipmi_kcs_handle_rsp(IPMIInterface *ii, uint8_t msg_id,
@@ -405,6 +403,7 @@ void ipmi_kcs_get_fwinfo(IPMIKCS *ik, IPMIFwInfo *info)
     info->interface_type = IPMI_SMBIOS_KCS;
     info->ipmi_spec_major_revision = 2;
     info->ipmi_spec_minor_revision = 0;
+    info->ipmi_channel_protocol = IPMI_CHANNEL_PROTOCOL_KCS;
     info->base_address = ik->io_base;
     info->i2c_slave_address = ik->bmc->slave_addr;
     info->register_length = ik->io_length;

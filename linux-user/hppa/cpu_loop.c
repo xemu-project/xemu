@@ -20,7 +20,7 @@
 #include "qemu/osdep.h"
 #include "qemu.h"
 #include "user-internals.h"
-#include "cpu_loop-common.h"
+#include "user/cpu_loop.h"
 #include "signal-common.h"
 
 static abi_ulong hppa_lws(CPUHPPAState *env)
@@ -112,14 +112,14 @@ static abi_ulong hppa_lws(CPUHPPAState *env)
 void cpu_loop(CPUHPPAState *env)
 {
     CPUState *cs = env_cpu(env);
-    abi_ulong ret;
+    abi_ulong ret, si_code = 0;
     int trapnr;
 
     while (1) {
         cpu_exec_start(cs);
         trapnr = cpu_exec(cs);
         cpu_exec_end(cs);
-        process_queued_cpu_work(cs);
+        qemu_process_cpu_events(cs);
 
         switch (trapnr) {
         case EXCP_SYSCALL:
@@ -169,7 +169,15 @@ void cpu_loop(CPUHPPAState *env)
             force_sig_fault(TARGET_SIGFPE, TARGET_FPE_CONDTRAP, env->iaoq_f);
             break;
         case EXCP_ASSIST:
-            force_sig_fault(TARGET_SIGFPE, 0, env->iaoq_f);
+            #define set_si_code(mask, val) \
+                if (env->fr[0] & mask) { si_code = val; }
+            set_si_code(R_FPSR_FLG_I_MASK, TARGET_FPE_FLTRES);
+            set_si_code(R_FPSR_FLG_U_MASK, TARGET_FPE_FLTUND);
+            set_si_code(R_FPSR_FLG_O_MASK, TARGET_FPE_FLTOVF);
+            set_si_code(R_FPSR_FLG_Z_MASK, TARGET_FPE_FLTDIV);
+            set_si_code(R_FPSR_FLG_V_MASK, TARGET_FPE_FLTINV);
+            #undef set_si_code
+            force_sig_fault(TARGET_SIGFPE, si_code, env->iaoq_f);
             break;
         case EXCP_BREAK:
             force_sig_fault(TARGET_SIGTRAP, TARGET_TRAP_BRKPT, env->iaoq_f);
@@ -188,12 +196,16 @@ void cpu_loop(CPUHPPAState *env)
     }
 }
 
-void target_cpu_copy_regs(CPUArchState *env, struct target_pt_regs *regs)
+void init_main_thread(CPUState *cs, struct image_info *info)
 {
-    int i;
-    for (i = 1; i < 32; i++) {
-        env->gr[i] = regs->gr[i];
-    }
-    env->iaoq_f = regs->iaoq[0];
-    env->iaoq_b = regs->iaoq[1];
+    CPUArchState *env = cpu_env(cs);
+
+    env->iaoq_f = info->entry | PRIV_USER;
+    env->iaoq_b = env->iaoq_f + 4;
+    env->gr[23] = 0;
+    env->gr[24] = info->argv;
+    env->gr[25] = info->argc;
+    /* The top-of-stack contains a linkage buffer.  */
+    env->gr[30] = info->start_stack + 64;
+    env->gr[31] = info->entry;
 }

@@ -1,3 +1,5 @@
+.. _user-mode:
+
 QEMU User space emulator
 ========================
 
@@ -15,32 +17,50 @@ Features
 
 QEMU user space emulation has the following notable features:
 
-**System call translation:**
-   QEMU includes a generic system call translator. This means that the
-   parameters of the system calls can be converted to fix endianness and
-   32/64-bit mismatches between hosts and targets. IOCTLs can be
-   converted too.
+System call translation
+~~~~~~~~~~~~~~~~~~~~~~~
 
-**POSIX signal handling:**
-   QEMU can redirect to the running program all signals coming from the
-   host (such as ``SIGALRM``), as well as synthesize signals from
-   virtual CPU exceptions (for example ``SIGFPE`` when the program
-   executes a division by zero).
+System calls are the principle interface between user-space and the
+kernel. Generally the same system calls exist on all versions of the
+kernel so QEMU includes a generic system call translator. The
+translator takes care of adjusting endianess, 32/64 bit parameter size
+and then calling the equivalent host system call.
 
-   QEMU relies on the host kernel to emulate most signal system calls,
-   for example to emulate the signal mask. On Linux, QEMU supports both
-   normal and real-time signals.
+QEMU can also adjust device specific ``ioctl()`` calls in a similar
+fashion.
 
-**Threading:**
-   On Linux, QEMU can emulate the ``clone`` syscall and create a real
-   host thread (with a separate virtual CPU) for each emulated thread.
-   Note that not all targets currently emulate atomic operations
-   correctly. x86 and Arm use a global lock in order to preserve their
-   semantics.
+POSIX signal handling
+~~~~~~~~~~~~~~~~~~~~~
+
+QEMU can redirect to the running program all signals coming from the
+host (such as ``SIGALRM``), as well as synthesize signals from
+virtual CPU exceptions (for example ``SIGFPE`` when the program
+executes a division by zero).
+
+QEMU relies on the host kernel to emulate most signal system calls,
+for example to emulate the signal mask. On Linux, QEMU supports both
+normal and real-time signals.
+
+Threading
+~~~~~~~~~
+
+On Linux, QEMU can emulate the ``clone`` syscall and create a real
+host thread (with a separate virtual CPU) for each emulated thread.
+However as QEMU relies on the system libc to call ``clone`` on its
+behalf we limit the flags accepted to those it uses. Specifically this
+means flags affecting namespaces (e.g. container runtimes) are not
+supported. QEMU user-mode processes can still be run inside containers
+though.
+
+While QEMU does its best to emulate atomic operations properly
+differences between the host and guest memory models can cause issues
+for software that makes assumptions about the memory model.
 
 QEMU was conceived so that ultimately it can emulate itself. Although it
 is not very useful, it is an important test to show the power of the
 emulator.
+
+.. _linux-user-mode:
 
 Linux User space emulator
 -------------------------
@@ -50,7 +70,7 @@ Command line options
 
 ::
 
-   qemu-i386 [-h] [-d] [-L path] [-s size] [-cpu model] [-g port] [-B offset] [-R size] program [arguments...]
+   qemu-i386 [-h] [-d] [-L path] [-s size] [-cpu model] [-g endpoint] [-B offset] [-R size] program [arguments...]
 
 ``-h``
    Print the help
@@ -87,8 +107,18 @@ Debug options:
    Activate logging of the specified items (use '-d help' for a list of
    log items)
 
-``-g port``
-   Wait gdb connection to port
+``-g endpoint``
+   Wait gdb connection to a port (e.g., ``1234``) or a unix socket (e.g.,
+   ``/tmp/qemu.sock``).
+
+   If a unix socket path contains single ``%d`` placeholder (e.g.,
+   ``/tmp/qemu-%d.sock``), it is replaced by the emulator PID, which is useful
+   when passing this option via the ``QEMU_GDB`` environment variable to a
+   multi-process application.
+
+   If the endpoint address is followed by ``,suspend=n`` (e.g.,
+   ``1234,suspend=n``), then the emulated program starts without waiting for a
+   connection, which can be established at any later point in time.
 
 ``-one-insn-per-tb``
    Run the emulation with one guest instruction per translation block.
@@ -175,6 +205,8 @@ Other binaries
    * ``qemu-sparc64`` can execute some Sparc64 (Sparc64 CPU, 64 bit ABI) and
      SPARC32PLUS binaries (Sparc64 CPU, 32 bit ABI).
 
+.. _bsd-user-mode:
+
 BSD User space emulator
 -----------------------
 
@@ -229,9 +261,6 @@ Debug options:
 ``-d item1,...``
    Activate logging of the specified items (use '-d help' for a list of
    log items)
-
-``-p pagesize``
-   Act as if the host page size was 'pagesize' bytes
 
 ``-one-insn-per-tb``
    Run the emulation with one guest instruction per translation block.

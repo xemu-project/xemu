@@ -27,16 +27,16 @@
 #include "migration/vmstate.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "sysemu/cpus.h"
-#include "sysemu/qtest.h"
+#include "system/cpus.h"
+#include "system/qtest.h"
 #include "qemu/main-loop.h"
 #include "qemu/option.h"
 #include "qemu/seqlock.h"
-#include "sysemu/replay.h"
-#include "sysemu/runstate.h"
+#include "system/replay.h"
+#include "system/runstate.h"
 #include "hw/core/cpu.h"
-#include "sysemu/cpu-timers.h"
-#include "sysemu/cpu-timers-internal.h"
+#include "exec/icount.h"
+#include "system/cpu-timers-internal.h"
 
 /*
  * ICOUNT: Instruction Counter
@@ -47,6 +47,8 @@
 static bool icount_sleep = true;
 /* Arbitrarily pick 1MIPS as the minimum allowable speed.  */
 #define MAX_ICOUNT_SHIFT 10
+
+bool icount_align_option;
 
 /* Do not count executed instructions */
 ICountMode use_icount = ICOUNT_DISABLED;

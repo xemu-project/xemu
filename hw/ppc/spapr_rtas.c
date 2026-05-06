@@ -28,12 +28,12 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "qemu/error-report.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/device_tree.h"
-#include "sysemu/cpus.h"
-#include "sysemu/hw_accel.h"
-#include "sysemu/runstate.h"
-#include "sysemu/qtest.h"
+#include "system/system.h"
+#include "system/device_tree.h"
+#include "system/cpus.h"
+#include "system/hw_accel.h"
+#include "system/runstate.h"
+#include "system/qtest.h"
 #include "kvm_ppc.h"
 
 #include "hw/ppc/spapr.h"
@@ -110,7 +110,8 @@ static void rtas_query_cpu_stopped_state(PowerPCCPU *cpu_,
     id = rtas_ld(args, 0);
     cpu = spapr_find_cpu(id);
     if (cpu != NULL) {
-        if (CPU(cpu)->halted) {
+        CPUPPCState *env = &cpu->env;
+        if (env->quiesced) {
             rtas_st(rets, 1, 0);
         } else {
             rtas_st(rets, 1, 2);
@@ -215,10 +216,12 @@ static void rtas_stop_self(PowerPCCPU *cpu, SpaprMachineState *spapr,
      * For the same reason, set PSSCR_EC.
      */
     env->spr[SPR_PSSCR] |= PSSCR_EC;
+    env->quiesced = true; /* set "RTAS stopped" state. */
+    ppc_maybe_interrupt(env);
     cs->halted = 1;
     ppc_store_lpcr(cpu, env->spr[SPR_LPCR] & ~pcc->lpcr_pm);
     kvmppc_set_reg_ppc_online(cpu, 0);
-    qemu_cpu_kick(cs);
+    cpu_exit(cs);
 }
 
 static void rtas_ibm_suspend_me(PowerPCCPU *cpu, SpaprMachineState *spapr,
@@ -341,6 +344,73 @@ static void rtas_ibm_set_system_parameter(PowerPCCPU *cpu,
     rtas_st(rets, 0, ret);
 }
 
+/* Papr Section 7.4.9 ibm,configure-kernel-dump RTAS call */
+static void rtas_configure_kernel_dump(PowerPCCPU *cpu,
+                                   SpaprMachineState *spapr,
+                                   uint32_t token, uint32_t nargs,
+                                   target_ulong args,
+                                   uint32_t nret, target_ulong rets)
+{
+    target_ulong cmd = rtas_ld(args, 0);
+    uint32_t ret_val;
+
+    /* Number of outputs has to be 1 */
+    if (nret != 1) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+            "FADump: ibm,configure-kernel-dump called with nret != 1.\n");
+        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+        return;
+    }
+
+    /* Number of inputs has to be 3 */
+    if (nargs != 3) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+            "FADump: ibm,configure-kernel-dump called with nargs != 3.\n");
+        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+        return;
+    }
+
+    switch (cmd) {
+    case FADUMP_CMD_REGISTER:
+        ret_val = do_fadump_register(spapr, args);
+        if (ret_val != RTAS_OUT_SUCCESS) {
+            rtas_st(rets, 0, ret_val);
+            return;
+        }
+        break;
+    case FADUMP_CMD_UNREGISTER:
+        if (spapr->fadump_dump_active) {
+            rtas_st(rets, 0, RTAS_OUT_DUMP_ACTIVE);
+            return;
+        }
+
+        spapr->fadump_registered = false;
+        spapr->fadump_dump_active = false;
+        memset(&spapr->registered_fdm, 0, sizeof(spapr->registered_fdm));
+        break;
+    case FADUMP_CMD_INVALIDATE:
+        if (!spapr->fadump_dump_active) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                "FADump: Nothing to invalidate, no dump active\n");
+
+            rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+        }
+
+        spapr->fadump_registered = false;
+        spapr->fadump_dump_active = false;
+        memset(&spapr->registered_fdm, 0, sizeof(spapr->registered_fdm));
+        break;
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                "FADump: Unknown command: " TARGET_FMT_lu "\n", cmd);
+
+        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+        return;
+    }
+
+    rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+}
+
 static void rtas_ibm_os_term(PowerPCCPU *cpu,
                             SpaprMachineState *spapr,
                             uint32_t token, uint32_t nargs,
@@ -349,6 +419,11 @@ static void rtas_ibm_os_term(PowerPCCPU *cpu,
 {
     target_ulong msgaddr = rtas_ld(args, 0);
     char msg[512];
+
+    if (spapr->fadump_registered) {
+        /* If fadump boot works, control won't come back here */
+        return trigger_fadump_boot(spapr, rets);
+    }
 
     cpu_physical_memory_read(msgaddr, msg, sizeof(msg) - 1);
     msg[sizeof(msg) - 1] = 0;
@@ -548,7 +623,7 @@ static uint64_t qtest_rtas_call(char *cmd, uint32_t nargs, uint64_t args,
     return H_PARAMETER;
 }
 
-static bool spapr_qtest_callback(CharBackend *chr, gchar **words)
+static bool spapr_qtest_callback(CharFrontend *chr, gchar **words)
 {
     if (strcmp(words[0], "rtas") == 0) {
         uint64_t res, args, ret;
@@ -565,7 +640,6 @@ static bool spapr_qtest_callback(CharBackend *chr, gchar **words)
         g_assert(rc == 0);
         res = qtest_rtas_call(words[1], nargs, args, nret, ret);
 
-        qtest_send_prefix(chr);
         qtest_sendf(chr, "OK %"PRIu64"\n", res);
 
         return true;
@@ -656,6 +730,10 @@ static void core_rtas_register_types(void)
                         rtas_ibm_nmi_register);
     spapr_rtas_register(RTAS_IBM_NMI_INTERLOCK, "ibm,nmi-interlock",
                         rtas_ibm_nmi_interlock);
+
+    /* Register fadump rtas call */
+    spapr_rtas_register(RTAS_CONFIGURE_KERNEL_DUMP, "ibm,configure-kernel-dump",
+                        rtas_configure_kernel_dump);
 
     qtest_set_command_cb(spapr_qtest_callback);
 }

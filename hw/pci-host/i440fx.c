@@ -315,7 +315,7 @@ static void i440fx_pcihost_realize(DeviceState *dev, Error **errp)
     i440fx_update_memory_mappings(f);
 }
 
-static void i440fx_class_init(ObjectClass *klass, void *data)
+static void i440fx_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -341,7 +341,7 @@ static const TypeInfo i440fx_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCII440FXState),
     .class_init    = i440fx_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },
@@ -353,7 +353,7 @@ static const char *i440fx_pcihost_root_bus_path(PCIHostState *host_bridge,
     return "0000:00";
 }
 
-static Property i440fx_props[] = {
+static const Property i440fx_props[] = {
     DEFINE_PROP_SIZE(PCI_HOST_PROP_PCI_HOLE64_SIZE, I440FXState,
                      pci_hole64_size, I440FX_PCI_HOST_HOLE64_SIZE_DEFAULT),
     DEFINE_PROP_SIZE(PCI_HOST_BELOW_4G_MEM_SIZE, I440FXState,
@@ -362,10 +362,9 @@ static Property i440fx_props[] = {
                      above_4g_mem_size, 0),
     DEFINE_PROP_BOOL("x-pci-hole64-fix", I440FXState, pci_hole64_fix, true),
     DEFINE_PROP_STRING(I440FX_HOST_PROP_PCI_TYPE, I440FXState, pci_type),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void i440fx_pcihost_class_init(ObjectClass *klass, void *data)
+static void i440fx_pcihost_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIHostBridgeClass *hc = PCI_HOST_BRIDGE_CLASS(klass);

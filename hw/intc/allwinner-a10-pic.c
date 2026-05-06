@@ -135,7 +135,7 @@ static void aw_a10_pic_write(void *opaque, hwaddr offset, uint64_t value,
 static const MemoryRegionOps aw_a10_pic_ops = {
     .read = aw_a10_pic_read,
     .write = aw_a10_pic_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
 static const VMStateDescription vmstate_aw_a10_pic = {
@@ -187,7 +187,7 @@ static void aw_a10_pic_reset(DeviceState *d)
     }
 }
 
-static void aw_a10_pic_class_init(ObjectClass *klass, void *data)
+static void aw_a10_pic_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

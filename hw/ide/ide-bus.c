@@ -21,15 +21,15 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
-#include "sysemu/block-backend.h"
-#include "sysemu/blockdev.h"
-#include "sysemu/runstate.h"
+#include "system/block-backend.h"
+#include "system/blockdev.h"
+#include "system/runstate.h"
 #include "ide-internal.h"
 
 static char *idebus_get_fw_dev_path(DeviceState *dev);
 static void idebus_unrealize(BusState *qdev);
 
-static void ide_bus_class_init(ObjectClass *klass, void *data)
+static void ide_bus_class_init(ObjectClass *klass, const void *data)
 {
     BusClass *k = BUS_CLASS(klass);
 

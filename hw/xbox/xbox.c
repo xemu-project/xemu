@@ -31,15 +31,15 @@
 #include "net/net.h"
 #include "hw/boards.h"
 #include "hw/ide/pci.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/kvm.h"
+#include "system/system.h"
+#include "system/kvm.h"
 #include "kvm/kvm_i386.h"
 #include "hw/dma/i8257.h"
 
 #include "hw/sysbus.h"
-#include "sysemu/arch_init.h"
-#include "exec/memory.h"
-#include "exec/address-spaces.h"
+#include "system/arch_init.h"
+#include "system/memory.h"
+#include "system/address-spaces.h"
 #include "cpu.h"
 
 #include "qapi/error.h"
@@ -74,7 +74,7 @@ static void xbox_flash_init(MachineState *ms, MemoryRegion *rom_memory)
     uint32_t bios_size = 256 * 1024;
 
     if (filename != NULL) {
-        int bios_file_size = get_image_size(filename);
+        int bios_file_size = get_image_size(filename, NULL);
         if ((bios_file_size > 0) && ((bios_file_size % 65536) == 0)) {
             failed_to_load_bios = 0;
             bios_size = bios_file_size;
@@ -147,7 +147,7 @@ static void xbox_flash_init(MachineState *ms, MemoryRegion *rom_memory)
         filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bootrom_file);
         assert(filename);
 
-        int bootrom_size = get_image_size(filename);
+        int bootrom_size = get_image_size(filename, NULL);
         if (bootrom_size != 512) {
             fprintf(stderr, "MCPX bootrom should be 512 bytes, got %d\n",
                     bootrom_size);
@@ -454,7 +454,6 @@ static void xbox_machine_options(MachineClass *m)
     m->rom_file_has_mr   = false;
     m->no_floppy         = 1,
     m->no_cdrom          = 1,
-    m->no_sdcard         = 1,
     m->default_cpu_type  = X86_CPU_TYPE_NAME("pentium3");
     m->is_default        = true;
     m->default_nic       = "nvnet";
@@ -505,7 +504,7 @@ static inline void xbox_machine_initfn(Object *obj)
     object_property_set_str(obj, "video-encoder", "conexant", &error_fatal);
 }
 
-static void xbox_machine_class_init(ObjectClass *oc, void *data)
+static void xbox_machine_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     xbox_machine_options(mc);
@@ -529,7 +528,7 @@ static const TypeInfo pc_machine_type_xbox = {
 
 static void pc_machine_init_xbox(void)
 {
-    type_register(&pc_machine_type_xbox);
+    type_register_static(&pc_machine_type_xbox);
 }
 
 type_init(pc_machine_init_xbox)

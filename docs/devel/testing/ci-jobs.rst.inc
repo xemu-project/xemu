@@ -126,10 +126,10 @@ QEMU_JOB_PUBLISH
 The job is for publishing content after a branch has been
 merged into the upstream default branch.
 
-QEMU_JOB_AVOCADO
-~~~~~~~~~~~~~~~~
+QEMU_JOB_FUNCTIONAL
+~~~~~~~~~~~~~~~~~~~
 
-The job runs the Avocado integration test suite
+The job runs the functional test suite
 
 Contributor controlled runtime variables
 ----------------------------------------
@@ -149,13 +149,12 @@ the jobs to be manually started from the UI
 Set this variable to 2 to create the pipelines and run all
 the jobs immediately, as was the historical behaviour
 
-QEMU_CI_AVOCADO_TESTING
-~~~~~~~~~~~~~~~~~~~~~~~
-By default, tests using the Avocado framework are not run automatically in
-the pipelines (because multiple artifacts have to be downloaded, and if
-these artifacts are not already cached, downloading them make the jobs
-reach the timeout limit). Set this variable to have the tests using the
-Avocado framework run automatically.
+QEMU_CI_FUNCTIONAL
+~~~~~~~~~~~~~~~~~~
+By default, tests using the functional framework are not run automatically
+in the pipelines (because multiple artifacts have to be downloaded, which
+might cause a lot of network traffic). Set this variable to have the tests
+using the functional framework run automatically.
 
 Other misc variables
 --------------------
@@ -169,18 +168,17 @@ If you've got access to an aarch64 host that can be used as a gitlab-CI
 runner, you can set this variable to enable the tests that require this
 kind of host. The runner should be tagged with "aarch64".
 
-AARCH32_RUNNER_AVAILABLE
-~~~~~~~~~~~~~~~~~~~~~~~~
-If you've got access to an armhf host or an arch64 host that can run
-aarch32 EL0 code to be used as a gitlab-CI runner, you can set this
-variable to enable the tests that require this kind of host. The
-runner should be tagged with "aarch32".
-
 S390X_RUNNER_AVAILABLE
 ~~~~~~~~~~~~~~~~~~~~~~
 If you've got access to an IBM Z host that can be used as a gitlab-CI
 runner, you can set this variable to enable the tests that require this
 kind of host. The runner should be tagged with "s390x".
+
+PPC64LE_RUNNER_AVAILABLE
+~~~~~~~~~~~~~~~~~~~~~~~~
+If you've got access to an PPC64LE host that can be used as a gitlab-CI
+runner, you can set this variable to enable the tests that require this
+kind of host. The runner should be tagged with "ppc64le".
 
 CCACHE_DISABLE
 ~~~~~~~~~~~~~~

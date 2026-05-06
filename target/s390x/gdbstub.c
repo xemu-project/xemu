@@ -21,12 +21,12 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "s390x-internal.h"
-#include "exec/exec-all.h"
+#include "exec/cputlb.h"
 #include "exec/gdbstub.h"
 #include "gdbstub/helpers.h"
 #include "qemu/bitops.h"
-#include "sysemu/hw_accel.h"
-#include "sysemu/tcg.h"
+#include "system/hw_accel.h"
+#include "system/tcg.h"
 
 int s390_cpu_gdb_read_register(CPUState *cs, GByteArray *mem_buf, int n)
 {

@@ -22,6 +22,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/arm/allwinner-a10.h"
 #include "hw/arm/boot.h"
+#include "hw/arm/machines-qom.h"
 #include "hw/i2c/i2c.h"
 
 static struct arm_boot_info cubieboard_binfo = {
@@ -122,6 +123,7 @@ static void cubieboard_machine_init(MachineClass *mc)
     mc->units_per_default_bus = 1;
     mc->ignore_memory_transaction_failures = true;
     mc->default_ram_id = "cubieboard.ram";
+    mc->auto_create_sdcard = true;
 }
 
-DEFINE_MACHINE("cubieboard", cubieboard_machine_init)
+DEFINE_MACHINE_ARM("cubieboard", cubieboard_machine_init)

@@ -55,7 +55,7 @@ typedef struct VhostVDPAState {
  * with the exception of VHOST_INVALID_FEATURE_BIT,
  * which should always be the last entry.
  */
-const int vdpa_feature_bits[] = {
+static const int vdpa_feature_bits[] = {
     VIRTIO_F_ANY_LAYOUT,
     VIRTIO_F_IOMMU_PLATFORM,
     VIRTIO_F_NOTIFY_ON_EMPTY,
@@ -132,7 +132,7 @@ static const uint64_t vdpa_svq_device_features =
 
 #define VHOST_VDPA_NET_CVQ_ASID 1
 
-VHostNetState *vhost_vdpa_get_vhost_net(NetClientState *nc)
+static struct vhost_net *vhost_vdpa_get_vhost_net(NetClientState *nc)
 {
     VhostVDPAState *s = DO_UPCAST(VhostVDPAState, nc, nc);
     assert(nc->info->type == NET_CLIENT_DRIVER_VHOST_VDPA);
@@ -201,6 +201,11 @@ static int vhost_vdpa_add(NetClientState *ncs, void *be,
     options.opaque      = be;
     options.busyloop_timeout = 0;
     options.nvqs = nvqs;
+    options.feature_bits = vdpa_feature_bits;
+    options.get_acked_features = NULL;
+    options.save_acked_features = NULL;
+    options.max_tx_queue_size = VIRTQUEUE_MAX_SIZE;
+    options.is_vhost_user = false;
 
     net = vhost_net_init(&options);
     if (!net) {
@@ -224,14 +229,6 @@ static void vhost_vdpa_cleanup(NetClientState *nc)
 {
     VhostVDPAState *s = DO_UPCAST(VhostVDPAState, nc, nc);
 
-    /*
-     * If a peer NIC is attached, do not cleanup anything.
-     * Cleanup will happen as a part of qemu_cleanup() -> net_cleanup()
-     * when the guest is shutting down.
-     */
-    if (nc->peer && nc->peer->info->type == NET_CLIENT_DRIVER_NIC) {
-        return;
-    }
     munmap(s->cvq_cmd_out_buffer, vhost_vdpa_net_cvq_cmd_page_len());
     munmap(s->status, vhost_vdpa_net_cvq_cmd_page_len());
     if (s->vhost_net) {
@@ -243,18 +240,39 @@ static void vhost_vdpa_cleanup(NetClientState *nc)
         return;
     }
     qemu_close(s->vhost_vdpa.shared->device_fd);
+    g_clear_pointer(&s->vhost_vdpa.shared->iova_tree, vhost_iova_tree_delete);
     g_free(s->vhost_vdpa.shared);
-}
-
-/** Dummy SetSteeringEBPF to support RSS for vhost-vdpa backend  */
-static bool vhost_vdpa_set_steering_ebpf(NetClientState *nc, int prog_fd)
-{
-    return true;
 }
 
 static bool vhost_vdpa_has_vnet_hdr(NetClientState *nc)
 {
     assert(nc->info->type == NET_CLIENT_DRIVER_VHOST_VDPA);
+
+    return true;
+}
+
+static bool vhost_vdpa_get_vnet_hash_supported_types(NetClientState *nc,
+                                                     uint32_t *types)
+{
+    assert(nc->info->type == NET_CLIENT_DRIVER_VHOST_VDPA);
+    VhostVDPAState *s = DO_UPCAST(VhostVDPAState, nc, nc);
+    uint64_t features = s->vhost_vdpa.dev->features;
+    int fd = s->vhost_vdpa.shared->device_fd;
+    struct {
+        struct vhost_vdpa_config hdr;
+        uint32_t supported_hash_types;
+    } config;
+
+    if (!virtio_has_feature(features, VIRTIO_NET_F_HASH_REPORT) &&
+        !virtio_has_feature(features, VIRTIO_NET_F_RSS)) {
+        return false;
+    }
+
+    config.hdr.off = offsetof(struct virtio_net_config, supported_hash_types);
+    config.hdr.len = sizeof(config.supported_hash_types);
+
+    assert(!ioctl(fd, VHOST_VDPA_GET_CONFIG, &config));
+    *types = le32_to_cpu(config.supported_hash_types);
 
     return true;
 }
@@ -268,6 +286,18 @@ static bool vhost_vdpa_has_ufo(NetClientState *nc)
     features = vhost_net_get_features(s->vhost_net, features);
     return !!(features & (1ULL << VIRTIO_NET_F_HOST_UFO));
 
+}
+
+/*
+ * FIXME: vhost_vdpa doesn't have an API to "set h/w endianness". But it's
+ * reasonable to assume that h/w is LE by default, because LE is what
+ * virtio 1.0 and later ask for. So, this function just says "yes, the h/w is
+ * LE". Otherwise, on a BE machine, higher-level code would mistakely think
+ * the h/w is BE and can't support VDPA for a virtio 1.0 client.
+ */
+static int vhost_vdpa_set_vnet_le(NetClientState *nc, bool enable)
+{
+    return 0;
 }
 
 static bool vhost_vdpa_check_peer_type(NetClientState *nc, ObjectClass *oc,
@@ -358,14 +388,8 @@ static int vdpa_net_migration_state_notifier(NotifierWithReturn *notifier,
 
 static void vhost_vdpa_net_data_start_first(VhostVDPAState *s)
 {
-    struct vhost_vdpa *v = &s->vhost_vdpa;
-
     migration_add_notifier(&s->migration_state,
                            vdpa_net_migration_state_notifier);
-    if (v->shadow_vqs_enabled) {
-        v->shared->iova_tree = vhost_iova_tree_new(v->shared->iova_range.first,
-                                                   v->shared->iova_range.last);
-    }
 }
 
 static int vhost_vdpa_net_data_start(NetClientState *nc)
@@ -412,18 +436,11 @@ static int vhost_vdpa_net_data_load(NetClientState *nc)
 static void vhost_vdpa_net_client_stop(NetClientState *nc)
 {
     VhostVDPAState *s = DO_UPCAST(VhostVDPAState, nc, nc);
-    struct vhost_dev *dev;
 
     assert(nc->info->type == NET_CLIENT_DRIVER_VHOST_VDPA);
 
     if (s->vhost_vdpa.index == 0) {
         migration_remove_notifier(&s->migration_state);
-    }
-
-    dev = s->vhost_vdpa.dev;
-    if (dev->vq_index + dev->nvqs == dev->vq_index_end) {
-        g_clear_pointer(&s->vhost_vdpa.shared->iova_tree,
-                        vhost_iova_tree_delete);
     }
 }
 
@@ -436,9 +453,11 @@ static NetClientInfo net_vhost_vdpa_info = {
         .stop = vhost_vdpa_net_client_stop,
         .cleanup = vhost_vdpa_cleanup,
         .has_vnet_hdr = vhost_vdpa_has_vnet_hdr,
+        .get_vnet_hash_supported_types = vhost_vdpa_get_vnet_hash_supported_types,
         .has_ufo = vhost_vdpa_has_ufo,
+        .set_vnet_le = vhost_vdpa_set_vnet_le,
         .check_peer_type = vhost_vdpa_check_peer_type,
-        .set_steering_ebpf = vhost_vdpa_set_steering_ebpf,
+        .get_vhost_net = vhost_vdpa_get_vhost_net,
 };
 
 static int64_t vhost_vdpa_get_vring_group(int device_fd, unsigned vq_index,
@@ -510,14 +529,20 @@ static int vhost_vdpa_cvq_map_buf(struct vhost_vdpa *v, void *buf, size_t size,
                                   bool write)
 {
     DMAMap map = {};
+    hwaddr taddr = (hwaddr)(uintptr_t)buf;
     int r;
 
-    map.translated_addr = (hwaddr)(uintptr_t)buf;
     map.size = size - 1;
     map.perm = write ? IOMMU_RW : IOMMU_RO,
-    r = vhost_iova_tree_map_alloc(v->shared->iova_tree, &map);
+    r = vhost_iova_tree_map_alloc(v->shared->iova_tree, &map, taddr);
     if (unlikely(r != IOVA_OK)) {
         error_report("Cannot map injected element");
+
+        if (map.translated_addr == taddr) {
+            error_report("Insertion to IOVA->HVA tree failed");
+            /* Remove the mapping from the IOVA-only tree */
+            goto dma_map_err;
+        }
         return r;
     }
 
@@ -589,24 +614,6 @@ out:
         return 0;
     }
 
-    /*
-     * If other vhost_vdpa already have an iova_tree, reuse it for simplicity,
-     * whether CVQ shares ASID with guest or not, because:
-     * - Memory listener need access to guest's memory addresses allocated in
-     *   the IOVA tree.
-     * - There should be plenty of IOVA address space for both ASID not to
-     *   worry about collisions between them.  Guest's translations are still
-     *   validated with virtio virtqueue_pop so there is no risk for the guest
-     *   to access memory that it shouldn't.
-     *
-     * To allocate a iova tree per ASID is doable but it complicates the code
-     * and it is not worth it for the moment.
-     */
-    if (!v->shared->iova_tree) {
-        v->shared->iova_tree = vhost_iova_tree_new(v->shared->iova_range.first,
-                                                   v->shared->iova_range.last);
-    }
-
     r = vhost_vdpa_cvq_map_buf(&s->vhost_vdpa, s->cvq_cmd_out_buffer,
                                vhost_vdpa_net_cvq_cmd_page_len(), false);
     if (unlikely(r < 0)) {
@@ -643,7 +650,7 @@ static ssize_t vhost_vdpa_net_cvq_add(VhostVDPAState *s,
     VhostShadowVirtqueue *svq = g_ptr_array_index(s->vhost_vdpa.shadow_vqs, 0);
     int r;
 
-    r = vhost_svq_add(svq, out_sg, out_num, in_sg, in_num, NULL);
+    r = vhost_svq_add(svq, out_sg, out_num, NULL, in_sg, in_num, NULL, NULL);
     if (unlikely(r != 0)) {
         if (unlikely(r == -ENOSPC)) {
             qemu_log_mask(LOG_GUEST_ERROR, "%s: No space on device queue\n",
@@ -857,13 +864,13 @@ static int vhost_vdpa_net_load_rss(VhostVDPAState *s, const VirtIONet *n,
      * configuration only at live migration.
      */
     if (!n->rss_data.enabled ||
-        n->rss_data.hash_types == VIRTIO_NET_HASH_REPORT_NONE) {
+        n->rss_data.runtime_hash_types == VIRTIO_NET_HASH_REPORT_NONE) {
         return 0;
     }
 
     table = g_malloc_n(n->rss_data.indirections_len,
                        sizeof(n->rss_data.indirections_table[0]));
-    cfg.hash_types = cpu_to_le32(n->rss_data.hash_types);
+    cfg.hash_types = cpu_to_le32(n->rss_data.runtime_hash_types);
 
     if (do_rss) {
         /*
@@ -1303,9 +1310,10 @@ static NetClientInfo net_vhost_vdpa_cvq_info = {
     .stop = vhost_vdpa_net_cvq_stop,
     .cleanup = vhost_vdpa_cleanup,
     .has_vnet_hdr = vhost_vdpa_has_vnet_hdr,
+    .get_vnet_hash_supported_types = vhost_vdpa_get_vnet_hash_supported_types,
     .has_ufo = vhost_vdpa_has_ufo,
     .check_peer_type = vhost_vdpa_check_peer_type,
-    .set_steering_ebpf = vhost_vdpa_set_steering_ebpf,
+    .get_vhost_net = vhost_vdpa_get_vhost_net,
 };
 
 /*
@@ -1715,6 +1723,8 @@ static NetClientState *net_vhost_vdpa_init(NetClientState *peer,
         s->vhost_vdpa.shared->device_fd = vdpa_device_fd;
         s->vhost_vdpa.shared->iova_range = iova_range;
         s->vhost_vdpa.shared->shadow_data = svq;
+        s->vhost_vdpa.shared->iova_tree = vhost_iova_tree_new(iova_range.first,
+                                                              iova_range.last);
     } else if (!is_datapath) {
         s->cvq_cmd_out_buffer = mmap(NULL, vhost_vdpa_net_cvq_cmd_page_len(),
                                      PROT_READ | PROT_WRITE,
@@ -1830,9 +1840,8 @@ int net_init_vhost_vdpa(const Netdev *netdev, const char *name,
 
     queue_pairs = vhost_vdpa_get_max_queue_pairs(vdpa_device_fd, features,
                                                  &has_cvq, errp);
-    if (queue_pairs < 0) {
-        qemu_close(vdpa_device_fd);
-        return queue_pairs;
+    if (queue_pairs <= 0) {
+        goto err;
     }
 
     r = vhost_vdpa_get_iova_range(vdpa_device_fd, &iova_range);

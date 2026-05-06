@@ -21,28 +21,23 @@
 #include <memory>
 #include <stdexcept>
 #include <cstdio>
+#include <functional>
+#include <SDL3/SDL_dialog.h>
 #include "common.hh"
 #include "xemu-hud.h"
 
-extern "C" {
-#include <noc_file_dialog.h>
-}
+using FileDialogCallback = std::function<void(const char *path)>;
 
-static inline const char *PausedFileOpen(int flags, const char *filters,
-                                         const char *default_path,
-                                         const char *default_name)
-{
-    bool is_running = runstate_is_running();
-    if (is_running) {
-        vm_stop(RUN_STATE_PAUSED);
-    }
-    const char *r = noc_file_dialog_open(flags, filters, default_path, default_name);
-    if (is_running) {
-        vm_start();
-    }
+void ShowOpenFileDialog(const SDL_DialogFileFilter *filters, int nfilters,
+                        const char *default_location,
+                        FileDialogCallback callback);
 
-    return r;
-}
+void ShowSaveFileDialog(const SDL_DialogFileFilter *filters, int nfilters,
+                        const char *default_location,
+                        FileDialogCallback callback);
+
+void ShowOpenFolderDialog(const char *default_location,
+                          FileDialogCallback callback);
 
 template<typename ... Args>
 std::string string_format( const std::string& format, Args ... args )

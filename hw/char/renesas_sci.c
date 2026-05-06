@@ -319,13 +319,12 @@ static const VMStateDescription vmstate_rsci = {
     }
 };
 
-static Property rsci_properties[] = {
+static const Property rsci_properties[] = {
     DEFINE_PROP_UINT64("input-freq", RSCIState, input_freq, 0),
     DEFINE_PROP_CHR("chardev", RSCIState, chr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void rsci_class_init(ObjectClass *klass, void *data)
+static void rsci_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

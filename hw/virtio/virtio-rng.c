@@ -17,8 +17,8 @@
 #include "hw/virtio/virtio.h"
 #include "hw/qdev-properties.h"
 #include "hw/virtio/virtio-rng.h"
-#include "sysemu/rng.h"
-#include "sysemu/runstate.h"
+#include "system/rng.h"
+#include "system/runstate.h"
 #include "qom/object_interfaces.h"
 #include "trace.h"
 
@@ -159,17 +159,18 @@ static void check_rate_limit(void *opaque)
     vrng->activate_timer = true;
 }
 
-static void virtio_rng_set_status(VirtIODevice *vdev, uint8_t status)
+static int virtio_rng_set_status(VirtIODevice *vdev, uint8_t status)
 {
     VirtIORNG *vrng = VIRTIO_RNG(vdev);
 
     if (!vdev->vm_running) {
-        return;
+        return 0;
     }
     vdev->status = status;
 
     /* Something changed, try to process buffers */
     virtio_rng_process(vrng);
+    return 0;
 }
 
 static void virtio_rng_device_realize(DeviceState *dev, Error **errp)
@@ -249,7 +250,7 @@ static const VMStateDescription vmstate_virtio_rng = {
     },
 };
 
-static Property virtio_rng_properties[] = {
+static const Property virtio_rng_properties[] = {
     /* Set a default rate limit of 2^47 bytes per minute or roughly 2TB/s.  If
      * you have an entropy source capable of generating more entropy than this
      * and you can pass it through via virtio-rng, then hats off to you.  Until
@@ -258,10 +259,9 @@ static Property virtio_rng_properties[] = {
     DEFINE_PROP_UINT64("max-bytes", VirtIORNG, conf.max_bytes, INT64_MAX),
     DEFINE_PROP_UINT32("period", VirtIORNG, conf.period_ms, 1 << 16),
     DEFINE_PROP_LINK("rng", VirtIORNG, conf.rng, TYPE_RNG_BACKEND, RngBackend *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void virtio_rng_class_init(ObjectClass *klass, void *data)
+static void virtio_rng_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     VirtioDeviceClass *vdc = VIRTIO_DEVICE_CLASS(klass);

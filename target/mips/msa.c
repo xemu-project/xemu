@@ -48,6 +48,15 @@ void msa_reset(CPUMIPSState *env)
     /* tininess detected after rounding.*/
     set_float_detect_tininess(float_tininess_after_rounding,
                               &env->active_tc.msa_fp_status);
+    /*
+     * MSACSR.FS detects tiny results to flush to zero before rounding
+     * (per "MIPS Architecture for Programmers Volume IV-j: The MIPS64 SIMD
+     * Architecture Module, Revision 1.1" section 3.5.4), even though it
+     * detects tininess after rounding for underflow purposes (section 3.4.2
+     * table 3.3).
+     */
+    set_float_ftz_detection(float_ftz_before_rounding,
+                            &env->active_tc.msa_fp_status);
 
     /*
      * According to MIPS specifications, if one of the two operands is
@@ -66,6 +75,9 @@ void msa_reset(CPUMIPSState *env)
     set_float_2nan_prop_rule(float_2nan_prop_s_ab,
                              &env->active_tc.msa_fp_status);
 
+    set_float_3nan_prop_rule(float_3nan_prop_s_cab,
+                             &env->active_tc.msa_fp_status);
+
     /* clear float_status exception flags */
     set_float_exception_flags(0, &env->active_tc.msa_fp_status);
 
@@ -74,4 +86,11 @@ void msa_reset(CPUMIPSState *env)
 
     /* set proper signanling bit meaning ("1" means "quiet") */
     set_snan_bit_is_one(0, &env->active_tc.msa_fp_status);
+
+    /* Inf * 0 + NaN returns the input NaN */
+    set_float_infzeronan_rule(float_infzeronan_dnan_never,
+                              &env->active_tc.msa_fp_status);
+    /* Default NaN: sign bit clear, frac msb set */
+    set_float_default_nan_pattern(0b01000000,
+                                  &env->active_tc.msa_fp_status);
 }

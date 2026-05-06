@@ -12,8 +12,8 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/reset.h"
-#include "sysemu/watchdog.h"
+#include "system/reset.h"
+#include "system/watchdog.h"
 #include "qemu/timer.h"
 #include "hw/watchdog/wdt_diag288.h"
 #include "migration/vmstate.h"
@@ -108,7 +108,7 @@ static void wdt_diag288_unrealize(DeviceState *dev)
     timer_free(diag288->timer);
 }
 
-static void wdt_diag288_class_init(ObjectClass *klass, void *data)
+static void wdt_diag288_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     DIAG288Class *diag288 = DIAG288_CLASS(klass);

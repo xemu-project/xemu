@@ -38,8 +38,8 @@
 #include "hw/arm/boot.h"
 #include "chardev/char-fe.h"
 #include "chardev/char-serial.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/rtc.h"
+#include "system/system.h"
+#include "system/rtc.h"
 #include "hw/ssi/ssi.h"
 #include "qapi/error.h"
 #include "qemu/cutils.h"
@@ -215,7 +215,7 @@ static const VMStateDescription vmstate_strongarm_pic_regs = {
     },
 };
 
-static void strongarm_pic_class_init(ObjectClass *klass, void *data)
+static void strongarm_pic_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -448,7 +448,8 @@ static const VMStateDescription vmstate_strongarm_rtc_regs = {
     },
 };
 
-static void strongarm_rtc_sysbus_class_init(ObjectClass *klass, void *data)
+static void strongarm_rtc_sysbus_class_init(ObjectClass *klass,
+                                            const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -693,7 +694,7 @@ static const VMStateDescription vmstate_strongarm_gpio_regs = {
     },
 };
 
-static void strongarm_gpio_class_init(ObjectClass *klass, void *data)
+static void strongarm_gpio_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -865,7 +866,7 @@ static const VMStateDescription vmstate_strongarm_ppc_regs = {
     },
 };
 
-static void strongarm_ppc_class_init(ObjectClass *klass, void *data)
+static void strongarm_ppc_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -926,7 +927,7 @@ struct StrongARMUARTState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
-    CharBackend chr;
+    CharFrontend chr;
     qemu_irq irq;
 
     uint8_t utcr0;
@@ -1332,12 +1333,11 @@ static const VMStateDescription vmstate_strongarm_uart_regs = {
     },
 };
 
-static Property strongarm_uart_properties[] = {
+static const Property strongarm_uart_properties[] = {
     DEFINE_PROP_CHR("chardev", StrongARMUARTState, chr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void strongarm_uart_class_init(ObjectClass *klass, void *data)
+static void strongarm_uart_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -1590,7 +1590,7 @@ static const VMStateDescription vmstate_strongarm_ssp_regs = {
     },
 };
 
-static void strongarm_ssp_class_init(ObjectClass *klass, void *data)
+static void strongarm_ssp_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

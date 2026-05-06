@@ -19,8 +19,8 @@
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
 
-#include "sysemu/tpm_backend.h"
-#include "sysemu/tpm_util.h"
+#include "system/tpm_backend.h"
+#include "system/tpm_util.h"
 #include "tpm_prop.h"
 
 #include "hw/ppc/spapr.h"
@@ -364,10 +364,9 @@ static const VMStateDescription vmstate_spapr_vtpm = {
     }
 };
 
-static Property tpm_spapr_properties[] = {
+static const Property tpm_spapr_properties[] = {
     DEFINE_SPAPR_PROPERTIES(SpaprTpmState, vdev),
     DEFINE_PROP_TPMBE("tpmdev", SpaprTpmState, be_driver),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void tpm_spapr_realizefn(SpaprVioDevice *dev, Error **errp)
@@ -388,7 +387,7 @@ static void tpm_spapr_realizefn(SpaprVioDevice *dev, Error **errp)
     s->buffer = g_malloc(TPM_SPAPR_BUFFER_MAX);
 }
 
-static void tpm_spapr_class_init(ObjectClass *klass, void *data)
+static void tpm_spapr_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     SpaprVioDeviceClass *k = VIO_SPAPR_DEVICE_CLASS(klass);
@@ -415,7 +414,7 @@ static const TypeInfo tpm_spapr_info = {
     .parent        = TYPE_VIO_SPAPR_DEVICE,
     .instance_size = sizeof(SpaprTpmState),
     .class_init    = tpm_spapr_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_TPM_IF },
         { }
     }

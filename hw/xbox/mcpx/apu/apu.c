@@ -87,7 +87,6 @@ static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
          * This value is expected to be written to FEMEMADDR on completion of
          * something to do with notifies. Just do it now :/ */
         stl_le_phys(&address_space_memory, d->regs[NV_PAPU_FEMEMADDR], val);
-        // fprintf(stderr, "MAGIC WRITE\n");
         qatomic_set(&d->regs[addr], val);
         break;
     default:
@@ -103,6 +102,122 @@ static const MemoryRegionOps mcpx_apu_mmio_ops = {
     .write = mcpx_apu_write,
 };
 
+static void throttle_update_debug(MCPXAPUState *d, int64_t now_us)
+{
+    if (d->throttle.deviation.last_us > 0) {
+        int64_t dev = (now_us - d->throttle.deviation.last_us) - EP_FRAME_US;
+        if (d->throttle.deviation.count == 0) {
+            d->throttle.deviation.min_us = d->throttle.deviation.max_us = dev;
+        } else {
+            d->throttle.deviation.min_us = MIN(dev, d->throttle.deviation.min_us);
+            d->throttle.deviation.max_us = MAX(dev, d->throttle.deviation.max_us);
+        }
+        d->throttle.deviation.sum_us += dev;
+        d->throttle.deviation.count++;
+    }
+    d->throttle.deviation.last_us = now_us;
+}
+
+static void throttle_publish_debug(MCPXAPUState *d)
+{
+    int pacing_sum = d->throttle.pacing.backoff + d->throttle.pacing.ok +
+                     d->throttle.pacing.speedup;
+    if (d->throttle.deviation.count == 0 || pacing_sum == 0) {
+        return;
+    }
+    g_dbg.throttle.pacing.backoff = (float)d->throttle.pacing.backoff / pacing_sum;
+    g_dbg.throttle.pacing.ok = (float)d->throttle.pacing.ok / pacing_sum;
+    g_dbg.throttle.pacing.speedup = (float)d->throttle.pacing.speedup / pacing_sum;
+    g_dbg.throttle.deviation.min_us = d->throttle.deviation.min_us;
+    g_dbg.throttle.deviation.avg_us = d->throttle.deviation.sum_us / d->throttle.deviation.count;
+    g_dbg.throttle.deviation.max_us = d->throttle.deviation.max_us;
+    if (d->throttle.queued_bytes_count > 0) {
+        g_dbg.throttle.latency.min_ms = d->throttle.queued_bytes_min / (float)MONITOR_BYTES_PER_MS;
+        g_dbg.throttle.latency.avg_ms = d->throttle.queued_bytes_sum /
+            (d->throttle.queued_bytes_count * (float)MONITOR_BYTES_PER_MS);
+        g_dbg.throttle.latency.max_ms = d->throttle.queued_bytes_max / (float)MONITOR_BYTES_PER_MS;
+        g_dbg.throttle.latency.low_ms = d->monitor.queued_bytes_low / (float)MONITOR_BYTES_PER_MS;
+        g_dbg.throttle.latency.high_ms = d->monitor.queued_bytes_high / (float)MONITOR_BYTES_PER_MS;
+    }
+    d->throttle.pacing.backoff = d->throttle.pacing.ok = d->throttle.pacing.speedup = 0;
+    d->throttle.deviation.min_us = d->throttle.deviation.max_us = d->throttle.deviation.sum_us = 0;
+    d->throttle.deviation.count = 0;
+    d->throttle.queued_bytes_min = d->throttle.queued_bytes_max = 0;
+    d->throttle.queued_bytes_sum = 0;
+    d->throttle.queued_bytes_count = 0;
+}
+
+static void throttle_record_queue(MCPXAPUState *d, int queued_bytes)
+{
+    if (d->throttle.queued_bytes_count == 0) {
+        d->throttle.queued_bytes_min = d->throttle.queued_bytes_max = queued_bytes;
+    } else {
+        d->throttle.queued_bytes_min = MIN(queued_bytes, d->throttle.queued_bytes_min);
+        d->throttle.queued_bytes_max = MAX(queued_bytes, d->throttle.queued_bytes_max);
+    }
+    d->throttle.queued_bytes_sum += queued_bytes;
+    d->throttle.queued_bytes_count++;
+    if (queued_bytes >= d->monitor.queued_bytes_high) {
+        d->throttle.pacing.backoff++;
+    } else if (queued_bytes <= d->monitor.queued_bytes_low) {
+        d->throttle.pacing.speedup++;
+    } else {
+        d->throttle.pacing.ok++;
+    }
+}
+
+static void throttle(MCPXAPUState *d)
+{
+    if (d->ep_frame_div % 8) {
+        return;
+    }
+
+    int64_t start_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+    throttle_update_debug(d, start_us);
+    int queued_bytes = -1;
+
+    if (d->monitor.stream) {
+        queued_bytes = SDL_GetAudioStreamQueued(d->monitor.stream);
+        if (queued_bytes >= 0) {
+            throttle_record_queue(d, queued_bytes);
+        }
+        while (!d->pause_requested && queued_bytes >= d->monitor.queued_bytes_high) {
+            qemu_cond_timedwait(&d->cond, &d->lock, EP_FRAME_US / 1000);
+            if (d->pause_requested) {
+                break;
+            }
+            queued_bytes = SDL_GetAudioStreamQueued(d->monitor.stream);
+        }
+    }
+
+    if (queued_bytes < 0 || queued_bytes > d->monitor.queued_bytes_low) {
+        int64_t now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+        if (d->next_frame_time_us == 0 ||
+            now_us - d->next_frame_time_us > EP_FRAME_US) {
+            d->next_frame_time_us = now_us;
+        }
+        while (!d->pause_requested) {
+            now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+            int64_t remaining_ms = (d->next_frame_time_us - now_us) / 1000;
+            if (remaining_ms > 0) {
+                qemu_cond_timedwait(&d->cond, &d->lock, remaining_ms);
+            } else {
+                break;
+            }
+        }
+        d->next_frame_time_us += EP_FRAME_US;
+
+        /* Avoid drift toward watermark */
+        if (queued_bytes >= 0) {
+            int mid = (d->monitor.queued_bytes_low +
+                       d->monitor.queued_bytes_high) / 2;
+            d->next_frame_time_us += (queued_bytes > mid) - (queued_bytes < mid);
+        }
+    }
+
+    d->sleep_acc_us += qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_us;
+}
+
 static void se_frame(MCPXAPUState *d)
 {
     mcpx_apu_update_dsp_preference(d);
@@ -110,33 +225,22 @@ static void se_frame(MCPXAPUState *d)
     g_dbg.gp_realtime = d->gp.realtime;
     g_dbg.ep_realtime = d->ep.realtime;
 
-    qemu_spin_lock(&d->monitor.fifo_lock);
-    int num_bytes_free = fifo8_num_free(&d->monitor.fifo);
-    qemu_spin_unlock(&d->monitor.fifo_lock);
+    int64_t now_ms = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
+    int64_t elapsed_ms = now_ms - d->frame_count_time_ms;
+    if (elapsed_ms >= 1000) {
+        /* A rudimentary calculation to determine approximately how taxed the APU
+         * thread is, by measuring how much time we spend waiting for buffer to drain
+         * versus working on building frames.
+         * =1: thread is not sleeping and likely falling behind realtime
+         * <1: thread is able to complete work on time
+         */
+        g_dbg.utilization = 1.0 - d->sleep_acc_us / (elapsed_ms * 1000.0);
+        g_dbg.frames_processed = (int)(d->frame_count * 1000.0 / elapsed_ms + 0.5);
+        throttle_publish_debug(d);
 
-    /* A rudimentary calculation to determine approximately how taxed the APU
-     * thread is, by measuring how much time we spend waiting for FIFO to drain
-     * versus working on building frames.
-     * =1: thread is not sleeping and likely falling behind realtime
-     * <1: thread is able to complete work on time
-     */
-    if (num_bytes_free < sizeof(d->monitor.frame_buf)) {
-        int64_t sleep_start = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-        qemu_cond_wait(&d->cond, &d->lock);
-        int64_t sleep_end = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-        d->sleep_acc += (sleep_end - sleep_start);
-        return;
-    }
-    int64_t now = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
-    if (now - d->frame_count_time >= 1000) {
-        g_dbg.frames_processed = d->frame_count;
-        float t = 1.0f - ((double)d->sleep_acc /
-                          (double)((now - d->frame_count_time) * 1000));
-        g_dbg.utilization = t;
-
-        d->frame_count_time = now;
+        d->frame_count_time_ms = now_ms;
         d->frame_count = 0;
-        d->sleep_acc = 0;
+        d->sleep_acc_us = 0;
     }
     d->frame_count++;
 
@@ -145,115 +249,130 @@ static void se_frame(MCPXAPUState *d)
 
     mcpx_apu_vp_frame(d, mixbins);
     mcpx_apu_dsp_frame(d, mixbins);
-
-    if ((d->ep_frame_div + 1) % 8 == 0) {
-#if 0
-        FILE *fd = fopen("ep.pcm", "a+");
-        assert(fd != NULL);
-        fwrite(d->apu_fifo_output, sizeof(d->apu_fifo_output), 1, fd);
-        fclose(fd);
-#endif
-
-        if (0 <= g_config.audio.volume_limit && g_config.audio.volume_limit < 1) {
-            float f = pow(g_config.audio.volume_limit, M_E);
-            for (int i = 0; i < 256; i++) {
-                d->monitor.frame_buf[i][0] *= f;
-                d->monitor.frame_buf[i][1] *= f;
-            }
-        }
-
-        qemu_spin_lock(&d->monitor.fifo_lock);
-        num_bytes_free = fifo8_num_free(&d->monitor.fifo);
-        assert(num_bytes_free >= sizeof(d->monitor.frame_buf));
-        fifo8_push_all(&d->monitor.fifo, (uint8_t *)d->monitor.frame_buf,
-                       sizeof(d->monitor.frame_buf));
-        qemu_spin_unlock(&d->monitor.fifo_lock);
-        memset(d->monitor.frame_buf, 0, sizeof(d->monitor.frame_buf));
-    }
+    mcpx_apu_monitor_frame(d);
 
     d->ep_frame_div++;
 
     mcpx_debug_end_frame();
 }
 
-/* Note: only supports millisecond resolution on Windows */
-static void sleep_ns(int64_t ns)
+static void *mcpx_apu_frame_thread(void *arg)
 {
-#ifndef _WIN32
-        struct timespec sleep_delay, rem_delay;
-        sleep_delay.tv_sec = ns / 1000000000LL;
-        sleep_delay.tv_nsec = ns % 1000000000LL;
-        nanosleep(&sleep_delay, &rem_delay);
-#else
-        Sleep(ns / SCALE_MS);
-#endif
+    MCPXAPUState *d = MCPX_APU_DEVICE(arg);
+    qemu_mutex_lock(&d->lock);
+    while (!qatomic_read(&d->exiting)) {
+        if (d->pause_requested) {
+            d->is_idle = true;
+            qemu_cond_signal(&d->idle_cond);
+            qemu_cond_wait(&d->cond, &d->lock);
+            d->is_idle = false;
+            continue;
+        }
+
+        int xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
+                                NV_PAPU_SECTL_XCNTMODE);
+        uint32_t fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
+        if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
+            (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
+            (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
+            d->set_irq = true;
+        }
+
+        if (d->set_irq) {
+            qemu_mutex_unlock(&d->lock);
+            bql_lock();
+            update_irq(d);
+            bql_unlock();
+            qemu_mutex_lock(&d->lock);
+            d->set_irq = false;
+        }
+
+        xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
+                            NV_PAPU_SECTL_XCNTMODE);
+        fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
+        if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
+            (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
+            (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
+            qemu_cond_timedwait(&d->cond, &d->lock, 5);
+            continue;
+        }
+
+        throttle(d);
+        se_frame(d);
+    }
+    qemu_mutex_unlock(&d->lock);
+    return NULL;
 }
 
-static void monitor_sink_cb(void *opaque, uint8_t *stream, int free_b)
+static void mcpx_apu_wait_for_idle(MCPXAPUState *d)
 {
-    MCPXAPUState *s = MCPX_APU_DEVICE(opaque);
-
-    if (!runstate_is_running()) {
-        memset(stream, 0, free_b);
-        return;
+    d->pause_requested = true;
+    qemu_cond_signal(&d->cond);
+    while (!d->is_idle) {
+        qemu_cond_wait(&d->idle_cond, &d->lock);
     }
-
-    int avail = 0;
-    while (avail < free_b) {
-        qemu_spin_lock(&s->monitor.fifo_lock);
-        avail = fifo8_num_used(&s->monitor.fifo);
-        qemu_spin_unlock(&s->monitor.fifo_lock);
-        if (avail < free_b) {
-            sleep_ns(1000000);
-            qemu_cond_broadcast(&s->cond);
-        }
-        if (!runstate_is_running()) {
-            memset(stream, 0, free_b);
-            return;
-        }
-    }
-
-    int to_copy = MIN(free_b, avail);
-    while (to_copy > 0) {
-        uint32_t chunk_len = 0;
-        qemu_spin_lock(&s->monitor.fifo_lock);
-        chunk_len = fifo8_pop_buf(&s->monitor.fifo, stream, to_copy);
-        assert(chunk_len <= to_copy);
-        qemu_spin_unlock(&s->monitor.fifo_lock);
-        stream += chunk_len;
-        to_copy -= chunk_len;
-    }
-
-    qemu_cond_broadcast(&s->cond);
 }
 
-static void monitor_init(MCPXAPUState *d)
+static void mcpx_apu_resume(MCPXAPUState *d)
 {
-    qemu_spin_init(&d->monitor.fifo_lock);
-    fifo8_create(&d->monitor.fifo, 3 * (256 * 2 * 2));
+    d->pause_requested = false;
+    qemu_cond_signal(&d->cond);
+}
 
-    struct SDL_AudioSpec sdl_audio_spec = {
-        .freq = 48000,
-        .format = AUDIO_S16LSB,
-        .channels = 2,
-        .samples = 512,
-        .callback = monitor_sink_cb,
-        .userdata = d,
-    };
+static void mcpx_apu_reset_locked(MCPXAPUState *d)
+{
+    memset(d->regs, 0, sizeof(d->regs));
 
-    if (SDL_Init(SDL_INIT_AUDIO) < 0)  {
-        fprintf(stderr, "Failed to initialize SDL audio subsystem: %s\n", SDL_GetError());
-        exit(1);
+    mcpx_apu_vp_reset(d);
+
+    // FIXME: Reset DSP state
+    memset(d->gp.dsp->core.pram_opcache, 0,
+           sizeof(d->gp.dsp->core.pram_opcache));
+    memset(d->ep.dsp->core.pram_opcache, 0,
+           sizeof(d->ep.dsp->core.pram_opcache));
+    d->set_irq = false;
+}
+
+static void mcpx_apu_reset_hold(Object *obj, ResetType type)
+{
+    MCPXAPUState *d = MCPX_APU_DEVICE(obj);
+
+    bql_unlock();
+    qemu_mutex_lock(&d->lock);
+    mcpx_apu_wait_for_idle(d);
+    mcpx_apu_reset_locked(d);
+    mcpx_apu_resume(d);
+    qemu_mutex_unlock(&d->lock);
+    bql_lock();
+}
+
+// Note: This is handled as a VM state change and not as a `pre_save` callback
+// because we want to quiesce the APU before any VM state is saved/restored to
+// avoid corruption.
+static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state)
+{
+    MCPXAPUState *d = opaque;
+
+    if (!running) {
+        bql_unlock();
+        qemu_mutex_lock(&d->lock);
+        mcpx_apu_wait_for_idle(d);
+        qemu_mutex_unlock(&d->lock);
+        bql_lock();
+    } else {
+        qemu_mutex_lock(&d->lock);
+        mcpx_apu_resume(d);
+        qemu_mutex_unlock(&d->lock);
     }
+}
 
-    SDL_AudioDeviceID sdl_audio_dev;
-    sdl_audio_dev = SDL_OpenAudioDevice(NULL, 0, &sdl_audio_spec, NULL, 0);
-    if (sdl_audio_dev == 0) {
-        fprintf(stderr, "SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
-        assert(!"SDL_OpenAudioDevice failed");
-        exit(1);
-    }
-    SDL_PauseAudioDevice(sdl_audio_dev, 0);
+static int mcpx_apu_pre_load(void *opaque)
+{
+    MCPXAPUState *d = opaque;
+    qemu_mutex_lock(&d->lock);
+    mcpx_apu_reset_locked(d);
+    qemu_mutex_unlock(&d->lock);
+    return 0;
 }
 
 static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
@@ -278,74 +397,47 @@ static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
     memory_region_add_subregion(&d->mmio, 0x50000, &d->ep.mmio);
 
     pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
+
+    d->set_irq = false;
+    d->exiting = false;
+    d->is_idle = false;
+    d->pause_requested = true;
+    qemu_mutex_init(&d->lock);
+    qemu_mutex_lock(&d->lock);
+    qemu_cond_init(&d->cond);
+    qemu_cond_init(&d->idle_cond);
+
+    mcpx_apu_vp_init(d);
+    mcpx_apu_dsp_init(d);
+
+    Error *local_err = NULL;
+    mcpx_apu_monitor_init(d, &local_err);
+    if (local_err) {
+        warn_reportf_err(local_err, "mcpx_apu_monitor_init failed: ");
+    }
+
+    qemu_add_vm_change_state_handler(mcpx_apu_vm_state_change, d);
+    qemu_thread_create(&d->apu_thread, "mcpx.apu_thread", mcpx_apu_frame_thread,
+                       d, QEMU_THREAD_JOINABLE);
+    mcpx_apu_wait_for_idle(d);
+    qemu_mutex_unlock(&d->lock);
 }
 
 static void mcpx_apu_exitfn(PCIDevice *dev)
 {
     MCPXAPUState *d = MCPX_APU_DEVICE(dev);
-    d->exiting = true;
-    qemu_cond_broadcast(&d->cond);
+
+    bql_unlock();
+    qemu_mutex_lock(&d->lock);
+    mcpx_apu_wait_for_idle(d);
+    qatomic_set(&d->exiting, true);
+    qemu_cond_signal(&d->cond);
+    qemu_mutex_unlock(&d->lock);
+    bql_lock();
+
     qemu_thread_join(&d->apu_thread);
     mcpx_apu_vp_finalize(d);
-}
-
-static void mcpx_apu_reset(MCPXAPUState *d)
-{
-    qemu_mutex_lock(&d->lock); // FIXME: Can fail if thread is pegged, add flag
-    memset(d->regs, 0, sizeof(d->regs));
-
-    mcpx_apu_vp_reset(d);
-
-    // FIXME: Reset DSP state
-    memset(d->gp.dsp->core.pram_opcache, 0,
-           sizeof(d->gp.dsp->core.pram_opcache));
-    memset(d->ep.dsp->core.pram_opcache, 0,
-           sizeof(d->ep.dsp->core.pram_opcache));
-    d->set_irq = false;
-    qemu_cond_signal(&d->cond);
-    qemu_mutex_unlock(&d->lock);
-}
-
-// Note: This is handled as a VM state change and not as a `pre_save` callback
-// because we want to halt the FIFO before any VM state is saved/restored to
-// avoid corruption.
-static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state)
-{
-    MCPXAPUState *d = opaque;
-
-    if (state == RUN_STATE_SAVE_VM) {
-        qemu_mutex_lock(&d->lock);
-    }
-}
-
-static int mcpx_apu_post_save(void *opaque)
-{
-    MCPXAPUState *d = opaque;
-    qemu_cond_signal(&d->cond);
-    qemu_mutex_unlock(&d->lock);
-    return 0;
-}
-
-static int mcpx_apu_pre_load(void *opaque)
-{
-    MCPXAPUState *d = opaque;
-    mcpx_apu_reset(d);
-    qemu_mutex_lock(&d->lock);
-    return 0;
-}
-
-static int mcpx_apu_post_load(void *opaque, int version_id)
-{
-    MCPXAPUState *d = opaque;
-    qemu_cond_signal(&d->cond);
-    qemu_mutex_unlock(&d->lock);
-    return 0;
-}
-
-static void mcpx_apu_reset_hold(Object *obj, ResetType type)
-{
-    MCPXAPUState *d = MCPX_APU_DEVICE(obj);
-    mcpx_apu_reset(d);
+    mcpx_apu_monitor_finalize(d);
 }
 
 const VMStateDescription vmstate_vp_dsp_dma_state = {
@@ -399,9 +491,6 @@ const VMStateDescription vmstate_vp_dsp_core_state = {
         VMSTATE_UINT32(disasm_cur_inst, dsp_core_t),
         VMSTATE_UINT16(disasm_cur_inst_len, dsp_core_t),
         VMSTATE_UINT32_ARRAY(disasm_registers_save, dsp_core_t, 64),
-// #ifdef DSP_DISASM_REG_PC
-//         VMSTATE_UINT32(pc_save, dsp_core_t),
-// #endif
         VMSTATE_END_OF_LIST()
     }
 };
@@ -437,9 +526,7 @@ static const VMStateDescription vmstate_mcpx_apu = {
     .name = "mcpx-apu",
     .version_id = 1,
     .minimum_version_id = 1,
-    .post_save = mcpx_apu_post_save,
     .pre_load = mcpx_apu_pre_load,
-    .post_load = mcpx_apu_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_PCI_DEVICE(parent_obj, MCPXAPUState),
         VMSTATE_STRUCT_POINTER(gp.dsp, MCPXAPUState, vmstate_vp_dsp_state,
@@ -462,7 +549,7 @@ static const VMStateDescription vmstate_mcpx_apu = {
     },
 };
 
-static void mcpx_apu_class_init(ObjectClass *klass, void *data)
+static void mcpx_apu_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -499,44 +586,6 @@ static void mcpx_apu_register(void)
 }
 type_init(mcpx_apu_register);
 
-static void *mcpx_apu_frame_thread(void *arg)
-{
-    MCPXAPUState *d = MCPX_APU_DEVICE(arg);
-    qemu_mutex_lock(&d->lock);
-    while (!qatomic_read(&d->exiting)) {
-        int xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
-                                NV_PAPU_SECTL_XCNTMODE);
-        uint32_t fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
-        if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
-            (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
-            (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
-            d->set_irq = true;
-        }
-
-        if (d->set_irq) {
-            qemu_mutex_unlock(&d->lock);
-            bql_lock();
-            update_irq(d);
-            bql_unlock();
-            qemu_mutex_lock(&d->lock);
-            d->set_irq = false;
-        }
-
-        xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
-                            NV_PAPU_SECTL_XCNTMODE);
-        fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
-        if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
-            (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
-            (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
-            qemu_cond_wait(&d->cond, &d->lock);
-            continue;
-        }
-        se_frame((void *)d);
-    }
-    qemu_mutex_unlock(&d->lock);
-    return NULL;
-}
-
 void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
 {
     PCIDevice *dev = pci_create_simple(bus, devfn, "mcpx-apu");
@@ -546,19 +595,4 @@ void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
 
     d->ram = ram;
     d->ram_ptr = memory_region_get_ram_ptr(d->ram);
-
-    mcpx_apu_dsp_init(d);
-
-    d->set_irq = false;
-    d->exiting = false;
-
-    qemu_mutex_init(&d->lock);
-    qemu_cond_init(&d->cond);
-    qemu_add_vm_change_state_handler(mcpx_apu_vm_state_change, d);
-
-    mcpx_apu_vp_init(d);
-    qemu_thread_create(&d->apu_thread, "mcpx.apu_thread", mcpx_apu_frame_thread,
-                       d, QEMU_THREAD_JOINABLE);
-
-    monitor_init(d);
 }

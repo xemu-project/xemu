@@ -14,18 +14,21 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qapi/visitor.h"
+#include "exec/target_page.h"
 #include "hw/s390x/s390-pci-bus.h"
 #include "hw/s390x/s390-pci-inst.h"
 #include "hw/s390x/s390-pci-kvm.h"
 #include "hw/s390x/s390-pci-vfio.h"
+#include "hw/s390x/s390-virtio-ccw.h"
+#include "hw/boards.h"
 #include "hw/pci/pci_bus.h"
 #include "hw/qdev-properties.h"
 #include "hw/pci/pci_bridge.h"
 #include "hw/pci/msi.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
-#include "sysemu/reset.h"
-#include "sysemu/runstate.h"
+#include "system/reset.h"
+#include "system/runstate.h"
 
 #include "trace.h"
 
@@ -381,9 +384,9 @@ static uint64_t get_table_index(uint64_t iova, int8_t ett)
         return calc_sx(iova);
     case ZPCI_ETT_RT:
         return calc_rtx(iova);
+    default:
+        g_assert_not_reached();
     }
-
-    return -1;
 }
 
 static bool entry_isvalid(uint64_t entry, int8_t ett)
@@ -394,22 +397,24 @@ static bool entry_isvalid(uint64_t entry, int8_t ett)
     case ZPCI_ETT_ST:
     case ZPCI_ETT_RT:
         return rt_entry_isvalid(entry);
+    default:
+        g_assert_not_reached();
     }
-
-    return false;
 }
 
 /* Return true if address translation is done */
 static bool translate_iscomplete(uint64_t entry, int8_t ett)
 {
     switch (ett) {
-    case 0:
+    case ZPCI_ETT_ST:
         return (entry & ZPCI_TABLE_FC) ? true : false;
-    case 1:
+    case ZPCI_ETT_RT:
         return false;
+    case ZPCI_ETT_PT:
+        return true;
+    default:
+        g_assert_not_reached();
     }
-
-    return true;
 }
 
 static uint64_t get_frame_size(int8_t ett)
@@ -421,9 +426,9 @@ static uint64_t get_frame_size(int8_t ett)
         return 1ULL << 20;
     case ZPCI_ETT_RT:
         return 1ULL << 31;
+    default:
+        g_assert_not_reached();
     }
-
-    return 0;
 }
 
 static uint64_t get_next_table_origin(uint64_t entry, int8_t ett)
@@ -435,9 +440,9 @@ static uint64_t get_next_table_origin(uint64_t entry, int8_t ett)
         return get_st_pto(entry);
     case ZPCI_ETT_RT:
         return get_rt_sto(entry);
+    default:
+        g_assert_not_reached();
     }
-
-    return 0;
 }
 
 /**
@@ -595,7 +600,6 @@ static void s390_pci_iommu_replay(IOMMUMemoryRegion *iommu,
      * zpci device" construct. But when we support migration of vfio-pci
      * devices in future, we need to revisit this.
      */
-    return;
 }
 
 static S390PCIIOMMU *s390_pci_get_iommu(S390pciState *s, PCIBus *bus,
@@ -648,7 +652,16 @@ static const PCIIOMMUOps s390_iommu_ops = {
     .get_address_space = s390_pci_dma_iommu,
 };
 
-static uint8_t set_ind_atomic(uint64_t ind_loc, uint8_t to_be_set)
+/**
+ * set_ind_bit_atomic - Atomically set a bit in an indicator
+ *
+ * @ind_loc:   Address of the indicator
+ * @to_be_set: Bit to set
+ *
+ * Returns true if the bit was set by this function, false if it was
+ * already set or mapping failed.
+ */
+static bool set_ind_bit_atomic(uint64_t ind_loc, uint8_t to_be_set)
 {
     uint8_t expected, actual;
     hwaddr len = 1;
@@ -658,7 +671,7 @@ static uint8_t set_ind_atomic(uint64_t ind_loc, uint8_t to_be_set)
     ind_addr = cpu_physical_memory_map(ind_loc, &len, true);
     if (!ind_addr) {
         s390_pci_generate_error_event(ERR_EVENT_AIRERR, 0, 0, 0, 0);
-        return -1;
+        return false;
     }
     actual = *ind_addr;
     do {
@@ -667,7 +680,7 @@ static uint8_t set_ind_atomic(uint64_t ind_loc, uint8_t to_be_set)
     } while (actual != expected);
     cpu_physical_memory_unmap((void *)ind_addr, len, 1, len);
 
-    return actual;
+    return (actual & to_be_set) ? false : true;
 }
 
 static void s390_msi_ctrl_write(void *opaque, hwaddr addr, uint64_t data,
@@ -689,10 +702,10 @@ static void s390_msi_ctrl_write(void *opaque, hwaddr addr, uint64_t data,
     ind_bit = pbdev->routes.adapter.ind_offset;
     sum_bit = pbdev->routes.adapter.summary_offset;
 
-    set_ind_atomic(pbdev->routes.adapter.ind_addr + (ind_bit + vec) / 8,
+    set_ind_bit_atomic(pbdev->routes.adapter.ind_addr + (ind_bit + vec) / 8,
                    0x80 >> ((ind_bit + vec) % 8));
-    if (!set_ind_atomic(pbdev->routes.adapter.summary_addr + sum_bit / 8,
-                                       0x80 >> (sum_bit % 8))) {
+    if (set_ind_bit_atomic(pbdev->routes.adapter.summary_addr + sum_bit / 8,
+                   0x80 >> (sum_bit % 8))) {
         css_adapter_interrupt(CSS_IO_ADAPTER_PCI, pbdev->isc);
     }
 }
@@ -724,12 +737,42 @@ void s390_pci_iommu_enable(S390PCIIOMMU *iommu)
     g_free(name);
 }
 
+void s390_pci_iommu_direct_map_enable(S390PCIIOMMU *iommu)
+{
+    MachineState *ms = MACHINE(qdev_get_machine());
+    S390CcwMachineState *s390ms = S390_CCW_MACHINE(ms);
+
+    /*
+     * For direct-mapping we must map the entire guest address space.  Rather
+     * than using an iommu, create a memory region alias that maps GPA X to
+     * IOVA X + SDMA.  VFIO will handle pinning via its memory listener.
+     */
+    g_autofree char *name = g_strdup_printf("iommu-dm-s390-%04x",
+                                            iommu->pbdev->uid);
+
+    iommu->dm_mr = g_malloc0(sizeof(*iommu->dm_mr));
+    memory_region_init_alias(iommu->dm_mr, OBJECT(&iommu->mr), name,
+                             get_system_memory(), 0,
+                             s390_get_memory_limit(s390ms));
+    iommu->enabled = true;
+    memory_region_add_subregion(&iommu->mr, iommu->pbdev->zpci_fn.sdma,
+                                iommu->dm_mr);
+}
+
 void s390_pci_iommu_disable(S390PCIIOMMU *iommu)
 {
     iommu->enabled = false;
     g_hash_table_remove_all(iommu->iotlb);
-    memory_region_del_subregion(&iommu->mr, MEMORY_REGION(&iommu->iommu_mr));
-    object_unparent(OBJECT(&iommu->iommu_mr));
+    if (iommu->dm_mr) {
+        memory_region_del_subregion(&iommu->mr, iommu->dm_mr);
+        object_unparent(OBJECT(iommu->dm_mr));
+        g_free(iommu->dm_mr);
+        iommu->dm_mr = NULL;
+    } else {
+        memory_region_del_subregion(&iommu->mr,
+                                    MEMORY_REGION(&iommu->iommu_mr));
+        object_unparent(OBJECT(&iommu->iommu_mr));
+    }
 }
 
 static void s390_pci_iommu_free(S390pciState *s, PCIBus *bus, int32_t devfn)
@@ -857,6 +900,7 @@ static void s390_pcihost_realize(DeviceState *dev, Error **errp)
     s390_pci_init_default_group();
     css_register_io_adapters(CSS_IO_ADAPTER_PCI, true, false,
                              S390_ADAPTER_SUPPRESSIBLE, errp);
+    s390_pcihost_kvm_realize();
 }
 
 static void s390_pcihost_unrealize(DeviceState *dev)
@@ -971,14 +1015,7 @@ static void s390_pcihost_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
                     "this device");
     }
 
-    if (object_dynamic_cast(OBJECT(dev), TYPE_PCI_DEVICE)) {
-        PCIDevice *pdev = PCI_DEVICE(dev);
-
-        if (pdev->cap_present & QEMU_PCI_CAP_MULTIFUNCTION) {
-            error_setg(errp, "multifunction not supported in s390");
-            return;
-        }
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_S390_PCI_DEVICE)) {
+    if (object_dynamic_cast(OBJECT(dev), TYPE_S390_PCI_DEVICE)) {
         S390PCIBusDevice *pbdev = S390_PCI_DEVICE(dev);
 
         if (!s390_pci_alloc_idx(s, pbdev)) {
@@ -1069,6 +1106,18 @@ static void s390_pcihost_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_PCI_DEVICE)) {
         pdev = PCI_DEVICE(dev);
 
+        /*
+         * Multifunction is not supported due to the lack of CLP. However,
+         * do not check for multifunction capability for SR-IOV devices because
+         * SR-IOV devices automatically add the multifunction capability whether
+         * the user intends to use the functions other than the PF.
+         */
+        if (pdev->cap_present & QEMU_PCI_CAP_MULTIFUNCTION &&
+            !pdev->exp.sriov_cap) {
+            error_setg(errp, "multifunction not supported in s390");
+            return;
+        }
+
         if (!dev->id) {
             /* In the case the PCI device does not define an id */
             /* we generate one based on the PCI address         */
@@ -1080,6 +1129,16 @@ static void s390_pcihost_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
 
         pbdev = s390_pci_find_dev_by_target(s, dev->id);
         if (!pbdev) {
+            /*
+             * VFs are automatically created by PF, and creating zpci for them
+             * will result in unexpected usage of fids. Currently QEMU does not
+             * support multifunction for s390x so we don't need zpci for VFs
+             * anyway.
+             */
+            if (pci_is_vf(pdev)) {
+                return;
+            }
+
             pbdev = s390_pci_device_new(s, dev->id, errp);
             if (!pbdev) {
                 return;
@@ -1130,6 +1189,7 @@ static void s390_pcihost_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
             /* Always intercept emulated devices */
             pbdev->interp = false;
             pbdev->forwarding_assist = false;
+            pbdev->rtr_avail = false;
         }
 
         if (s390_pci_msix_init(pbdev) && !pbdev->interp) {
@@ -1167,7 +1227,10 @@ static void s390_pcihost_unplug(HotplugHandler *hotplug_dev, DeviceState *dev,
         int32_t devfn;
 
         pbdev = s390_pci_find_dev_by_pci(s, PCI_DEVICE(dev));
-        g_assert(pbdev);
+        if (!pbdev) {
+            g_assert(pci_is_vf(pci_dev));
+            return;
+        }
 
         s390_pci_generate_plug_event(HP_EVENT_STANDBY_TO_RESERVED,
                                      pbdev->fh, pbdev->fid);
@@ -1206,7 +1269,11 @@ static void s390_pcihost_unplug_request(HotplugHandler *hotplug_dev,
          * we've checked the PCI device already (to prevent endless recursion).
          */
         pbdev = s390_pci_find_dev_by_pci(s, PCI_DEVICE(dev));
-        g_assert(pbdev);
+        if (!pbdev) {
+            g_assert(pci_is_vf(PCI_DEVICE(dev)));
+            return;
+        }
+
         pbdev->pci_unplug_request_processed = true;
         qdev_unplug(DEVICE(pbdev), errp);
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_S390_PCI_DEVICE)) {
@@ -1318,7 +1385,7 @@ static void s390_pcihost_reset(DeviceState *dev)
     pci_for_each_device_under_bus(bus, s390_pci_enumerate_bridge, s);
 }
 
-static void s390_pcihost_class_init(ObjectClass *klass, void *data)
+static void s390_pcihost_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(klass);
@@ -1338,7 +1405,7 @@ static const TypeInfo s390_pcihost_info = {
     .parent        = TYPE_PCI_HOST_BRIDGE,
     .instance_size = sizeof(S390pciState),
     .class_init    = s390_pcihost_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_HOTPLUG_HANDLER },
         { }
     }
@@ -1453,7 +1520,7 @@ static void s390_pci_device_reset(DeviceState *dev)
 static void s390_pci_get_fid(Object *obj, Visitor *v, const char *name,
                          void *opaque, Error **errp)
 {
-    Property *prop = opaque;
+    const Property *prop = opaque;
     uint32_t *ptr = object_field_prop_ptr(obj, prop);
 
     visit_type_uint32(v, name, ptr, errp);
@@ -1463,7 +1530,7 @@ static void s390_pci_set_fid(Object *obj, Visitor *v, const char *name,
                          void *opaque, Error **errp)
 {
     S390PCIBusDevice *zpci = S390_PCI_DEVICE(obj);
-    Property *prop = opaque;
+    const Property *prop = opaque;
     uint32_t *ptr = object_field_prop_ptr(obj, prop);
 
     if (!visit_type_uint32(v, name, ptr, errp)) {
@@ -1473,7 +1540,8 @@ static void s390_pci_set_fid(Object *obj, Visitor *v, const char *name,
 }
 
 static const PropertyInfo s390_pci_fid_propinfo = {
-    .name = "zpci_fid",
+    .type = "uint32",
+    .description = "zpci_fid",
     .get = s390_pci_get_fid,
     .set = s390_pci_set_fid,
 };
@@ -1481,14 +1549,15 @@ static const PropertyInfo s390_pci_fid_propinfo = {
 #define DEFINE_PROP_S390_PCI_FID(_n, _s, _f) \
     DEFINE_PROP(_n, _s, _f, s390_pci_fid_propinfo, uint32_t)
 
-static Property s390_pci_device_properties[] = {
+static const Property s390_pci_device_properties[] = {
     DEFINE_PROP_UINT16("uid", S390PCIBusDevice, uid, UID_UNDEFINED),
     DEFINE_PROP_S390_PCI_FID("fid", S390PCIBusDevice, fid),
     DEFINE_PROP_STRING("target", S390PCIBusDevice, target),
     DEFINE_PROP_BOOL("interpret", S390PCIBusDevice, interp, true),
     DEFINE_PROP_BOOL("forwarding-assist", S390PCIBusDevice, forwarding_assist,
                      true),
-    DEFINE_PROP_END_OF_LIST(),
+    DEFINE_PROP_BOOL("relaxed-translation", S390PCIBusDevice, rtr_avail,
+                     true),
 };
 
 static const VMStateDescription s390_pci_device_vmstate = {
@@ -1500,7 +1569,7 @@ static const VMStateDescription s390_pci_device_vmstate = {
     .unmigratable = 1,
 };
 
-static void s390_pci_device_class_init(ObjectClass *klass, void *data)
+static void s390_pci_device_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -1526,7 +1595,8 @@ static const TypeInfo s390_pci_iommu_info = {
     .instance_size = sizeof(S390PCIIOMMU),
 };
 
-static void s390_iommu_memory_region_class_init(ObjectClass *klass, void *data)
+static void s390_iommu_memory_region_class_init(ObjectClass *klass,
+                                                const void *data)
 {
     IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_CLASS(klass);
 

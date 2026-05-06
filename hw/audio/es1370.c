@@ -26,13 +26,13 @@
 #define VERBOSE_ES1370 0
 
 #include "qemu/osdep.h"
-#include "hw/audio/soundhw.h"
-#include "audio/audio.h"
+#include "hw/audio/model.h"
+#include "qemu/audio.h"
 #include "hw/pci/pci_device.h"
 #include "migration/vmstate.h"
 #include "qemu/cutils.h"
 #include "qemu/module.h"
-#include "sysemu/dma.h"
+#include "qemu/error-report.h"
 #include "qom/object.h"
 #include "trace.h"
 
@@ -190,7 +190,7 @@ static void print_ctl(uint32_t val)
         a(CDC_EN);
         a(SERR_DIS);
 #undef a
-        AUD_log("es1370", "ctl - PCLKDIV %d(DAC2 freq %d), freq %d,%s\n",
+        error_report("es1370: ctl - PCLKDIV %d(DAC2 freq %d), freq %d,%s",
                 (val & CTRL_PCLKDIV) >> CTRL_SH_PCLKDIV,
                 DAC2_DIVTOSR((val & CTRL_PCLKDIV) >> CTRL_SH_PCLKDIV),
                 dac1_samplerate[(val & CTRL_WTSRSEL) >> CTRL_SH_WTSRSEL],
@@ -226,7 +226,7 @@ static void print_sctl(uint32_t val)
         }
 #undef b
 #undef a
-        AUD_log("es1370",
+        error_report("es1370: "
                 "%s p2_end_inc %d, p2_st_inc %d,"
                 " r1_fmt %s, p2_fmt %s, p1_fmt %s\n",
                 buf,
@@ -238,10 +238,10 @@ static void print_sctl(uint32_t val)
     }
 }
 
-#define lwarn(...) \
+#define lwarn(fmt, ...) \
 do { \
     if (VERBOSE_ES1370) { \
-        AUD_log("es1370: warning", __VA_ARGS__); \
+        error_report("es1370: " fmt, ##__VA_ARGS__); \
     } \
 } while (0)
 
@@ -258,7 +258,7 @@ struct chan {
 
 struct ES1370State {
     PCIDevice dev;
-    QEMUSoundCard card;
+    AudioBackend *audio_be;
     MemoryRegion io;
     struct chan chan[NB_CHANNELS];
     SWVoiceOut *dac_voice[2];
@@ -330,10 +330,10 @@ static void es1370_reset (ES1370State *s)
         d->scount = 0;
         d->leftover = 0;
         if (i == ADC_CHANNEL) {
-            AUD_close_in (&s->card, s->adc_voice);
+            AUD_close_in(s->audio_be, s->adc_voice);
             s->adc_voice = NULL;
         } else {
-            AUD_close_out (&s->card, s->dac_voice[i]);
+            AUD_close_out(s->audio_be, s->dac_voice[i]);
             s->dac_voice[i] = NULL;
         }
     }
@@ -412,7 +412,7 @@ static void es1370_update_voices (ES1370State *s, uint32_t ctl, uint32_t sctl)
                 if (i == ADC_CHANNEL) {
                     s->adc_voice =
                         AUD_open_in (
-                            &s->card,
+                            s->audio_be,
                             s->adc_voice,
                             "es1370.adc",
                             s,
@@ -422,7 +422,7 @@ static void es1370_update_voices (ES1370State *s, uint32_t ctl, uint32_t sctl)
                 } else {
                     s->dac_voice[i] =
                         AUD_open_out (
-                            &s->card,
+                            s->audio_be,
                             s->dac_voice[i],
                             i ? "es1370.dac2" : "es1370.dac1",
                             s,
@@ -502,10 +502,10 @@ static void es1370_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
         break;
 
     case ES1370_REG_PHANTOM_FRAMECNT:
-        lwarn("writing to phantom frame count 0x%" PRIx64 "\n", val);
+        lwarn("writing to phantom frame count 0x%" PRIx64, val);
         break;
     case ES1370_REG_PHANTOM_FRAMEADR:
-        lwarn("writing to phantom frame address 0x%" PRIx64 "\n", val);
+        lwarn("writing to phantom frame address 0x%" PRIx64, val);
         break;
 
     case ES1370_REG_ADC_FRAMECNT:
@@ -522,7 +522,7 @@ static void es1370_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
         break;
 
     default:
-        lwarn("writel 0x%" PRIx64 " <- 0x%" PRIx64 "\n", addr, val);
+        lwarn("writel 0x%" PRIx64 " <- 0x%" PRIx64, addr, val);
         break;
     }
 }
@@ -586,16 +586,16 @@ static uint64_t es1370_read(void *opaque, hwaddr addr, unsigned size)
 
     case ES1370_REG_PHANTOM_FRAMECNT:
         val = ~0U;
-        lwarn("reading from phantom frame count\n");
+        lwarn("reading from phantom frame count");
         break;
     case ES1370_REG_PHANTOM_FRAMEADR:
         val = ~0U;
-        lwarn("reading from phantom frame address\n");
+        lwarn("reading from phantom frame address");
         break;
 
     default:
         val = ~0U;
-        lwarn("readl 0x%" PRIx64 " -> 0x%x\n", addr, val);
+        lwarn("readl 0x%" PRIx64 " -> 0x%x", addr, val);
         break;
     }
     return val;
@@ -604,7 +604,7 @@ static uint64_t es1370_read(void *opaque, hwaddr addr, unsigned size)
 static void es1370_transfer_audio (ES1370State *s, struct chan *d, int loop_sel,
                                    int max, bool *irq)
 {
-    uint8_t tmpbuf[4096];
+    QEMU_UNINITIALIZED uint8_t tmpbuf[4096];
     size_t to_transfer;
     uint32_t addr = d->frame_addr;
     int sc = d->scount & 0xffff;
@@ -677,7 +677,7 @@ static void es1370_transfer_audio (ES1370State *s, struct chan *d, int loop_sel,
          * when the sample count reaches zero) or 1 for stop mode (set
          * interrupt and stop recording).
          */
-        AUD_log ("es1370: warning", "non looping mode\n");
+        warn_report("es1370: non looping mode");
     } else {
         d->frame_cnt = size;
 
@@ -784,12 +784,12 @@ static int es1370_post_load (void *opaque, int version_id)
     for (i = 0; i < NB_CHANNELS; ++i) {
         if (i == ADC_CHANNEL) {
             if (s->adc_voice) {
-                AUD_close_in (&s->card, s->adc_voice);
+                AUD_close_in(s->audio_be, s->adc_voice);
                 s->adc_voice = NULL;
             }
         } else {
             if (s->dac_voice[i]) {
-                AUD_close_out (&s->card, s->dac_voice[i]);
+                AUD_close_out(s->audio_be, s->dac_voice[i]);
                 s->dac_voice[i] = NULL;
             }
         }
@@ -833,7 +833,7 @@ static void es1370_realize(PCIDevice *dev, Error **errp)
     ES1370State *s = ES1370(dev);
     uint8_t *c = s->dev.config;
 
-    if (!AUD_register_card ("es1370", &s->card, errp)) {
+    if (!AUD_backend_check(&s->audio_be, errp)) {
         return;
     }
 
@@ -861,19 +861,17 @@ static void es1370_exit(PCIDevice *dev)
     int i;
 
     for (i = 0; i < 2; ++i) {
-        AUD_close_out(&s->card, s->dac_voice[i]);
+        AUD_close_out(s->audio_be, s->dac_voice[i]);
     }
 
-    AUD_close_in(&s->card, s->adc_voice);
-    AUD_remove_card(&s->card);
+    AUD_close_in(s->audio_be, s->adc_voice);
 }
 
-static Property es1370_properties[] = {
-    DEFINE_AUDIO_PROPERTIES(ES1370State, card),
-    DEFINE_PROP_END_OF_LIST(),
+static const Property es1370_properties[] = {
+    DEFINE_AUDIO_PROPERTIES(ES1370State, audio_be),
 };
 
-static void es1370_class_init (ObjectClass *klass, void *data)
+static void es1370_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS (klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS (klass);
@@ -897,7 +895,7 @@ static const TypeInfo es1370_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof (ES1370State),
     .class_init    = es1370_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },
@@ -906,8 +904,7 @@ static const TypeInfo es1370_info = {
 static void es1370_register_types (void)
 {
     type_register_static (&es1370_info);
-    deprecated_register_soundhw("es1370", "ENSONIQ AudioPCI ES1370",
-                                0, TYPE_ES1370);
+    audio_register_model("es1370", "ENSONIQ AudioPCI ES1370", TYPE_ES1370);
 }
 
 type_init (es1370_register_types)

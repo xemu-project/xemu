@@ -111,12 +111,11 @@ static void exynos4210_gic_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(sbd, &s->dist_container);
 }
 
-static Property exynos4210_gic_properties[] = {
+static const Property exynos4210_gic_properties[] = {
     DEFINE_PROP_UINT32("num-cpu", Exynos4210GicState, num_cpu, 1),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void exynos4210_gic_class_init(ObjectClass *klass, void *data)
+static void exynos4210_gic_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

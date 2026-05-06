@@ -2,7 +2,7 @@
 #define HW_SPAPR_H
 
 #include "qemu/units.h"
-#include "sysemu/dma.h"
+#include "system/dma.h"
 #include "hw/boards.h"
 #include "hw/ppc/spapr_drc.h"
 #include "hw/mem/pc-dimm.h"
@@ -13,6 +13,7 @@
 #include "hw/ppc/xics.h"        /* For ICSState */
 #include "hw/ppc/spapr_tpm_proxy.h"
 #include "hw/ppc/spapr_nested.h" /* For SpaprMachineStateNested */
+#include "hw/ppc/spapr_fadump.h" /* For FadumpMemStruct */
 
 struct SpaprVioBus;
 struct SpaprPhbState;
@@ -83,8 +84,10 @@ typedef enum {
 #define SPAPR_CAP_AIL_MODE_3            0x0C
 /* Nested PAPR */
 #define SPAPR_CAP_NESTED_PAPR           0x0D
+/* DAWR1 */
+#define SPAPR_CAP_DAWR1                 0x0E
 /* Num Caps */
-#define SPAPR_CAP_NUM                   (SPAPR_CAP_NESTED_PAPR + 1)
+#define SPAPR_CAP_NUM                   (SPAPR_CAP_DAWR1 + 1)
 
 /*
  * Capability Values
@@ -137,27 +140,11 @@ struct SpaprCapabilities {
  * SpaprMachineClass:
  */
 struct SpaprMachineClass {
-    /*< private >*/
     MachineClass parent_class;
 
-    /*< public >*/
-    bool dr_phb_enabled;       /* enable dynamic-reconfig/hotplug of PHBs */
-    bool update_dt_enabled;    /* enable KVMPPC_H_UPDATE_DT */
-    bool legacy_irq_allocation;
-    uint32_t nr_xirqs;
-    bool broken_host_serial_model; /* present real host info to the guest */
-    bool pre_4_1_migration; /* don't migrate hpt-max-page-size */
-    bool linux_pci_probe;
-    bool smp_threads_vsmt; /* set VSMT to smp_threads by default */
-    hwaddr rma_limit;          /* clamp the RMA to this size */
     bool pre_5_1_assoc_refpoints;
     bool pre_5_2_numa_associativity;
     bool pre_6_2_numa_affinity;
-
-    bool (*phb_placement)(SpaprMachineState *spapr, uint32_t index,
-                          uint64_t *buid, hwaddr *pio,
-                          hwaddr *mmio32, hwaddr *mmio64,
-                          unsigned n_dma, uint32_t *liobns, Error **errp);
     SpaprResizeHpt resize_hpt_default;
     SpaprCapabilities default_caps;
     SpaprIrq *irq;
@@ -201,6 +188,7 @@ struct SpaprMachineState {
     uint32_t fdt_initial_size;
     void *fdt_blob;
     uint8_t fdt_rng_seed[32];
+    uint64_t hashpkey_val;
     long kernel_size;
     bool kernel_le;
     uint64_t kernel_addr;
@@ -280,6 +268,11 @@ struct SpaprMachineState {
     Error *fwnmi_migration_blocker;
 
     SpaprWatchdog wds[WDT_MAX_WATCHDOGS];
+
+    /* Fadump State */
+    bool fadump_registered;
+    bool fadump_dump_active;
+    FadumpMemStruct registered_fdm;
 };
 
 #define H_SUCCESS         0
@@ -406,6 +399,7 @@ struct SpaprMachineState {
 #define H_SET_MODE_RESOURCE_SET_DAWR0           2
 #define H_SET_MODE_RESOURCE_ADDR_TRANS_MODE     3
 #define H_SET_MODE_RESOURCE_LE                  4
+#define H_SET_MODE_RESOURCE_SET_DAWR1           5
 
 /* Flags for H_SET_MODE_RESOURCE_LE */
 #define H_SET_MODE_ENDIAN_BIG    0
@@ -704,6 +698,8 @@ void push_sregs_to_kvm_pr(SpaprMachineState *spapr);
 #define RTAS_OUT_PARAM_ERROR                    -3
 #define RTAS_OUT_NOT_SUPPORTED                  -3
 #define RTAS_OUT_NO_SUCH_INDICATOR              -3
+#define RTAS_OUT_DUMP_ALREADY_REGISTERED        -9
+#define RTAS_OUT_DUMP_ACTIVE                    -10
 #define RTAS_OUT_NOT_AUTHORIZED                 -9002
 #define RTAS_OUT_SYSPARM_PARAM_ERROR            -9999
 
@@ -766,8 +762,9 @@ void push_sregs_to_kvm_pr(SpaprMachineState *spapr);
 #define RTAS_IBM_SUSPEND_ME                     (RTAS_TOKEN_BASE + 0x2A)
 #define RTAS_IBM_NMI_REGISTER                   (RTAS_TOKEN_BASE + 0x2B)
 #define RTAS_IBM_NMI_INTERLOCK                  (RTAS_TOKEN_BASE + 0x2C)
+#define RTAS_CONFIGURE_KERNEL_DUMP              (RTAS_TOKEN_BASE + 0x2D)
 
-#define RTAS_TOKEN_MAX                          (RTAS_TOKEN_BASE + 0x2D)
+#define RTAS_TOKEN_MAX                          (RTAS_TOKEN_BASE + 0x2E)
 
 /* RTAS ibm,get-system-parameter token values */
 #define RTAS_SYSPARM_SPLPAR_CHARACTERISTICS      20
@@ -1003,6 +1000,7 @@ extern const VMStateDescription vmstate_spapr_cap_fwnmi;
 extern const VMStateDescription vmstate_spapr_cap_rpt_invalidate;
 extern const VMStateDescription vmstate_spapr_cap_ail_mode_3;
 extern const VMStateDescription vmstate_spapr_wdt;
+extern const VMStateDescription vmstate_spapr_cap_dawr1;
 
 static inline uint8_t spapr_get_cap(SpaprMachineState *spapr, int cap)
 {

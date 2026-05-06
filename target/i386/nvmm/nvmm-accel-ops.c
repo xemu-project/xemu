@@ -8,12 +8,13 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/kvm_int.h"
+#include "system/kvm_int.h"
 #include "qemu/main-loop.h"
-#include "sysemu/cpus.h"
+#include "accel/accel-cpu-ops.h"
+#include "system/cpus.h"
 #include "qemu/guest-random.h"
 
-#include "sysemu/nvmm.h"
+#include "system/nvmm.h"
 #include "nvmm-accel-ops.h"
 
 static void *qemu_nvmm_cpu_thread_fn(void *arg)
@@ -41,16 +42,14 @@ static void *qemu_nvmm_cpu_thread_fn(void *arg)
     qemu_guest_random_seed_thread_part2(cpu->random_seed);
 
     do {
+        qemu_process_cpu_events(cpu);
+
         if (cpu_can_run(cpu)) {
             r = nvmm_vcpu_exec(cpu);
             if (r == EXCP_DEBUG) {
                 cpu_handle_guest_debug(cpu);
             }
         }
-        while (cpu_thread_is_idle(cpu)) {
-            qemu_cond_wait_bql(cpu->halt_cond);
-        }
-        qemu_wait_io_event_common(cpu);
     } while (!cpu->unplug || cpu_can_run(cpu));
 
     nvmm_destroy_vcpu(cpu);
@@ -76,16 +75,17 @@ static void nvmm_start_vcpu_thread(CPUState *cpu)
  */
 static void nvmm_kick_vcpu_thread(CPUState *cpu)
 {
-    cpu->exit_request = 1;
+    qatomic_set(&cpu->exit_request, true);
     cpus_kick_thread(cpu);
 }
 
-static void nvmm_accel_ops_class_init(ObjectClass *oc, void *data)
+static void nvmm_accel_ops_class_init(ObjectClass *oc, const void *data)
 {
     AccelOpsClass *ops = ACCEL_OPS_CLASS(oc);
 
     ops->create_vcpu_thread = nvmm_start_vcpu_thread;
     ops->kick_vcpu_thread = nvmm_kick_vcpu_thread;
+    ops->handle_interrupt = generic_handle_interrupt;
 
     ops->synchronize_post_reset = nvmm_cpu_synchronize_post_reset;
     ops->synchronize_post_init = nvmm_cpu_synchronize_post_init;

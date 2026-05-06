@@ -26,6 +26,7 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 #include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "hw/usb/hcd-ohci.h"
@@ -2054,11 +2055,10 @@ static void sm501_realize_sysbus(DeviceState *dev, Error **errp)
     /* TODO : chain irq to IRL */
 }
 
-static Property sm501_sysbus_properties[] = {
+static const Property sm501_sysbus_properties[] = {
     DEFINE_PROP_UINT32("vram-size", SM501SysBusState, vram_size, 0),
     /* this a debug option, prefer PROP_UINT over PROP_BIT for simplicity */
     DEFINE_PROP_UINT8("x-pixman", SM501SysBusState, state.use_pixman, DEFAULT_X_PIXMAN),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void sm501_reset_sysbus(DeviceState *dev)
@@ -2078,7 +2078,7 @@ static const VMStateDescription vmstate_sm501_sysbus = {
      }
 };
 
-static void sm501_sysbus_class_init(ObjectClass *klass, void *data)
+static void sm501_sysbus_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -2143,10 +2143,9 @@ static void sm501_realize_pci(PCIDevice *dev, Error **errp)
                      &s->state.mmio_region);
 }
 
-static Property sm501_pci_properties[] = {
+static const Property sm501_pci_properties[] = {
     DEFINE_PROP_UINT32("vram-size", SM501PCIState, vram_size, 64 * MiB),
     DEFINE_PROP_UINT8("x-pixman", SM501PCIState, state.use_pixman, DEFAULT_X_PIXMAN),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void sm501_reset_pci(DeviceState *dev)
@@ -2169,7 +2168,7 @@ static const VMStateDescription vmstate_sm501_pci = {
      }
 };
 
-static void sm501_pci_class_init(ObjectClass *klass, void *data)
+static void sm501_pci_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -2198,7 +2197,7 @@ static const TypeInfo sm501_pci_info = {
     .instance_size = sizeof(SM501PCIState),
     .class_init    = sm501_pci_class_init,
     .instance_init = sm501_pci_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },

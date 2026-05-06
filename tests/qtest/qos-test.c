@@ -20,7 +20,7 @@
 #include <getopt.h>
 #include "libqtest-single.h"
 #include "qapi/error.h"
-#include "qapi/qmp/qdict.h"
+#include "qobject/qdict.h"
 #include "qemu/module.h"
 #include "qapi/qobject-input-visitor.h"
 #include "qapi/qapi-visit-machine.h"
@@ -103,8 +103,7 @@ static void restart_qemu_or_continue(char *path)
         old_path = g_strdup(path);
         qtest_start(path);
     } else { /* if cmd line is the same, reset the guest */
-        qobject_unref(qmp("{ 'execute': 'system_reset' }"));
-        qmp_eventwait("RESET");
+        qtest_system_reset(global_qtest);
     }
 }
 
@@ -329,11 +328,6 @@ static void walk_path(QOSGraphNode *orig_path, int len)
 int main(int argc, char **argv, char** envp)
 {
     g_test_init(&argc, &argv, NULL);
-
-    if (g_test_subprocess()) {
-        qos_printf("qos_test running single test in subprocess\n");
-    }
-
     if (g_test_verbose()) {
         qos_printf("ENVIRONMENT VARIABLES: {\n");
         for (char **env = envp; *env != 0; env++) {

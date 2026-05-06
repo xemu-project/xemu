@@ -31,11 +31,10 @@ Architectural features
    i386/kvm-pv
    i386/sgx
    i386/amd-memory-encryption
+   i386/tdx
 
 OS requirements
 ~~~~~~~~~~~~~~~
 
 On x86_64 hosts, the default set of CPU features enabled by the KVM
-accelerator require the host to be running Linux v4.5 or newer. Red Hat
-Enterprise Linux 7 is also supported, since the required
-functionality was backported.
+accelerator require the host to be running Linux v4.5 or newer.

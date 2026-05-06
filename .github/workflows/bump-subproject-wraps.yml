@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: '0 6 * * 1'
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   pull-requests: write
@@ -14,10 +18,15 @@ jobs:
     name: "Bump Meson subprojects"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install meson
 
       - name: Install the latest version of uv
-        uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b # v6
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v6
         with:
           enable-cache: false
 
@@ -33,6 +42,7 @@ jobs:
               subprojects/implot.wrap \
               subprojects/json.wrap \
               subprojects/nv2a_vsh_cpu.wrap \
+              subprojects/sdl3.wrap \
               subprojects/SPIRV-Reflect.wrap \
               subprojects/tomlplusplus.wrap \
               subprojects/volk.wrap \
@@ -70,5 +80,6 @@ jobs:
             gh pr create \
               --title "meson: Bump ${name} to ${new_tag}" \
               --body  "Automatic bump of \`${name}\` to [${new_tag}](https://github.com/${owner}/${repo}/compare/${old_rev}..${new_rev})." \
-              --base  master
+              --base  master \
+              --label dependencies
           done

@@ -118,11 +118,8 @@ static void pca9554_write(PCA9554State *s, uint8_t reg, uint8_t data)
 static uint8_t pca9554_recv(I2CSlave *i2c)
 {
     PCA9554State *s = PCA9554(i2c);
-    uint8_t ret;
 
-    ret = pca9554_read(s, s->pointer & 0x3);
-
-    return ret;
+    return pca9554_read(s, s->pointer & 0x3);
 }
 
 static int pca9554_send(I2CSlave *i2c, uint8_t data)
@@ -177,7 +174,7 @@ static void pca9554_set_pin(Object *obj, Visitor *v, const char *name,
     PCA9554State *s = PCA9554(obj);
     int pin, rc, val;
     uint8_t state, mask;
-    char *state_str;
+    g_autofree char *state_str = NULL;
 
     if (!visit_type_str(v, name, &state_str, errp)) {
         return;
@@ -291,12 +288,11 @@ static void pca9554_realize(DeviceState *dev, Error **errp)
     qdev_init_gpio_in(dev, pca9554_gpio_in_handler, PCA9554_PIN_COUNT);
 }
 
-static Property pca9554_properties[] = {
+static const Property pca9554_properties[] = {
     DEFINE_PROP_STRING("description", PCA9554State, description),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pca9554_class_init(ObjectClass *klass, void *data)
+static void pca9554_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     I2CSlaveClass *k = I2C_SLAVE_CLASS(klass);

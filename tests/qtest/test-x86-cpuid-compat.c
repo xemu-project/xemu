@@ -1,8 +1,8 @@
 #include "qemu/osdep.h"
-#include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qlist.h"
-#include "qapi/qmp/qnum.h"
-#include "qapi/qmp/qbool.h"
+#include "qobject/qdict.h"
+#include "qobject/qlist.h"
+#include "qobject/qnum.h"
+#include "qobject/qbool.h"
 #include "libqtest-single.h"
 
 static char *get_cpu0_qom_path(void)
@@ -193,7 +193,6 @@ static void add_feature_test(const char *name, const char *cpu,
     args->bitnr = bitnr;
     args->expected_value = expected_value;
     qtest_add_data_func(name, args, test_feature_flag);
-    return;
 }
 
 static void test_plus_minus_subprocess(void)
@@ -357,19 +356,6 @@ int main(int argc, char **argv)
                        "486", "xstore=on", "pc-i440fx-2.7",
                        "xlevel2", 0);
     }
-    /*
-     * QEMU 2.3.0 had auto-level enabled for CPUID[7], already,
-     * and the compat code that sets default level shouldn't
-     * disable the auto-level=7 code:
-     */
-    if (qtest_has_machine("pc-i440fx-2.3")) {
-        add_cpuid_test("x86/cpuid/auto-level7/pc-i440fx-2.3/off",
-                       "Penryn", NULL, "pc-i440fx-2.3",
-                       "level", 4);
-        add_cpuid_test("x86/cpuid/auto-level7/pc-i440fx-2.3/on",
-                       "Penryn", "erms=on", "pc-i440fx-2.3",
-                       "level", 7);
-    }
     if (qtest_has_machine("pc-i440fx-2.9")) {
         add_cpuid_test("x86/cpuid/auto-level7/pc-i440fx-2.9/off",
                        "Conroe", NULL, "pc-i440fx-2.9",
@@ -377,25 +363,6 @@ int main(int argc, char **argv)
         add_cpuid_test("x86/cpuid/auto-level7/pc-i440fx-2.9/on",
                        "Conroe", "erms=on", "pc-i440fx-2.9",
                        "level", 10);
-    }
-
-    /*
-     * xlevel doesn't have any feature that triggers auto-level
-     * code on old machine-types.  Just check that the compat code
-     * is working correctly:
-     */
-    if (qtest_has_machine("pc-i440fx-2.3")) {
-        add_cpuid_test("x86/cpuid/xlevel-compat/pc-i440fx-2.3",
-                       "SandyBridge", NULL, "pc-i440fx-2.3",
-                       "xlevel", 0x8000000a);
-    }
-    if (qtest_has_machine("pc-i440fx-2.4")) {
-        add_cpuid_test("x86/cpuid/xlevel-compat/pc-i440fx-2.4/npt-off",
-                       "SandyBridge", NULL, "pc-i440fx-2.4",
-                       "xlevel", 0x80000008);
-        add_cpuid_test("x86/cpuid/xlevel-compat/pc-i440fx-2.4/npt-on",
-                       "SandyBridge", "svm=on,npt=on", "pc-i440fx-2.4",
-                       "xlevel", 0x80000008);
     }
 
     /* Test feature parsing */

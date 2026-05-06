@@ -16,7 +16,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/qdev-clock.h"
 #include "elf.h"
-#include "sysemu/reset.h"
+#include "system/reset.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
 #include "qemu/log.h"
@@ -140,7 +140,7 @@ static MemTxResult v7m_sysreg_ns_write(void *opaque, hwaddr addr,
         /* S accesses to the alias act like NS accesses to the real region */
         attrs.secure = 0;
         return memory_region_dispatch_write(mr, addr, value,
-                                            size_memop(size) | MO_TE, attrs);
+                                            size_memop(size) | MO_LE, attrs);
     } else {
         /* NS attrs are RAZ/WI for privileged, and BusFault for user */
         if (attrs.user) {
@@ -160,7 +160,7 @@ static MemTxResult v7m_sysreg_ns_read(void *opaque, hwaddr addr,
         /* S accesses to the alias act like NS accesses to the real region */
         attrs.secure = 0;
         return memory_region_dispatch_read(mr, addr, data,
-                                           size_memop(size) | MO_TE, attrs);
+                                           size_memop(size) | MO_LE, attrs);
     } else {
         /* NS attrs are RAZ/WI for privileged, and BusFault for user */
         if (attrs.user) {
@@ -174,7 +174,7 @@ static MemTxResult v7m_sysreg_ns_read(void *opaque, hwaddr addr,
 static const MemoryRegionOps v7m_sysreg_ns_ops = {
     .read_with_attrs = v7m_sysreg_ns_read,
     .write_with_attrs = v7m_sysreg_ns_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
 static MemTxResult v7m_systick_write(void *opaque, hwaddr addr,
@@ -187,7 +187,7 @@ static MemTxResult v7m_systick_write(void *opaque, hwaddr addr,
     /* Direct the access to the correct systick */
     mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->systick[attrs.secure]), 0);
     return memory_region_dispatch_write(mr, addr, value,
-                                        size_memop(size) | MO_TE, attrs);
+                                        size_memop(size) | MO_LE, attrs);
 }
 
 static MemTxResult v7m_systick_read(void *opaque, hwaddr addr,
@@ -199,14 +199,14 @@ static MemTxResult v7m_systick_read(void *opaque, hwaddr addr,
 
     /* Direct the access to the correct systick */
     mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->systick[attrs.secure]), 0);
-    return memory_region_dispatch_read(mr, addr, data, size_memop(size) | MO_TE,
-                                       attrs);
+    return memory_region_dispatch_read(mr, addr, data,
+                                       size_memop(size) | MO_LE, attrs);
 }
 
 static const MemoryRegionOps v7m_systick_ops = {
     .read_with_attrs = v7m_systick_read,
     .write_with_attrs = v7m_systick_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
 /*
@@ -442,6 +442,12 @@ static void armv7m_realize(DeviceState *dev, Error **errp)
                               &v7m_sysreg_ns_ops,
                               sysbus_mmio_get_region(sbd, 0),
                               "nvic_sysregs_ns", 0x1000);
+        /*
+         * This MR calls memory_region_dispatch_read/write to access the
+         * real region for the NVIC sysregs (which is also owned by this
+         * device), so reentrancy through here is expected and safe.
+         */
+        s->sysreg_ns_mem.disable_reentrancy_guard = true;
         memory_region_add_subregion(&s->container, 0xe002e000,
                                     &s->sysreg_ns_mem);
     }
@@ -499,6 +505,12 @@ static void armv7m_realize(DeviceState *dev, Error **errp)
         memory_region_init_io(&s->systick_ns_mem, OBJECT(s),
                               &v7m_sysreg_ns_ops, &s->systickmem,
                               "v7m_systick_ns", 0xe0);
+        /*
+         * This MR calls memory_region_dispatch_read/write to access the
+         * real region for the systick regs (which is also owned by this
+         * device), so reentrancy through here is expected and safe.
+         */
+        s->systick_ns_mem.disable_reentrancy_guard = true;
         memory_region_add_subregion_overlap(&s->container, 0xe002e010,
                                             &s->systick_ns_mem, 1);
     }
@@ -538,7 +550,7 @@ static void armv7m_realize(DeviceState *dev, Error **errp)
     }
 }
 
-static Property armv7m_properties[] = {
+static const Property armv7m_properties[] = {
     DEFINE_PROP_STRING("cpu-type", ARMv7MState, cpu_type),
     DEFINE_PROP_LINK("memory", ARMv7MState, board_memory, TYPE_MEMORY_REGION,
                      MemoryRegion *),
@@ -552,7 +564,6 @@ static Property armv7m_properties[] = {
     DEFINE_PROP_BOOL("dsp", ARMv7MState, dsp, true),
     DEFINE_PROP_UINT32("mpu-ns-regions", ARMv7MState, mpu_ns_regions, UINT_MAX),
     DEFINE_PROP_UINT32("mpu-s-regions", ARMv7MState, mpu_s_regions, UINT_MAX),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const VMStateDescription vmstate_armv7m = {
@@ -566,7 +577,7 @@ static const VMStateDescription vmstate_armv7m = {
     }
 };
 
-static void armv7m_class_init(ObjectClass *klass, void *data)
+static void armv7m_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -609,10 +620,10 @@ void armv7m_load_kernel(ARMCPU *cpu, const char *kernel_filename,
     if (kernel_filename) {
         image_size = load_elf_as(kernel_filename, NULL, NULL, NULL,
                                  &entry, NULL, NULL,
-                                 NULL, 0, EM_ARM, 1, 0, as);
+                                 NULL, ELFDATA2LSB, EM_ARM, 1, 0, as);
         if (image_size < 0) {
             image_size = load_image_targphys_as(kernel_filename, mem_base,
-                                                mem_size, as);
+                                                mem_size, as, NULL);
         }
         if (image_size < 0) {
             error_report("Could not load kernel '%s'", kernel_filename);
@@ -631,14 +642,13 @@ void armv7m_load_kernel(ARMCPU *cpu, const char *kernel_filename,
     qemu_register_reset(armv7m_reset, cpu);
 }
 
-static Property bitband_properties[] = {
+static const Property bitband_properties[] = {
     DEFINE_PROP_UINT32("base", BitBandState, base, 0),
     DEFINE_PROP_LINK("source-memory", BitBandState, source_memory,
                      TYPE_MEMORY_REGION, MemoryRegion *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void bitband_class_init(ObjectClass *klass, void *data)
+static void bitband_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

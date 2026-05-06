@@ -8,8 +8,14 @@
 #include "qemu/osdep.h"
 #include "qemu.h"
 #include "user-internals.h"
-#include "cpu_loop-common.h"
+#include "user/cpu_loop.h"
 #include "signal-common.h"
+
+/* Break codes */
+enum {
+    BRK_OVERFLOW = 6,
+    BRK_DIVZERO = 7
+};
 
 void cpu_loop(CPULoongArchState *env)
 {
@@ -21,7 +27,7 @@ void cpu_loop(CPULoongArchState *env)
         cpu_exec_start(cs);
         trapnr = cpu_exec(cs);
         cpu_exec_end(cs);
-        process_queued_cpu_work(cs);
+        qemu_process_cpu_events(cs);
 
         switch (trapnr) {
         case EXCP_INTERRUPT:
@@ -66,8 +72,25 @@ void cpu_loop(CPULoongArchState *env)
             force_sig_fault(TARGET_SIGFPE, si_code, env->pc);
             break;
         case EXCP_DEBUG:
-        case EXCCODE_BRK:
             force_sig_fault(TARGET_SIGTRAP, TARGET_TRAP_BRKPT, env->pc);
+            break;
+        case EXCCODE_BRK:
+            {
+                unsigned int opcode;
+
+                get_user_u32(opcode, env->pc);
+
+                switch (opcode & 0x7fff) {
+                case BRK_OVERFLOW:
+                    force_sig_fault(TARGET_SIGFPE, TARGET_FPE_INTOVF, env->pc);
+                    break;
+                case BRK_DIVZERO:
+                    force_sig_fault(TARGET_SIGFPE, TARGET_FPE_INTDIV, env->pc);
+                    break;
+                default:
+                    force_sig_fault(TARGET_SIGTRAP, TARGET_TRAP_BRKPT, env->pc);
+                }
+            }
             break;
         case EXCCODE_BCE:
             force_sig_fault(TARGET_SIGSYS, TARGET_SI_KERNEL, env->pc);
@@ -97,13 +120,10 @@ void cpu_loop(CPULoongArchState *env)
     }
 }
 
-void target_cpu_copy_regs(CPUArchState *env, struct target_pt_regs *regs)
+void init_main_thread(CPUState *cs, struct image_info *info)
 {
-    int i;
+    CPUArchState *env = cpu_env(cs);
 
-    for (i = 0; i < 32; i++) {
-        env->gpr[i] = regs->regs[i];
-    }
-    env->pc = regs->csr.era;
-
+    env->pc = info->entry;
+    env->gpr[3] = info->start_stack;
 }

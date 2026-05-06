@@ -15,6 +15,7 @@
 	url = https://gitlab.com/qemu-project/qemu-palcode.git
 [submodule "roms/u-boot"]
 	path = roms/u-boot
+        # upstream is https://github.com/u-boot/u-boot
 	url = https://gitlab.com/qemu-project/u-boot.git
 [submodule "roms/skiboot"]
 	path = roms/skiboot
@@ -27,6 +28,7 @@
 	url = https://gitlab.com/qemu-project/seabios-hppa.git
 [submodule "roms/u-boot-sam460ex"]
 	path = roms/u-boot-sam460ex
+        # upstream is https://github.com/zbalaton/u-boot-sam460ex
 	url = https://gitlab.com/qemu-project/u-boot-sam460ex.git
 [submodule "roms/edk2"]
 	path = roms/edk2

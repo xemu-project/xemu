@@ -1,18 +1,17 @@
 /*
  * QEMU PowerPC XIVE2 interrupt controller model  (POWER10)
  *
- * Copyright (c) 2019-2022, IBM Corporation.
+ * Copyright (c) 2019-2024, IBM Corporation.
  *
- * This code is licensed under the GPL version 2 or later. See the
- * COPYING file in the top-level directory.
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
 #include "target/ppc/cpu.h"
-#include "sysemu/cpus.h"
-#include "sysemu/dma.h"
+#include "system/cpus.h"
+#include "system/dma.h"
 #include "hw/ppc/fdt.h"
 #include "hw/ppc/pnv.h"
 #include "hw/ppc/pnv_chip.h"
@@ -24,8 +23,8 @@
 #include "hw/ppc/xive2_regs.h"
 #include "hw/ppc/ppc.h"
 #include "hw/qdev-properties.h"
-#include "sysemu/reset.h"
-#include "sysemu/qtest.h"
+#include "system/reset.h"
+#include "system/qtest.h"
 
 #include <libfdt.h>
 
@@ -102,24 +101,35 @@ static uint32_t pnv_xive2_block_id(PnvXive2 *xive)
 }
 
 /*
- * Remote access to controllers. HW uses MMIOs. For now, a simple scan
- * of the chips is good enough.
- *
- * TODO: Block scope support
+ * Remote access to INT controllers. HW uses MMIOs(?). For now, a simple
+ * scan of all the chips INT controller is good enough.
  */
-static PnvXive2 *pnv_xive2_get_remote(uint8_t blk)
+static PnvXive2 *pnv_xive2_get_remote(uint32_t vsd_type, hwaddr fwd_addr)
 {
     PnvMachineState *pnv = PNV_MACHINE(qdev_get_machine());
     int i;
 
     for (i = 0; i < pnv->num_chips; i++) {
-        Pnv10Chip *chip10 = PNV10_CHIP(pnv->chips[i]);
-        PnvXive2 *xive = &chip10->xive;
+        PnvChipClass *k = PNV_CHIP_GET_CLASS(pnv->chips[i]);
+        PnvXive2 *xive = PNV_XIVE2(k->intc_get(pnv->chips[i]));
 
-        if (pnv_xive2_block_id(xive) == blk) {
+        /*
+         * Is this the XIVE matching the forwarded VSD address is for this
+         * VSD type
+         */
+        if ((vsd_type == VST_ESB   && fwd_addr == xive->esb_base) ||
+            (vsd_type == VST_END   && fwd_addr == xive->end_base)  ||
+            ((vsd_type == VST_NVP ||
+              vsd_type == VST_NVG) && fwd_addr == xive->nvpg_base) ||
+            (vsd_type == VST_NVC   && fwd_addr == xive->nvc_base)) {
             return xive;
         }
     }
+
+    qemu_log_mask(LOG_GUEST_ERROR,
+                 "XIVE: >>>>> %s vsd_type %u  fwd_addr 0x%"HWADDR_PRIx
+                  " NOT FOUND\n",
+                  __func__, vsd_type, fwd_addr);
     return NULL;
 }
 
@@ -252,8 +262,7 @@ static uint64_t pnv_xive2_vst_addr(PnvXive2 *xive, uint32_t type, uint8_t blk,
 
     /* Remote VST access */
     if (GETFIELD(VSD_MODE, vsd) == VSD_MODE_FORWARD) {
-        xive = pnv_xive2_get_remote(blk);
-
+        xive = pnv_xive2_get_remote(type, (vsd & VSD_ADDRESS_MASK));
         return xive ? pnv_xive2_vst_addr(xive, type, blk, idx) : 0;
     }
 
@@ -596,19 +605,27 @@ static uint32_t pnv_xive2_get_config(Xive2Router *xrtr)
 {
     PnvXive2 *xive = PNV_XIVE2(xrtr);
     uint32_t cfg = 0;
+    uint64_t reg = xive->cq_regs[CQ_XIVE_CFG >> 3];
 
-    if (xive->cq_regs[CQ_XIVE_CFG >> 3] & CQ_XIVE_CFG_GEN1_TIMA_OS) {
+    if (reg & CQ_XIVE_CFG_GEN1_TIMA_OS) {
         cfg |= XIVE2_GEN1_TIMA_OS;
     }
 
-    if (xive->cq_regs[CQ_XIVE_CFG >> 3] & CQ_XIVE_CFG_EN_VP_SAVE_RESTORE) {
+    if (reg & CQ_XIVE_CFG_EN_VP_SAVE_RESTORE) {
         cfg |= XIVE2_VP_SAVE_RESTORE;
     }
 
-    if (GETFIELD(CQ_XIVE_CFG_HYP_HARD_RANGE,
-              xive->cq_regs[CQ_XIVE_CFG >> 3]) == CQ_XIVE_CFG_THREADID_8BITS) {
+    if (GETFIELD(CQ_XIVE_CFG_HYP_HARD_RANGE, reg) ==
+                      CQ_XIVE_CFG_THREADID_8BITS) {
         cfg |= XIVE2_THREADID_8BITS;
     }
+
+    if (reg & CQ_XIVE_CFG_EN_VP_GRP_PRIORITY) {
+        cfg |= XIVE2_EN_VP_GRP_PRIORITY;
+    }
+
+    cfg = SETFIELD(XIVE2_VP_INT_PRIO, cfg,
+                   GETFIELD(CQ_XIVE_CFG_VP_INT_PRIO, reg));
 
     return cfg;
 }
@@ -623,14 +640,109 @@ static bool pnv_xive2_is_cpu_enabled(PnvXive2 *xive, PowerPCCPU *cpu)
     return xive->tctxt_regs[reg >> 3] & PPC_BIT(bit);
 }
 
-static int pnv_xive2_match_nvt(XivePresenter *xptr, uint8_t format,
-                               uint8_t nvt_blk, uint32_t nvt_idx,
-                               bool cam_ignore, uint8_t priority,
-                               uint32_t logic_serv, XiveTCTXMatch *match)
+static bool pnv_xive2_match_nvt(XivePresenter *xptr, uint8_t format,
+                                uint8_t nvt_blk, uint32_t nvt_idx,
+                                bool crowd, bool cam_ignore, uint8_t priority,
+                                uint32_t logic_serv, XiveTCTXMatch *match)
 {
     PnvXive2 *xive = PNV_XIVE2(xptr);
     PnvChip *chip = xive->chip;
-    int count = 0;
+    int i, j;
+    bool gen1_tima_os =
+        xive->cq_regs[CQ_XIVE_CFG >> 3] & CQ_XIVE_CFG_GEN1_TIMA_OS;
+    static int next_start_core;
+    static int next_start_thread;
+    int start_core = next_start_core;
+    int start_thread = next_start_thread;
+
+    for (i = 0; i < chip->nr_cores; i++) {
+        PnvCore *pc = chip->cores[(i + start_core) % chip->nr_cores];
+        CPUCore *cc = CPU_CORE(pc);
+
+        for (j = 0; j < cc->nr_threads; j++) {
+            /* Start search for match with different thread each call */
+            PowerPCCPU *cpu = pc->threads[(j + start_thread) % cc->nr_threads];
+            XiveTCTX *tctx;
+            int ring;
+
+            if (!pnv_xive2_is_cpu_enabled(xive, cpu)) {
+                continue;
+            }
+
+            tctx = XIVE_TCTX(pnv_cpu_state(cpu)->intc);
+
+            if (gen1_tima_os) {
+                ring = xive_presenter_tctx_match(xptr, tctx, format, nvt_blk,
+                                                 nvt_idx, cam_ignore,
+                                                 logic_serv);
+            } else {
+                ring = xive2_presenter_tctx_match(xptr, tctx, format, nvt_blk,
+                                                  nvt_idx, crowd, cam_ignore,
+                                                  logic_serv);
+            }
+
+            if (ring != -1) {
+                /*
+                 * For VP-specific match, finding more than one is a
+                 * problem. For group notification, it's possible.
+                 */
+                if (!cam_ignore && match->tctx) {
+                    qemu_log_mask(LOG_GUEST_ERROR, "XIVE: already found a "
+                                  "thread context NVT %x/%x\n",
+                                  nvt_blk, nvt_idx);
+                    /* Should set a FIR if we ever model it */
+                    match->count++;
+                    continue;
+                }
+                /*
+                 * For a group notification, we need to know if the
+                 * match is precluded first by checking the current
+                 * thread priority. If the interrupt can be delivered,
+                 * we always notify the first match (for now).
+                 */
+                if (cam_ignore &&
+                    xive2_tm_irq_precluded(tctx, ring, priority)) {
+                        match->precluded = true;
+                } else {
+                    if (!match->tctx) {
+                        match->ring = ring;
+                        match->tctx = tctx;
+
+                        next_start_thread = j + start_thread + 1;
+                        if (next_start_thread >= cc->nr_threads) {
+                            next_start_thread = 0;
+                            next_start_core = i + start_core + 1;
+                            if (next_start_core >= chip->nr_cores) {
+                                next_start_core = 0;
+                            }
+                        }
+                    }
+                    match->count++;
+                }
+            }
+        }
+    }
+
+    return !!match->count;
+}
+
+static uint32_t pnv_xive2_presenter_get_config(XivePresenter *xptr)
+{
+    PnvXive2 *xive = PNV_XIVE2(xptr);
+    uint32_t cfg = 0;
+
+    if (xive->cq_regs[CQ_XIVE_CFG >> 3] & CQ_XIVE_CFG_GEN1_TIMA_OS) {
+        cfg |= XIVE_PRESENTER_GEN1_TIMA_OS;
+    }
+    return cfg;
+}
+
+static int pnv_xive2_broadcast(XivePresenter *xptr,
+                               uint8_t nvt_blk, uint32_t nvt_idx,
+                               bool crowd, bool ignore, uint8_t priority)
+{
+    PnvXive2 *xive = PNV_XIVE2(xptr);
+    PnvChip *chip = xive->chip;
     int i, j;
     bool gen1_tima_os =
         xive->cq_regs[CQ_XIVE_CFG >> 3] & CQ_XIVE_CFG_GEN1_TIMA_OS;
@@ -651,46 +763,19 @@ static int pnv_xive2_match_nvt(XivePresenter *xptr, uint8_t format,
             tctx = XIVE_TCTX(pnv_cpu_state(cpu)->intc);
 
             if (gen1_tima_os) {
-                ring = xive_presenter_tctx_match(xptr, tctx, format, nvt_blk,
-                                                 nvt_idx, cam_ignore,
-                                                 logic_serv);
+                ring = xive_presenter_tctx_match(xptr, tctx, 0, nvt_blk,
+                                                 nvt_idx, ignore, 0);
             } else {
-                ring = xive2_presenter_tctx_match(xptr, tctx, format, nvt_blk,
-                                                   nvt_idx, cam_ignore,
-                                                   logic_serv);
+                ring = xive2_presenter_tctx_match(xptr, tctx, 0, nvt_blk,
+                                                  nvt_idx, crowd, ignore, 0);
             }
 
-            /*
-             * Save the context and follow on to catch duplicates,
-             * that we don't support yet.
-             */
             if (ring != -1) {
-                if (match->tctx) {
-                    qemu_log_mask(LOG_GUEST_ERROR, "XIVE: already found a "
-                                  "thread context NVT %x/%x\n",
-                                  nvt_blk, nvt_idx);
-                    return false;
-                }
-
-                match->ring = ring;
-                match->tctx = tctx;
-                count++;
+                xive2_tm_set_lsmfb(tctx, ring, priority);
             }
         }
     }
-
-    return count;
-}
-
-static uint32_t pnv_xive2_presenter_get_config(XivePresenter *xptr)
-{
-    PnvXive2 *xive = PNV_XIVE2(xptr);
-    uint32_t cfg = 0;
-
-    if (xive->cq_regs[CQ_XIVE_CFG >> 3] & CQ_XIVE_CFG_GEN1_TIMA_OS) {
-        cfg |= XIVE_PRESENTER_GEN1_TIMA_OS;
-    }
-    return cfg;
+    return 0;
 }
 
 static uint8_t pnv_xive2_get_block_id(Xive2Router *xrtr)
@@ -1120,7 +1205,8 @@ static void pnv_xive2_ic_cq_write(void *opaque, hwaddr offset,
     case CQ_FIRMASK_OR: /* FIR error reporting */
         break;
     default:
-        xive2_error(xive, "CQ: invalid write 0x%"HWADDR_PRIx, offset);
+        xive2_error(xive, "CQ: invalid write 0x%"HWADDR_PRIx" value 0x%"PRIx64,
+                    offset, val);
         return;
     }
 
@@ -1251,7 +1337,6 @@ static uint64_t pnv_xive2_ic_vc_read(void *opaque, hwaddr offset,
     case VC_ENDC_WATCH2_SPEC:
     case VC_ENDC_WATCH3_SPEC:
         watch_engine = (offset - VC_ENDC_WATCH0_SPEC) >> 6;
-        xive->vc_regs[reg] &= ~(VC_ENDC_WATCH_FULL | VC_ENDC_WATCH_CONFLICT);
         pnv_xive2_endc_cache_watch_release(xive, watch_engine);
         val = xive->vc_regs[reg];
         break;
@@ -1262,10 +1347,11 @@ static uint64_t pnv_xive2_ic_vc_read(void *opaque, hwaddr offset,
     case VC_ENDC_WATCH3_DATA0:
         /*
          * Load DATA registers from cache with data requested by the
-         * SPEC register
+         * SPEC register.  Clear gen_flipped bit in word 1.
          */
         watch_engine = (offset - VC_ENDC_WATCH0_DATA0) >> 6;
         pnv_xive2_end_cache_load(xive, watch_engine);
+        xive->vc_regs[reg] &= ~(uint64_t)END2_W1_GEN_FLIPPED;
         val = xive->vc_regs[reg];
         break;
 
@@ -1333,7 +1419,14 @@ static void pnv_xive2_ic_vc_write(void *opaque, hwaddr offset,
     /*
      * ESB cache updates (not modeled)
      */
-    /* case VC_ESBC_FLUSH_CTRL: */
+    case VC_ESBC_FLUSH_CTRL:
+        if (val & VC_ESBC_FLUSH_CTRL_WANT_CACHE_DISABLE) {
+            xive2_error(xive, "VC: unsupported write @0x%"HWADDR_PRIx
+                        " value 0x%"PRIx64" bit[2] poll_want_cache_disable",
+                        offset, val);
+            return;
+        }
+        break;
     case VC_ESBC_FLUSH_POLL:
         xive->vc_regs[VC_ESBC_FLUSH_CTRL >> 3] |= VC_ESBC_FLUSH_CTRL_POLL_VALID;
         /* ESB update */
@@ -1349,7 +1442,14 @@ static void pnv_xive2_ic_vc_write(void *opaque, hwaddr offset,
     /*
      * EAS cache updates (not modeled)
      */
-    /* case VC_EASC_FLUSH_CTRL: */
+    case VC_EASC_FLUSH_CTRL:
+        if (val & VC_EASC_FLUSH_CTRL_WANT_CACHE_DISABLE) {
+            xive2_error(xive, "VC: unsupported write @0x%"HWADDR_PRIx
+                        " value 0x%"PRIx64" bit[2] poll_want_cache_disable",
+                        offset, val);
+            return;
+        }
+        break;
     case VC_EASC_FLUSH_POLL:
         xive->vc_regs[VC_EASC_FLUSH_CTRL >> 3] |= VC_EASC_FLUSH_CTRL_POLL_VALID;
         /* EAS update */
@@ -1388,7 +1488,14 @@ static void pnv_xive2_ic_vc_write(void *opaque, hwaddr offset,
         break;
 
 
-    /* case VC_ENDC_FLUSH_CTRL: */
+    case VC_ENDC_FLUSH_CTRL:
+        if (val & VC_ENDC_FLUSH_CTRL_WANT_CACHE_DISABLE) {
+            xive2_error(xive, "VC: unsupported write @0x%"HWADDR_PRIx
+                        " value 0x%"PRIx64" bit[2] poll_want_cache_disable",
+                        offset, val);
+            return;
+        }
+        break;
     case VC_ENDC_FLUSH_POLL:
         xive->vc_regs[VC_ENDC_FLUSH_CTRL >> 3] |= VC_ENDC_FLUSH_CTRL_POLL_VALID;
         break;
@@ -1417,7 +1524,8 @@ static void pnv_xive2_ic_vc_write(void *opaque, hwaddr offset,
         break;
 
     default:
-        xive2_error(xive, "VC: invalid write @%"HWADDR_PRIx, offset);
+        xive2_error(xive, "VC: invalid write @0x%"HWADDR_PRIx" value 0x%"PRIx64,
+                    offset, val);
         return;
     }
 
@@ -1608,7 +1716,14 @@ static void pnv_xive2_ic_pc_write(void *opaque, hwaddr offset,
         pnv_xive2_nxc_update(xive, watch_engine);
         break;
 
-   /* case PC_NXC_FLUSH_CTRL: */
+    case PC_NXC_FLUSH_CTRL:
+        if (val & PC_NXC_FLUSH_CTRL_WANT_CACHE_DISABLE) {
+            xive2_error(xive, "VC: unsupported write @0x%"HWADDR_PRIx
+                        " value 0x%"PRIx64" bit[2] poll_want_cache_disable",
+                        offset, val);
+            return;
+        }
+        break;
     case PC_NXC_FLUSH_POLL:
         xive->pc_regs[PC_NXC_FLUSH_CTRL >> 3] |= PC_NXC_FLUSH_CTRL_POLL_VALID;
         break;
@@ -1625,7 +1740,8 @@ static void pnv_xive2_ic_pc_write(void *opaque, hwaddr offset,
         break;
 
     default:
-        xive2_error(xive, "PC: invalid write @%"HWADDR_PRIx, offset);
+        xive2_error(xive, "PC: invalid write @0x%"HWADDR_PRIx" value 0x%"PRIx64,
+                    offset, val);
         return;
     }
 
@@ -1712,7 +1828,8 @@ static void pnv_xive2_ic_tctxt_write(void *opaque, hwaddr offset,
         xive->tctxt_regs[reg] = val;
         break;
     default:
-        xive2_error(xive, "TCTXT: invalid write @%"HWADDR_PRIx, offset);
+        xive2_error(xive, "TCTXT: invalid write @0x%"HWADDR_PRIx
+                    " data 0x%"PRIx64, offset, val);
         return;
     }
 }
@@ -1783,7 +1900,8 @@ static void pnv_xive2_xscom_write(void *opaque, hwaddr offset,
         pnv_xive2_ic_tctxt_write(opaque, mmio_offset, val, size);
         break;
     default:
-        xive2_error(xive, "XSCOM: invalid write @%"HWADDR_PRIx, offset);
+        xive2_error(xive, "XSCOM: invalid write @%"HWADDR_PRIx
+                    " value 0x%"PRIx64, offset, val);
     }
 }
 
@@ -1851,7 +1969,8 @@ static void pnv_xive2_ic_notify_write(void *opaque, hwaddr offset,
         break;
 
     default:
-        xive2_error(xive, "NOTIFY: invalid write @%"HWADDR_PRIx, offset);
+        xive2_error(xive, "NOTIFY: invalid write @%"HWADDR_PRIx
+                    " value 0x%"PRIx64, offset, val);
     }
 }
 
@@ -1893,7 +2012,8 @@ static void pnv_xive2_ic_lsi_write(void *opaque, hwaddr offset,
 {
     PnvXive2 *xive = PNV_XIVE2(opaque);
 
-    xive2_error(xive, "LSI: invalid write @%"HWADDR_PRIx, offset);
+    xive2_error(xive, "LSI: invalid write @%"HWADDR_PRIx" value 0x%"PRIx64,
+                offset, val);
 }
 
 static const MemoryRegionOps pnv_xive2_ic_lsi_ops = {
@@ -1996,7 +2116,8 @@ static void pnv_xive2_ic_sync_write(void *opaque, hwaddr offset,
         inject_type = PNV_XIVE2_QUEUE_NXC_ST_RMT_CI;
         break;
     default:
-        xive2_error(xive, "SYNC: invalid write @%"HWADDR_PRIx, offset);
+        xive2_error(xive, "SYNC: invalid write @%"HWADDR_PRIx" value 0x%"PRIx64,
+                    offset, val);
         return;
     }
 
@@ -2149,21 +2270,40 @@ static const MemoryRegionOps pnv_xive2_tm_ops = {
     },
 };
 
-static uint64_t pnv_xive2_nvc_read(void *opaque, hwaddr offset,
+static uint64_t pnv_xive2_nvc_read(void *opaque, hwaddr addr,
                                    unsigned size)
 {
     PnvXive2 *xive = PNV_XIVE2(opaque);
+    XivePresenter *xptr = XIVE_PRESENTER(xive);
+    uint32_t page = addr >> xive->nvpg_shift;
+    uint16_t op = addr & 0xFFF;
+    uint8_t blk = pnv_xive2_block_id(xive);
 
-    xive2_error(xive, "NVC: invalid read @%"HWADDR_PRIx, offset);
-    return -1;
+    if (size != 2) {
+        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: invalid nvc load size %d\n",
+                      size);
+        return -1;
+    }
+
+    return xive2_presenter_nvgc_backlog_op(xptr, true, blk, page, op, 1);
 }
 
-static void pnv_xive2_nvc_write(void *opaque, hwaddr offset,
+static void pnv_xive2_nvc_write(void *opaque, hwaddr addr,
                                 uint64_t val, unsigned size)
 {
     PnvXive2 *xive = PNV_XIVE2(opaque);
+    XivePresenter *xptr = XIVE_PRESENTER(xive);
+    uint32_t page = addr >> xive->nvc_shift;
+    uint16_t op = addr & 0xFFF;
+    uint8_t blk = pnv_xive2_block_id(xive);
 
-    xive2_error(xive, "NVC: invalid write @%"HWADDR_PRIx, offset);
+    if (size != 1) {
+        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: invalid nvc write size %d\n",
+                      size);
+        return;
+    }
+
+    (void)xive2_presenter_nvgc_backlog_op(xptr, true, blk, page, op, val);
 }
 
 static const MemoryRegionOps pnv_xive2_nvc_ops = {
@@ -2171,30 +2311,63 @@ static const MemoryRegionOps pnv_xive2_nvc_ops = {
     .write = pnv_xive2_nvc_write,
     .endianness = DEVICE_BIG_ENDIAN,
     .valid = {
-        .min_access_size = 8,
+        .min_access_size = 1,
         .max_access_size = 8,
     },
     .impl = {
-        .min_access_size = 8,
+        .min_access_size = 1,
         .max_access_size = 8,
     },
 };
 
-static uint64_t pnv_xive2_nvpg_read(void *opaque, hwaddr offset,
+static uint64_t pnv_xive2_nvpg_read(void *opaque, hwaddr addr,
                                     unsigned size)
 {
     PnvXive2 *xive = PNV_XIVE2(opaque);
+    XivePresenter *xptr = XIVE_PRESENTER(xive);
+    uint32_t page = addr >> xive->nvpg_shift;
+    uint16_t op = addr & 0xFFF;
+    uint32_t index = page >> 1;
+    uint8_t blk = pnv_xive2_block_id(xive);
 
-    xive2_error(xive, "NVPG: invalid read @%"HWADDR_PRIx, offset);
-    return -1;
+    if (size != 2) {
+        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: invalid nvpg load size %d\n",
+                      size);
+        return -1;
+    }
+
+    if (page % 2) {
+        /* odd page - NVG */
+        return xive2_presenter_nvgc_backlog_op(xptr, false, blk, index, op, 1);
+    } else {
+        /* even page - NVP */
+        return xive2_presenter_nvp_backlog_op(xptr, blk, index, op);
+    }
 }
 
-static void pnv_xive2_nvpg_write(void *opaque, hwaddr offset,
+static void pnv_xive2_nvpg_write(void *opaque, hwaddr addr,
                                  uint64_t val, unsigned size)
 {
     PnvXive2 *xive = PNV_XIVE2(opaque);
+    XivePresenter *xptr = XIVE_PRESENTER(xive);
+    uint32_t page = addr >> xive->nvpg_shift;
+    uint16_t op = addr & 0xFFF;
+    uint32_t index = page >> 1;
+    uint8_t blk = pnv_xive2_block_id(xive);
 
-    xive2_error(xive, "NVPG: invalid write @%"HWADDR_PRIx, offset);
+    if (size != 1) {
+        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: invalid nvpg write size %d\n",
+                      size);
+        return;
+    }
+
+    if (page % 2) {
+        /* odd page - NVG */
+        (void)xive2_presenter_nvgc_backlog_op(xptr, false, blk, index, op, val);
+    } else {
+        /* even page - NVP */
+        (void)xive2_presenter_nvp_backlog_op(xptr, blk, index, op);
+    }
 }
 
 static const MemoryRegionOps pnv_xive2_nvpg_ops = {
@@ -2202,11 +2375,11 @@ static const MemoryRegionOps pnv_xive2_nvpg_ops = {
     .write = pnv_xive2_nvpg_write,
     .endianness = DEVICE_BIG_ENDIAN,
     .valid = {
-        .min_access_size = 8,
+        .min_access_size = 1,
         .max_access_size = 8,
     },
     .impl = {
-        .min_access_size = 8,
+        .min_access_size = 1,
         .max_access_size = 8,
     },
 };
@@ -2354,7 +2527,7 @@ static void pnv_xive2_realize(DeviceState *dev, Error **errp)
     qemu_register_reset(pnv_xive2_reset, dev);
 }
 
-static Property pnv_xive2_properties[] = {
+static const Property pnv_xive2_properties[] = {
     DEFINE_PROP_UINT64("ic-bar", PnvXive2, ic_base, 0),
     DEFINE_PROP_UINT64("esb-bar", PnvXive2, esb_base, 0),
     DEFINE_PROP_UINT64("end-bar", PnvXive2, end_base, 0),
@@ -2366,7 +2539,6 @@ static Property pnv_xive2_properties[] = {
     DEFINE_PROP_UINT64("config", PnvXive2, config,
                        PNV_XIVE2_CONFIGURATION),
     DEFINE_PROP_LINK("chip", PnvXive2, chip, TYPE_PNV_CHIP, PnvChip *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void pnv_xive2_instance_init(Object *obj)
@@ -2401,7 +2573,7 @@ static int pnv_xive2_dt_xscom(PnvXScomInterface *dev, void *fdt,
     return 0;
 }
 
-static void pnv_xive2_class_init(ObjectClass *klass, void *data)
+static void pnv_xive2_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PnvXScomInterfaceClass *xdc = PNV_XSCOM_INTERFACE_CLASS(klass);
@@ -2433,6 +2605,7 @@ static void pnv_xive2_class_init(ObjectClass *klass, void *data)
 
     xpc->match_nvt  = pnv_xive2_match_nvt;
     xpc->get_config = pnv_xive2_presenter_get_config;
+    xpc->broadcast  = pnv_xive2_broadcast;
 };
 
 static const TypeInfo pnv_xive2_info = {
@@ -2442,7 +2615,7 @@ static const TypeInfo pnv_xive2_info = {
     .instance_size = sizeof(PnvXive2),
     .class_init    = pnv_xive2_class_init,
     .class_size    = sizeof(PnvXive2Class),
-    .interfaces    = (InterfaceInfo[]) {
+    .interfaces    = (const InterfaceInfo[]) {
         { TYPE_PNV_XSCOM_INTERFACE },
         { }
     }

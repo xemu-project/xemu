@@ -22,10 +22,11 @@
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
-#include "exec/address-spaces.h"
-#include "sysemu/sysemu.h"
+#include "system/address-spaces.h"
+#include "system/system.h"
 #include "hw/arm/boot.h"
 #include "hw/arm/armsse.h"
+#include "hw/arm/machines-qom.h"
 #include "hw/boards.h"
 #include "hw/char/pl011.h"
 #include "hw/core/split-irq.h"
@@ -590,11 +591,11 @@ static void musca_init(MachineState *machine)
                                                      "cfg_sec_resp", 0));
     }
 
-    armv7m_load_kernel(ARM_CPU(first_cpu), machine->kernel_filename,
+    armv7m_load_kernel(mms->sse.armv7m[0].cpu, machine->kernel_filename,
                        0, 0x2000000);
 }
 
-static void musca_class_init(ObjectClass *oc, void *data)
+static void musca_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     static const char * const valid_cpu_types[] = {
@@ -609,7 +610,7 @@ static void musca_class_init(ObjectClass *oc, void *data)
     mc->init = musca_init;
 }
 
-static void musca_a_class_init(ObjectClass *oc, void *data)
+static void musca_a_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     MuscaMachineClass *mmc = MUSCA_MACHINE_CLASS(oc);
@@ -623,7 +624,7 @@ static void musca_a_class_init(ObjectClass *oc, void *data)
     mmc->num_mpcs = ARRAY_SIZE(a_mpc_info);
 }
 
-static void musca_b1_class_init(ObjectClass *oc, void *data)
+static void musca_b1_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     MuscaMachineClass *mmc = MUSCA_MACHINE_CLASS(oc);
@@ -657,12 +658,14 @@ static const TypeInfo musca_a_info = {
     .name = TYPE_MUSCA_A_MACHINE,
     .parent = TYPE_MUSCA_MACHINE,
     .class_init = musca_a_class_init,
+    .interfaces = arm_machine_interfaces,
 };
 
 static const TypeInfo musca_b1_info = {
     .name = TYPE_MUSCA_B1_MACHINE,
     .parent = TYPE_MUSCA_MACHINE,
     .class_init = musca_b1_class_init,
+    .interfaces = arm_machine_interfaces,
 };
 
 static void musca_machine_init(void)

@@ -19,7 +19,7 @@
 #ifndef HVF_X86_DESCR_H
 #define HVF_X86_DESCR_H
 
-#include "x86.h"
+#include "emulate/x86.h"
 
 typedef struct vmx_segment {
     uint16_t sel;
@@ -34,10 +34,10 @@ void vmx_read_segment_descriptor(CPUState *cpu,
 void vmx_write_segment_descriptor(CPUState *cpu, struct vmx_segment *desc,
                                   enum X86Seg seg);
 
-x68_segment_selector vmx_read_segment_selector(CPUState *cpu,
+x86_segment_selector vmx_read_segment_selector(CPUState *cpu,
                                                enum X86Seg seg);
 void vmx_write_segment_selector(CPUState *cpu,
-                                x68_segment_selector selector,
+                                x86_segment_selector selector,
                                 enum X86Seg seg);
 
 uint64_t vmx_read_segment_base(CPUState *cpu, enum X86Seg seg);
@@ -45,7 +45,7 @@ void vmx_write_segment_base(CPUState *cpu, enum X86Seg seg,
                             uint64_t base);
 
 void x86_segment_descriptor_to_vmx(CPUState *cpu,
-                                   x68_segment_selector selector,
+                                   x86_segment_selector selector,
                                    struct x86_segment_descriptor *desc,
                                    struct vmx_segment *vmx_desc);
 

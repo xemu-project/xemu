@@ -28,8 +28,8 @@
 #include "qemu/filemonitor.h"
 #include "qom/object_interfaces.h"
 #include "qapi/qapi-visit-authz.h"
-#include "qapi/qmp/qjson.h"
-#include "qapi/qmp/qobject.h"
+#include "qobject/qjson.h"
+#include "qobject/qobject.h"
 #include "qapi/qobject-input-visitor.h"
 
 
@@ -220,7 +220,7 @@ qauthz_list_file_finalize(Object *obj)
 
 
 static void
-qauthz_list_file_class_init(ObjectClass *oc, void *data)
+qauthz_list_file_class_init(ObjectClass *oc, const void *data)
 {
     UserCreatableClass *ucc = USER_CREATABLE_CLASS(oc);
     QAuthZClass *authz = QAUTHZ_CLASS(oc);
@@ -272,7 +272,7 @@ static const TypeInfo qauthz_list_file_info = {
     .instance_size = sizeof(QAuthZListFile),
     .instance_finalize = qauthz_list_file_finalize,
     .class_init = qauthz_list_file_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_USER_CREATABLE },
         { }
     }

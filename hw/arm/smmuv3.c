@@ -25,6 +25,7 @@
 #include "hw/qdev-core.h"
 #include "hw/pci/pci.h"
 #include "cpu.h"
+#include "exec/target_page.h"
 #include "trace.h"
 #include "qemu/log.h"
 #include "qemu/error-report.h"
@@ -377,7 +378,7 @@ static int smmu_get_cd(SMMUv3State *s, STE *ste, SMMUTransCfg *cfg,
         qemu_log_mask(LOG_GUEST_ERROR,
                       "Cannot fetch pte at address=0x%"PRIx64"\n", addr);
         event->type = SMMU_EVT_F_CD_FETCH;
-        event->u.f_ste_fetch.addr = addr;
+        event->u.f_cd_fetch.addr = addr;
         return -EINVAL;
     }
     for (i = 0; i < ARRAY_SIZE(buf->word); i++) {
@@ -903,7 +904,7 @@ static void smmuv3_flush_config(SMMUDevice *sdev)
     SMMUv3State *s = sdev->smmu;
     SMMUState *bc = &s->smmu_state;
 
-    trace_smmuv3_config_cache_inv(smmu_get_sid(sdev));
+    trace_smmu_config_cache_inv(smmu_get_sid(sdev));
     g_hash_table_remove(bc->configs, sdev);
 }
 
@@ -1277,20 +1278,6 @@ static void smmuv3_range_inval(SMMUState *s, Cmd *cmd, SMMUStage stage)
     }
 }
 
-static gboolean
-smmuv3_invalidate_ste(gpointer key, gpointer value, gpointer user_data)
-{
-    SMMUDevice *sdev = (SMMUDevice *)key;
-    uint32_t sid = smmu_get_sid(sdev);
-    SMMUSIDRange *sid_range = (SMMUSIDRange *)user_data;
-
-    if (sid < sid_range->start || sid > sid_range->end) {
-        return false;
-    }
-    trace_smmuv3_config_cache_inv(sid);
-    return true;
-}
-
 static int smmuv3_cmdq_consume(SMMUv3State *s)
 {
     SMMUState *bs = ARM_SMMU(s);
@@ -1373,8 +1360,7 @@ static int smmuv3_cmdq_consume(SMMUv3State *s)
             sid_range.end = sid_range.start + mask;
 
             trace_smmuv3_cmdq_cfgi_ste_range(sid_range.start, sid_range.end);
-            g_hash_table_foreach_remove(bs->configs, smmuv3_invalidate_ste,
-                                        &sid_range);
+            smmu_configs_inv_sid_range(bs, sid_range);
             break;
         }
         case SMMU_CMD_CFGI_CD:
@@ -1870,13 +1856,19 @@ static void smmu_init_irq(SMMUv3State *s, SysBusDevice *dev)
     }
 }
 
-static void smmu_reset_hold(Object *obj, ResetType type)
+/*
+ * Make sure the IOMMU is reset in 'exit' phase after
+ * all outstanding DMA requests have been quiesced during
+ * the 'enter' or 'hold' reset phases
+ */
+static void smmu_reset_exit(Object *obj, ResetType type)
 {
     SMMUv3State *s = ARM_SMMUV3(obj);
     SMMUv3Class *c = ARM_SMMUV3_GET_CLASS(s);
 
-    if (c->parent_phases.hold) {
-        c->parent_phases.hold(obj, type);
+    trace_smmu_reset_exit();
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
     }
 
     smmuv3_init_regs(s);
@@ -1976,7 +1968,7 @@ static const VMStateDescription vmstate_smmuv3 = {
     }
 };
 
-static Property smmuv3_properties[] = {
+static const Property smmuv3_properties[] = {
     /*
      * Stages of translation advertised.
      * "1": Stage 1
@@ -1985,7 +1977,6 @@ static Property smmuv3_properties[] = {
      * Defaults to stage 1
      */
     DEFINE_PROP_STRING("stage", SMMUv3State, stage),
-    DEFINE_PROP_END_OF_LIST()
 };
 
 static void smmuv3_instance_init(Object *obj)
@@ -1993,18 +1984,20 @@ static void smmuv3_instance_init(Object *obj)
     /* Nothing much to do here as of now */
 }
 
-static void smmuv3_class_init(ObjectClass *klass, void *data)
+static void smmuv3_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     SMMUv3Class *c = ARM_SMMUV3_CLASS(klass);
 
     dc->vmsd = &vmstate_smmuv3;
-    resettable_class_set_parent_phases(rc, NULL, smmu_reset_hold, NULL,
+    resettable_class_set_parent_phases(rc, NULL, NULL, smmu_reset_exit,
                                        &c->parent_phases);
     device_class_set_parent_realize(dc, smmu_realize,
                                     &c->parent_realize);
     device_class_set_props(dc, smmuv3_properties);
+    dc->hotpluggable = false;
+    dc->user_creatable = true;
 }
 
 static int smmuv3_notify_flag_changed(IOMMUMemoryRegion *iommu,
@@ -2040,7 +2033,7 @@ static int smmuv3_notify_flag_changed(IOMMUMemoryRegion *iommu,
 }
 
 static void smmuv3_iommu_memory_region_class_init(ObjectClass *klass,
-                                                  void *data)
+                                                  const void *data)
 {
     IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_CLASS(klass);
 
@@ -2065,8 +2058,8 @@ static const TypeInfo smmuv3_iommu_memory_region_info = {
 
 static void smmuv3_register_types(void)
 {
-    type_register(&smmuv3_type_info);
-    type_register(&smmuv3_iommu_memory_region_info);
+    type_register_static(&smmuv3_type_info);
+    type_register_static(&smmuv3_iommu_memory_region_info);
 }
 
 type_init(smmuv3_register_types)

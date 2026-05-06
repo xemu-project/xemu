@@ -12,8 +12,9 @@
 #include "qapi/error.h"
 #include "hw/boards.h"
 #include "hw/arm/boot.h"
-#include "sysemu/sysemu.h"
-#include "exec/address-spaces.h"
+#include "hw/arm/machines-qom.h"
+#include "system/system.h"
+#include "system/address-spaces.h"
 
 #include "hw/arm/nrf51_soc.h"
 #include "hw/i2c/microbit_i2c.h"
@@ -56,11 +57,11 @@ static void microbit_init(MachineState *machine)
     memory_region_add_subregion_overlap(&s->nrf51.container, NRF51_TWI_BASE,
                                         mr, -1);
 
-    armv7m_load_kernel(ARM_CPU(first_cpu), machine->kernel_filename,
+    armv7m_load_kernel(s->nrf51.armv7m.cpu, machine->kernel_filename,
                        0, s->nrf51.flash_size);
 }
 
-static void microbit_machine_class_init(ObjectClass *oc, void *data)
+static void microbit_machine_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
 
@@ -74,6 +75,7 @@ static const TypeInfo microbit_info = {
     .parent = TYPE_MACHINE,
     .instance_size = sizeof(MicrobitMachineState),
     .class_init = microbit_machine_class_init,
+    .interfaces = arm_machine_interfaces,
 };
 
 static void microbit_machine_init(void)

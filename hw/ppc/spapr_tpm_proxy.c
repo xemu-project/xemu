@@ -13,7 +13,7 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "sysemu/reset.h"
+#include "system/reset.h"
 #include "hw/ppc/spapr.h"
 #include "hw/qdev-properties.h"
 #include "trace.h"
@@ -41,8 +41,8 @@ static ssize_t tpm_execute(SpaprTpmProxy *tpm_proxy, target_ulong *args)
     target_ulong data_in_size = args[2];
     uint64_t data_out = ppc64_phys_to_real(args[3]);
     target_ulong data_out_size = args[4];
-    uint8_t buf_in[TPM_SPAPR_BUFSIZE];
-    uint8_t buf_out[TPM_SPAPR_BUFSIZE];
+    QEMU_UNINITIALIZED uint8_t buf_in[TPM_SPAPR_BUFSIZE];
+    QEMU_UNINITIALIZED uint8_t buf_out[TPM_SPAPR_BUFSIZE];
     ssize_t ret;
 
     trace_spapr_tpm_execute(data_in, data_in_size, data_out, data_out_size);
@@ -145,12 +145,11 @@ static void spapr_tpm_proxy_unrealize(DeviceState *d)
     qemu_unregister_reset(spapr_tpm_proxy_reset, tpm_proxy);
 }
 
-static Property spapr_tpm_proxy_properties[] = {
+static const Property spapr_tpm_proxy_properties[] = {
     DEFINE_PROP_STRING("host-path", SpaprTpmProxy, host_path),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void spapr_tpm_proxy_class_init(ObjectClass *k, void *data)
+static void spapr_tpm_proxy_class_init(ObjectClass *k, const void *data)
 {
     DeviceClass *dk = DEVICE_CLASS(k);
 

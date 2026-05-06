@@ -11,11 +11,12 @@
 #include "qemu/cutils.h"
 #include "qapi/error.h"
 #include "qapi/visitor.h"
+#include "hw/arm/machines-qom.h"
 #include "hw/arm/raspi_platform.h"
 #include "hw/display/bcm2835_fb.h"
 #include "hw/registerfields.h"
 #include "qemu/error-report.h"
-#include "sysemu/device_tree.h"
+#include "system/device_tree.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
 #include "hw/arm/boot.h"
@@ -36,9 +37,8 @@ struct Raspi4bMachineState {
  * (see https://datasheets.raspberrypi.com/bcm2711/bcm2711-peripherals.pdf
  * 1.2 Address Map)
  */
-static int raspi_add_memory_node(void *fdt, hwaddr mem_base, hwaddr mem_len)
+static void raspi_add_memory_node(void *fdt, hwaddr mem_base, hwaddr mem_len)
 {
-    int ret;
     uint32_t acells, scells;
     char *nodename = g_strdup_printf("/memory@%" PRIx64, mem_base);
 
@@ -46,19 +46,16 @@ static int raspi_add_memory_node(void *fdt, hwaddr mem_base, hwaddr mem_len)
                                    NULL, &error_fatal);
     scells = qemu_fdt_getprop_cell(fdt, "/", "#size-cells",
                                    NULL, &error_fatal);
-    if (acells == 0 || scells == 0) {
-        fprintf(stderr, "dtb file invalid (#address-cells or #size-cells 0)\n");
-        ret = -1;
-    } else {
-        qemu_fdt_add_subnode(fdt, nodename);
-        qemu_fdt_setprop_string(fdt, nodename, "device_type", "memory");
-        ret = qemu_fdt_setprop_sized_cells(fdt, nodename, "reg",
-                                           acells, mem_base,
-                                           scells, mem_len);
-    }
+    /* validated by arm_load_dtb */
+    g_assert(acells && scells);
+
+    qemu_fdt_add_subnode(fdt, nodename);
+    qemu_fdt_setprop_string(fdt, nodename, "device_type", "memory");
+    qemu_fdt_setprop_sized_cells(fdt, nodename, "reg",
+                                        acells, mem_base,
+                                        scells, mem_len);
 
     g_free(nodename);
-    return ret;
 }
 
 static void raspi4_modify_dtb(const struct arm_boot_info *info, void *fdt)
@@ -107,7 +104,7 @@ static void raspi4b_machine_init(MachineState *machine)
     raspi_base_machine_init(machine, &soc->parent_obj);
 }
 
-static void raspi4b_machine_class_init(ObjectClass *oc, void *data)
+static void raspi4b_machine_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     RaspiBaseMachineClass *rmc = RASPI_BASE_MACHINE_CLASS(oc);
@@ -118,6 +115,7 @@ static void raspi4b_machine_class_init(ObjectClass *oc, void *data)
     rmc->board_rev = 0xb03115; /* Revision 1.5, 2 Gb RAM */
 #endif
     raspi_machine_class_common_init(mc, rmc->board_rev);
+    mc->auto_create_sdcard = true;
     mc->init = raspi4b_machine_init;
 }
 
@@ -126,6 +124,7 @@ static const TypeInfo raspi4b_machine_type = {
     .parent         = TYPE_RASPI_BASE_MACHINE,
     .instance_size  = sizeof(Raspi4bMachineState),
     .class_init     = raspi4b_machine_class_init,
+    .interfaces     = aarch64_machine_interfaces,
 };
 
 static void raspi4b_machine_register_type(void)

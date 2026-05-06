@@ -34,6 +34,7 @@ find-cross-gcc = $(firstword $(wildcard $(patsubst %ld,%gcc,$(call find-cross-ld
 # finally strip off path + toolname so we get the prefix
 find-cross-prefix = $(subst gcc,,$(notdir $(call find-cross-gcc,$(1))))
 
+aarch64_cross_prefix := $(call find-cross-prefix,aarch64)
 arm_cross_prefix := $(call find-cross-prefix,arm)
 powerpc64_cross_prefix := $(call find-cross-prefix,powerpc64)
 powerpc_cross_prefix := $(call find-cross-prefix,powerpc)
@@ -66,6 +67,8 @@ default help:
 	@echo "  u-boot.e500        -- update u-boot.e500"
 	@echo "  u-boot.sam460      -- update u-boot.sam460"
 	@echo "  npcm7xx_bootrom    -- update vbootrom for npcm7xx"
+	@echo "  npcm8xx_bootrom    -- update vbootrom for npcm8xx"
+	@echo "  ast27x0_bootrom    -- update vbootrom for ast27x0"
 	@echo "  efi                -- update UEFI (edk2) platform firmware"
 	@echo "  opensbi32-generic  -- update OpenSBI for 32-bit generic machine"
 	@echo "  opensbi64-generic  -- update OpenSBI for 64-bit generic machine"
@@ -141,9 +144,10 @@ u-boot.e500:
 		../pc-bios/u-boot.e500
 
 u-boot.sam460:
-	$(MAKE) -C u-boot-sam460ex Sam460ex_config
+	$(MAKE) -C u-boot-sam460ex Sam460_50_config
 	$(MAKE) -C u-boot-sam460ex CROSS_COMPILE=$(powerpc_cross_prefix)
-	cp u-boot-sam460ex/u-boot.bin ../pc-bios/u-boot-sam460-20100605.bin
+	cp u-boot-sam460ex/u-boot.bin ../pc-bios/u-boot-sam460.bin
+	chmod -x ../pc-bios/u-boot-sam460.bin
 
 skiboot:
 	$(MAKE) -C skiboot CROSS=$(powerpc64_cross_prefix)
@@ -191,8 +195,16 @@ qboot:
 	cp qboot/build/bios.bin ../pc-bios/qboot.rom
 
 npcm7xx_bootrom:
-	$(MAKE) -C vbootrom CROSS_COMPILE=$(arm_cross_prefix)
-	cp vbootrom/npcm7xx_bootrom.bin ../pc-bios/npcm7xx_bootrom.bin
+	$(MAKE) -C vbootrom/npcm7xx CROSS_COMPILE=$(arm_cross_prefix)
+	cp vbootrom/npcm7xx/npcm7xx_bootrom.bin ../pc-bios/npcm7xx_bootrom.bin
+
+npcm8xx_bootrom:
+	$(MAKE) -C vbootrom/npcm8xx CROSS_COMPILE=$(aarch64_cross_prefix)
+	cp vbootrom/npcm8xx/npcm8xx_bootrom.bin ../pc-bios/npcm8xx_bootrom.bin
+
+ast27x0_bootrom:
+	$(MAKE) -C vbootrom/ast27x0 CROSS_COMPILE=$(aarch64_cross_prefix)
+	cp vbootrom/ast27x0/ast27x0_bootrom.bin ../pc-bios/ast27x0_bootrom.bin
 
 hppa-firmware:
 	$(MAKE) -C seabios-hppa parisc

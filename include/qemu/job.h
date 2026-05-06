@@ -263,7 +263,7 @@ struct JobDriver {
      * This callback will not be invoked if the job has already failed.
      * If it fails, abort and then clean will be called.
      */
-    int (*prepare)(Job *job);
+    int GRAPH_UNLOCKED_PTR (*prepare)(Job *job);
 
     /**
      * If the callback is not NULL, it will be invoked when all the jobs
@@ -283,7 +283,7 @@ struct JobDriver {
      * All jobs will complete with a call to either .commit() or .abort() but
      * never both.
      */
-    void (*abort)(Job *job);
+    void GRAPH_UNLOCKED_PTR (*abort)(Job *job);
 
     /**
      * If the callback is not NULL, it will be invoked after a call to either
@@ -544,6 +544,9 @@ bool job_is_ready(Job *job);
 
 /* Same as job_is_ready(), but called with job lock held. */
 bool job_is_ready_locked(Job *job);
+
+/** Returns whether the job is paused. Called with job_mutex *not* held. */
+bool job_is_paused(Job *job);
 
 /**
  * Request @job to pause at the next pause point. Must be paired with

@@ -84,6 +84,7 @@ from typing import (
     Sequence,
     Tuple,
     Union,
+    cast,
 )
 import venv
 
@@ -91,31 +92,61 @@ import venv
 # Try to load distlib, with a fallback to pip's vendored version.
 # HAVE_DISTLIB is checked below, just-in-time, so that mkvenv does not fail
 # outside the venv or before a potential call to ensurepip in checkpip().
-HAVE_DISTLIB = True
+_import_ok = True
 try:
     import distlib.scripts
-    import distlib.version
 except ImportError:
     try:
         # Reach into pip's cookie jar.  pylint and flake8 don't understand
         # that these imports will be used via distlib.xxx.
         from pip._vendor import distlib
         import pip._vendor.distlib.scripts  # noqa, pylint: disable=unused-import
-        import pip._vendor.distlib.version  # noqa, pylint: disable=unused-import
     except ImportError:
-        HAVE_DISTLIB = False
+        _import_ok = False
+
+HAVE_DISTLIB = _import_ok
+
+# pip 25.2 does not vendor distlib.version, but it uses vendored
+# packaging.version
+_import_ok = True
+try:
+    import distlib.version  # pylint: disable=ungrouped-imports
+except ImportError:
+    try:
+        # pylint: disable=unused-import,ungrouped-imports
+        import pip._vendor.distlib.version  # noqa
+    except ImportError:
+        _import_ok = False
+
+HAVE_DISTLIB_VERSION = _import_ok
+
+_import_ok = True
+try:
+    # Do not bother importing non-vendored packaging, because it is not
+    # in stdlib.
+    from pip._vendor import packaging
+    # pylint: disable=unused-import
+    import pip._vendor.packaging.requirements  # noqa
+    import pip._vendor.packaging.version  # noqa
+except ImportError:
+    _import_ok = False
+
+HAVE_PACKAGING_VERSION = _import_ok
+
 
 # Try to load tomllib, with a fallback to tomli.
 # HAVE_TOMLLIB is checked below, just-in-time, so that mkvenv does not fail
 # outside the venv or before a potential call to ensurepip in checkpip().
-HAVE_TOMLLIB = True
+_import_ok = True
 try:
     import tomllib
 except ImportError:
     try:
         import tomli as tomllib
     except ImportError:
-        HAVE_TOMLLIB = False
+        _import_ok = False
+
+HAVE_TOMLLIB = _import_ok
 
 # Do not add any mandatory dependencies from outside the stdlib:
 # This script *must* be usable standalone!
@@ -131,6 +162,43 @@ def inside_a_venv() -> bool:
 
 class Ouch(RuntimeError):
     """An Exception class we can't confuse with a builtin."""
+
+
+class Matcher:
+    """Compatibility appliance for version/requirement string parsing."""
+    def __init__(self, name_and_constraint: str):
+        """Create a matcher from a requirement-like string."""
+        if HAVE_DISTLIB_VERSION:
+            self._m = distlib.version.LegacyMatcher(name_and_constraint)
+        elif HAVE_PACKAGING_VERSION:
+            self._m = packaging.requirements.Requirement(name_and_constraint)
+        else:
+            raise Ouch("found neither distlib.version nor packaging.version")
+        self.name = self._m.name
+
+    def match(self, version_str: str) -> bool:
+        """Return True if `version` satisfies the stored constraint."""
+        if HAVE_DISTLIB_VERSION:
+            return cast(
+                bool,
+                self._m.match(distlib.version.LegacyVersion(version_str))
+            )
+
+        assert HAVE_PACKAGING_VERSION
+        return cast(
+            bool,
+            self._m.specifier.contains(
+                packaging.version.Version(version_str), prereleases=True
+            )
+        )
+
+    def __str__(self) -> str:
+        """String representation delegated to the backend."""
+        return str(self._m)
+
+    def __repr__(self) -> str:
+        """Stable debug representation delegated to the backend."""
+        return repr(self._m)
 
 
 class QemuEnvBuilder(venv.EnvBuilder):
@@ -669,7 +737,7 @@ def _do_ensure(
     canary = None
     for name, info in group.items():
         constraint = _make_version_constraint(info, False)
-        matcher = distlib.version.LegacyMatcher(name + constraint)
+        matcher = Matcher(name + constraint)
         print(f"mkvenv: checking for {matcher}", file=sys.stderr)
 
         dist: Optional[Distribution] = None
@@ -683,7 +751,7 @@ def _do_ensure(
             # Always pass installed package to pip, so that they can be
             # updated if the requested version changes
             or not _is_system_package(dist)
-            or not matcher.match(distlib.version.LegacyVersion(dist.version))
+            or not matcher.match(dist.version)
         ):
             absent.append(name + _make_version_constraint(info, True))
             if len(absent) == 1:

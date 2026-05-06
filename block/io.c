@@ -24,7 +24,7 @@
 
 #include "qemu/osdep.h"
 #include "trace.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "block/aio-wait.h"
 #include "block/blockjob.h"
 #include "block/blockjob_int.h"
@@ -37,13 +37,14 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
-#include "sysemu/replay.h"
+#include "system/replay.h"
+#include "qemu/units.h"
 
 /* Maximum bounce buffer for copy-on-read and write zeroes, in bytes */
 #define MAX_BOUNCE_BUFFER (32768 << BDRV_SECTOR_BITS)
 
-static void coroutine_fn GRAPH_RDLOCK
-bdrv_parent_cb_resize(BlockDriverState *bs);
+/* Maximum read size for checking if data reads as zero, in bytes */
+#define MAX_ZERO_CHECK_BUFFER (128 * KiB)
 
 static int coroutine_fn bdrv_co_do_pwrite_zeroes(BlockDriverState *bs,
     int64_t offset, int64_t bytes, BdrvRequestFlags flags);
@@ -357,7 +358,7 @@ static void bdrv_do_drained_begin(BlockDriverState *bs, BdrvChild *parent,
     GLOBAL_STATE_CODE();
 
     /* Stop things in parent-to-child order */
-    if (qatomic_fetch_inc(&bs->quiesce_counter) == 0) {
+    if (bs->quiesce_counter++ == 0) {
         GRAPH_RDLOCK_GUARD_MAINLOOP();
         bdrv_parent_drained_begin(bs, parent);
         if (bs->drv && bs->drv->bdrv_drain_begin) {
@@ -397,8 +398,6 @@ bdrv_drained_begin(BlockDriverState *bs)
  */
 static void bdrv_do_drained_end(BlockDriverState *bs, BdrvChild *parent)
 {
-    int old_quiesce_counter;
-
     IO_OR_GS_CODE();
 
     if (qemu_in_coroutine()) {
@@ -409,11 +408,9 @@ static void bdrv_do_drained_end(BlockDriverState *bs, BdrvChild *parent)
     /* At this point, we should be always running in the main loop. */
     GLOBAL_STATE_CODE();
     assert(bs->quiesce_counter > 0);
-    GLOBAL_STATE_CODE();
 
     /* Re-enable things in child-to-parent order */
-    old_quiesce_counter = qatomic_fetch_dec(&bs->quiesce_counter);
-    if (old_quiesce_counter == 1) {
+    if (--bs->quiesce_counter == 0) {
         GRAPH_RDLOCK_GUARD_MAINLOOP();
         if (bs->drv && bs->drv->bdrv_drain_end) {
             bs->drv->bdrv_drain_end(bs);
@@ -721,11 +718,14 @@ BdrvTrackedRequest *coroutine_fn bdrv_co_get_self_request(BlockDriverState *bs)
     Coroutine *self = qemu_coroutine_self();
     IO_CODE();
 
+    qemu_mutex_lock(&bs->reqs_lock);
     QLIST_FOREACH(req, &bs->tracked_requests, list) {
         if (req->co == self) {
+            qemu_mutex_unlock(&bs->reqs_lock);
             return req;
         }
     }
+    qemu_mutex_unlock(&bs->reqs_lock);
 
     return NULL;
 }
@@ -1056,6 +1056,10 @@ bdrv_driver_pwritev(BlockDriverState *bs, int64_t offset, int64_t bytes,
 
     if (!drv) {
         return -ENOMEDIUM;
+    }
+
+    if (bs->open_flags & BDRV_O_NO_FLUSH) {
+        flags &= ~BDRV_REQ_FUA;
     }
 
     if ((flags & BDRV_REQ_FUA) &&
@@ -2034,7 +2038,7 @@ bdrv_co_write_req_finish(BdrvChild *child, int64_t offset, int64_t bytes,
          end_sector > bs->total_sectors) &&
         req->type != BDRV_TRACKED_DISCARD) {
         bs->total_sectors = end_sector;
-        bdrv_parent_cb_resize(bs);
+        bdrv_co_parent_cb_resize(bs);
         bdrv_dirty_bitmap_truncate(bs, end_sector << BDRV_SECTOR_BITS);
     }
     if (req->bytes) {
@@ -2360,10 +2364,8 @@ int bdrv_flush_all(void)
  * Drivers not implementing the functionality are assumed to not support
  * backing files, hence all their sectors are reported as allocated.
  *
- * If 'want_zero' is true, the caller is querying for mapping
- * purposes, with a focus on valid BDRV_BLOCK_OFFSET_VALID, _DATA, and
- * _ZERO where possible; otherwise, the result favors larger 'pnum',
- * with a focus on accurate BDRV_BLOCK_ALLOCATED.
+ * 'mode' serves as a hint as to which results are favored; see the
+ * BDRV_WANT_* macros for details.
  *
  * If 'offset' is beyond the end of the disk image the return value is
  * BDRV_BLOCK_EOF and 'pnum' is set to 0.
@@ -2383,7 +2385,7 @@ int bdrv_flush_all(void)
  * set to the host mapping and BDS corresponding to the guest offset.
  */
 static int coroutine_fn GRAPH_RDLOCK
-bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
+bdrv_co_do_block_status(BlockDriverState *bs, unsigned int mode,
                         int64_t offset, int64_t bytes,
                         int64_t *pnum, int64_t *map, BlockDriverState **file)
 {
@@ -2472,7 +2474,7 @@ bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
             local_file = bs;
             local_map = aligned_offset;
         } else {
-            ret = bs->drv->bdrv_co_block_status(bs, want_zero, aligned_offset,
+            ret = bs->drv->bdrv_co_block_status(bs, mode, aligned_offset,
                                                 aligned_bytes, pnum, &local_map,
                                                 &local_file);
 
@@ -2484,10 +2486,10 @@ bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
              * the cache requires an RCU update, so double check here to avoid
              * such an update if possible.
              *
-             * Check want_zero, because we only want to update the cache when we
+             * Check mode, because we only want to update the cache when we
              * have accurate information about what is zero and what is data.
              */
-            if (want_zero &&
+            if (mode == BDRV_WANT_PRECISE &&
                 ret == (BDRV_BLOCK_DATA | BDRV_BLOCK_OFFSET_VALID) &&
                 QLIST_EMPTY(&bs->children))
             {
@@ -2544,7 +2546,7 @@ bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
 
     if (ret & BDRV_BLOCK_RAW) {
         assert(ret & BDRV_BLOCK_OFFSET_VALID && local_file);
-        ret = bdrv_co_do_block_status(local_file, want_zero, local_map,
+        ret = bdrv_co_do_block_status(local_file, mode, local_map,
                                       *pnum, pnum, &local_map, &local_file);
         goto out;
     }
@@ -2556,7 +2558,7 @@ bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
 
         if (!cow_bs) {
             ret |= BDRV_BLOCK_ZERO;
-        } else if (want_zero) {
+        } else if (mode == BDRV_WANT_PRECISE) {
             int64_t size2 = bdrv_co_getlength(cow_bs);
 
             if (size2 >= 0 && offset >= size2) {
@@ -2565,14 +2567,14 @@ bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
         }
     }
 
-    if (want_zero && ret & BDRV_BLOCK_RECURSE &&
+    if (mode == BDRV_WANT_PRECISE && ret & BDRV_BLOCK_RECURSE &&
         local_file && local_file != bs &&
         (ret & BDRV_BLOCK_DATA) && !(ret & BDRV_BLOCK_ZERO) &&
         (ret & BDRV_BLOCK_OFFSET_VALID)) {
         int64_t file_pnum;
         int ret2;
 
-        ret2 = bdrv_co_do_block_status(local_file, want_zero, local_map,
+        ret2 = bdrv_co_do_block_status(local_file, mode, local_map,
                                        *pnum, &file_pnum, NULL, NULL);
         if (ret2 >= 0) {
             /* Ignore errors.  This is just providing extra information, it
@@ -2623,7 +2625,7 @@ int coroutine_fn
 bdrv_co_common_block_status_above(BlockDriverState *bs,
                                   BlockDriverState *base,
                                   bool include_base,
-                                  bool want_zero,
+                                  unsigned int mode,
                                   int64_t offset,
                                   int64_t bytes,
                                   int64_t *pnum,
@@ -2650,7 +2652,7 @@ bdrv_co_common_block_status_above(BlockDriverState *bs,
         return 0;
     }
 
-    ret = bdrv_co_do_block_status(bs, want_zero, offset, bytes, pnum,
+    ret = bdrv_co_do_block_status(bs, mode, offset, bytes, pnum,
                                   map, file);
     ++*depth;
     if (ret < 0 || *pnum == 0 || ret & BDRV_BLOCK_ALLOCATED || bs == base) {
@@ -2667,7 +2669,7 @@ bdrv_co_common_block_status_above(BlockDriverState *bs,
     for (p = bdrv_filter_or_cow_bs(bs); include_base || p != base;
          p = bdrv_filter_or_cow_bs(p))
     {
-        ret = bdrv_co_do_block_status(p, want_zero, offset, bytes, pnum,
+        ret = bdrv_co_do_block_status(p, mode, offset, bytes, pnum,
                                       map, file);
         ++*depth;
         if (ret < 0) {
@@ -2730,7 +2732,8 @@ int coroutine_fn bdrv_co_block_status_above(BlockDriverState *bs,
                                             BlockDriverState **file)
 {
     IO_CODE();
-    return bdrv_co_common_block_status_above(bs, base, false, true, offset,
+    return bdrv_co_common_block_status_above(bs, base, false,
+                                             BDRV_WANT_PRECISE, offset,
                                              bytes, pnum, map, file, NULL);
 }
 
@@ -2748,27 +2751,89 @@ int coroutine_fn bdrv_co_block_status(BlockDriverState *bs, int64_t offset,
  * by @offset and @bytes is known to read as zeroes.
  * Return 1 if that is the case, 0 otherwise and -errno on error.
  * This test is meant to be fast rather than accurate so returning 0
- * does not guarantee non-zero data.
+ * does not guarantee non-zero data; but a return of 1 is reliable.
  */
 int coroutine_fn bdrv_co_is_zero_fast(BlockDriverState *bs, int64_t offset,
                                       int64_t bytes)
 {
     int ret;
-    int64_t pnum = bytes;
+    int64_t pnum;
     IO_CODE();
 
-    if (!bytes) {
-        return 1;
+    while (bytes) {
+        ret = bdrv_co_common_block_status_above(bs, NULL, false,
+                                                BDRV_WANT_ZERO, offset, bytes,
+                                                &pnum, NULL, NULL, NULL);
+
+        if (ret < 0) {
+            return ret;
+        }
+        if (!(ret & BDRV_BLOCK_ZERO)) {
+            return 0;
+        }
+        offset += pnum;
+        bytes -= pnum;
     }
 
-    ret = bdrv_co_common_block_status_above(bs, NULL, false, false, offset,
-                                            bytes, &pnum, NULL, NULL, NULL);
+    return 1;
+}
 
+/*
+ * Check @bs (and its backing chain) to see if the entire image is known
+ * to read as zeroes.
+ * Return 1 if that is the case, 0 otherwise and -errno on error.
+ * This test is meant to be fast rather than accurate so returning 0
+ * does not guarantee non-zero data; however, a return of 1 is reliable,
+ * and this function can report 1 in more cases than bdrv_co_is_zero_fast.
+ */
+int coroutine_fn bdrv_co_is_all_zeroes(BlockDriverState *bs)
+{
+    int ret;
+    int64_t pnum, bytes;
+    char *buf;
+    QEMUIOVector local_qiov;
+    IO_CODE();
+
+    bytes = bdrv_co_getlength(bs);
+    if (bytes < 0) {
+        return bytes;
+    }
+
+    /* First probe - see if the entire image reads as zero */
+    ret = bdrv_co_common_block_status_above(bs, NULL, false, BDRV_WANT_ZERO,
+                                            0, bytes, &pnum, NULL, NULL,
+                                            NULL);
     if (ret < 0) {
         return ret;
     }
+    if (ret & BDRV_BLOCK_ZERO) {
+        return bdrv_co_is_zero_fast(bs, pnum, bytes - pnum);
+    }
 
-    return (pnum == bytes) && (ret & BDRV_BLOCK_ZERO);
+    /*
+     * Because of the way 'blockdev-create' works, raw files tend to
+     * be created with a non-sparse region at the front to make
+     * alignment probing easier.  If the block starts with only a
+     * small allocated region, it is still worth the effort to see if
+     * the rest of the image is still sparse, coupled with manually
+     * reading the first region to see if it reads zero after all.
+     */
+    if (pnum > MAX_ZERO_CHECK_BUFFER) {
+        return 0;
+    }
+    ret = bdrv_co_is_zero_fast(bs, pnum, bytes - pnum);
+    if (ret <= 0) {
+        return ret;
+    }
+    /* Only the head of the image is unknown, and it's small.  Read it.  */
+    buf = qemu_blockalign(bs, pnum);
+    qemu_iovec_init_buf(&local_qiov, buf, pnum);
+    ret = bdrv_driver_preadv(bs, 0, pnum, &local_qiov, 0, 0);
+    if (ret >= 0) {
+        ret = buffer_is_zero(buf, pnum);
+    }
+    qemu_vfree(buf);
+    return ret;
 }
 
 int coroutine_fn bdrv_co_is_allocated(BlockDriverState *bs, int64_t offset,
@@ -2778,9 +2843,9 @@ int coroutine_fn bdrv_co_is_allocated(BlockDriverState *bs, int64_t offset,
     int64_t dummy;
     IO_CODE();
 
-    ret = bdrv_co_common_block_status_above(bs, bs, true, false, offset,
-                                            bytes, pnum ? pnum : &dummy, NULL,
-                                            NULL, NULL);
+    ret = bdrv_co_common_block_status_above(bs, bs, true, BDRV_WANT_ALLOCATED,
+                                            offset, bytes, pnum ? pnum : &dummy,
+                                            NULL, NULL, NULL);
     if (ret < 0) {
         return ret;
     }
@@ -2813,7 +2878,8 @@ int coroutine_fn bdrv_co_is_allocated_above(BlockDriverState *bs,
     int ret;
     IO_CODE();
 
-    ret = bdrv_co_common_block_status_above(bs, base, include_base, false,
+    ret = bdrv_co_common_block_status_above(bs, base, include_base,
+                                            BDRV_WANT_ALLOCATED,
                                             offset, bytes, pnum, NULL, NULL,
                                             &depth);
     if (ret < 0) {
@@ -3098,18 +3164,19 @@ int coroutine_fn bdrv_co_pdiscard(BdrvChild *child, int64_t offset,
         return 0;
     }
 
-    if (!bs->drv->bdrv_co_pdiscard && !bs->drv->bdrv_aio_pdiscard) {
+    if (!bs->drv->bdrv_co_pdiscard) {
         return 0;
     }
 
     /* Invalidate the cached block-status data range if this discard overlaps */
     bdrv_bsc_invalidate_range(bs, offset, bytes);
 
-    /* Discard is advisory, but some devices track and coalesce
+    /*
+     * Discard is advisory, but some devices track and coalesce
      * unaligned requests, so we must pass everything down rather than
-     * round here.  Still, most devices will just silently ignore
-     * unaligned requests (by returning -ENOTSUP), so we must fragment
-     * the request accordingly.  */
+     * round here.  Still, most devices reject unaligned requests with
+     * -EINVAL or -ENOTSUP, so we must fragment the request accordingly.
+     */
     align = MAX(bs->bl.pdiscard_alignment, bs->bl.request_alignment);
     assert(align % bs->bl.request_alignment == 0);
     head = offset % align;
@@ -3157,26 +3224,14 @@ int coroutine_fn bdrv_co_pdiscard(BdrvChild *child, int64_t offset,
             ret = -ENOMEDIUM;
             goto out;
         }
-        if (bs->drv->bdrv_co_pdiscard) {
-            ret = bs->drv->bdrv_co_pdiscard(bs, offset, num);
-        } else {
-            BlockAIOCB *acb;
-            CoroutineIOCompletion co = {
-                .coroutine = qemu_coroutine_self(),
-            };
 
-            acb = bs->drv->bdrv_aio_pdiscard(bs, offset, num,
-                                             bdrv_co_io_em_complete, &co);
-            if (acb == NULL) {
-                ret = -EIO;
-                goto out;
-            } else {
-                qemu_coroutine_yield();
-                ret = co.ret;
-            }
-        }
+        ret = bs->drv->bdrv_co_pdiscard(bs, offset, num);
         if (ret && ret != -ENOTSUP) {
-            goto out;
+            if (ret == -EINVAL && (offset % align != 0 || num % align != 0)) {
+                /* Silently skip rejected unaligned head/tail requests */
+            } else {
+                goto out; /* bail out */
+            }
         }
 
         offset += num;
@@ -3515,11 +3570,11 @@ int coroutine_fn bdrv_co_copy_range(BdrvChild *src, int64_t src_offset,
                                    bytes, read_flags, write_flags);
 }
 
-static void coroutine_fn GRAPH_RDLOCK
-bdrv_parent_cb_resize(BlockDriverState *bs)
+void coroutine_fn bdrv_co_parent_cb_resize(BlockDriverState *bs)
 {
     BdrvChild *c;
 
+    IO_CODE();
     assert_bdrv_graph_readable();
 
     QLIST_FOREACH(c, &bs->parents, next_parent) {
@@ -3705,8 +3760,8 @@ bdrv_co_preadv_snapshot(BdrvChild *child, int64_t offset, int64_t bytes,
 }
 
 int coroutine_fn
-bdrv_co_snapshot_block_status(BlockDriverState *bs,
-                              bool want_zero, int64_t offset, int64_t bytes,
+bdrv_co_snapshot_block_status(BlockDriverState *bs, unsigned int mode,
+                              int64_t offset, int64_t bytes,
                               int64_t *pnum, int64_t *map,
                               BlockDriverState **file)
 {
@@ -3724,7 +3779,7 @@ bdrv_co_snapshot_block_status(BlockDriverState *bs,
     }
 
     bdrv_inc_in_flight(bs);
-    ret = drv->bdrv_co_snapshot_block_status(bs, want_zero, offset, bytes,
+    ret = drv->bdrv_co_snapshot_block_status(bs, mode, offset, bytes,
                                              pnum, map, file);
     bdrv_dec_in_flight(bs);
 

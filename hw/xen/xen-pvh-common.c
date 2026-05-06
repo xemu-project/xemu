@@ -8,14 +8,13 @@
 
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
-#include "qapi/error.h"
+#include "qemu/units.h"
 #include "qapi/visitor.h"
 #include "hw/boards.h"
 #include "hw/irq.h"
-#include "hw/sysbus.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/tpm.h"
-#include "sysemu/tpm_backend.h"
+#include "system/tpm.h"
+#include "system/tpm_backend.h"
+#include "system/runstate.h"
 #include "hw/xen/xen-pvh-common.h"
 #include "trace.h"
 
@@ -169,7 +168,7 @@ static inline void xenpvh_gpex_init(XenPVHMachineState *s,
      */
     assert(xpc->set_pci_intx_irq);
 
-    for (i = 0; i < GPEX_NUM_IRQS; i++) {
+    for (i = 0; i < PCI_NUM_PINS; i++) {
         qemu_irq irq = qemu_allocate_irq(xpc->set_pci_intx_irq, s, i);
 
         sysbus_connect_irq(SYS_BUS_DEVICE(dev), i, irq);
@@ -370,7 +369,7 @@ do {                                                                      \
 #endif
 }
 
-static void xen_pvh_class_init(ObjectClass *oc, void *data)
+static void xen_pvh_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
 

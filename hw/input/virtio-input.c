@@ -189,7 +189,7 @@ static uint64_t virtio_input_get_features(VirtIODevice *vdev, uint64_t f,
     return f;
 }
 
-static void virtio_input_set_status(VirtIODevice *vdev, uint8_t val)
+static int virtio_input_set_status(VirtIODevice *vdev, uint8_t val)
 {
     VirtIOInputClass *vic = VIRTIO_INPUT_GET_CLASS(vdev);
     VirtIOInput *vinput = VIRTIO_INPUT(vdev);
@@ -202,6 +202,7 @@ static void virtio_input_set_status(VirtIODevice *vdev, uint8_t val)
             }
         }
     }
+    return 0;
 }
 
 static void virtio_input_reset(VirtIODevice *vdev)
@@ -300,12 +301,11 @@ static const VMStateDescription vmstate_virtio_input = {
     .post_load = virtio_input_post_load,
 };
 
-static Property virtio_input_properties[] = {
+static const Property virtio_input_properties[] = {
     DEFINE_PROP_STRING("serial", VirtIOInput, serial),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void virtio_input_class_init(ObjectClass *klass, void *data)
+static void virtio_input_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     VirtioDeviceClass *vdc = VIRTIO_DEVICE_CLASS(klass);

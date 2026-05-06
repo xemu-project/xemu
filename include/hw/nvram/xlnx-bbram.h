@@ -26,7 +26,7 @@
 #ifndef XLNX_BBRAM_H
 #define XLNX_BBRAM_H
 
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "hw/qdev-core.h"
 #include "hw/irq.h"
 #include "hw/sysbus.h"
@@ -47,7 +47,6 @@ struct XlnxBBRam {
     bool bbram8_wo;
     bool blk_ro;
 
-    RegisterInfoArray *reg_array;
     uint32_t regs[RMAX_XLNX_BBRAM];
     RegisterInfo regs_info[RMAX_XLNX_BBRAM];
 };

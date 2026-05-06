@@ -27,10 +27,19 @@
 #include <windows.h>
 #include <stdbool.h>
 
+enum EValues_OGL_CPL_PREFER_DXPRESENT {
+    OGL_CPL_PREFER_DXPRESENT_PREFER_DISABLED             = 0x00000000,
+    OGL_CPL_PREFER_DXPRESENT_PREFER_ENABLED              = 0x00000001,
+    OGL_CPL_PREFER_DXPRESENT_AUTO                        = 0x00000002,
+    OGL_CPL_PREFER_DXPRESENT_NUM_VALUES = 3,
+    OGL_CPL_PREFER_DXPRESENT_DEFAULT = OGL_CPL_PREFER_DXPRESENT_AUTO
+};
+
 typedef struct NvApiProfileOpts {
     const wchar_t *profile_name;
     const wchar_t *executable_name;
     bool threaded_optimization;
+    enum EValues_OGL_CPL_PREFER_DXPRESENT present_method;
 } NvApiProfileOpts;
 
 bool nvapi_init(void);

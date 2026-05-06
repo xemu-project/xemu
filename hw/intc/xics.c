@@ -37,8 +37,8 @@
 #include "migration/vmstate.h"
 #include "hw/intc/intc.h"
 #include "hw/irq.h"
-#include "sysemu/kvm.h"
-#include "sysemu/reset.h"
+#include "system/kvm.h"
+#include "system/reset.h"
 #include "target/ppc/cpu.h"
 
 void icp_pic_print_info(ICPState *icp, GString *buf)
@@ -335,6 +335,8 @@ static void icp_realize(DeviceState *dev, Error **errp)
             return;
         }
     }
+
+    vmstate_register(NULL, icp->cs->cpu_index, &vmstate_icp_server, icp);
 }
 
 static void icp_unrealize(DeviceState *dev)
@@ -344,14 +346,13 @@ static void icp_unrealize(DeviceState *dev)
     vmstate_unregister(NULL, &vmstate_icp_server, icp);
 }
 
-static Property icp_properties[] = {
+static const Property icp_properties[] = {
     DEFINE_PROP_LINK(ICP_PROP_XICS, ICPState, xics, TYPE_XICS_FABRIC,
                      XICSFabric *),
     DEFINE_PROP_LINK(ICP_PROP_CPU, ICPState, cs, TYPE_CPU, CPUState *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void icp_class_init(ObjectClass *klass, void *data)
+static void icp_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -676,14 +677,13 @@ static const VMStateDescription vmstate_ics = {
     },
 };
 
-static Property ics_properties[] = {
+static const Property ics_properties[] = {
     DEFINE_PROP_UINT32("nr-irqs", ICSState, nr_irqs, 0),
     DEFINE_PROP_LINK(ICS_PROP_XICS, ICSState, xics, TYPE_XICS_FABRIC,
                      XICSFabric *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ics_class_init(ObjectClass *klass, void *data)
+static void ics_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);

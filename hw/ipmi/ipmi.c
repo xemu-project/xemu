@@ -26,7 +26,7 @@
 #include "hw/ipmi/ipmi.h"
 #include "hw/qdev-properties.h"
 #include "qom/object_interfaces.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
 #include "hw/nmi.h"
@@ -78,7 +78,7 @@ static int ipmi_do_hw_op(IPMIInterface *s, enum ipmi_op op, int checkonly)
     }
 }
 
-static void ipmi_interface_class_init(ObjectClass *class, void *data)
+static void ipmi_interface_class_init(ObjectClass *class, const void *data)
 {
     IPMIInterfaceClass *ik = IPMI_INTERFACE_CLASS(class);
 
@@ -108,12 +108,11 @@ void ipmi_bmc_find_and_link(Object *obj, Object **bmc)
                              OBJ_PROP_LINK_STRONG);
 }
 
-static Property ipmi_bmc_properties[] = {
+static const Property ipmi_bmc_properties[] = {
     DEFINE_PROP_UINT8("slave_addr",  IPMIBmc, slave_addr, 0x20),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void bmc_class_init(ObjectClass *oc, void *data)
+static void bmc_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 

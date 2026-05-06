@@ -8,7 +8,7 @@
  * To avoid getting into possible circular include dependencies, this
  * file should not include any other QEMU headers, with the exceptions
  * of config-host.h, config-target.h, qemu/compiler.h,
- * sysemu/os-posix.h, sysemu/os-win32.h, glib-compat.h and
+ * system/os-posix.h, system/os-win32.h, system/os-wasm.h, glib-compat.h and
  * qemu/typedefs.h, all of which are doing a similar job to this file
  * and are under similar constraints.
  *
@@ -128,10 +128,24 @@ QEMU_EXTERN_C int daemon(int, int);
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <assert.h>
-/* setjmp must be declared before sysemu/os-win32.h
+/* setjmp must be declared before system/os-win32.h
  * because it is redefined there. */
 #include <setjmp.h>
 #include <signal.h>
+
+/*
+ * Avoid conflict with linux/arch/powerpc/include/uapi/asm/elf.h, included
+ * from <asm/sigcontext.h>, but we might as well do this unconditionally.
+ */
+#undef ELF_CLASS
+#undef ELF_DATA
+#undef ELF_ARCH
+
+/*
+ * Avoid conflict with Solaris FSCALE definition from <sys/param.h> header,
+ * but we might as well do this unconditionally.
+ */
+#undef FSCALE
 
 #ifdef CONFIG_IOVEC
 #include <sys/uio.h>
@@ -161,11 +175,15 @@ QEMU_EXTERN_C int daemon(int, int);
 #include "glib-compat.h"
 
 #ifdef _WIN32
-#include "sysemu/os-win32.h"
+#include "system/os-win32.h"
 #endif
 
-#ifdef CONFIG_POSIX
-#include "sysemu/os-posix.h"
+#if defined(CONFIG_POSIX) && !defined(EMSCRIPTEN)
+#include "system/os-posix.h"
+#endif
+
+#if defined(EMSCRIPTEN)
+#include "system/os-wasm.h"
 #endif
 
 #ifdef __cplusplus
@@ -509,6 +527,7 @@ int qemu_daemon(int nochdir, int noclose);
 void *qemu_anon_ram_alloc(size_t size, uint64_t *align, bool shared,
                           bool noreserve);
 void qemu_anon_ram_free(void *ptr, size_t size);
+int qemu_shm_alloc(size_t size, Error **errp);
 
 #ifdef _WIN32
 #define HAVE_CHARDEV_SERIAL 1
@@ -548,7 +567,7 @@ int madvise(char *, size_t, int);
 
 #if defined(__linux__) && \
     (defined(__x86_64__) || defined(__arm__) || defined(__aarch64__) \
-     || defined(__powerpc64__))
+     || defined(__powerpc64__) || defined(__riscv))
    /* Use 2 MiB alignment so transparent hugepages can be used by KVM.
       Valgrind does not support alignments larger than 1 MiB,
       therefore we need special code which handles running on Valgrind. */
@@ -648,6 +667,15 @@ bool qemu_write_pidfile(const char *pidfile, Error **errp);
 
 int qemu_get_thread_id(void);
 
+/**
+ * qemu_kill_thread:
+ * @tid: thread id.
+ * @sig: host signal.
+ *
+ * Send @sig to one of QEMU's own threads with identifier @tid.
+ */
+int qemu_kill_thread(int tid, int sig);
+
 #ifndef CONFIG_IOVEC
 struct iovec {
     void *iov_base;
@@ -683,6 +711,16 @@ ssize_t qemu_write_full(int fd, const void *buf, size_t count)
     G_GNUC_WARN_UNUSED_RESULT;
 
 void qemu_set_cloexec(int fd);
+bool qemu_set_blocking(int fd, bool block, Error **errp);
+
+/*
+ * Clear FD_CLOEXEC for a descriptor.
+ *
+ * The caller must guarantee that no other fork+exec's occur before the
+ * exec that is intended to inherit this descriptor, eg by suspending CPUs
+ * and blocking monitor commands.
+ */
+void qemu_clear_cloexec(int fd);
 
 /* Return a dynamically allocated directory path that is appropriate for storing
  * local state.

@@ -20,8 +20,11 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "cpu.h"
-#include "exec/exec-all.h"
+#include "exec/cputlb.h"
+#include "accel/tcg/cpu-mmu-index.h"
+#include "accel/tcg/probe.h"
 #include "exec/page-protection.h"
+#include "exec/target_page.h"
 #include "exec/helper-proto.h"
 #include "hw/core/cpu.h"
 #include "trace.h"
@@ -800,7 +803,7 @@ void HELPER(diag_btlb)(CPUHPPAState *env)
 
 uint64_t HELPER(b_gate_priv)(CPUHPPAState *env, uint64_t iaoq_f)
 {
-    uint64_t gva = hppa_form_gva(env, env->iasq_f, iaoq_f);
+    vaddr gva = hppa_form_gva(env, env->iasq_f, iaoq_f);
     HPPATLBEntry *ent = hppa_find_tlb(env, gva);
 
     if (ent == NULL) {
@@ -823,4 +826,9 @@ uint64_t HELPER(b_gate_priv)(CPUHPPAState *env, uint64_t iaoq_f)
         }
     }
     return iaoq_f;
+}
+
+void HELPER(update_gva_offset_mask)(CPUHPPAState *env)
+{
+    update_gva_offset_mask(env);
 }

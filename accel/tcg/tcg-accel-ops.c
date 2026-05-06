@@ -26,15 +26,19 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/tcg.h"
-#include "sysemu/replay.h"
-#include "sysemu/cpu-timers.h"
+#include "accel/accel-ops.h"
+#include "accel/accel-cpu-ops.h"
+#include "system/tcg.h"
+#include "system/replay.h"
+#include "exec/icount.h"
 #include "qemu/main-loop.h"
 #include "qemu/guest-random.h"
 #include "qemu/timer.h"
-#include "exec/exec-all.h"
+#include "exec/cputlb.h"
 #include "exec/hwaddr.h"
 #include "exec/tb-flush.h"
+#include "exec/translation-block.h"
+#include "exec/watchpoint.h"
 #include "gdbstub/enums.h"
 
 #include "hw/core/cpu.h"
@@ -77,6 +81,7 @@ int tcg_cpu_exec(CPUState *cpu)
     cpu_exec_start(cpu);
     ret = cpu_exec(cpu);
     cpu_exec_end(cpu);
+
     return ret;
 }
 
@@ -90,9 +95,7 @@ static void tcg_cpu_reset_hold(CPUState *cpu)
 /* mask must never be zero, except for A20 change call */
 void tcg_handle_interrupt(CPUState *cpu, int mask)
 {
-    g_assert(bql_locked());
-
-    cpu->interrupt_request |= mask;
+    cpu_set_interrupt(cpu, mask);
 
     /*
      * If called from iothread context, wake the target cpu in
@@ -119,10 +122,9 @@ static inline int xlat_gdb_type(CPUState *cpu, int gdbtype)
         [GDB_WATCHPOINT_ACCESS] = BP_GDB | BP_MEM_ACCESS,
     };
 
-    CPUClass *cc = CPU_GET_CLASS(cpu);
     int cputype = xlat[gdbtype];
 
-    if (cc->gdb_stop_before_watchpoint) {
+    if (cpu->cc->gdb_stop_before_watchpoint) {
         cputype |= BP_STOP_BEFORE_ACCESS;
     }
     return cputype;
@@ -196,11 +198,13 @@ static inline void tcg_remove_all_breakpoints(CPUState *cpu)
     cpu_watchpoint_remove_all(cpu, BP_GDB);
 }
 
-static void tcg_accel_ops_init(AccelOpsClass *ops)
+static void tcg_accel_ops_init(AccelClass *ac)
 {
+    AccelOpsClass *ops = ac->ops;
+
     if (qemu_tcg_mttcg_enabled()) {
         ops->create_vcpu_thread = mttcg_start_vcpu_thread;
-        ops->kick_vcpu_thread = mttcg_kick_vcpu_thread;
+        ops->kick_vcpu_thread = tcg_kick_vcpu_thread;
         ops->handle_interrupt = tcg_handle_interrupt;
     } else {
         ops->create_vcpu_thread = rr_start_vcpu_thread;
@@ -222,7 +226,7 @@ static void tcg_accel_ops_init(AccelOpsClass *ops)
     ops->remove_all_breakpoints = tcg_remove_all_breakpoints;
 }
 
-static void tcg_accel_ops_class_init(ObjectClass *oc, void *data)
+static void tcg_accel_ops_class_init(ObjectClass *oc, const void *data)
 {
     AccelOpsClass *ops = ACCEL_OPS_CLASS(oc);
 

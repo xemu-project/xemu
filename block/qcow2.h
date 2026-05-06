@@ -345,8 +345,11 @@ typedef struct BDRVQcow2State {
 
     Qcow2Cache *l2_table_cache;
     Qcow2Cache *refcount_block_cache;
-    QEMUTimer *cache_clean_timer;
+    /* Non-NULL while the timer is running */
+    Coroutine *cache_clean_timer_co;
     unsigned cache_clean_interval;
+    QemuCoSleep cache_clean_timer_wake;
+    CoQueue cache_clean_timer_exit;
 
     QLIST_HEAD(, QCowL2Meta) cluster_allocs;
 
@@ -880,6 +883,10 @@ void GRAPH_RDLOCK qcow2_free_clusters(BlockDriverState *bs,
 void GRAPH_RDLOCK
 qcow2_free_any_cluster(BlockDriverState *bs, uint64_t l2_entry,
                        enum qcow2_discard_type type);
+void GRAPH_RDLOCK
+qcow2_discard_cluster(BlockDriverState *bs, uint64_t offset,
+                      uint64_t length, QCow2ClusterType ctype,
+                      enum qcow2_discard_type dtype);
 
 int GRAPH_RDLOCK
 qcow2_update_snapshot_refcount(BlockDriverState *bs, int64_t l1_table_offset,

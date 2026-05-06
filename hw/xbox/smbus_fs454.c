@@ -85,7 +85,7 @@ static void smbus_fs454_realize(DeviceState *dev, Error **errp)
     cx->cmd = 0;
 }
 
-static void smbus_fs454_class_initfn(ObjectClass *klass, void *data)
+static void smbus_fs454_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     SMBusDeviceClass *sc = SMBUS_DEVICE_CLASS(klass);
@@ -100,7 +100,7 @@ static TypeInfo smbus_fs454_info = {
     .name = TYPE_SMBUS_fs454,
     .parent = TYPE_SMBUS_DEVICE,
     .instance_size = sizeof(SMBusfs454Device),
-    .class_init = smbus_fs454_class_initfn,
+    .class_init = smbus_fs454_class_init,
 };
 
 static void smbus_fs454_register_devices(void)

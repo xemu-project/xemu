@@ -18,22 +18,18 @@
 #define HW_I386_X86_H
 
 #include "exec/hwaddr.h"
-#include "exec/memory.h"
+#include "system/memory.h"
 
 #include "hw/boards.h"
 #include "hw/i386/topology.h"
 #include "hw/intc/ioapic.h"
 #include "hw/isa/isa.h"
 #include "qom/object.h"
+#include "system/igvm-cfg.h"
 
 struct X86MachineClass {
-    /*< private >*/
     MachineClass parent;
 
-    /*< public >*/
-
-    /* TSC rate migration: */
-    bool save_tsc_khz;
     /* use DMA capable linuxboot option rom */
     bool fwcfg_dma_enabled;
     /* CPU and apic information: */
@@ -97,6 +93,8 @@ struct X86MachineState {
      * which means no limitation on the guest's bus locks.
      */
     uint64_t bus_lock_ratelimit;
+
+    IgvmCfg *igvm;
 };
 
 #define X86_MACHINE_SMM              "smm"

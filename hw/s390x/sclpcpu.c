@@ -17,7 +17,7 @@
 #include "hw/s390x/sclp.h"
 #include "qemu/module.h"
 #include "hw/s390x/event-facility.h"
-#include "sysemu/cpus.h"
+#include "system/cpus.h"
 
 typedef struct ConfigMgtData {
     EventBufferHeader ebh;
@@ -73,7 +73,7 @@ static int read_event_data(SCLPEvent *event, EventBufferHeader *evt_buf_hdr,
     return 1;
 }
 
-static void sclp_cpu_class_init(ObjectClass *oc, void *data)
+static void sclp_cpu_class_init(ObjectClass *oc, const void *data)
 {
     SCLPEventClass *k = SCLP_EVENT_CLASS(oc);
     DeviceClass *dc = DEVICE_CLASS(oc);

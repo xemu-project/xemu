@@ -1,10 +1,11 @@
 specific_ss.add(when: 'CONFIG_SYSTEM_ONLY', if_true: [files(
   'arch_init.c',
-  'ioport.c',
-  'memory.c',
-  'physmem.c',
-  'watchpoint.c',
+  'globals-target.c',
 )])
+
+system_ss.add(files(
+  'vl.c',
+), sdl, libpmem, libdaxctl)
 
 system_ss.add(files(
   'balloon.c',
@@ -14,8 +15,13 @@ system_ss.add(files(
   'datadir.c',
   'dirtylimit.c',
   'dma-helpers.c',
+  'exit-with-parent.c',
   'globals.c',
+  'ioport.c',
+  'ram-block-attributes.c',
   'memory_mapping.c',
+  'memory.c',
+  'physmem.c',
   'qdev-monitor.c',
   'qtest.c',
   'rtc.c',
@@ -23,8 +29,8 @@ system_ss.add(files(
   'runstate-hmp-cmds.c',
   'runstate.c',
   'tpm-hmp-cmds.c',
-  'vl.c',
-), sdl, libpmem, libdaxctl)
+  'watchpoint.c',
+))
 
 if have_tpm
   system_ss.add(files('tpm.c'))

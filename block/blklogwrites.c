@@ -14,8 +14,8 @@
 #include "qemu/sockets.h" /* for EINPROGRESS on Windows */
 #include "block/block-io.h"
 #include "block/block_int.h"
-#include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qstring.h"
+#include "qobject/qdict.h"
+#include "qobject/qstring.h"
 #include "qemu/cutils.h"
 #include "qemu/module.h"
 #include "qemu/option.h"
@@ -281,7 +281,7 @@ static int blk_log_writes_open(BlockDriverState *bs, QDict *options, int flags,
     ret = 0;
 fail_log:
     if (ret < 0) {
-        bdrv_graph_wrlock();
+        bdrv_graph_wrlock_drained();
         bdrv_unref_child(bs, s->log_file);
         bdrv_graph_wrunlock();
         s->log_file = NULL;
@@ -296,7 +296,7 @@ static void blk_log_writes_close(BlockDriverState *bs)
 {
     BDRVBlkLogWritesState *s = bs->opaque;
 
-    bdrv_graph_wrlock();
+    bdrv_graph_wrlock_drained();
     bdrv_unref_child(bs, s->log_file);
     s->log_file = NULL;
     bdrv_graph_wrunlock();

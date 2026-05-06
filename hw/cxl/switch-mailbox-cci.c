@@ -17,10 +17,12 @@
 #include "hw/qdev-properties.h"
 #include "hw/cxl/cxl.h"
 
+#define CXL_SWCCI_MSIX_MBOX 3
+
 static void cswmbcci_reset(DeviceState *dev)
 {
     CSWMBCCIDev *cswmb = CXL_SWITCH_MAILBOX_CCI(dev);
-    cxl_device_register_init_swcci(cswmb);
+    cxl_device_register_init_swcci(cswmb, CXL_SWCCI_MSIX_MBOX);
 }
 
 static void cswbcci_realize(PCIDevice *pci_dev, Error **errp)
@@ -65,13 +67,12 @@ static void cswmbcci_exit(PCIDevice *pci_dev)
     /* Nothing to do here yet */
 }
 
-static Property cxl_switch_cci_props[] = {
+static const Property cxl_switch_cci_props[] = {
     DEFINE_PROP_LINK("target", CSWMBCCIDev,
                      target, TYPE_CXL_USP, PCIDevice *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void cswmbcci_class_init(ObjectClass *oc, void *data)
+static void cswmbcci_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     PCIDeviceClass *pc = PCI_DEVICE_CLASS(oc);
@@ -98,7 +99,7 @@ static const TypeInfo cswmbcci_info = {
     .parent = TYPE_PCI_DEVICE,
     .class_init = cswmbcci_class_init,
     .instance_size = sizeof(CSWMBCCIDev),
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_PCIE_DEVICE },
         { }
     },

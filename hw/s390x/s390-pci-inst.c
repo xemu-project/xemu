@@ -13,9 +13,12 @@
 
 #include "qemu/osdep.h"
 #include "exec/memop.h"
-#include "exec/memory.h"
+#include "exec/target_page.h"
+#include "system/memory.h"
 #include "qemu/error-report.h"
-#include "sysemu/hw_accel.h"
+#include "qemu/bswap.h"
+#include "system/hw_accel.h"
+#include "hw/boards.h"
 #include "hw/pci/pci_device.h"
 #include "hw/s390x/s390-pci-inst.h"
 #include "hw/s390x/s390-pci-bus.h"
@@ -393,7 +396,7 @@ static MemoryRegion *s390_get_subregion(MemoryRegion *mr, uint64_t offset,
     uint64_t subregion_size;
 
     QTAILQ_FOREACH(subregion, &mr->subregions, subregions_link) {
-        subregion_size = int128_get64(subregion->size);
+        subregion_size = memory_region_size(subregion);
         if ((offset >= subregion->addr) &&
             (offset + len) <= (subregion->addr + subregion_size)) {
             mr = subregion;
@@ -1008,8 +1011,12 @@ static int reg_ioat(CPUS390XState *env, S390PCIBusDevice *pbdev, ZpciFib fib,
     }
 
     /* currently we only support designation type 1 with translation */
-    if (!(dt == ZPCI_IOTA_RTTO && t)) {
+    if (t && dt != ZPCI_IOTA_RTTO) {
         error_report("unsupported ioat dt %d t %d", dt, t);
+        s390_program_interrupt(env, PGM_OPERAND, ra);
+        return -EINVAL;
+    } else if (!t && !pbdev->rtr_avail) {
+        error_report("relaxed translation not allowed");
         s390_program_interrupt(env, PGM_OPERAND, ra);
         return -EINVAL;
     }
@@ -1018,7 +1025,11 @@ static int reg_ioat(CPUS390XState *env, S390PCIBusDevice *pbdev, ZpciFib fib,
     iommu->pal = pal;
     iommu->g_iota = g_iota;
 
-    s390_pci_iommu_enable(iommu);
+    if (t) {
+        s390_pci_iommu_enable(iommu);
+    } else {
+        s390_pci_iommu_direct_map_enable(iommu);
+    }
 
     return 0;
 }

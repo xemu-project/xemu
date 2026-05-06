@@ -19,15 +19,15 @@
 #include "net/net.h"
 #include "hw/pci/pci.h"
 #include "hw/boards.h"
-#include "sysemu/kvm.h"
-#include "sysemu/device_tree.h"
+#include "system/kvm.h"
+#include "system/device_tree.h"
 #include "hw/loader.h"
 #include "elf.h"
 #include "hw/char/serial-mm.h"
 #include "hw/ppc/ppc.h"
 #include "hw/pci-host/ppc4xx.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/reset.h"
+#include "system/system.h"
+#include "system/reset.h"
 #include "hw/sysbus.h"
 #include "hw/intc/ppc-uic.h"
 #include "hw/qdev-properties.h"
@@ -64,7 +64,7 @@ static int bamboo_load_device_tree(MachineState *machine,
     uint32_t tb_freq = 400000000;
     uint32_t clock_freq = 400000000;
 
-    filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, BINARY_DEVICE_TREE_FILE);
+    filename = qemu_find_file(QEMU_FILE_TYPE_DTB, BINARY_DEVICE_TREE_FILE);
     if (!filename) {
         return -1;
     }
@@ -228,7 +228,8 @@ static void bamboo_init(MachineState *machine)
         if (success < 0) {
             uint64_t elf_entry;
             success = load_elf(kernel_filename, NULL, NULL, NULL, &elf_entry,
-                               NULL, NULL, NULL, 1, PPC_ELF_MACHINE, 0, 0);
+                               NULL, NULL, NULL,
+                               ELFDATA2MSB, PPC_ELF_MACHINE, 0, 0);
             entry = elf_entry;
         }
         /* XXX try again as binary */
@@ -241,13 +242,8 @@ static void bamboo_init(MachineState *machine)
     /* Load initrd. */
     if (initrd_filename) {
         initrd_size = load_image_targphys(initrd_filename, RAMDISK_ADDR,
-                                          machine->ram_size - RAMDISK_ADDR);
-
-        if (initrd_size < 0) {
-            error_report("could not load ram disk '%s' at %x",
-                         initrd_filename, RAMDISK_ADDR);
-            exit(1);
-        }
+                                          machine->ram_size - RAMDISK_ADDR,
+                                          &error_fatal);
     }
 
     /* If we're loading a kernel directly, we must load the device tree too. */

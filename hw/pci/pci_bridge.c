@@ -477,13 +477,12 @@ int pci_bridge_qemu_reserve_cap_init(PCIDevice *dev, int cap_offset,
     return 0;
 }
 
-static Property pci_bridge_properties[] = {
+static const Property pci_bridge_properties[] = {
     DEFINE_PROP_BOOL("x-pci-express-writeable-slt-bug", PCIBridge,
                      pcie_writeable_slt_bug, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pci_bridge_class_init(ObjectClass *klass, void *data)
+static void pci_bridge_class_init(ObjectClass *klass, const void *data)
 {
     AcpiDevAmlIfClass *adevc = ACPI_DEV_AML_IF_CLASS(klass);
     DeviceClass *k = DEVICE_CLASS(klass);
@@ -498,7 +497,7 @@ static const TypeInfo pci_bridge_type_info = {
     .instance_size = sizeof(PCIBridge),
     .class_init = pci_bridge_class_init,
     .abstract = true,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_ACPI_DEV_AML_IF },
         { },
     },

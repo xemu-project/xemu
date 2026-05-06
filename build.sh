@@ -202,7 +202,7 @@ case "$platform" in # Adjust compilation options based on platform
     Darwin)
         echo "Compiling for MacOS for $target_arch..."
         if [ "$target_arch" == "arm64" ]; then
-            macos_min_ver=13.7.4
+            macos_min_ver=14.0
         elif [ "$target_arch" == "x86_64" ]; then
             macos_min_ver=12.7.5
         else
@@ -239,7 +239,7 @@ case "$platform" in # Adjust compilation options based on platform
         echo 'Compiling for Windows...'
         sys_cflags='-Wno-error'
         CFLAGS="${CFLAGS} -lIphlpapi -lCrypt32" # workaround for linking libs on mingw
-        opts="$opts --disable-fortify-source"
+        opts="$opts"
         postbuild='package_windows' # set the above function to be called after build
         target="qemu-system-i386w.exe"
         ;;
@@ -247,7 +247,7 @@ case "$platform" in # Adjust compilation options based on platform
         echo 'Cross-compiling for Windows...'
         export AR=${AR:-$CROSSAR}
         sys_cflags='-Wno-error'
-        opts="$opts --cross-prefix=$CROSSPREFIX --static --disable-fortify-source"
+        opts="$opts --cross-prefix=$CROSSPREFIX --static"
         postbuild='package_wincross' # set the above function to be called after build
         target="qemu-system-i386w.exe"
         ;;

@@ -21,10 +21,15 @@
 #include "fpu/softfloat-types.h"
 
 #include "cpu-qom.h"
+#include "exec/cpu-common.h"
 #include "exec/cpu-defs.h"
 #include "hex_regs.h"
 #include "mmvec/mmvec.h"
 #include "hw/registerfields.h"
+
+#ifndef CONFIG_USER_ONLY
+#error "Hexagon does not support system emulation"
+#endif
 
 #define NUM_PREGS 4
 #define TOTAL_PER_THREAD_REGS 64
@@ -79,12 +84,6 @@ typedef struct CPUArchState {
     uint8_t slot_cancelled;
     target_ulong new_value_usr;
 
-    /*
-     * Only used when HEX_DEBUG is on, but unconditionally included
-     * to reduce recompile time when turning HEX_DEBUG on/off.
-     */
-    target_ulong reg_written[TOTAL_PER_THREAD_REGS];
-
     MemLog mem_log_stores[STORES_MAX];
 
     float_status fp_status;
@@ -138,25 +137,10 @@ G_NORETURN void hexagon_raise_exception_err(CPUHexagonState *env,
                                             uint32_t exception,
                                             uintptr_t pc);
 
-static inline void cpu_get_tb_cpu_state(CPUHexagonState *env, vaddr *pc,
-                                        uint64_t *cs_base, uint32_t *flags)
-{
-    uint32_t hex_flags = 0;
-    *pc = env->gpr[HEX_REG_PC];
-    *cs_base = 0;
-    if (*pc == env->gpr[HEX_REG_SA0]) {
-        hex_flags = FIELD_DP32(hex_flags, TB_FLAGS, IS_TIGHT_LOOP, 1);
-    }
-    *flags = hex_flags;
-    if (*pc & PCALIGN_MASK) {
-        hexagon_raise_exception_err(env, HEX_EXCP_PC_NOT_ALIGNED, 0);
-    }
-}
-
 typedef HexagonCPU ArchCPU;
 
 void hexagon_translate_init(void);
-
-#include "exec/cpu-all.h"
+void hexagon_translate_code(CPUState *cs, TranslationBlock *tb,
+                            int *max_insns, vaddr pc, void *host_pc);
 
 #endif /* HEXAGON_CPU_H */

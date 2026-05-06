@@ -32,15 +32,15 @@
 #include "qemu/timer.h"
 #include "qemu/hw-version.h"
 #include "qemu/memalign.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/blockdev.h"
-#include "sysemu/dma.h"
+#include "system/system.h"
+#include "system/blockdev.h"
+#include "system/dma.h"
 #include "hw/block/block.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "qapi/error.h"
 #include "qemu/cutils.h"
-#include "sysemu/replay.h"
-#include "sysemu/runstate.h"
+#include "system/replay.h"
+#include "system/runstate.h"
 #include "ide-internal.h"
 #include "trace.h"
 
@@ -835,7 +835,7 @@ static void ide_sector_read(IDEState *s)
                                       ide_sector_read_cb, s);
 }
 
-void dma_buf_commit(IDEState *s, uint32_t tx_bytes)
+void ide_dma_buf_commit(IDEState *s, uint32_t tx_bytes)
 {
     if (s->bus->dma->ops->commit_buf) {
         s->bus->dma->ops->commit_buf(s->bus->dma, tx_bytes);
@@ -856,7 +856,7 @@ void ide_set_inactive(IDEState *s, bool more)
 
 void ide_dma_error(IDEState *s)
 {
-    dma_buf_commit(s, 0);
+    ide_dma_buf_commit(s, 0);
     ide_abort_command(s);
     ide_set_inactive(s, false);
     ide_bus_set_irq(s->bus);
@@ -901,7 +901,7 @@ static void ide_dma_cb(void *opaque, int ret)
     if (ret < 0) {
         if (ide_handle_rw_error(s, -ret, ide_dma_cmd_to_retry(s->dma_cmd))) {
             s->bus->dma->aiocb = NULL;
-            dma_buf_commit(s, 0);
+            ide_dma_buf_commit(s, 0);
             return;
         }
     }
@@ -920,7 +920,7 @@ static void ide_dma_cb(void *opaque, int ret)
     sector_num = ide_get_sector(s);
     if (n > 0) {
         assert(n * 512 == s->sg.size);
-        dma_buf_commit(s, s->sg.size);
+        ide_dma_buf_commit(s, s->sg.size);
         sector_num += n;
         ide_set_sector(s, sector_num);
         s->nsector -= n;
@@ -952,7 +952,7 @@ static void ide_dma_cb(void *opaque, int ret)
          * Reset the Active bit and don't raise the interrupt.
          */
         s->status = READY_STAT | SEEK_STAT;
-        dma_buf_commit(s, 0);
+        ide_dma_buf_commit(s, 0);
         goto eot;
     }
 
@@ -976,8 +976,7 @@ static void ide_dma_cb(void *opaque, int ret)
                                            BDRV_SECTOR_SIZE, ide_dma_cb, s);
         break;
     case IDE_DMA_TRIM:
-        s->bus->dma->aiocb = dma_blk_io(blk_get_aio_context(s->blk),
-                                        &s->sg, offset, BDRV_SECTOR_SIZE,
+        s->bus->dma->aiocb = dma_blk_io(&s->sg, offset, BDRV_SECTOR_SIZE,
                                         ide_issue_trim, s, ide_dma_cb, s,
                                         DMA_DIRECTION_TO_DEVICE);
         break;

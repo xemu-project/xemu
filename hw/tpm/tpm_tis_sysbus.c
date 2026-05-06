@@ -90,10 +90,9 @@ static void tpm_tis_sysbus_reset(DeviceState *dev)
     return tpm_tis_reset(s);
 }
 
-static Property tpm_tis_sysbus_properties[] = {
+static const Property tpm_tis_sysbus_properties[] = {
     DEFINE_PROP_UINT32("irq", TPMStateSysBus, state.irq_num, TPM_TIS_IRQ),
     DEFINE_PROP_TPMBE("tpmdev", TPMStateSysBus, state.be_driver),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void tpm_tis_sysbus_initfn(Object *obj)
@@ -125,7 +124,7 @@ static void tpm_tis_sysbus_realizefn(DeviceState *dev, Error **errp)
     }
 }
 
-static void tpm_tis_sysbus_class_init(ObjectClass *klass, void *data)
+static void tpm_tis_sysbus_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     TPMIfClass *tc = TPM_IF_CLASS(klass);
@@ -134,7 +133,6 @@ static void tpm_tis_sysbus_class_init(ObjectClass *klass, void *data)
     dc->vmsd  = &vmstate_tpm_tis_sysbus;
     tc->model = TPM_MODEL_TPM_TIS;
     dc->realize = tpm_tis_sysbus_realizefn;
-    dc->user_creatable = true;
     device_class_set_legacy_reset(dc, tpm_tis_sysbus_reset);
     tc->request_completed = tpm_tis_sysbus_request_completed;
     tc->get_version = tpm_tis_sysbus_get_tpm_version;
@@ -143,11 +141,11 @@ static void tpm_tis_sysbus_class_init(ObjectClass *klass, void *data)
 
 static const TypeInfo tpm_tis_sysbus_info = {
     .name = TYPE_TPM_TIS_SYSBUS,
-    .parent = TYPE_SYS_BUS_DEVICE,
+    .parent = TYPE_DYNAMIC_SYS_BUS_DEVICE,
     .instance_size = sizeof(TPMStateSysBus),
     .instance_init = tpm_tis_sysbus_initfn,
     .class_init  = tpm_tis_sysbus_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_TPM_IF },
         { }
     }

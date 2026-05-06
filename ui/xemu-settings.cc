@@ -19,7 +19,7 @@
 
 #include "qemu/osdep.h"
 #include <stdlib.h>
-#include <SDL_filesystem.h>
+#include <SDL3/SDL_filesystem.h>
 #include <string.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -77,12 +77,16 @@ const char *xemu_settings_get_base_path(void)
         return base_path;
     }
 
-    char *base = xemu_settings_detect_portable_mode()
-                 ? SDL_GetBasePath()
-                 : SDL_GetPrefPath("xemu", "xemu");
-    assert(base != NULL);
-    base_path = g_strdup(base);
-    SDL_free(base);
+    if (xemu_settings_detect_portable_mode()) {
+        const char *base = SDL_GetBasePath();
+        assert(base != NULL);
+        base_path = g_strdup(base);
+    } else {
+        char *base = SDL_GetPrefPath("xemu", "xemu");
+        assert(base != NULL);
+        base_path = g_strdup(base);
+        SDL_free(base);
+    }
     fprintf(stderr, "%s: base path: %s\n", __func__, base_path);
     return base_path;
 }

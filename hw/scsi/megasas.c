@@ -21,9 +21,9 @@
 #include "qemu/osdep.h"
 #include "hw/pci/pci.h"
 #include "hw/qdev-properties.h"
-#include "sysemu/dma.h"
-#include "sysemu/block-backend.h"
-#include "sysemu/rtc.h"
+#include "system/dma.h"
+#include "system/block-backend.h"
+#include "system/rtc.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
 #include "qemu/iov.h"
@@ -981,13 +981,11 @@ static int megasas_event_wait(MegasasState *s, MegasasCmd *cmd)
 
 static int megasas_dcmd_pd_get_list(MegasasState *s, MegasasCmd *cmd)
 {
-    struct mfi_pd_list info;
-    size_t dcmd_size = sizeof(info);
+    struct mfi_pd_list info = {};
     BusChild *kid;
     uint32_t offset, dcmd_limit, num_pd_disks = 0, max_pd_disks;
     dma_addr_t residual;
 
-    memset(&info, 0, dcmd_size);
     offset = 8;
     dcmd_limit = offset + sizeof(struct mfi_pd_address);
     if (cmd->iov_size < dcmd_limit) {
@@ -1429,11 +1427,10 @@ static int megasas_dcmd_cfg_read(MegasasState *s, MegasasCmd *cmd)
 
 static int megasas_dcmd_get_properties(MegasasState *s, MegasasCmd *cmd)
 {
-    struct mfi_ctrl_props info;
+    struct mfi_ctrl_props info = {};
     size_t dcmd_size = sizeof(info);
     dma_addr_t residual;
 
-    memset(&info, 0x0, dcmd_size);
     if (cmd->iov_size < dcmd_size) {
         trace_megasas_dcmd_invalid_xfer_len(cmd->index, cmd->iov_size,
                                             dcmd_size);
@@ -2226,7 +2223,6 @@ static uint64_t megasas_queue_read(void *opaque, hwaddr addr,
 static void megasas_queue_write(void *opaque, hwaddr addr,
                                uint64_t val, unsigned size)
 {
-    return;
 }
 
 static const MemoryRegionOps megasas_queue_ops = {
@@ -2448,7 +2444,7 @@ static void megasas_scsi_realize(PCIDevice *dev, Error **errp)
     scsi_bus_init(&s->bus, sizeof(s->bus), DEVICE(dev), &megasas_scsi_info);
 }
 
-static Property megasas_properties_gen1[] = {
+static const Property megasas_properties_gen1[] = {
     DEFINE_PROP_UINT32("max_sge", MegasasState, fw_sge,
                        MEGASAS_DEFAULT_SGE),
     DEFINE_PROP_UINT32("max_cmds", MegasasState, fw_cmds,
@@ -2459,10 +2455,9 @@ static Property megasas_properties_gen1[] = {
     DEFINE_PROP_ON_OFF_AUTO("msix", MegasasState, msix, ON_OFF_AUTO_AUTO),
     DEFINE_PROP_BIT("use_jbod", MegasasState, flags,
                     MEGASAS_FLAG_USE_JBOD, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static Property megasas_properties_gen2[] = {
+static const Property megasas_properties_gen2[] = {
     DEFINE_PROP_UINT32("max_sge", MegasasState, fw_sge,
                        MEGASAS_DEFAULT_SGE),
     DEFINE_PROP_UINT32("max_cmds", MegasasState, fw_cmds,
@@ -2473,7 +2468,6 @@ static Property megasas_properties_gen2[] = {
     DEFINE_PROP_ON_OFF_AUTO("msix", MegasasState, msix, ON_OFF_AUTO_AUTO),
     DEFINE_PROP_BIT("use_jbod", MegasasState, flags,
                     MEGASAS_FLAG_USE_JBOD, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 typedef struct MegasasInfo {
@@ -2487,8 +2481,9 @@ typedef struct MegasasInfo {
     int mmio_bar;
     int osts;
     const VMStateDescription *vmsd;
-    Property *props;
-    InterfaceInfo *interfaces;
+    const Property *props;
+    size_t props_count;
+    const InterfaceInfo *interfaces;
 } MegasasInfo;
 
 static struct MegasasInfo megasas_devices[] = {
@@ -2504,7 +2499,8 @@ static struct MegasasInfo megasas_devices[] = {
         .osts = MFI_1078_RM | 1,
         .vmsd = &vmstate_megasas_gen1,
         .props = megasas_properties_gen1,
-        .interfaces = (InterfaceInfo[]) {
+        .props_count = ARRAY_SIZE(megasas_properties_gen1),
+        .interfaces = (const InterfaceInfo[]) {
             { INTERFACE_CONVENTIONAL_PCI_DEVICE },
             { },
         },
@@ -2520,14 +2516,15 @@ static struct MegasasInfo megasas_devices[] = {
         .osts = MFI_GEN2_RM,
         .vmsd = &vmstate_megasas_gen2,
         .props = megasas_properties_gen2,
-        .interfaces = (InterfaceInfo[]) {
+        .props_count = ARRAY_SIZE(megasas_properties_gen2),
+        .interfaces = (const InterfaceInfo[]) {
             { INTERFACE_PCIE_DEVICE },
             { }
         },
     }
 };
 
-static void megasas_class_init(ObjectClass *oc, void *data)
+static void megasas_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     PCIDeviceClass *pc = PCI_DEVICE_CLASS(oc);
@@ -2546,7 +2543,7 @@ static void megasas_class_init(ObjectClass *oc, void *data)
     e->osts = info->osts;
     e->product_name = info->product_name;
     e->product_version = info->product_version;
-    device_class_set_props(dc, info->props);
+    device_class_set_props_n(dc, info->props, info->props_count);
     device_class_set_legacy_reset(dc, megasas_scsi_reset);
     dc->vmsd = info->vmsd;
     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
@@ -2572,11 +2569,11 @@ static void megasas_register_types(void)
 
         type_info.name = info->name;
         type_info.parent = TYPE_MEGASAS_BASE;
-        type_info.class_data = (void *)info;
+        type_info.class_data = info;
         type_info.class_init = megasas_class_init;
         type_info.interfaces = info->interfaces;
 
-        type_register(&type_info);
+        type_register_static(&type_info);
     }
 }
 

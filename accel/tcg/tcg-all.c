@@ -24,26 +24,33 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/tcg.h"
+#include "system/tcg.h"
 #include "exec/replay-core.h"
-#include "sysemu/cpu-timers.h"
+#include "exec/icount.h"
 #include "tcg/startup.h"
-#include "tcg/oversized-guest.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/accel.h"
 #include "qemu/atomic.h"
+#include "qapi/qapi-types-common.h"
 #include "qapi/qapi-builtin-visit.h"
 #include "qemu/units.h"
-#if !defined(CONFIG_USER_ONLY)
+#include "qemu/target-info.h"
+#ifndef CONFIG_USER_ONLY
 #include "hw/boards.h"
+#include "exec/tb-flush.h"
+#include "system/runstate.h"
 #endif
+#include "accel/accel-ops.h"
+#include "accel/accel-cpu-ops.h"
+#include "accel/tcg/cpu-ops.h"
 #include "internal-common.h"
+
 
 struct TCGState {
     AccelState parent_obj;
 
-    bool mttcg_enabled;
+    OnOffAuto mttcg_enabled;
     bool one_insn_per_tb;
     int splitwx_enabled;
     unsigned long tb_size;
@@ -55,39 +62,17 @@ typedef struct TCGState TCGState;
 DECLARE_INSTANCE_CHECKER(TCGState, TCG_STATE,
                          TYPE_TCG_ACCEL)
 
-/*
- * We default to false if we know other options have been enabled
- * which are currently incompatible with MTTCG. Otherwise when each
- * guest (target) has been updated to support:
- *   - atomic instructions
- *   - memory ordering primitives (barriers)
- * they can set the appropriate CONFIG flags in ${target}-softmmu.mak
- *
- * Once a guest architecture has been converted to the new primitives
- * there is one remaining limitation to check:
- *   - The guest can't be oversized (e.g. 64 bit guest on 32 bit host)
- */
-
-static bool default_mttcg_enabled(void)
+#ifndef CONFIG_USER_ONLY
+bool qemu_tcg_mttcg_enabled(void)
 {
-    if (icount_enabled() || TCG_OVERSIZED_GUEST) {
-        return false;
-    }
-#ifdef TARGET_SUPPORTS_MTTCG
-# ifndef TCG_GUEST_DEFAULT_MO
-#  error "TARGET_SUPPORTS_MTTCG without TCG_GUEST_DEFAULT_MO"
-# endif
-    return true;
-#else
-    return false;
-#endif
+    TCGState *s = TCG_STATE(current_accel());
+    return s->mttcg_enabled == ON_OFF_AUTO_ON;
 }
+#endif /* !CONFIG_USER_ONLY */
 
 static void tcg_accel_instance_init(Object *obj)
 {
     TCGState *s = TCG_STATE(obj);
-
-    s->mttcg_enabled = default_mttcg_enabled();
 
     /* If debugging enabled, default "auto on", otherwise off. */
 #if defined(CONFIG_DEBUG_TCG) && !defined(CONFIG_USER_ONLY)
@@ -97,24 +82,76 @@ static void tcg_accel_instance_init(Object *obj)
 #endif
 }
 
-bool mttcg_enabled;
 bool one_insn_per_tb;
 
-static int tcg_init_machine(MachineState *ms)
+#ifndef CONFIG_USER_ONLY
+static void tcg_vm_change_state(void *opaque, bool running, RunState state)
 {
-    TCGState *s = TCG_STATE(current_accel());
-#ifdef CONFIG_USER_ONLY
-    unsigned max_cpus = 1;
-#else
-    unsigned max_cpus = ms->smp.max_cpus;
+    if (state == RUN_STATE_RESTORE_VM) {
+        /*
+         * loadvm will update the content of RAM, bypassing the usual
+         * mechanisms that ensure we flush TBs for writes to memory
+         * we've translated code from, so we must flush all TBs.
+         *
+         * vm_stop() has just stopped all cpus, so we are exclusive.
+         */
+        assert(!running);
+        tb_flush__exclusive_or_serial();
+    }
+}
+#endif
+
+static int tcg_init_machine(AccelState *as, MachineState *ms)
+{
+    TCGState *s = TCG_STATE(as);
+    unsigned max_threads = 1;
+
+#ifndef CONFIG_USER_ONLY
+    CPUClass *cc = CPU_CLASS(object_class_by_name(target_cpu_type()));
+    bool mttcg_supported = cc->tcg_ops->mttcg_supported;
+
+    switch (s->mttcg_enabled) {
+    case ON_OFF_AUTO_AUTO:
+        /*
+         * We default to false if we know other options have been enabled
+         * which are currently incompatible with MTTCG. Otherwise when each
+         * guest (target) has been updated to support:
+         *   - atomic instructions
+         *   - memory ordering primitives (barriers)
+         * they can set the appropriate CONFIG flags in ${target}-softmmu.mak
+         *
+         * Once a guest architecture has been converted to the new primitives
+         * there is one remaining limitation to check:
+         *   - The guest can't be oversized (e.g. 64 bit guest on 32 bit host)
+         */
+        if (mttcg_supported && !icount_enabled()) {
+            s->mttcg_enabled = ON_OFF_AUTO_ON;
+            max_threads = ms->smp.max_cpus;
+        } else {
+            s->mttcg_enabled = ON_OFF_AUTO_OFF;
+        }
+        break;
+    case ON_OFF_AUTO_ON:
+        if (!mttcg_supported) {
+            warn_report("Guest not yet converted to MTTCG - "
+                        "you may get unexpected results");
+        }
+        max_threads = ms->smp.max_cpus;
+        break;
+    case ON_OFF_AUTO_OFF:
+        break;
+    default:
+        g_assert_not_reached();
+    }
+
+    qemu_add_vm_change_state_handler(tcg_vm_change_state, NULL);
 #endif
 
     tcg_allowed = true;
-    mttcg_enabled = s->mttcg_enabled;
 
     page_init();
     tb_htable_init();
-    tcg_init(s->tb_size * MiB, s->splitwx_enabled, max_cpus);
+    tcg_init(s->tb_size * MiB, s->splitwx_enabled, max_threads);
 
 #if defined(CONFIG_SOFTMMU)
     /*
@@ -124,6 +161,10 @@ static int tcg_init_machine(MachineState *ms)
     tcg_prologue_init();
 #endif
 
+#ifdef CONFIG_USER_ONLY
+    qdev_create_fake_machine();
+#endif
+
     return 0;
 }
 
@@ -131,7 +172,7 @@ static char *tcg_get_thread(Object *obj, Error **errp)
 {
     TCGState *s = TCG_STATE(obj);
 
-    return g_strdup(s->mttcg_enabled ? "multi" : "single");
+    return g_strdup(s->mttcg_enabled == ON_OFF_AUTO_ON ? "multi" : "single");
 }
 
 static void tcg_set_thread(Object *obj, const char *value, Error **errp)
@@ -139,19 +180,13 @@ static void tcg_set_thread(Object *obj, const char *value, Error **errp)
     TCGState *s = TCG_STATE(obj);
 
     if (strcmp(value, "multi") == 0) {
-        if (TCG_OVERSIZED_GUEST) {
-            error_setg(errp, "No MTTCG when guest word size > hosts");
-        } else if (icount_enabled()) {
+        if (icount_enabled()) {
             error_setg(errp, "No MTTCG when icount is enabled");
         } else {
-#ifndef TARGET_SUPPORTS_MTTCG
-            warn_report("Guest not yet converted to MTTCG - "
-                        "you may get unexpected results");
-#endif
-            s->mttcg_enabled = true;
+            s->mttcg_enabled = ON_OFF_AUTO_ON;
         }
     } else if (strcmp(value, "single") == 0) {
-        s->mttcg_enabled = false;
+        s->mttcg_enabled = ON_OFF_AUTO_OFF;
     } else {
         error_setg(errp, "Invalid 'thread' setting %s", value);
     }
@@ -207,7 +242,7 @@ static void tcg_set_one_insn_per_tb(Object *obj, bool value, Error **errp)
     qatomic_set(&one_insn_per_tb, value);
 }
 
-static int tcg_gdbstub_supported_sstep_flags(void)
+static int tcg_gdbstub_supported_sstep_flags(AccelState *as)
 {
     /*
      * In replay mode all events will come from the log and can't be
@@ -222,13 +257,14 @@ static int tcg_gdbstub_supported_sstep_flags(void)
     }
 }
 
-static void tcg_accel_class_init(ObjectClass *oc, void *data)
+static void tcg_accel_class_init(ObjectClass *oc, const void *data)
 {
     AccelClass *ac = ACCEL_CLASS(oc);
     ac->name = "tcg";
     ac->init_machine = tcg_init_machine;
     ac->cpu_common_realize = tcg_exec_realizefn;
     ac->cpu_common_unrealize = tcg_exec_unrealizefn;
+    ac->get_stats = tcg_get_stats;
     ac->allowed = &tcg_allowed;
     ac->gdbstub_supported_sstep_flags = tcg_gdbstub_supported_sstep_flags;
 

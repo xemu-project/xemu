@@ -20,9 +20,8 @@ static const VMStateDescription vu_rng_vmstate = {
     .unmigratable = 1,
 };
 
-static Property vrng_properties[] = {
+static const Property vrng_properties[] = {
     DEFINE_PROP_CHR("chardev", VHostUserBase, chardev),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void vu_rng_base_realize(DeviceState *dev, Error **errp)
@@ -38,7 +37,7 @@ static void vu_rng_base_realize(DeviceState *dev, Error **errp)
     vubs->parent_realize(dev, errp);
 }
 
-static void vu_rng_class_init(ObjectClass *klass, void *data)
+static void vu_rng_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     VHostUserBaseClass *vubc = VHOST_USER_BASE_CLASS(klass);

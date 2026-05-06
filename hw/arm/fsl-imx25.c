@@ -25,7 +25,7 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "hw/arm/fsl-imx25.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "hw/qdev-properties.h"
 #include "chardev/char.h"
 #include "target/arm/cpu-qom.h"
@@ -243,8 +243,6 @@ static void fsl_imx25_realize(DeviceState *dev, Error **errp)
                                  &error_abort);
         object_property_set_uint(OBJECT(&s->esdhc[i]), "capareg",
                                  IMX25_ESDHC_CAPABILITIES, &error_abort);
-        object_property_set_uint(OBJECT(&s->esdhc[i]), "vendor",
-                                 SDHCI_VENDOR_IMX, &error_abort);
         if (!sysbus_realize(SYS_BUS_DEVICE(&s->esdhc[i]), errp)) {
             return;
         }
@@ -309,12 +307,11 @@ static void fsl_imx25_realize(DeviceState *dev, Error **errp)
                                 &s->iram_alias);
 }
 
-static Property fsl_imx25_properties[] = {
+static const Property fsl_imx25_properties[] = {
     DEFINE_PROP_UINT32("fec-phy-num", FslIMX25State, phy_num, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void fsl_imx25_class_init(ObjectClass *oc, void *data)
+static void fsl_imx25_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 

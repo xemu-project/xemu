@@ -110,7 +110,7 @@ static inline void target_cpu_init(CPUX86State *env,
     cpu_x86_load_seg(env, R_GS, 0);
 }
 
-static inline void target_cpu_loop(CPUX86State *env)
+static inline G_NORETURN void target_cpu_loop(CPUX86State *env)
 {
     CPUState *cs = env_cpu(env);
     int trapnr;
@@ -121,7 +121,7 @@ static inline void target_cpu_loop(CPUX86State *env)
         cpu_exec_start(cs);
         trapnr = cpu_exec(cs);
         cpu_exec_end(cs);
-        process_queued_cpu_work(cs);
+        qemu_process_cpu_events(cs);
 
         switch (trapnr) {
         case EXCP_SYSCALL:

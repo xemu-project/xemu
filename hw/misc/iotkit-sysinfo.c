@@ -131,12 +131,11 @@ static const MemoryRegionOps iotkit_sysinfo_ops = {
     .valid.max_access_size = 4,
 };
 
-static Property iotkit_sysinfo_props[] = {
+static const Property iotkit_sysinfo_props[] = {
     DEFINE_PROP_UINT32("SYS_VERSION", IoTKitSysInfo, sys_version, 0),
     DEFINE_PROP_UINT32("SYS_CONFIG", IoTKitSysInfo, sys_config, 0),
     DEFINE_PROP_UINT32("sse-version", IoTKitSysInfo, sse_version, 0),
     DEFINE_PROP_UINT32("IIDR", IoTKitSysInfo, iidr, 0),
-    DEFINE_PROP_END_OF_LIST()
 };
 
 static void iotkit_sysinfo_init(Object *obj)
@@ -159,7 +158,7 @@ static void iotkit_sysinfo_realize(DeviceState *dev, Error **errp)
     }
 }
 
-static void iotkit_sysinfo_class_init(ObjectClass *klass, void *data)
+static void iotkit_sysinfo_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

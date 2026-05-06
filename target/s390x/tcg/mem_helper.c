@@ -24,14 +24,21 @@
 #include "s390x-internal.h"
 #include "tcg_s390x.h"
 #include "exec/helper-proto.h"
-#include "exec/exec-all.h"
+#include "exec/cpu-common.h"
+#include "exec/cputlb.h"
 #include "exec/page-protection.h"
-#include "exec/cpu_ldst.h"
-#include "hw/core/tcg-cpu-ops.h"
+#include "accel/tcg/cpu-ldst.h"
+#include "accel/tcg/probe.h"
+#include "exec/target_page.h"
+#include "exec/tlb-flags.h"
+#include "accel/tcg/cpu-ops.h"
+#include "accel/tcg/helper-retaddr.h"
 #include "qemu/int128.h"
 #include "qemu/atomic128.h"
 
-#if !defined(CONFIG_USER_ONLY)
+#if defined(CONFIG_USER_ONLY)
+#include "user/page-protection.h"
+#else
 #include "hw/s390x/storage-keys.h"
 #include "hw/boards.h"
 #endif
@@ -119,8 +126,8 @@ static inline void cpu_stsize_data_ra(CPUS390XState *env, uint64_t addr,
 
 /* An access covers at most 4096 bytes and therefore at most two pages. */
 typedef struct S390Access {
-    target_ulong vaddr1;
-    target_ulong vaddr2;
+    vaddr vaddr1;
+    vaddr vaddr2;
     void *haddr1;
     void *haddr2;
     uint16_t size1;
@@ -141,7 +148,7 @@ typedef struct S390Access {
  * For !CONFIG_USER_ONLY, the TEC is stored stored to env->tlb_fill_tec.
  * For CONFIG_USER_ONLY, the faulting address is stored to env->__excp_addr.
  */
-static inline int s390_probe_access(CPUArchState *env, target_ulong addr,
+static inline int s390_probe_access(CPUArchState *env, vaddr addr,
                                     int size, MMUAccessType access_type,
                                     int mmu_idx, bool nonfault,
                                     void **phost, uintptr_t ra)
@@ -251,7 +258,7 @@ static void access_memset(CPUS390XState *env, S390Access *desta,
 static uint8_t access_get_byte(CPUS390XState *env, S390Access *access,
                                int offset, uintptr_t ra)
 {
-    target_ulong vaddr = access->vaddr1;
+    vaddr vaddr = access->vaddr1;
     void *haddr = access->haddr1;
 
     if (unlikely(offset >= access->size1)) {
@@ -271,7 +278,7 @@ static uint8_t access_get_byte(CPUS390XState *env, S390Access *access,
 static void access_set_byte(CPUS390XState *env, S390Access *access,
                             int offset, uint8_t byte, uintptr_t ra)
 {
-    target_ulong vaddr = access->vaddr1;
+    vaddr vaddr = access->vaddr1;
     void *haddr = access->haddr1;
 
     if (unlikely(offset >= access->size1)) {
@@ -1952,6 +1959,10 @@ void HELPER(lctlg)(CPUS390XState *env, uint32_t r1, uint64_t a2, uint32_t r3)
         if (env->cregs[i] != val && i >= 9 && i <= 11) {
             PERchanged = true;
         }
+        if (i == 0 && !(env->cregs[i] & CR0_CKC_SC) && (val & CR0_CKC_SC)) {
+            BQL_LOCK_GUARD();
+            tcg_s390_tod_updated(env_cpu(env), RUN_ON_CPU_NULL);
+        }
         env->cregs[i] = val;
         HELPER_LOG("load ctl %d from 0x%" PRIx64 " == 0x%" PRIx64 "\n",
                    i, src, val);
@@ -1982,10 +1993,15 @@ void HELPER(lctl)(CPUS390XState *env, uint32_t r1, uint64_t a2, uint32_t r3)
 
     for (i = r1;; i = (i + 1) % 16) {
         uint32_t val = cpu_ldl_data_ra(env, src, ra);
+        uint64_t val64 = deposit64(env->cregs[i], 0, 32, val);
         if ((uint32_t)env->cregs[i] != val && i >= 9 && i <= 11) {
             PERchanged = true;
         }
-        env->cregs[i] = deposit64(env->cregs[i], 0, 32, val);
+        if (i == 0 && !(env->cregs[i] & CR0_CKC_SC) && (val64 & CR0_CKC_SC)) {
+            BQL_LOCK_GUARD();
+            tcg_s390_tod_updated(env_cpu(env), RUN_ON_CPU_NULL);
+        }
+        env->cregs[i] = val64;
         HELPER_LOG("load ctl %d from 0x%" PRIx64 " == 0x%x\n", i, src, val);
         src += sizeof(uint32_t);
 

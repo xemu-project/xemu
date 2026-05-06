@@ -15,7 +15,7 @@
 #include "migration/vmstate.h"
 #include "qemu/bcd.h"
 #include "qom/object.h"
-#include "sysemu/rtc.h"
+#include "system/rtc.h"
 #include "trace.h"
 
 /* Size of NVRAM including both the user-accessible area and the
@@ -220,7 +220,7 @@ static void ds1338_reset(DeviceState *dev)
     s->addr_byte = false;
 }
 
-static void ds1338_class_init(ObjectClass *klass, void *data)
+static void ds1338_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     I2CSlaveClass *k = I2C_SLAVE_CLASS(klass);

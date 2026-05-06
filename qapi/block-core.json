@@ -2,7 +2,8 @@
 # vim: filetype=python
 
 ##
-# == Block core (VM unrelated)
+# Block core (VM unrelated)
+# =========================
 ##
 
 { 'include': 'common.json' }
@@ -31,8 +32,8 @@
 # @icount: Current instruction count.  Appears when execution
 #     record/replay is enabled.  Used for "time-traveling" to match
 #     the moment in the recorded execution with the snapshots.  This
-#     counter may be obtained through @query-replay command (since
-#     5.2)
+#     counter may be obtained through `query-replay` command
+#     (since 5.2)
 #
 # Since: 1.3
 ##
@@ -158,7 +159,15 @@
 ##
 # @ImageInfoSpecificRbd:
 #
-# @encryption-format: Image encryption format
+# @encryption-format: Image encryption format.  If encryption is
+#     enabled for the image (see encrypted in BlockNodeInfo), this is
+#     the actual format in which the image is accessed.  If encryption
+#     is not enabled, this is the result of probing when the image was
+#     opened, to give a suggestion which encryption format could be
+#     enabled.  Note that probing results can be changed by the guest
+#     by writing a (possibly partial) encryption format header to the
+#     image, so don't treat this information as trusted if the guest
+#     is not trusted.
 #
 # Since: 6.1
 ##
@@ -223,7 +232,7 @@
 { 'struct': 'ImageInfoSpecificLUKSWrapper',
   'data': { 'data': 'QCryptoBlockInfoLUKS' } }
 # If we need to add block driver specific parameters for
-# LUKS in future, then we'll subclass QCryptoBlockInfoLUKS
+# LUKS in future, then we'll subclass `QCryptoBlockInfoLUKS`
 # to define a ImageInfoSpecificLUKS
 
 ##
@@ -268,6 +277,69 @@
   } }
 
 ##
+# @BlockLimitsInfo:
+#
+# @request-alignment: Alignment requirement, in bytes, for
+#     offset/length of I/O requests.
+#
+# @max-discard: Maximum number of bytes that can be discarded at once.
+#     If not present, there is no specific maximum.
+#
+# @discard-alignment: Optimal alignment for discard requests in bytes.
+#     Note that this doesn't have to be a power of two.  If not
+#     present, discards don't have a alignment requirement different
+#     from @request-alignment.
+#
+# @max-write-zeroes: Maximum number of bytes that can be zeroed out at
+#     once.  If not present, there is no specific maximum.
+#
+# @write-zeroes-alignment: Optimal alignment for write zeroes requests
+#     in bytes.  Note that this doesn't have to be a power of two.  If
+#     not present, write_zeroes doesn't have a alignment requirement
+#     different from @request-alignment.
+#
+# @opt-transfer: Optimal transfer length in bytes.  If not present,
+#     there is no preferred size.
+#
+# @max-transfer: Maximal transfer length in bytes.  If not present,
+#     there is no specific maximum.
+#
+# @max-hw-transfer: Maximal hardware transfer length in bytes.
+#     Applies whenever transfers to the device bypass the kernel I/O
+#     scheduler, for example with SG_IO.  If not present, there is no
+#     specific maximum.
+#
+# @max-iov: Maximum number of scatter/gather elements
+#
+# @max-hw-iov: Maximum number of scatter/gather elements allowed by
+#     the hardware.  Applies whenever transfers to the device bypass
+#     the kernel I/O scheduler, for example with SG_IO.  If not
+#     present, the hardware limits is unknown and @max-iov is always
+#     used.
+#
+# @min-mem-alignment: Minimal required memory alignment in bytes for
+#     zero-copy I/O to succeed.  For unaligned requests, a bounce
+#     buffer will be used.
+#
+# @opt-mem-alignment: Optimal memory alignment in bytes.  This is the
+#     alignment used for any buffer allocations QEMU performs
+#     internally.
+##
+{ 'struct': 'BlockLimitsInfo',
+  'data': { 'request-alignment': 'uint32',
+            '*max-discard': 'uint64',
+            '*discard-alignment': 'uint32',
+            '*max-write-zeroes': 'uint64',
+            '*write-zeroes-alignment': 'uint32',
+            '*opt-transfer': 'uint32',
+            '*max-transfer': 'uint32',
+            '*max-hw-transfer': 'uint32',
+            'max-iov': 'int',
+            '*max-hw-iov': 'int',
+            'min-mem-alignment': 'size',
+            'opt-mem-alignment': 'size' } }
+
+##
 # @BlockNodeInfo:
 #
 # Information about a QEMU image file
@@ -296,6 +368,8 @@
 #
 # @snapshots: list of VM snapshots
 #
+# @limits: block limits that are used for I/O on the node (Since 10.2)
+#
 # @format-specific: structure supplying additional format-specific
 #     information (since 1.7)
 #
@@ -307,6 +381,7 @@
            '*cluster-size': 'int', '*encrypted': 'bool', '*compressed': 'bool',
            '*backing-filename': 'str', '*full-backing-filename': 'str',
            '*backing-filename-format': 'str', '*snapshots': ['SnapshotInfo'],
+           '*limits': 'BlockLimitsInfo',
            '*format-specific': 'ImageInfoSpecific' } }
 
 ##
@@ -332,8 +407,8 @@
 # node, annotated with information about that node in relation to its
 # parent.
 #
-# @name: Child name of the root node in the BlockGraphInfo struct, in
-#     its role as the child of some undescribed parent node
+# @name: Child name of the root node in the `BlockGraphInfo` struct,
+#     in its role as the child of some undescribed parent node
 #
 # @info: Block graph information starting at this node
 #
@@ -349,7 +424,7 @@
 # @BlockGraphInfo:
 #
 # Information about all nodes in a block (sub)graph in the form of
-# BlockNodeInfo data.  The base BlockNodeInfo struct contains the
+# `BlockNodeInfo` data.  The base `BlockNodeInfo` struct contains the
 # information for the (sub)graph's root node.
 #
 # @children: Array of links to this node's child nodes' information
@@ -462,6 +537,19 @@
             'no-flush': 'bool' } }
 
 ##
+# @BlockdevChild:
+#
+# @child: The name of the child, for example 'file' or 'backing'.
+#
+# @node-name: The name of the child's block driver node.
+#
+# Since: 10.1
+##
+{ 'struct': 'BlockdevChild',
+  'data': { 'child': 'str',
+            'node-name': 'str' } }
+
+##
 # @BlockDeviceInfo:
 #
 # Information about the backing device for a block device.
@@ -486,6 +574,13 @@
 # @backing_file_depth: number of files in the backing file chain
 #     (since: 1.2)
 #
+# @children: Information about child block nodes.  (since: 10.1)
+#
+# @active: true if the backend is active; typical cases for inactive
+#     backends are on the migration source instance after migration
+#     completes and on the destination before it completes.
+#     (since: 10.0)
+#
 # @encrypted: true if the backing device is encrypted
 #
 # @detect_zeroes: detect and optimize zero writes (Since 2.1)
@@ -506,11 +601,11 @@
 #
 # @bps_max: total throughput limit during bursts, in bytes (Since 1.7)
 #
-# @bps_rd_max: read throughput limit during bursts, in bytes (Since
-#     1.7)
+# @bps_rd_max: read throughput limit during bursts, in bytes
+#     (Since 1.7)
 #
-# @bps_wr_max: write throughput limit during bursts, in bytes (Since
-#     1.7)
+# @bps_wr_max: write throughput limit during bursts, in bytes
+#     (Since 1.7)
 #
 # @iops_max: total I/O operations per second during bursts, in bytes
 #     (Since 1.7)
@@ -554,9 +649,10 @@
 # Since: 0.14
 ##
 { 'struct': 'BlockDeviceInfo',
-  'data': { 'file': 'str', '*node-name': 'str', 'ro': 'bool', 'drv': 'str',
+  'data': { 'file': 'str', 'node-name': 'str', 'ro': 'bool', 'drv': 'str',
             '*backing_file': 'str', 'backing_file_depth': 'int',
-            'encrypted': 'bool',
+            'children': ['BlockdevChild'],
+            'active': 'bool', 'encrypted': 'bool',
             'detect_zeroes': 'BlockdevDetectZeroesOptions',
             'bps': 'int', 'bps_rd': 'int', 'bps_wr': 'int',
             'iops': 'int', 'iops_rd': 'int', 'iops_wr': 'int',
@@ -610,7 +706,7 @@
 # @inconsistent: true if this is a persistent bitmap that was
 #     improperly stored.  Implies @persistent to be true; @recording
 #     and @busy to be false.  This bitmap cannot be used.  To remove
-#     it, use @block-dirty-bitmap-remove.  (Since 4.0)
+#     it, use `block-dirty-bitmap-remove`.  (Since 4.0)
 #
 # Since: 1.3
 ##
@@ -705,12 +801,12 @@
 # @tray_open: True if the device's tray is open (only present if it
 #     has a tray)
 #
-# @io-status: @BlockDeviceIoStatus.  Only present if the device
+# @io-status: `BlockDeviceIoStatus`.  Only present if the device
 #     supports it and the VM is configured to stop on errors
 #     (supported device models: virtio-blk, IDE, SCSI except
 #     scsi-generic)
 #
-# @inserted: @BlockDeviceInfo describing the device if media is
+# @inserted: `BlockDeviceInfo` describing the device if media is
 #     present
 #
 # Since: 0.14
@@ -757,10 +853,10 @@
 ##
 # @query-block:
 #
-# Get a list of BlockInfo for all virtual block devices.
+# Get a list of `BlockInfo` for all virtual block devices.
 #
-# Returns: a list of @BlockInfo describing each virtual block device.
-#     Filter nodes that were created implicitly are skipped over.
+# Returns: a list describing each virtual block device.  Filter nodes
+#     that were created implicitly are skipped over.
 #
 # Since: 0.14
 #
@@ -947,11 +1043,11 @@
 # @unmap_operations: The number of unmap operations performed by the
 #     device (Since 4.2)
 #
-# @rd_total_time_ns: Total time spent on reads in nanoseconds (since
-#     0.15).
+# @rd_total_time_ns: Total time spent on reads in nanoseconds
+#     (since 0.15)
 #
-# @wr_total_time_ns: Total time spent on writes in nanoseconds (since
-#     0.15).
+# @wr_total_time_ns: Total time spent on writes in nanoseconds
+#     (since 0.15)
 #
 # @zone_append_total_time_ns: Total time spent on zone append writes
 #     in nanoseconds (since 8.1)
@@ -1022,14 +1118,14 @@
 # @timed_stats: Statistics specific to the set of previously defined
 #     intervals of time (Since 2.5)
 #
-# @rd_latency_histogram: @BlockLatencyHistogramInfo.  (Since 4.0)
+# @rd_latency_histogram: `BlockLatencyHistogramInfo`.  (Since 4.0)
 #
-# @wr_latency_histogram: @BlockLatencyHistogramInfo.  (Since 4.0)
+# @wr_latency_histogram: `BlockLatencyHistogramInfo`.  (Since 4.0)
 #
-# @zone_append_latency_histogram: @BlockLatencyHistogramInfo.
+# @zone_append_latency_histogram: `BlockLatencyHistogramInfo`.
 #     (since 8.1)
 #
-# @flush_latency_histogram: @BlockLatencyHistogramInfo.  (Since 4.0)
+# @flush_latency_histogram: `BlockLatencyHistogramInfo`.  (Since 4.0)
 #
 # Since: 0.14
 ##
@@ -1130,7 +1226,7 @@
 # @qdev: The qdev ID, or if no ID is assigned, the QOM path of the
 #     block device.  (since 3.0)
 #
-# @stats: A @BlockDeviceStats for the device.
+# @stats: A `BlockDeviceStats` for the device.
 #
 # @driver-specific: Optional driver-specific stats.  (Since 4.2)
 #
@@ -1154,7 +1250,7 @@
 ##
 # @query-blockstats:
 #
-# Query the @BlockStats for all virtual block devices.
+# Query the `BlockStats` for all virtual block devices.
 #
 # @query-nodes: If true, the command will query all the block nodes
 #     that have a node name, in a list which will include "parent"
@@ -1164,7 +1260,7 @@
 #     nodes that were created implicitly are skipped over in this
 #     mode.  (Since 2.3)
 #
-# Returns: A list of @BlockStats for each virtual block devices.
+# Returns: A list of statistics for each virtual block device.
 #
 # Since: 0.14
 #
@@ -1285,8 +1381,8 @@
 # @report: for guest operations, report the error to the guest; for
 #     jobs, cancel the job
 #
-# @ignore: ignore the error, only report a QMP event (BLOCK_IO_ERROR
-#     or BLOCK_JOB_ERROR).  The backup, mirror and commit block jobs
+# @ignore: ignore the error, only report a QMP event (`BLOCK_IO_ERROR`
+#     or `BLOCK_JOB_ERROR`).  The backup, mirror and commit block jobs
 #     retry the failing request later and may still complete
 #     successfully.  The stream block job continues to stream and will
 #     complete with an error.
@@ -1318,8 +1414,8 @@
 # @incremental: only copy data described by the dirty bitmap.
 #     (since: 2.4)
 #
-# @bitmap: only copy data described by the dirty bitmap.  (since: 4.2)
-#     Behavior on completion is determined by the BitmapSyncMode.
+# @bitmap: only copy data described by the dirty bitmap.  Behavior on
+#     completion is determined by the `BitmapSyncMode`.  (since: 4.2)
 #
 # Since: 1.3
 ##
@@ -1333,7 +1429,7 @@
 # bitmap when used for data copy operations.
 #
 # @on-success: The bitmap is only synced when the operation is
-#     successful.  This is the behavior always used for 'INCREMENTAL'
+#     successful.  This is the behavior always used for incremental
 #     backups.
 #
 # @never: The bitmap is never synchronized with the operation, and is
@@ -1413,8 +1509,8 @@
 # @auto-finalize: Job will finalize itself when PENDING, moving to the
 #     CONCLUDED state.  (since 2.12)
 #
-# @auto-dismiss: Job will dismiss itself when CONCLUDED, moving to the
-#     NULL state and disappearing from the query list.  (since 2.12)
+# @auto-dismiss: Job will dismiss itself when CONCLUDED, and
+#     disappear.  (since 2.12)
 #
 # @error: Error information if the job did not complete successfully.
 #     Not set if the job completed successfully.  (since 2.12.1)
@@ -1436,7 +1532,7 @@
 #
 # Return information about long-running block device operations.
 #
-# Returns: a list of @BlockJobInfo for each active block job
+# Returns: a list of job info for each active block job
 #
 # Since: 1.1
 ##
@@ -1498,15 +1594,15 @@
 #
 # @device: the name of the device to take a snapshot of.
 #
-# @node-name: graph node name to generate the snapshot from (Since
-#     2.0)
+# @node-name: graph node name to generate the snapshot from
+#     (Since 2.0)
 #
 # @snapshot-file: the target of the new overlay image.  If the file
 #     exists, or if it is a device, the overlay will be created in the
 #     existing file/device.  Otherwise, a new file will be created.
 #
-# @snapshot-node-name: the graph node name of the new image (Since
-#     2.0)
+# @snapshot-node-name: the graph node name of the new image
+#     (Since 2.0)
 #
 # @format: the format of the overlay image, default is 'qcow2'.
 #
@@ -1526,7 +1622,7 @@
 # @overlay: reference to the existing block device that will become
 #     the overlay of @node, as part of taking the snapshot.  It must
 #     not have a current backing file (this can be achieved by passing
-#     "backing": null to blockdev-add).
+#     "backing": null to `blockdev-add`).
 #
 # Since: 2.5
 ##
@@ -1581,34 +1677,37 @@
 # @bitmap: The name of a dirty bitmap to use.  Must be present if sync
 #     is "bitmap" or "incremental".  Can be present if sync is "full"
 #     or "top".  Must not be present otherwise.
-#     (Since 2.4 (drive-backup), 3.1 (blockdev-backup))
+#     (Since 2.4 (`drive-backup`), 3.1 (`blockdev-backup`))
 #
 # @bitmap-mode: Specifies the type of data the bitmap should contain
 #     after the operation concludes.  Must be present if a bitmap was
-#     provided, Must NOT be present otherwise.  (Since 4.2)
+#     provided, must **not** be present otherwise.  (Since 4.2)
 #
 # @compress: true to compress data, if the target format supports it.
 #     (default: false) (since 2.8)
 #
 # @on-source-error: the action to take on an error on the source,
 #     default 'report'.  'stop' and 'enospc' can only be used if the
-#     block device supports io-status (see BlockInfo).
+#     block device supports io-status (see `BlockInfo`).
 #
 # @on-target-error: the action to take on an error on the target,
 #     default 'report' (no limitations, since this applies to a
 #     different block device than @device).
 #
+# @on-cbw-error: policy defining behavior on I/O errors in
+#     copy-before-write jobs; defaults to break-guest-write.
+#     (Since 10.1)
+#
 # @auto-finalize: When false, this job will wait in a PENDING state
-#     after it has finished its work, waiting for @block-job-finalize
+#     after it has finished its work, waiting for `job-finalize`
 #     before making any block graph changes.  When true, this job will
 #     automatically perform its abort or commit actions.  Defaults to
 #     true.  (Since 2.12)
 #
 # @auto-dismiss: When false, this job will wait in a CONCLUDED state
 #     after it has completely ceased all work, and awaits
-#     @block-job-dismiss.  When true, this job will automatically
-#     disappear from the query list without user intervention.
-#     Defaults to true.  (Since 2.12)
+#     `job-dismiss`.  When true, this job will automatically disappear
+#     without user intervention.  Defaults to true.  (Since 2.12)
 #
 # @filter-node-name: the node name that should be assigned to the
 #     filter driver that the backup job inserts into the graph above
@@ -1637,6 +1736,7 @@
             '*compress': 'bool',
             '*on-source-error': 'BlockdevOnError',
             '*on-target-error': 'BlockdevOnError',
+            '*on-cbw-error': 'OnCbwError',
             '*auto-finalize': 'bool', '*auto-dismiss': 'bool',
             '*filter-node-name': 'str',
             '*discard-source': 'bool',
@@ -1712,7 +1812,8 @@
 #
 # @allow-write-only-overlay: If present, the check whether this
 #     operation is safe was relaxed so that it can be used to change
-#     backing file of a destination of a blockdev-mirror.  (since 5.0)
+#     backing file of a destination of a `blockdev-mirror`.
+#     (since 5.0)
 #
 # Since: 2.5
 #
@@ -1776,9 +1877,8 @@
 #
 # If top == base, that is an error.  If top has no overlays on top of
 # it, or if it is in use by a writer, the job will not be completed by
-# itself.  The user needs to complete the job with the
-# block-job-complete command after getting the ready event.  (Since
-# 2.0)
+# itself.  The user needs to complete the job with the `job-complete`
+# command after getting the ready event.  (Since 2.0)
 #
 # If the base image is smaller than top, then the base image will be
 # resized to be the same size as top.  If top is smaller than the base
@@ -1832,7 +1932,7 @@
 # @speed: the maximum speed, in bytes per second
 #
 # @on-error: the action to take on an error.  'ignore' means that the
-#     request should be retried.  (default: report; Since: 5.0)
+#     request should be retried.  (default: report; since: 5.0)
 #
 # @filter-node-name: the node name that should be assigned to the
 #     filter driver that the commit job inserts into the graph above
@@ -1840,16 +1940,15 @@
 #     autogenerated.  (Since: 2.9)
 #
 # @auto-finalize: When false, this job will wait in a PENDING state
-#     after it has finished its work, waiting for @block-job-finalize
+#     after it has finished its work, waiting for `job-finalize`
 #     before making any block graph changes.  When true, this job will
 #     automatically perform its abort or commit actions.  Defaults to
 #     true.  (Since 3.1)
 #
 # @auto-dismiss: When false, this job will wait in a CONCLUDED state
 #     after it has completely ceased all work, and awaits
-#     @block-job-dismiss.  When true, this job will automatically
-#     disappear from the query list without user intervention.
-#     Defaults to true.  (Since 3.1)
+#     `job-dismiss`.  When true, this job will automatically disappear
+#     without user intervention.  Defaults to true.  (Since 3.1)
 #
 # Features:
 #
@@ -1884,14 +1983,14 @@
 # @drive-backup:
 #
 # Start a point-in-time copy of a block device to a new destination.
-# The status of ongoing drive-backup operations can be checked with
-# query-block-jobs where the BlockJobInfo.type field has the value
+# The status of ongoing `drive-backup` operations can be checked with
+# `query-block-jobs` where the `BlockJobInfo`.type field has the value
 # 'backup'.  The operation can be stopped before it has completed
-# using the block-job-cancel command.
+# using the `job-cancel` or `block-job-cancel` command.
 #
 # Features:
 #
-# @deprecated: This command is deprecated.  Use @blockdev-backup
+# @deprecated: This command is deprecated.  Use `blockdev-backup`
 #     instead.
 #
 # Errors:
@@ -1915,10 +2014,10 @@
 # @blockdev-backup:
 #
 # Start a point-in-time copy of a block device to a new destination.
-# The status of ongoing blockdev-backup operations can be checked with
-# query-block-jobs where the BlockJobInfo.type field has the value
-# 'backup'.  The operation can be stopped before it has completed
-# using the block-job-cancel command.
+# The status of ongoing `blockdev-backup` operations can be checked
+# with `query-block-jobs` where the `BlockJobInfo`.type field has the
+# value 'backup'.  The operation can be stopped before it has
+# completed using the `job-cancel` or `block-job-cancel` command.
 #
 # Errors:
 #     - If @device is not a valid block device, DeviceNotFound
@@ -1944,8 +2043,6 @@
 #
 # @flat: Omit the nested data about backing image ("backing-image"
 #     key) if true.  Default is false (Since 5.0)
-#
-# Returns: the list of BlockDeviceInfo
 #
 # Since: 2.0
 #
@@ -2021,8 +2118,8 @@
 # @XDbgBlockGraphNode:
 #
 # @id: Block graph node identifier.  This @id is generated only for
-#     x-debug-query-block-graph and does not relate to any other
-#     identifiers in Qemu.
+#     `x-debug-query-block-graph` and does not relate to any other
+#     identifiers in QEMU.
 #
 # @type: Type of graph node.  Can be one of block-backend, block-job
 #     or block-driver-state.
@@ -2070,7 +2167,7 @@
 ##
 # @XDbgBlockGraphEdge:
 #
-# Block Graph edge description for x-debug-query-block-graph.
+# Block Graph edge description for `x-debug-query-block-graph`.
 #
 # @parent: parent id
 #
@@ -2161,8 +2258,8 @@
 # @format: the format of the new destination, default is to probe if
 #     @mode is 'existing', else the format of the source
 #
-# @node-name: the new block driver state node name in the graph (Since
-#     2.1)
+# @node-name: the new block driver state node name in the graph
+#     (Since 2.1)
 #
 # @replaces: with sync=full graph node name to be replaced by the new
 #     image when a whole image copy is done.  This can be used to
@@ -2188,7 +2285,7 @@
 #
 # @on-source-error: the action to take on an error on the source,
 #     default 'report'.  'stop' and 'enospc' can only be used if the
-#     block device supports io-status (see BlockInfo).
+#     block device supports io-status (see `BlockInfo`).
 #
 # @on-target-error: the action to take on an error on the target,
 #     default 'report' (no limitations, since this applies to a
@@ -2204,16 +2301,15 @@
 #     'background' (Since: 3.0)
 #
 # @auto-finalize: When false, this job will wait in a PENDING state
-#     after it has finished its work, waiting for @block-job-finalize
+#     after it has finished its work, waiting for `job-finalize`
 #     before making any block graph changes.  When true, this job will
 #     automatically perform its abort or commit actions.  Defaults to
 #     true.  (Since 3.1)
 #
 # @auto-dismiss: When false, this job will wait in a CONCLUDED state
 #     after it has completely ceased all work, and awaits
-#     @block-job-dismiss.  When true, this job will automatically
-#     disappear from the query list without user intervention.
-#     Defaults to true.  (Since 3.1)
+#     `job-dismiss`.  When true, this job will automatically disappear
+#     without user intervention.  Defaults to true.  (Since 3.1)
 #
 # Since: 1.3
 ##
@@ -2247,16 +2343,17 @@
 # @name: name of the dirty bitmap (must be less than 1024 bytes)
 #
 # @granularity: the bitmap granularity, default is 64k for
-#     block-dirty-bitmap-add
+#     `block-dirty-bitmap-add`
 #
 # @persistent: the bitmap is persistent, i.e. it will be saved to the
 #     corresponding block device image file on its close.  For now
 #     only Qcow2 disks support persistent bitmaps.  Default is false
-#     for block-dirty-bitmap-add.  (Since: 2.10)
+#     for `block-dirty-bitmap-add`.  (Since: 2.10)
 #
 # @disabled: the bitmap is created in the disabled state, which means
 #     that it will not track drive changes.  The bitmap may be enabled
-#     with block-dirty-bitmap-enable.  Default is false.  (Since: 4.0)
+#     with `block-dirty-bitmap-enable`.  Default is false.
+#     (Since: 4.0)
 #
 # Since: 2.4
 ##
@@ -2286,7 +2383,7 @@
 # @target: name of the destination dirty bitmap
 #
 # @bitmaps: name(s) of the source dirty bitmap(s) at @node and/or
-#     fully specified BlockDirtyBitmap elements.  The latter are
+#     fully specified `BlockDirtyBitmap` elements.  The latter are
 #     supported since 4.1.
 #
 # Since: 4.0
@@ -2321,8 +2418,8 @@
 # @block-dirty-bitmap-remove:
 #
 # Stop write tracking and remove the dirty bitmap that was created
-# with block-dirty-bitmap-add.  If the bitmap is persistent, remove it
-# from its storage too.
+# with `block-dirty-bitmap-add`.  If the bitmap is persistent, remove
+# it from its storage too.
 #
 # Errors:
 #     - If @node is not a valid block device or node, DeviceNotFound
@@ -2460,9 +2557,6 @@
 #
 # @unstable: This command is meant for debugging.
 #
-# Returns:
-#     BlockDirtyBitmapSha256
-#
 # Errors:
 #     - If @node is not a valid block device, DeviceNotFound
 #     - If @name is not found or if hashing has failed, GenericError
@@ -2508,7 +2602,7 @@
 #
 # @on-source-error: the action to take on an error on the source,
 #     default 'report'.  'stop' and 'enospc' can only be used if the
-#     block device supports io-status (see BlockInfo).
+#     block device supports io-status (see `BlockInfo`).
 #
 # @on-target-error: the action to take on an error on the target,
 #     default 'report' (no limitations, since this applies to a
@@ -2523,16 +2617,20 @@
 #     'background' (Since: 3.0)
 #
 # @auto-finalize: When false, this job will wait in a PENDING state
-#     after it has finished its work, waiting for @block-job-finalize
+#     after it has finished its work, waiting for `job-finalize`
 #     before making any block graph changes.  When true, this job will
 #     automatically perform its abort or commit actions.  Defaults to
 #     true.  (Since 3.1)
 #
 # @auto-dismiss: When false, this job will wait in a CONCLUDED state
 #     after it has completely ceased all work, and awaits
-#     @block-job-dismiss.  When true, this job will automatically
-#     disappear from the query list without user intervention.
-#     Defaults to true.  (Since 3.1)
+#     `job-dismiss`.  When true, this job will automatically disappear
+#     without user intervention.  Defaults to true.  (Since 3.1)
+#
+# @target-is-zero: Assume the destination reads as all zeroes before
+#     the mirror started.  Setting this to true can speed up the
+#     mirror.  Setting this to true when the destination is not
+#     actually all zero can corrupt the destination.  (Since 10.1)
 #
 # Since: 2.6
 #
@@ -2553,7 +2651,8 @@
             '*on-target-error': 'BlockdevOnError',
             '*filter-node-name': 'str',
             '*copy-mode': 'MirrorCopyMode',
-            '*auto-finalize': 'bool', '*auto-dismiss': 'bool' },
+            '*auto-finalize': 'bool', '*auto-dismiss': 'bool',
+            '*target-is-zero': 'bool'},
   'allow-preconfig': true }
 
 ##
@@ -2579,11 +2678,11 @@
 #
 # @bps_max: total throughput limit during bursts, in bytes (Since 1.7)
 #
-# @bps_rd_max: read throughput limit during bursts, in bytes (Since
-#     1.7)
+# @bps_rd_max: read throughput limit during bursts, in bytes
+#     (Since 1.7)
 #
-# @bps_wr_max: write throughput limit during bursts, in bytes (Since
-#     1.7)
+# @bps_wr_max: write throughput limit during bursts, in bytes
+#     (Since 1.7)
 #
 # @iops_max: total I/O operations per second during bursts, in bytes
 #     (Since 1.7)
@@ -2653,7 +2752,7 @@
 # @iops-total-max: I/O operations burst
 #
 # @iops-total-max-length: length of the iops-total-max burst period,
-#     in seconds It must only be set if @iops-total-max is set as
+#     in seconds.  It must only be set if @iops-total-max is set as
 #     well.
 #
 # @iops-read: limit read operations per second
@@ -2661,14 +2760,14 @@
 # @iops-read-max: I/O operations read burst
 #
 # @iops-read-max-length: length of the iops-read-max burst period, in
-#     seconds It must only be set if @iops-read-max is set as well.
+#     seconds.  It must only be set if @iops-read-max is set as well.
 #
 # @iops-write: limit write operations per second
 #
 # @iops-write-max: I/O operations write burst
 #
 # @iops-write-max-length: length of the iops-write-max burst period,
-#     in seconds It must only be set if @iops-write-max is set as
+#     in seconds.  It must only be set if @iops-write-max is set as
 #     well.
 #
 # @bps-total: limit total bytes per second
@@ -2683,14 +2782,14 @@
 # @bps-read-max: total bytes read burst
 #
 # @bps-read-max-length: length of the bps-read-max burst period, in
-#     seconds It must only be set if @bps-read-max is set as well.
+#     seconds.  It must only be set if @bps-read-max is set as well.
 #
 # @bps-write: limit write bytes per second
 #
 # @bps-write-max: total bytes write burst
 #
 # @bps-write-max-length: length of the bps-write-max burst period, in
-#     seconds It must only be set if @bps-write-max is set as well.
+#     seconds.  It must only be set if @bps-write-max is set as well.
 #
 # @iops-size: when limiting by iops max size of an I/O in bytes
 #
@@ -2773,14 +2872,14 @@
 # The block streaming operation is performed in the background until
 # the entire backing file has been copied.  This command returns
 # immediately once streaming has started.  The status of ongoing block
-# streaming operations can be checked with query-block-jobs.  The
+# streaming operations can be checked with `query-block-jobs`.  The
 # operation can be stopped before it has completed using the
-# block-job-cancel command.
+# `job-cancel` or `block-job-cancel` command.
 #
 # The node that receives the data is called the top image, can be
 # located in any part of the chain (but always above the base image;
 # see below) and can be specified using its device or node name.
-# Earlier qemu versions only allowed 'device' to name the top level
+# Earlier QEMU versions only allowed 'device' to name the top level
 # node; presence of the 'base-node' parameter during introspection can
 # be used as a witness of the enhanced semantics of 'device'.
 #
@@ -2794,9 +2893,9 @@
 # will be the new backing file.
 #
 # On successful completion the image file is updated to drop the
-# backing file and the BLOCK_JOB_COMPLETED event is emitted.
+# backing file and the `BLOCK_JOB_COMPLETED` event is emitted.
 #
-# In case @device is a filter node, block-stream modifies the first
+# In case @device is a filter node, `block-stream` modifies the first
 # non-filter overlay node below it to point to the new backing node
 # instead of modifying @device itself.
 #
@@ -2837,7 +2936,7 @@
 #
 # @on-error: the action to take on an error (default report).  'stop'
 #     and 'enospc' can only be used if the block device supports
-#     io-status (see BlockInfo).  (Since 1.3)
+#     io-status (see `BlockInfo`).  (Since 1.3)
 #
 # @filter-node-name: the node name that should be assigned to the
 #     filter driver that the stream job inserts into the graph above
@@ -2845,16 +2944,15 @@
 #     autogenerated.  (Since: 6.0)
 #
 # @auto-finalize: When false, this job will wait in a PENDING state
-#     after it has finished its work, waiting for @block-job-finalize
+#     after it has finished its work, waiting for `job-finalize`
 #     before making any block graph changes.  When true, this job will
 #     automatically perform its abort or commit actions.  Defaults to
 #     true.  (Since 3.1)
 #
 # @auto-dismiss: When false, this job will wait in a CONCLUDED state
 #     after it has completely ceased all work, and awaits
-#     @block-job-dismiss.  When true, this job will automatically
-#     disappear from the query list without user intervention.
-#     Defaults to true.  (Since 3.1)
+#     `job-dismiss`.  When true, this job will automatically disappear
+#     without user intervention.  Defaults to true.  (Since 3.1)
 #
 # Errors:
 #     - If @device does not exist, DeviceNotFound.
@@ -2914,13 +3012,13 @@
 # command if no operation is in progress.
 #
 # The operation will cancel as soon as possible and then emit the
-# BLOCK_JOB_CANCELLED event.  Before that happens the job is still
-# visible when enumerated using query-block-jobs.
+# `BLOCK_JOB_CANCELLED` event.  Before that happens the job is still
+# visible when enumerated using `query-block-jobs`.
 #
-# Note that if you issue 'block-job-cancel' after 'drive-mirror' has
-# indicated (via the event BLOCK_JOB_READY) that the source and
+# Note that if you issue `block-job-cancel` after `drive-mirror` has
+# indicated (via the event `BLOCK_JOB_READY`) that the source and
 # destination are synchronized, then the event triggered by this
-# command changes to BLOCK_JOB_COMPLETED, to indicate that the
+# command changes to `BLOCK_JOB_COMPLETED`, to indicate that the
 # mirroring has ended and the destination now has a point-in-time copy
 # tied to the time of the cancellation.
 #
@@ -2934,7 +3032,7 @@
 #     values.
 #
 # @force: If true, and the job has already emitted the event
-#     BLOCK_JOB_READY, abandon the job immediately (even if it is
+#     `BLOCK_JOB_READY`, abandon the job immediately (even if it is
 #     paused) instead of waiting for the destination to complete its
 #     final synchronization (since 1.3)
 #
@@ -2952,17 +3050,23 @@
 #
 # Pause an active background block operation.
 #
-# This command returns immediately after marking the active background
-# block operation for pausing.  It is an error to call this command if
-# no operation is in progress or if the job is already paused.
+# This command returns immediately after marking the active job for
+# pausing.  Pausing an already paused job is an error.
 #
-# The operation will pause as soon as possible.  No event is emitted
-# when the operation is actually paused.  Cancelling a paused job
-# automatically resumes it.
+# The job will pause as soon as possible, which means transitioning
+# into the PAUSED state if it was RUNNING, or into STANDBY if it was
+# READY.  The corresponding `JOB_STATUS_CHANGE` event will be emitted.
+#
+# Cancelling a paused job automatically resumes it.
 #
 # @device: The job identifier.  This used to be a device name (hence
 #     the name of the parameter), but since QEMU 2.7 it can have other
 #     values.
+#
+# Features:
+#
+# @deprecated: This command is deprecated.  Use `job-pause`
+#     instead.
 #
 # Errors:
 #     - If no background operation is active on this device,
@@ -2971,6 +3075,7 @@
 # Since: 1.3
 ##
 { 'command': 'block-job-pause', 'data': { 'device': 'str' },
+  'features': ['deprecated'],
   'allow-preconfig': true }
 
 ##
@@ -2978,15 +3083,19 @@
 #
 # Resume an active background block operation.
 #
-# This command returns immediately after resuming a paused background
-# block operation.  It is an error to call this command if no
-# operation is in progress or if the job is not paused.
+# This command returns immediately after resuming a paused job.
+# Resuming an already running job is an error.
 #
 # This command also clears the error status of the job.
 #
 # @device: The job identifier.  This used to be a device name (hence
 #     the name of the parameter), but since QEMU 2.7 it can have other
 #     values.
+#
+# Features:
+#
+# @deprecated: This command is deprecated.  Use `job-resume`
+#     instead.
 #
 # Errors:
 #     - If no background operation is active on this device,
@@ -2995,29 +3104,38 @@
 # Since: 1.3
 ##
 { 'command': 'block-job-resume', 'data': { 'device': 'str' },
+  'features': ['deprecated'],
   'allow-preconfig': true }
 
 ##
 # @block-job-complete:
 #
-# Manually trigger completion of an active background block operation.
-# This is supported for drive mirroring, where it also switches the
-# device to write to the target path only.  The ability to complete is
-# signaled with a BLOCK_JOB_READY event.
+# Manually trigger completion of an active job in the READY or STANDBY
+# state.  Completing the job in any other state is an error.
+#
+# This is supported only for drive mirroring, where it also switches
+# the device to write to the target path only.  Note that drive
+# mirroring includes `drive-mirror`, `blockdev-mirror` and
+# `block-commit` job (only in case of "active commit", when the node
+# being commited is used by the guest).  The ability to complete is
+# signaled with a `BLOCK_JOB_READY` event.
 #
 # This command completes an active background block operation
 # synchronously.  The ordering of this command's return with the
-# BLOCK_JOB_COMPLETED event is not defined.  Note that if an I/O error
-# occurs during the processing of this command: 1) the command itself
-# will fail; 2) the error will be processed according to the
+# `BLOCK_JOB_COMPLETED` event is not defined.  Note that if an I/O
+# error occurs during the processing of this command: 1) the command
+# itself will fail; 2) the error will be processed according to the
 # rerror/werror arguments that were specified when starting the
 # operation.
-#
-# A cancelled or paused job cannot be completed.
 #
 # @device: The job identifier.  This used to be a device name (hence
 #     the name of the parameter), but since QEMU 2.7 it can have other
 #     values.
+#
+# Features:
+#
+# @deprecated: This command is deprecated.  Use `job-complete`
+#     instead.
 #
 # Errors:
 #     - If no background operation is active on this device,
@@ -3026,43 +3144,64 @@
 # Since: 1.3
 ##
 { 'command': 'block-job-complete', 'data': { 'device': 'str' },
+  'features': ['deprecated'],
   'allow-preconfig': true }
 
 ##
 # @block-job-dismiss:
 #
-# For jobs that have already concluded, remove them from the
-# block-job-query list.  This command only needs to be run for jobs
-# which were started with QEMU 2.12+ job lifetime management
-# semantics.
+# Deletes a job that is in the CONCLUDED state.  This command only
+# needs to be run explicitly for jobs that don't have automatic
+# dismiss enabled.  In turn, automatic dismiss may be enabled only for
+# jobs that have @auto-dismiss option, which are `drive-backup`,
+# `blockdev-backup`, `drive-mirror`, `blockdev-mirror`, `block-commit`
+# and `block-stream`.  @auto-dismiss is enabled by default for these
+# jobs.
 #
 # This command will refuse to operate on any job that has not yet
-# reached its terminal state, JOB_STATUS_CONCLUDED.  For jobs that
-# make use of the BLOCK_JOB_READY event, block-job-cancel or
-# block-job-complete will still need to be used as appropriate.
+# reached its terminal state, CONCLUDED.  For jobs that make use of
+# the `BLOCK_JOB_READY` event, `job-cancel`, `block-job-cancel` or
+# `job-complete` will still need to be used as appropriate.
 #
 # @id: The job identifier.
+#
+# Features:
+#
+# @deprecated: This command is deprecated.  Use `job-dismiss`
+#     instead.
 #
 # Since: 2.12
 ##
 { 'command': 'block-job-dismiss', 'data': { 'id': 'str' },
+  'features': ['deprecated'],
   'allow-preconfig': true }
 
 ##
 # @block-job-finalize:
 #
-# Once a job that has manual=true reaches the pending state, it can be
-# instructed to finalize any graph changes and do any necessary
-# cleanup via this command.  For jobs in a transaction, instructing
-# one job to finalize will force ALL jobs in the transaction to
-# finalize, so it is only necessary to instruct a single member job to
-# finalize.
+# Instructs all jobs in a transaction (or a single job if it is not
+# part of any transaction) to finalize any graph changes and do any
+# necessary cleanup.  This command requires that all involved jobs are
+# in the PENDING state.
+#
+# For jobs in a transaction, instructing one job to finalize will
+# force ALL jobs in the transaction to finalize, so it is only
+# necessary to instruct a single member job to finalize.
+#
+# The command is applicable only to jobs which have @auto-finalize
+# option and only when this option is set to false.
 #
 # @id: The job identifier.
+#
+# Features:
+#
+# @deprecated: This command is deprecated.  Use `job-finalize`
+#     instead.
 #
 # Since: 2.12
 ##
 { 'command': 'block-job-finalize', 'data': { 'id': 'str' },
+  'features': ['deprecated'],
   'allow-preconfig': true }
 
 ##
@@ -3128,7 +3267,7 @@
 # @on: Enabled
 #
 # @unmap: Enabled and even try to unmap blocks if possible.  This
-#     requires also that @BlockdevDiscardOptions is set to unmap for
+#     requires also that `BlockdevDiscardOptions` is set to unmap for
 #     this device.
 #
 # Since: 2.1
@@ -3141,7 +3280,7 @@
 #
 # Selects the AIO backend to handle I/O requests
 #
-# @threads: Use qemu's thread pool
+# @threads: Use QEMU's thread pool
 #
 # @native: Use native AIO backend (only Linux and Windows)
 #
@@ -3360,8 +3499,8 @@
 # Driver specific block device options for LUKS.
 #
 # @key-secret: the ID of a QCryptoSecret object providing the
-#     decryption key (since 2.6).  Mandatory except when doing a
-#     metadata-only probe of the image.
+#     decryption key.  Mandatory except when doing a metadata-only
+#     probe of the image.  (since 2.6)
 #
 # @header: block device holding a detached LUKS header.  (since 9.0)
 #
@@ -3600,8 +3739,8 @@
 #     this feature.  (since 2.5)
 #
 # @encrypt: Image decryption options.  Mandatory for encrypted images,
-#     except when doing a metadata-only probe of the image.  (since
-#     2.10)
+#     except when doing a metadata-only probe of the image.
+#     (since 2.10)
 #
 # @data-file: reference to or definition of the external data file.
 #     This may only be specified for images that require an external
@@ -4271,8 +4410,8 @@
 # @user: Ceph id name.
 #
 # @auth-client-required: Acceptable authentication modes.  This maps
-#     to Ceph configuration option "auth_client_required".  (Since
-#     3.0)
+#     to Ceph configuration option "auth_client_required".
+#     (Since 3.0)
 #
 # @key-secret: ID of a QCryptoSecret object providing a key for cephx
 #     authentication.  This maps to Ceph configuration option "key".
@@ -4526,8 +4665,8 @@
 #     error.  During the first @reconnect-delay seconds, all requests
 #     are paused and will be rerun on a successful reconnect.  After
 #     that time, any delayed requests and all future requests before a
-#     successful reconnect will immediately fail.  Default 0 (Since
-#     4.2)
+#     successful reconnect will immediately fail.  Default 0
+#     (Since 4.2)
 #
 # @open-timeout: In seconds.  If zero, the nbd driver tries the
 #     connection only once, and fails to open if the connection fails.
@@ -4669,15 +4808,20 @@
 #
 # @driver: block driver name
 #
-# @node-name: the node name of the new node (Since 2.0).  This option
-#     is required on the top level of blockdev-add.  Valid node names
-#     start with an alphabetic character and may contain only
-#     alphanumeric characters, '-', '.' and '_'.  Their maximum length
-#     is 31 characters.
+# @node-name: the node name of the new node.  This option is required
+#     on the top level of `blockdev-add`.  Valid node names start with
+#     an alphabetic character and may contain only alphanumeric
+#     characters, '-', '.' and '_'.  Their maximum length is 31
+#     characters.  (Since 2.0)
 #
 # @discard: discard-related options (default: ignore)
 #
 # @cache: cache-related options
+#
+# @active: whether the block node should be activated (default: true).
+#     Having inactive block nodes is useful primarily for migration
+#     because it allows opening an image on the destination while the
+#     source is still holding locks for it.  (Since 10.0)
 #
 # @read-only: whether the block device should be read-only (default:
 #     false).  Note that some block drivers support only read-only
@@ -4705,6 +4849,7 @@
             '*node-name': 'str',
             '*discard': 'BlockdevDiscardOptions',
             '*cache': 'BlockdevCacheOptions',
+            '*active': 'bool',
             '*read-only': 'bool',
             '*auto-read-only': 'bool',
             '*force-share': 'bool',
@@ -4868,16 +5013,17 @@
 # cancelled.
 #
 # The command receives a list of block devices to reopen.  For each
-# one of them, the top-level @node-name option (from BlockdevOptions)
-# must be specified and is used to select the block device to be
-# reopened.  Other @node-name options must be either omitted or set to
-# the current name of the appropriate node.  This command won't change
-# any node name and any attempt to do it will result in an error.
+# one of them, the top-level @node-name option (from
+# `BlockdevOptions`) must be specified and is used to select the block
+# device to be reopened.  Other @node-name options must be either
+# omitted or set to the current name of the appropriate node.  This
+# command won't change any node name and any attempt to do it will
+# result in an error.
 #
 # In the case of options that refer to child nodes, the behavior of
 # this command depends on the value:
 #
-#  1) A set of options (BlockdevOptions): the child is reopened with
+#  1) A set of options (`BlockdevOptions`): the child is reopened with
 #     the specified set of options.
 #
 #  2) A reference to the current child: the child is reopened using
@@ -4886,15 +5032,15 @@
 #  3) A reference to a different node: the current child is replaced
 #     with the specified one.
 #
-#  4) NULL: the current child (if any) is detached.
+#  4) null: the current child (if any) is detached.
 #
 # Options (1) and (2) are supported in all cases.  Option (3) is
 # supported for @file and @backing, and option (4) for @backing only.
 #
-# Unlike with blockdev-add, the @backing option must always be present
-# unless the node being reopened does not have a backing file and its
-# image does not have a default backing file name as part of its
-# metadata.
+# Unlike with `blockdev-add`, the @backing option must always be
+# present unless the node being reopened does not have a backing file
+# and its image does not have a default backing file name as part of
+# its metadata.
 #
 # Since: 6.1
 ##
@@ -4905,8 +5051,8 @@
 ##
 # @blockdev-del:
 #
-# Deletes a block device that has been added using blockdev-add.  The
-# command will fail if the node is attached to a device or is
+# Deletes a block device that has been added using `blockdev-add`.
+# The command will fail if the node is attached to a device or is
 # otherwise being used.
 #
 # @node-name: Name of the graph node to delete.
@@ -4933,6 +5079,38 @@
 #     <- { "return": {} }
 ##
 { 'command': 'blockdev-del', 'data': { 'node-name': 'str' },
+  'allow-preconfig': true }
+
+##
+# @blockdev-set-active:
+#
+# Activate or inactivate a block device.  Use this to manage the
+# handover of block devices on migration with qemu-storage-daemon.
+#
+# Activating a node automatically activates all of its child nodes
+# first.  Inactivating a node automatically inactivates any of its
+# child nodes that are not in use by a still active node.
+#
+# @node-name: Name of the graph node to activate or inactivate.  By
+#     default, all nodes are affected by the operation.
+#
+# @active: true if the nodes should be active when the command returns
+#     success, false if they should be inactive.
+#
+# Since: 10.0
+#
+# .. qmp-example::
+#
+#     -> { "execute": "blockdev-set-active",
+#          "arguments": {
+#               "node-name": "node0",
+#               "active": false
+#          }
+#        }
+#     <- { "return": {} }
+##
+{ 'command': 'blockdev-set-active',
+  'data': { '*node-name': 'str', 'active': 'bool' },
   'allow-preconfig': true }
 
 ##
@@ -5064,10 +5242,10 @@
 ##
 # @BlockdevQcow2Version:
 #
-# @v2: The original QCOW2 format as introduced in qemu 0.10 (version
+# @v2: The original QCOW2 format as introduced in QEMU 0.10 (version
 #     2)
 #
-# @v3: The extended QCOW2 format as introduced in qemu 1.1 (version 3)
+# @v3: The extended QCOW2 format as introduced in QEMU 1.1 (version 3)
 #
 # Since: 2.12
 ##
@@ -5428,7 +5606,7 @@
 # @blockdev-create:
 #
 # Starts a job to create an image format on a given node.  The job is
-# automatically finalized, but a manual job-dismiss is required.
+# automatically finalized, but a manual `job-dismiss` is required.
 #
 # @job-id: Identifier for the newly created job.
 #
@@ -5487,8 +5665,8 @@
 # @x-blockdev-amend:
 #
 # Starts a job to amend format specific options of an existing open
-# block device The job is automatically finalized, but a manual
-# job-dismiss is required.
+# block device.  The job is automatically finalized, but a manual
+# `job-dismiss` is required.
 #
 # @job-id: Identifier for the newly created job.
 #
@@ -5496,7 +5674,7 @@
 #
 # @options: Options (driver specific)
 #
-# @force: Allow unsafe operations, format specific For luks that
+# @force: Allow unsafe operations, format specific.  For luks that
 #     allows erase of the last active keyslot (permanent loss of
 #     data), and replacement of an active keyslot (possible loss of
 #     data if IO error happens)
@@ -5557,10 +5735,10 @@
 #
 # @fatal: if set, the image is marked corrupt and therefore unusable
 #     after this event and must be repaired (Since 2.2; before, every
-#     BLOCK_IMAGE_CORRUPTED event was fatal)
+#     `BLOCK_IMAGE_CORRUPTED` event was fatal)
 #
-# .. note:: If action is "stop", a STOP event will eventually follow
-#    the BLOCK_IO_ERROR event.
+# .. note:: If action is "stop", a `STOP` event will eventually follow
+#    the `BLOCK_IO_ERROR` event.
 #
 # .. qmp-example::
 #
@@ -5601,15 +5779,15 @@
 #
 # @nospace: true if I/O error was caused due to a no-space condition.
 #     This key is only present if query-block's io-status is present,
-#     please see query-block documentation for more information
+#     please see `query-block` documentation for more information
 #     (since: 2.2)
 #
 # @reason: human readable string describing the error cause.  (This
 #     field is a debugging aid for humans, it should not be parsed by
 #     applications) (since: 2.2)
 #
-# .. note:: If action is "stop", a STOP event will eventually follow
-#    the BLOCK_IO_ERROR event.
+# .. note:: If action is "stop", a `STOP` event will eventually follow
+#    the `BLOCK_IO_ERROR` event.
 #
 # .. note:: This event is rate-limited.
 #
@@ -5751,7 +5929,7 @@
 # @speed: rate limit, bytes per second
 #
 # .. note:: The "ready to complete" status is always reset by a
-#    @BLOCK_JOB_ERROR event.
+#    `BLOCK_JOB_ERROR` event.
 #
 # Since: 1.3
 #
@@ -5773,9 +5951,9 @@
 # @BLOCK_JOB_PENDING:
 #
 # Emitted when a block job is awaiting explicit authorization to
-# finalize graph changes via @block-job-finalize.  If this job is part
-# of a transaction, it will not emit this event until the transaction
-# has converged first.
+# finalize graph changes via `job-finalize`.  If this job is part of a
+# transaction, it will not emit this event until the transaction has
+# converged first.
 #
 # @type: job type
 #
@@ -5822,7 +6000,7 @@
 # configured write threshold.  For thin-provisioned devices, this
 # means the device should be extended to avoid pausing for disk
 # exhaustion.  The event is one shot.  Once triggered, it needs to be
-# re-registered with another block-set-write-threshold command.
+# re-registered with another `block-set-write-threshold` command.
 #
 # @node-name: graph node name on which the threshold was exceeded.
 #
@@ -5871,34 +6049,30 @@
 ##
 # @x-blockdev-change:
 #
-# Dynamically reconfigure the block driver state graph.  It can be
-# used to add, remove, insert or replace a graph node.  Currently only
-# the Quorum driver implements this feature to add or remove its
-# child.  This is useful to fix a broken quorum child.
+# Dynamically reconfigure the block driver state graph.
 #
-# If @node is specified, it will be inserted under @parent.  @child
-# may not be specified in this case.  If both @parent and @child are
-# specified but @node is not, @child will be detached from @parent.
+# Currently only supports adding and deleting quorum children.  A
+# child will be added at the end of the list of children.  Its
+# contents *must* be consistent with the other childrens' contents.
+# Deleting a child that is not last in the list of children is
+# problematic, because it "renumbers" the children following it.
 #
 # @parent: the id or name of the parent node.
 #
-# @child: the name of a child under the given parent node.
+# @child: the name of a child to be deleted.  Mutually exclusive with
+#     @node.
 #
-# @node: the name of the node that will be added.
+# @node: the name of the node to be added.  Mutually exclusive with
+#     @child.
 #
 # Features:
 #
-# @unstable: This command is experimental, and its API is not stable.
-#     It does not support all kinds of operations, all kinds of
-#     children, nor all block drivers.
+# @unstable: This command is experimental.
 #
-#     FIXME Removing children from a quorum node means introducing
+# TODO: Removing children from a quorum node means introducing
 #     gaps in the child indices.  This cannot be represented in the
-#     'children' list of BlockdevOptionsQuorum, as returned by
+#     'children' list of `BlockdevOptionsQuorum`, as returned by
 #     .bdrv_refresh_filename().
-#
-#     Warning: The data in a new quorum child MUST be consistent with
-#     that of the rest of the array.
 #
 # Since: 2.7
 #
@@ -6110,7 +6284,7 @@
 # Synchronously delete an internal snapshot of a block device, when
 # the format of the image used support it.  The snapshot is identified
 # by name or id or both.  One of the name or id is required.  Return
-# SnapshotInfo for the successfully deleted snapshot.
+# `SnapshotInfo` for the successfully deleted snapshot.
 #
 # @device: the device name or node-name of a root node to delete the
 #     snapshot from
@@ -6118,9 +6292,6 @@
 # @id: optional the snapshot's ID to be deleted
 #
 # @name: optional the snapshot's name to be deleted
-#
-# Returns:
-#     SnapshotInfo
 #
 # Errors:
 #     - If @device is not a valid block device, GenericError

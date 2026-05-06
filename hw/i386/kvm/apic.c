@@ -14,9 +14,10 @@
 #include "qemu/module.h"
 #include "hw/i386/apic_internal.h"
 #include "hw/pci/msi.h"
-#include "sysemu/hw_accel.h"
-#include "sysemu/kvm.h"
+#include "system/hw_accel.h"
+#include "system/kvm.h"
 #include "kvm/kvm_i386.h"
+#include "kvm/tdx.h"
 
 static inline void kvm_apic_set_reg(struct kvm_lapic_state *kapic,
                                     int reg_id, uint32_t val)
@@ -59,9 +60,8 @@ static void kvm_put_apic_state(APICCommonState *s, struct kvm_lapic_state *kapic
     kvm_apic_set_reg(kapic, 0x3e, s->divide_conf);
 }
 
-void kvm_get_apic_state(DeviceState *dev, struct kvm_lapic_state *kapic)
+void kvm_get_apic_state(APICCommonState *s, struct kvm_lapic_state *kapic)
 {
-    APICCommonState *s = APIC_COMMON(dev);
     int i, v;
 
     if (kvm_has_x2apic_api() && s->apicbase & MSR_IA32_APICBASE_EXTD) {
@@ -141,6 +141,10 @@ static void kvm_apic_put(CPUState *cs, run_on_cpu_data data)
     struct kvm_lapic_state kapic;
     int ret;
 
+    if (is_tdx_vm()) {
+        return;
+    }
+
     kvm_put_apicbase(s->cpu, s->apicbase);
     kvm_put_apic_state(s, &kapic);
 
@@ -214,7 +218,7 @@ static void kvm_apic_mem_write(void *opaque, hwaddr addr,
 static const MemoryRegionOps kvm_apic_io_ops = {
     .read = kvm_apic_mem_read,
     .write = kvm_apic_mem_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
 static void kvm_apic_reset(APICCommonState *s)
@@ -240,7 +244,7 @@ static void kvm_apic_unrealize(DeviceState *dev)
 {
 }
 
-static void kvm_apic_class_init(ObjectClass *klass, void *data)
+static void kvm_apic_class_init(ObjectClass *klass, const void *data)
 {
     APICCommonClass *k = APIC_COMMON_CLASS(klass);
 

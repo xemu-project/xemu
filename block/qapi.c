@@ -33,13 +33,13 @@
 #include "qapi/qapi-commands-block-core.h"
 #include "qapi/qobject-output-visitor.h"
 #include "qapi/qapi-visit-block-core.h"
-#include "qapi/qmp/qbool.h"
-#include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qlist.h"
-#include "qapi/qmp/qnum.h"
-#include "qapi/qmp/qstring.h"
+#include "qobject/qbool.h"
+#include "qobject/qdict.h"
+#include "qobject/qlist.h"
+#include "qobject/qnum.h"
+#include "qobject/qstring.h"
 #include "qemu/qemu-print.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 
 BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
                                         BlockDriverState *bs,
@@ -51,6 +51,8 @@ BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
     ImageInfo *backing_info;
     BlockDriverState *backing;
     BlockDeviceInfo *info;
+    BlockdevChildList **children_list_tail;
+    BdrvChild *child;
 
     if (!bs->drv) {
         error_setg(errp, "Block device %s is ejected", bs->node_name);
@@ -63,6 +65,7 @@ BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
     info->file                   = g_strdup(bs->filename);
     info->ro                     = bdrv_is_read_only(bs);
     info->drv                    = g_strdup(bs->drv->format_name);
+    info->active                 = !bdrv_is_inactive(bs);
     info->encrypted              = bs->encrypted;
 
     info->cache = g_new(BlockdevCacheInfo, 1);
@@ -72,8 +75,14 @@ BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
         .no_flush       = !!(bs->open_flags & BDRV_O_NO_FLUSH),
     };
 
-    if (bs->node_name[0]) {
-        info->node_name = g_strdup(bs->node_name);
+    info->node_name = g_strdup(bs->node_name);
+
+    children_list_tail = &info->children;
+    QLIST_FOREACH(child, &bs->children, next) {
+        BlockdevChild *child_ref = g_new0(BlockdevChild, 1);
+        child_ref->child = g_strdup(child->name);
+        child_ref->node_name = g_strdup(child->bs->node_name);
+        QAPI_LIST_APPEND(children_list_tail, child_ref);
     }
 
     backing = bdrv_cow_bs(bs);
@@ -226,7 +235,8 @@ int bdrv_query_snapshot_info_list(BlockDriverState *bs,
  * in @info, setting @errp on error.
  */
 static void GRAPH_RDLOCK
-bdrv_do_query_node_info(BlockDriverState *bs, BlockNodeInfo *info, Error **errp)
+bdrv_do_query_node_info(BlockDriverState *bs, BlockNodeInfo *info, bool limits,
+                        Error **errp)
 {
     int64_t size;
     const char *backing_filename;
@@ -260,6 +270,33 @@ bdrv_do_query_node_info(BlockDriverState *bs, BlockNodeInfo *info, Error **errp)
         info->dirty_flag = bdi.is_dirty;
         info->has_dirty_flag = true;
     }
+
+    if (limits) {
+        info->limits = g_new(BlockLimitsInfo, 1);
+        *info->limits = (BlockLimitsInfo) {
+            .request_alignment          = bs->bl.request_alignment,
+            .has_max_discard            = bs->bl.max_pdiscard != 0,
+            .max_discard                = bs->bl.max_pdiscard,
+            .has_discard_alignment      = bs->bl.pdiscard_alignment != 0,
+            .discard_alignment          = bs->bl.pdiscard_alignment,
+            .has_max_write_zeroes       = bs->bl.max_pwrite_zeroes != 0,
+            .max_write_zeroes           = bs->bl.max_pwrite_zeroes,
+            .has_write_zeroes_alignment = bs->bl.pwrite_zeroes_alignment != 0,
+            .write_zeroes_alignment     = bs->bl.pwrite_zeroes_alignment,
+            .has_opt_transfer           = bs->bl.opt_transfer != 0,
+            .opt_transfer               = bs->bl.opt_transfer,
+            .has_max_transfer           = bs->bl.max_transfer != 0,
+            .max_transfer               = bs->bl.max_transfer,
+            .has_max_hw_transfer        = bs->bl.max_hw_transfer != 0,
+            .max_hw_transfer            = bs->bl.max_hw_transfer,
+            .max_iov                    = bs->bl.max_iov,
+            .has_max_hw_iov             = bs->bl.max_hw_iov != 0,
+            .max_hw_iov                 = bs->bl.max_hw_iov,
+            .min_mem_alignment          = bs->bl.min_mem_alignment,
+            .opt_mem_alignment          = bs->bl.opt_mem_alignment,
+        };
+    }
+
     info->format_specific = bdrv_get_specific_info(bs, &err);
     if (err) {
         error_propagate(errp, err);
@@ -334,7 +371,7 @@ void bdrv_query_image_info(BlockDriverState *bs,
     ImageInfo *info;
 
     info = g_new0(ImageInfo, 1);
-    bdrv_do_query_node_info(bs, qapi_ImageInfo_base(info), errp);
+    bdrv_do_query_node_info(bs, qapi_ImageInfo_base(info), true, errp);
     if (*errp) {
         goto fail;
     }
@@ -380,6 +417,7 @@ fail:
  */
 void bdrv_query_block_graph_info(BlockDriverState *bs,
                                  BlockGraphInfo **p_info,
+                                 bool limits,
                                  Error **errp)
 {
     ERRP_GUARD();
@@ -388,7 +426,7 @@ void bdrv_query_block_graph_info(BlockDriverState *bs,
     BdrvChild *c;
 
     info = g_new0(BlockGraphInfo, 1);
-    bdrv_do_query_node_info(bs, qapi_BlockGraphInfo_base(info), errp);
+    bdrv_do_query_node_info(bs, qapi_BlockGraphInfo_base(info), limits, errp);
     if (*errp) {
         goto fail;
     }
@@ -402,7 +440,7 @@ void bdrv_query_block_graph_info(BlockDriverState *bs,
         QAPI_LIST_APPEND(children_list_tail, c_info);
 
         c_info->name = g_strdup(c->name);
-        bdrv_query_block_graph_info(c->bs, &c_info->info, errp);
+        bdrv_query_block_graph_info(c->bs, &c_info->info, limits, errp);
         if (*errp) {
             goto fail;
         }
@@ -900,6 +938,29 @@ void bdrv_image_info_specific_dump(ImageInfoSpecific *info_spec,
 }
 
 /**
+ * Dumps the given BlockLimitsInfo object in a human-readable form,
+ * prepending an optional prefix if the dump is not empty.
+ */
+static void bdrv_image_info_limits_dump(BlockLimitsInfo *limits,
+                                        const char *prefix,
+                                        int indentation)
+{
+    QObject *obj;
+    Visitor *v = qobject_output_visitor_new(&obj);
+
+    visit_type_BlockLimitsInfo(v, NULL, &limits, &error_abort);
+    visit_complete(v, &obj);
+    if (!qobject_is_empty_dump(obj)) {
+        if (prefix) {
+            qemu_printf("%*s%s", indentation * 4, "", prefix);
+        }
+        dump_qobject(indentation + 1, obj);
+    }
+    qobject_unref(obj);
+    visit_free(v);
+}
+
+/**
  * Print the given @info object in human-readable form.  Every field is indented
  * using the given @indentation (four spaces per indentation level).
  *
@@ -972,6 +1033,12 @@ void bdrv_node_info_dump(BlockNodeInfo *info, int indentation, bool protocol)
             qemu_printf("%sbacking file format: %s\n",
                         ind_s, info->backing_filename_format);
         }
+    }
+
+    if (info->limits) {
+        bdrv_image_info_limits_dump(info->limits,
+                                    "Block limits:\n",
+                                    indentation);
     }
 
     if (info->has_snapshots) {

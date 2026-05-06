@@ -48,7 +48,7 @@
 #include "hw/pci-host/bonito.h"
 #include "hw/pci/pci_host.h"
 #include "migration/vmstate.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "hw/misc/unimp.h"
 #include "hw/registerfields.h"
 #include "qom/object.h"
@@ -230,7 +230,9 @@ struct PCIBonitoState {
     MemoryRegion bonito_localio;
 
 };
-typedef struct PCIBonitoState PCIBonitoState;
+
+#define TYPE_PCI_BONITO "Bonito"
+OBJECT_DECLARE_SIMPLE_TYPE(PCIBonitoState, PCI_BONITO)
 
 struct BonitoState {
     PCIHostState parent_obj;
@@ -238,9 +240,6 @@ struct BonitoState {
     PCIBonitoState *pci_dev;
     MemoryRegion pci_mem;
 };
-
-#define TYPE_PCI_BONITO "Bonito"
-OBJECT_DECLARE_SIMPLE_TYPE(PCIBonitoState, PCI_BONITO)
 
 static void bonito_writel(void *opaque, hwaddr addr,
                           uint64_t val, unsigned size)
@@ -757,7 +756,7 @@ PCIBus *bonito_init(qemu_irq *pic)
     return phb->bus;
 }
 
-static void bonito_pci_class_init(ObjectClass *klass, void *data)
+static void bonito_pci_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -783,13 +782,13 @@ static const TypeInfo bonito_pci_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIBonitoState),
     .class_init    = bonito_pci_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },
 };
 
-static void bonito_host_class_init(ObjectClass *klass, void *data)
+static void bonito_host_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

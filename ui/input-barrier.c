@@ -11,7 +11,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "qemu/main-loop.h"
 #include "qemu/sockets.h"
 #include "qapi/error.h"
@@ -490,7 +490,6 @@ static gboolean input_barrier_event(QIOChannel *ioc G_GNUC_UNUSED,
 static void input_barrier_complete(UserCreatable *uc, Error **errp)
 {
     InputBarrier *ib = INPUT_BARRIER(uc);
-    Error *local_err = NULL;
 
     if (!ib->name) {
         error_setg(errp, QERR_MISSING_PARAMETER, "name");
@@ -506,9 +505,7 @@ static void input_barrier_complete(UserCreatable *uc, Error **errp)
     ib->sioc = qio_channel_socket_new();
     qio_channel_set_name(QIO_CHANNEL(ib->sioc), "barrier-client");
 
-    qio_channel_socket_connect_sync(ib->sioc, &ib->saddr, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (qio_channel_socket_connect_sync(ib->sioc, &ib->saddr, errp) < 0) {
         return;
     }
 
@@ -696,7 +693,7 @@ static void input_barrier_instance_init(Object *obj)
     ib->height = 1080;
 }
 
-static void input_barrier_class_init(ObjectClass *oc, void *data)
+static void input_barrier_class_init(ObjectClass *oc, const void *data)
 {
     UserCreatableClass *ucc = USER_CREATABLE_CLASS(oc);
 
@@ -732,7 +729,7 @@ static const TypeInfo input_barrier_info = {
     .instance_size = sizeof(InputBarrier),
     .instance_init = input_barrier_instance_init,
     .instance_finalize = input_barrier_instance_finalize,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_USER_CREATABLE },
         { }
     }
