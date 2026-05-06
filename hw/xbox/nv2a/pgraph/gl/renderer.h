@@ -28,6 +28,7 @@
 #include "qemu/lru.h"
 
 #include "hw/hw.h"
+#include "hw/xbox/nv2a/pgraph/prim_rewrite.h"
 
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/nv2a_regs.h"
@@ -182,6 +183,8 @@ typedef struct PGRAPHGLState {
     GLuint gl_memory_buffer;
     GLuint gl_vertex_array;
     GLuint gl_inline_buffer[NV2A_VERTEXSHADER_ATTRIBUTES];
+    GLuint gl_prim_rewrite_buffer;
+    PrimRewriteBuf prim_rewrite_buf;
 
     QTAILQ_HEAD(, SurfaceBinding) surfaces;
     SurfaceBinding *color_binding, *zeta_binding;
@@ -291,8 +294,4 @@ void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg);
 void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale);
 unsigned int pgraph_gl_get_surface_scale_factor(NV2AState *d);
 int pgraph_gl_get_framebuffer_surface(NV2AState *d);
-/**  Note: The caller must set up a clean GL context before invoking. */
-void pgraph_gl_determine_gpu_properties(void);
-GPUProperties *pgraph_gl_get_gpu_properties(void);
-
 #endif
