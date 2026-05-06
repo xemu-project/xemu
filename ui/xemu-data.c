@@ -17,7 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,7 +38,7 @@ const char *xemu_get_resource_path(const char *filename)
 	// Allocate an arbitrarily long buffer for resource path storage FIXME: This
 	// could be done better with a growing printf. Keep it simple for now.
 	const size_t resource_path_buffer_len = 1024;
-	static char *sdl_base_path = NULL;
+	static const char *sdl_base_path = NULL;
 	static char *resource_path = NULL;
 
 	if (!sdl_base_path) {

@@ -17,6 +17,7 @@ struct RAMFBStandaloneState {
     QemuConsole *con;
     RAMFBState *state;
     bool migrate;
+    bool use_legacy_x86_rom;
 };
 
 static void display_update_wrapper(void *dev)
@@ -39,7 +40,7 @@ static void ramfb_realizefn(DeviceState *dev, Error **errp)
     RAMFBStandaloneState *ramfb = RAMFB(dev);
 
     ramfb->con = graphic_console_init(dev, 0, &wrapper_ops, dev);
-    ramfb->state = ramfb_setup(errp);
+    ramfb->state = ramfb_setup(ramfb->use_legacy_x86_rom, errp);
 }
 
 static bool migrate_needed(void *opaque)
@@ -60,12 +61,13 @@ static const VMStateDescription ramfb_dev_vmstate = {
     }
 };
 
-static Property ramfb_properties[] = {
+static const Property ramfb_properties[] = {
     DEFINE_PROP_BOOL("x-migrate", RAMFBStandaloneState, migrate,  true),
-    DEFINE_PROP_END_OF_LIST(),
+    DEFINE_PROP_BOOL("use-legacy-x86-rom", RAMFBStandaloneState,
+                     use_legacy_x86_rom, false),
 };
 
-static void ramfb_class_initfn(ObjectClass *klass, void *data)
+static void ramfb_class_initfn(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -73,13 +75,12 @@ static void ramfb_class_initfn(ObjectClass *klass, void *data)
     dc->vmsd = &ramfb_dev_vmstate;
     dc->realize = ramfb_realizefn;
     dc->desc = "ram framebuffer standalone device";
-    dc->user_creatable = true;
     device_class_set_props(dc, ramfb_properties);
 }
 
 static const TypeInfo ramfb_info = {
     .name          = TYPE_RAMFB_DEVICE,
-    .parent        = TYPE_SYS_BUS_DEVICE,
+    .parent        = TYPE_DYNAMIC_SYS_BUS_DEVICE,
     .instance_size = sizeof(RAMFBStandaloneState),
     .class_init    = ramfb_class_initfn,
 };

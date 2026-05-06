@@ -62,8 +62,8 @@
 #include "block/block.h"
 #include "block/block_int.h"
 #include "block/dirty-bitmap.h"
-#include "sysemu/block-backend.h"
-#include "sysemu/runstate.h"
+#include "system/block-backend.h"
+#include "system/runstate.h"
 #include "qemu/main-loop.h"
 #include "qemu/error-report.h"
 #include "migration/misc.h"
@@ -1248,8 +1248,7 @@ static bool dirty_bitmap_has_postcopy(void *opaque)
 
 static SaveVMHandlers savevm_dirty_bitmap_handlers = {
     .save_setup = dirty_bitmap_save_setup,
-    .save_live_complete_postcopy = dirty_bitmap_save_complete,
-    .save_live_complete_precopy = dirty_bitmap_save_complete,
+    .save_complete = dirty_bitmap_save_complete,
     .has_postcopy = dirty_bitmap_has_postcopy,
     .state_pending_exact = dirty_bitmap_state_pending,
     .state_pending_estimate = dirty_bitmap_state_pending,

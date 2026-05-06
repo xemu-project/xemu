@@ -18,15 +18,15 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/audio/soundhw.h"
-#include "audio/audio.h"
+#include "hw/audio/model.h"
+#include "qemu/audio.h"
 #include "hw/pci/pci_device.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
 #include "qemu/module.h"
-#include "sysemu/dma.h"
+#include "system/dma.h"
 #include "qom/object.h"
-
+#include "qemu/error-report.h"
 #include "ac97_int.h"
 #include "ac97.h"
 
@@ -107,11 +107,12 @@ enum {
     BUP_LAST = 2
 };
 
-#ifdef DEBUG_AC97
-#define dolog(...) AUD_log("ac97", __VA_ARGS__)
-#else
-#define dolog(...)
-#endif
+#define DEBUG_AC97 0
+#define dolog(fmt, ...) do { \
+        if (DEBUG_AC97) { \
+            error_report("ac97: " fmt, ##__VA_ARGS__); \
+        } \
+    } while (0)
 
 #define MKREGS(prefix, start)                   \
 enum {                                          \
@@ -164,7 +165,7 @@ static void fetch_bd(AC97LinkState *s, AC97BusMasterRegs *r)
     r->bd.addr = le32_to_cpu(*(uint32_t *) &b[0]) & ~3;
     r->bd.ctl_len = le32_to_cpu(*(uint32_t *) &b[4]);
     r->picb = r->bd.ctl_len & 0xffff;
-    dolog("bd %2d addr=0x%x ctl=0x%06x len=0x%x(%d bytes)\n",
+    dolog("bd %2d addr=0x%x ctl=0x%06x len=0x%x(%d bytes)",
           r->civ, r->bd.addr, r->bd.ctl_len >> 16,
           r->bd.ctl_len & 0xffff, (r->bd.ctl_len & 0xffff) << 1);
 }
@@ -199,7 +200,7 @@ static void update_sr(AC97LinkState *s, AC97BusMasterRegs *r, uint32_t new_sr)
 
     r->sr = new_sr;
 
-    dolog("IOC%d LVB%d sr=0x%x event=%d level=%d\n",
+    dolog("IOC%d LVB%d sr=0x%x event=%d level=%d",
           r->sr & SR_BCIS, r->sr & SR_LVBCI, r->sr, event, level);
 
     if (!event) {
@@ -207,13 +208,13 @@ static void update_sr(AC97LinkState *s, AC97BusMasterRegs *r, uint32_t new_sr)
     }
 
     if (level) {
-      s->glob_sta |= masks[r - s->bm_regs];
-      dolog("set irq level=1\n");
-      pci_irq_assert(s->pci_dev);
+        s->glob_sta |= masks[r - s->bm_regs];
+        dolog("set irq level=1");
+        pci_irq_assert(s->pci_dev);
     } else {
-      s->glob_sta &= ~masks[r - s->bm_regs];
-      dolog("set irq level=0\n");
-      pci_irq_deassert(s->pci_dev);
+        s->glob_sta &= ~masks[r - s->bm_regs];
+        dolog("set irq level=0");
+        pci_irq_deassert(s->pci_dev);
     }
 }
 
@@ -240,14 +241,14 @@ static void voice_set_active(AC97LinkState *s, int bm_index, int on)
         break;
 
     default:
-        AUD_log("ac97", "invalid bm_index(%d) in voice_set_active\n", bm_index);
+        error_report("ac97: invalid bm_index(%d) in voice_set_active", bm_index);
         break;
     }
 }
 
 static void reset_bm_regs(AC97LinkState *s, AC97BusMasterRegs *r)
 {
-    dolog("reset_bm_regs\n");
+    dolog("reset_bm_regs");
     r->bdbar = 0;
     r->civ = 0;
     r->lvi = 0;
@@ -265,7 +266,7 @@ static void reset_bm_regs(AC97LinkState *s, AC97BusMasterRegs *r)
 static void mixer_store(AC97LinkState *s, uint32_t i, uint16_t v)
 {
     if (i + 2 > sizeof(s->mixer_data)) {
-        dolog("mixer_store: index %d out of bounds %zd\n",
+        dolog("mixer_store: index %d out of bounds %zd",
               i, sizeof(s->mixer_data));
         return;
     }
@@ -279,7 +280,7 @@ static uint16_t mixer_load(AC97LinkState *s, uint32_t i)
     uint16_t val = 0xffff;
 
     if (i + 2 > sizeof(s->mixer_data)) {
-        dolog("mixer_load: index %d out of bounds %zd\n",
+        dolog("mixer_load: index %d out of bounds %zd",
               i, sizeof(s->mixer_data));
     } else {
         val = s->mixer_data[i + 0] | (s->mixer_data[i + 1] << 8);
@@ -303,7 +304,7 @@ static void open_voice(AC97LinkState *s, int index, int freq)
         case PI_INDEX:
 #ifndef XBOX
             s->voice_pi = AUD_open_in(
-                &s->card,
+                s->audio_be,
                 s->voice_pi,
                 "ac97.pi",
                 s,
@@ -315,7 +316,7 @@ static void open_voice(AC97LinkState *s, int index, int freq)
 
         case PO_INDEX:
             s->voice_po = AUD_open_out(
-                &s->card,
+                s->audio_be,
                 s->voice_po,
                 "ac97.po",
                 s,
@@ -327,7 +328,7 @@ static void open_voice(AC97LinkState *s, int index, int freq)
         case MC_INDEX:
 #ifndef XBOX
             s->voice_mc = AUD_open_in(
-                &s->card,
+                s->audio_be,
                 s->voice_mc,
                 "ac97.mc",
                 s,
@@ -345,19 +346,19 @@ static void open_voice(AC97LinkState *s, int index, int freq)
         switch (index) {
         case PI_INDEX:
 #ifndef XBOX
-            AUD_close_in(&s->card, s->voice_pi);
+            AUD_close_in(s->audio_be, s->voice_pi);
 #endif
             s->voice_pi = NULL;
             break;
 
         case PO_INDEX:
-            AUD_close_out(&s->card, s->voice_po);
+            AUD_close_out(s->audio_be, s->voice_po);
             s->voice_po = NULL;
             break;
 
         case MC_INDEX:
 #ifndef XBOX
-            AUD_close_in(&s->card, s->voice_mc);
+            AUD_close_in(s->audio_be, s->voice_mc);
 #endif
             s->voice_mc = NULL;
             break;
@@ -416,7 +417,7 @@ static void update_combined_volume_out(AC97LinkState *s)
     lvol = (lvol * plvol) / 255;
     rvol = (rvol * prvol) / 255;
 
-    AUD_set_volume_out(s->voice_po, mute, lvol, rvol);
+    AUD_set_volume_out_lr(s->voice_po, mute, lvol, rvol);
 }
 
 static void update_volume_in(AC97LinkState *s)
@@ -428,7 +429,7 @@ static void update_volume_in(AC97LinkState *s)
                &mute, &lvol, &rvol);
 
 #ifndef XBOX
-    AUD_set_volume_in(s->voice_pi, mute, lvol, rvol);
+    AUD_set_volume_in_lr(s->voice_pi, mute, lvol, rvol);
 #endif
 }
 
@@ -464,7 +465,7 @@ static void mixer_reset(AC97LinkState *s)
 {
     uint8_t active[LAST_INDEX];
 
-    dolog("mixer_reset\n");
+    dolog("mixer_reset");
     memset(s->mixer_data, 0, sizeof(s->mixer_data));
     memset(active, 0, sizeof(active));
     mixer_store(s, AC97_Reset, 0x0000); /* 6940 */
@@ -512,7 +513,7 @@ static void mixer_reset(AC97LinkState *s)
 static uint32_t nam_readb(void *opaque, uint32_t addr)
 {
     AC97LinkState *s = opaque;
-    dolog("U nam readb 0x%x\n", addr);
+    dolog("U nam readb 0x%x", addr);
     s->cas = 0;
     return ~0U;
 }
@@ -527,7 +528,7 @@ static uint32_t nam_readw(void *opaque, uint32_t addr)
 static uint32_t nam_readl(void *opaque, uint32_t addr)
 {
     AC97LinkState *s = opaque;
-    dolog("U nam readl 0x%x\n", addr);
+    dolog("U nam readl 0x%x", addr);
     s->cas = 0;
     return ~0U;
 }
@@ -539,7 +540,7 @@ static uint32_t nam_readl(void *opaque, uint32_t addr)
 static void nam_writeb(void *opaque, uint32_t addr, uint32_t val)
 {
     AC97LinkState *s = opaque;
-    dolog("U nam writeb 0x%x <- 0x%x\n", addr, val);
+    dolog("U nam writeb 0x%x <- 0x%x", addr, val);
     s->cas = 0;
 }
 
@@ -567,10 +568,10 @@ static void nam_writew(void *opaque, uint32_t addr, uint32_t val)
         break;
     case AC97_Vendor_ID1:
     case AC97_Vendor_ID2:
-        dolog("Attempt to write vendor ID to 0x%x\n", val);
+        dolog("Attempt to write vendor ID to 0x%x", val);
         break;
     case AC97_Extended_Audio_ID:
-        dolog("Attempt to write extended audio ID to 0x%x\n", val);
+        dolog("Attempt to write extended audio ID to 0x%x", val);
         break;
     case AC97_Extended_Audio_Ctrl_Stat:
         if (!(val & EACS_VRA)) {
@@ -583,36 +584,36 @@ static void nam_writew(void *opaque, uint32_t addr, uint32_t val)
             mixer_store(s, AC97_MIC_ADC_Rate, 0xbb80);
             open_voice(s, MC_INDEX, 48000);
         }
-        dolog("Setting extended audio control to 0x%x\n", val);
+        dolog("Setting extended audio control to 0x%x", val);
         mixer_store(s, AC97_Extended_Audio_Ctrl_Stat, val);
         break;
     case AC97_PCM_Front_DAC_Rate:
         if (mixer_load(s, AC97_Extended_Audio_Ctrl_Stat) & EACS_VRA) {
             mixer_store(s, addr, val);
-            dolog("Set front DAC rate to %d\n", val);
+            dolog("Set front DAC rate to %d", val);
             open_voice(s, PO_INDEX, val);
         } else {
-            dolog("Attempt to set front DAC rate to %d, but VRA is not set\n",
+            dolog("Attempt to set front DAC rate to %d, but VRA is not set",
                   val);
         }
         break;
     case AC97_MIC_ADC_Rate:
         if (mixer_load(s, AC97_Extended_Audio_Ctrl_Stat) & EACS_VRM) {
             mixer_store(s, addr, val);
-            dolog("Set MIC ADC rate to %d\n", val);
+            dolog("Set MIC ADC rate to %d", val);
             open_voice(s, MC_INDEX, val);
         } else {
-            dolog("Attempt to set MIC ADC rate to %d, but VRM is not set\n",
+            dolog("Attempt to set MIC ADC rate to %d, but VRM is not set",
                   val);
         }
         break;
     case AC97_PCM_LR_ADC_Rate:
         if (mixer_load(s, AC97_Extended_Audio_Ctrl_Stat) & EACS_VRA) {
             mixer_store(s, addr, val);
-            dolog("Set front LR ADC rate to %d\n", val);
+            dolog("Set front LR ADC rate to %d", val);
             open_voice(s, PI_INDEX, val);
         } else {
-            dolog("Attempt to set LR ADC rate to %d, but VRA is not set\n",
+            dolog("Attempt to set LR ADC rate to %d, but VRA is not set",
                   val);
         }
         break;
@@ -634,7 +635,7 @@ static void nam_writew(void *opaque, uint32_t addr, uint32_t val)
         /* None of the features in these regs are emulated, so they are RO */
         break;
     default:
-        dolog("U nam writew 0x%x <- 0x%x\n", addr, val);
+        dolog("U nam writew 0x%x <- 0x%x", addr, val);
         mixer_store(s, addr, val);
         assert(0);
         break;
@@ -644,7 +645,7 @@ static void nam_writew(void *opaque, uint32_t addr, uint32_t val)
 static void nam_writel(void *opaque, uint32_t addr, uint32_t val)
 {
     AC97LinkState *s = opaque;
-    dolog("U nam writel 0x%x <- 0x%x\n", addr, val);
+    dolog("U nam writel 0x%x <- 0x%x", addr, val);
     s->cas = 0;
 }
 
@@ -660,7 +661,7 @@ static uint32_t nabm_readb(void *opaque, uint32_t addr)
 
     switch (addr) {
     case CAS:
-        dolog("CAS %d\n", s->cas);
+        dolog("CAS %d", s->cas);
         val = s->cas;
         s->cas = 1;
         break;
@@ -670,7 +671,7 @@ static uint32_t nabm_readb(void *opaque, uint32_t addr)
     case SO_CIV:
         r = &s->bm_regs[GET_BM(addr)];
         val = r->civ;
-        dolog("CIV[%d] -> 0x%x\n", GET_BM(addr), val);
+        dolog("CIV[%d] -> 0x%x", GET_BM(addr), val);
         break;
     case PI_LVI:
     case PO_LVI:
@@ -678,7 +679,7 @@ static uint32_t nabm_readb(void *opaque, uint32_t addr)
     case SO_LVI:
         r = &s->bm_regs[GET_BM(addr)];
         val = r->lvi;
-        dolog("LVI[%d] -> 0x%x\n", GET_BM(addr), val);
+        dolog("LVI[%d] -> 0x%x", GET_BM(addr), val);
         break;
     case PI_PIV:
     case PO_PIV:
@@ -686,7 +687,7 @@ static uint32_t nabm_readb(void *opaque, uint32_t addr)
     case SO_PIV:
         r = &s->bm_regs[GET_BM(addr)];
         val = r->piv;
-        dolog("PIV[%d] -> 0x%x\n", GET_BM(addr), val);
+        dolog("PIV[%d] -> 0x%x", GET_BM(addr), val);
         break;
     case PI_CR:
     case PO_CR:
@@ -694,7 +695,7 @@ static uint32_t nabm_readb(void *opaque, uint32_t addr)
     case SO_CR:
         r = &s->bm_regs[GET_BM(addr)];
         val = r->cr;
-        dolog("CR[%d] -> 0x%x\n", GET_BM(addr), val);
+        dolog("CR[%d] -> 0x%x", GET_BM(addr), val);
         break;
     case PI_SR:
     case PO_SR:
@@ -702,10 +703,10 @@ static uint32_t nabm_readb(void *opaque, uint32_t addr)
     case SO_SR:
         r = &s->bm_regs[GET_BM(addr)];
         val = r->sr & 0xff;
-        dolog("SRb[%d] -> 0x%x\n", GET_BM(addr), val);
+        dolog("SRb[%d] -> 0x%x", GET_BM(addr), val);
         break;
     default:
-        dolog("U nabm readb 0x%x -> 0x%x\n", addr, val);
+        dolog("U nabm readb 0x%x -> 0x%x", addr, val);
         assert(0);
         break;
     }
@@ -725,7 +726,7 @@ static uint32_t nabm_readw(void *opaque, uint32_t addr)
     case SO_SR:
         r = &s->bm_regs[GET_BM(addr)];
         val = r->sr;
-        dolog("SR[%d] -> 0x%x\n", GET_BM(addr), val);
+        dolog("SR[%d] -> 0x%x", GET_BM(addr), val);
         break;
     case PI_PICB:
     case PO_PICB:
@@ -733,10 +734,10 @@ static uint32_t nabm_readw(void *opaque, uint32_t addr)
     case SO_PICB:
         r = &s->bm_regs[GET_BM(addr)];
         val = r->picb;
-        dolog("PICB[%d] -> 0x%x\n", GET_BM(addr), val);
+        dolog("PICB[%d] -> 0x%x", GET_BM(addr), val);
         break;
     default:
-        dolog("U nabm readw 0x%x -> 0x%x\n", addr, val);
+        dolog("U nabm readw 0x%x -> 0x%x", addr, val);
         val = nabm_readb(opaque, addr) | (nabm_readb(opaque, addr + 1) << 8);
         break;
     }
@@ -756,7 +757,7 @@ static uint32_t nabm_readl(void *opaque, uint32_t addr)
     case SO_BDBAR:
         r = &s->bm_regs[GET_BM(addr)];
         val = r->bdbar;
-        dolog("BMADDR[%d] -> 0x%x\n", GET_BM(addr), val);
+        dolog("BMADDR[%d] -> 0x%x", GET_BM(addr), val);
         break;
     case PI_CIV:
     case PO_CIV:
@@ -764,7 +765,7 @@ static uint32_t nabm_readl(void *opaque, uint32_t addr)
     case SO_CIV:
         r = &s->bm_regs[GET_BM(addr)];
         val = r->civ | (r->lvi << 8) | (r->sr << 16);
-        dolog("CIV LVI SR[%d] -> 0x%x, 0x%x, 0x%x\n", GET_BM(addr),
+        dolog("CIV LVI SR[%d] -> 0x%x, 0x%x, 0x%x", GET_BM(addr),
                r->civ, r->lvi, r->sr);
         break;
     case PI_PICB:
@@ -773,19 +774,19 @@ static uint32_t nabm_readl(void *opaque, uint32_t addr)
     case SO_PICB:
         r = &s->bm_regs[GET_BM(addr)];
         val = r->picb | (r->piv << 16) | (r->cr << 24);
-        dolog("PICB PIV CR[%d] -> 0x%x 0x%x 0x%x 0x%x\n", GET_BM(addr),
+        dolog("PICB PIV CR[%d] -> 0x%x 0x%x 0x%x 0x%x", GET_BM(addr),
                val, r->picb, r->piv, r->cr);
         break;
     case GLOB_CNT:
         val = s->glob_cnt;
-        dolog("glob_cnt -> 0x%x\n", val);
+        dolog("glob_cnt -> 0x%x", val);
         break;
     case GLOB_STA:
         val = s->glob_sta | GS_S0CR;
-        dolog("glob_sta -> 0x%x\n", val);
+        dolog("glob_sta -> 0x%x", val);
         break;
     default:
-        dolog("U nabm readl 0x%x -> 0x%x\n", addr, val);
+        dolog("U nabm readl 0x%x -> 0x%x", addr, val);
         val = nabm_readw(opaque, addr) | (nabm_readw(opaque, addr + 2) << 16);
         break;
     }
@@ -814,7 +815,7 @@ static void nabm_writeb(void *opaque, uint32_t addr, uint32_t val)
             fetch_bd(s, r);
         }
         r->lvi = val % 32;
-        dolog("LVI[%d] <- 0x%x\n", GET_BM(addr), val);
+        dolog("LVI[%d] <- 0x%x", GET_BM(addr), val);
         break;
     case PI_CR:
     case PO_CR:
@@ -836,7 +837,7 @@ static void nabm_writeb(void *opaque, uint32_t addr, uint32_t val)
                 voice_set_active(s, r - s->bm_regs, 1);
             }
         }
-        dolog("CR[%d] <- 0x%x (cr 0x%x)\n", GET_BM(addr), val, r->cr);
+        dolog("CR[%d] <- 0x%x (cr 0x%x)", GET_BM(addr), val, r->cr);
         break;
     case PI_SR:
     case PO_SR:
@@ -845,10 +846,10 @@ static void nabm_writeb(void *opaque, uint32_t addr, uint32_t val)
         r = &s->bm_regs[GET_BM(addr)];
         r->sr |= val & ~(SR_RO_MASK | SR_WCLEAR_MASK);
         update_sr(s, r, r->sr & ~(val & SR_WCLEAR_MASK));
-        dolog("SR[%d] <- 0x%x (sr 0x%x)\n", GET_BM(addr), val, r->sr);
+        dolog("SR[%d] <- 0x%x (sr 0x%x)", GET_BM(addr), val, r->sr);
         break;
     default:
-        dolog("U nabm writeb 0x%x <- 0x%x\n", addr, val);
+        dolog("U nabm writeb 0x%x <- 0x%x", addr, val);
         break;
     }
 }
@@ -866,10 +867,10 @@ static void nabm_writew(void *opaque, uint32_t addr, uint32_t val)
         r = &s->bm_regs[GET_BM(addr)];
         r->sr |= val & ~(SR_RO_MASK | SR_WCLEAR_MASK);
         update_sr(s, r, r->sr & ~(val & SR_WCLEAR_MASK));
-        dolog("SR[%d] <- 0x%x (sr 0x%x)\n", GET_BM(addr), val, r->sr);
+        dolog("SR[%d] <- 0x%x (sr 0x%x)", GET_BM(addr), val, r->sr);
         break;
     default:
-        dolog("U nabm writew 0x%x <- 0x%x\n", addr, val);
+        dolog("U nabm writew 0x%x <- 0x%x", addr, val);
         nabm_writeb(opaque, addr, val & 0xff);
         nabm_writeb(opaque, addr + 1, (val >> 8) & 0xff);
         break;
@@ -888,22 +889,22 @@ static void nabm_writel(void *opaque, uint32_t addr, uint32_t val)
     case SO_BDBAR:
         r = &s->bm_regs[GET_BM(addr)];
         r->bdbar = val & ~3;
-        dolog("BDBAR[%d] <- 0x%x (bdbar 0x%x)\n", GET_BM(addr), val, r->bdbar);
+        dolog("BDBAR[%d] <- 0x%x (bdbar 0x%x)", GET_BM(addr), val, r->bdbar);
         break;
     case GLOB_CNT:
         /* TODO: Handle WR or CR being set (warm/cold reset requests) */
         if (!(val & (GC_WR | GC_CR))) {
             s->glob_cnt = val & GC_VALID_MASK;
         }
-        dolog("glob_cnt <- 0x%x (glob_cnt 0x%x)\n", val, s->glob_cnt);
+        dolog("glob_cnt <- 0x%x (glob_cnt 0x%x)", val, s->glob_cnt);
         break;
     case GLOB_STA:
         s->glob_sta &= ~(val & GS_WCLEAR_MASK);
         s->glob_sta |= (val & ~(GS_WCLEAR_MASK | GS_RO_MASK)) & GS_VALID_MASK;
-        dolog("glob_sta <- 0x%x (glob_sta 0x%x)\n", val, s->glob_sta);
+        dolog("glob_sta <- 0x%x (glob_sta 0x%x)", val, s->glob_sta);
         break;
     default:
-        dolog("U nabm writel 0x%x <- 0x%x\n", addr, val);
+        dolog("U nabm writel 0x%x <- 0x%x", addr, val);
         nabm_writew(opaque, addr, val & 0xffff);
         nabm_writew(opaque, addr + 2, (val >> 16) & 0xffff);
         break;
@@ -913,7 +914,7 @@ static void nabm_writel(void *opaque, uint32_t addr, uint32_t val)
 static int write_audio(AC97LinkState *s, AC97BusMasterRegs *r,
                        int max, int *stop)
 {
-    uint8_t tmpbuf[4096];
+    QEMU_UNINITIALIZED uint8_t tmpbuf[4096];
     uint32_t addr = r->bd.addr;
     uint32_t temp = r->picb << 1;
     uint32_t written = 0;
@@ -930,7 +931,7 @@ static int write_audio(AC97LinkState *s, AC97BusMasterRegs *r,
         to_copy = MIN(temp, sizeof(tmpbuf));
         dma_memory_read(s->as, addr, tmpbuf, to_copy, MEMTXATTRS_UNSPECIFIED);
         copied = AUD_write(s->voice_po, tmpbuf, to_copy);
-        dolog("write_audio max=%x to_copy=%x copied=%x\n",
+        dolog("write_audio max=%x to_copy=%x copied=%x",
               max, to_copy, copied);
         if (!copied) {
             *stop = 1;
@@ -943,7 +944,7 @@ static int write_audio(AC97LinkState *s, AC97BusMasterRegs *r,
 
     if (!temp) {
         if (to_copy < 4) {
-            dolog("whoops\n");
+            dolog("whoops");
             s->last_samp = 0;
         } else {
             s->last_samp = *(uint32_t *)&tmpbuf[to_copy - 4];
@@ -956,7 +957,7 @@ static int write_audio(AC97LinkState *s, AC97BusMasterRegs *r,
 
 static void write_bup(AC97LinkState *s, int elapsed)
 {
-    dolog("write_bup\n");
+    dolog("write_bup");
     if (!(s->bup_flag & BUP_SET)) {
         if (s->bup_flag & BUP_LAST) {
             int i;
@@ -986,7 +987,7 @@ static void write_bup(AC97LinkState *s, int elapsed)
 static int read_audio(AC97LinkState *s, AC97BusMasterRegs *r,
                       int max, int *stop)
 {
-    uint8_t tmpbuf[4096];
+    QEMU_UNINITIALIZED uint8_t tmpbuf[4096];
     uint32_t addr = r->bd.addr;
     uint32_t temp = r->picb << 1;
     uint32_t nread = 0;
@@ -1028,7 +1029,7 @@ static void transfer_audio(AC97LinkState *s, int index, int elapsed)
     int stop = 0;
 
     if (s->invalid_freq[index]) {
-        AUD_log("ac97", "attempt to use voice %d with invalid frequency %d\n",
+        error_report("ac97: attempt to use voice %d with invalid frequency %d",
                 index, s->invalid_freq[index]);
         return;
     }
@@ -1048,12 +1049,12 @@ static void transfer_audio(AC97LinkState *s, int index, int elapsed)
         int temp;
 
         if (!r->bd_valid) {
-            dolog("invalid bd\n");
+            dolog("invalid bd");
             fetch_bd(s, r);
         }
 
         if (!r->picb) {
-            dolog("fresh bd %d is empty 0x%x 0x%x\n",
+            dolog("fresh bd %d is empty 0x%x 0x%x",
                   r->civ, r->bd.addr, r->bd.ctl_len);
             if (r->civ == r->lvi) {
                 r->sr |= SR_DCH; /* CELV? */
@@ -1090,7 +1091,7 @@ static void transfer_audio(AC97LinkState *s, int index, int elapsed)
             }
 
             if (r->civ == r->lvi) {
-                dolog("Underrun civ (%d) == lvi (%d)\n", r->civ, r->lvi);
+                dolog("Underrun civ (%d) == lvi (%d)", r->civ, r->lvi);
 
                 new_sr |= SR_LVBCI | SR_DCH | SR_CELV;
                 stop = 1;
@@ -1190,7 +1191,7 @@ static const VMStateDescription vmstate_ac97 = {
 
 static uint64_t nam_read(void *opaque, hwaddr addr, unsigned size)
 {
-    dolog("nam_read [0x%llx] (%d)\n", addr, size);
+    dolog("nam_read [0x%"HWADDR_PRIx"] (%d)\n", addr, size);
 
     if ((addr / size) > 256) {
         return -1;
@@ -1211,7 +1212,7 @@ static uint64_t nam_read(void *opaque, hwaddr addr, unsigned size)
 static void nam_write(void *opaque, hwaddr addr, uint64_t val,
                       unsigned size)
 {
-    dolog("nam_write [0x%llx] = 0x%llx (%d)\n", addr, val, size);
+    dolog("nam_write [0x%"HWADDR_PRIx"] = 0x%"PRIx64" (%d)\n", addr, val, size);
 
     if ((addr / size) > 256) {
         return;
@@ -1242,7 +1243,7 @@ const MemoryRegionOps ac97_io_nam_ops = {
 
 static uint64_t nabm_read(void *opaque, hwaddr addr, unsigned size)
 {
-    dolog("nabm_read [0x%llx] (%d)\n", addr, size);
+    dolog("nabm_read [0x%"HWADDR_PRIx"] (%d)\n", addr, size);
     // if ((addr / size) > 64) {
     //     // assert(0);
     //     return -1;
@@ -1263,7 +1264,7 @@ static uint64_t nabm_read(void *opaque, hwaddr addr, unsigned size)
 static void nabm_write(void *opaque, hwaddr addr, uint64_t val,
                        unsigned size)
 {
-    dolog("nabm_write [0x%llx] = 0x%llx (%d)\n", addr, val, size);
+    dolog("nabm_write [0x%"HWADDR_PRIx"] = 0x%"PRIx64" (%d)\n", addr, val, size);
     // if ((addr / size) > 64) {
     //     // assert(0);
     //     return;
@@ -1312,7 +1313,7 @@ void ac97_common_init(AC97LinkState *s, PCIDevice *pci_dev, AddressSpace *as)
   s->pci_dev = pci_dev;
   s->as = as;
 
-  AUD_register_card("ac97", &s->card, &error_fatal);
+  AUD_backend_check (&s->audio_be, &error_fatal);
   ac97_on_reset(s);
 }
 
@@ -1327,29 +1328,10 @@ static void ac97_realize (PCIDevice *dev, Error **errp)
     AC97DeviceState *s = AC97_DEVICE(dev);
     uint8_t *c = s->dev.config;
 
-    /* TODO: no need to override */
-    c[PCI_COMMAND] = 0x00;      /* pcicmd pci command rw, ro */
-    c[PCI_COMMAND + 1] = 0x00;
-
-    /* TODO: */
     c[PCI_STATUS] = PCI_STATUS_FAST_BACK;      /* pcists pci status rwc, ro */
     c[PCI_STATUS + 1] = PCI_STATUS_DEVSEL_MEDIUM >> 8;
 
     c[PCI_CLASS_PROG] = 0x00;      /* pi programming interface ro */
-
-    /* TODO set when bar is registered. no need to override. */
-    /* nabmar native audio mixer base address rw */
-    c[PCI_BASE_ADDRESS_0] = PCI_BASE_ADDRESS_SPACE_IO;
-    c[PCI_BASE_ADDRESS_0 + 1] = 0x00;
-    c[PCI_BASE_ADDRESS_0 + 2] = 0x00;
-    c[PCI_BASE_ADDRESS_0 + 3] = 0x00;
-
-    /* TODO set when bar is registered. no need to override. */
-      /* nabmbar native audio bus mastering base address rw */
-    c[PCI_BASE_ADDRESS_0 + 4] = PCI_BASE_ADDRESS_SPACE_IO;
-    c[PCI_BASE_ADDRESS_0 + 5] = 0x00;
-    c[PCI_BASE_ADDRESS_0 + 6] = 0x00;
-    c[PCI_BASE_ADDRESS_0 + 7] = 0x00;
 
     c[PCI_INTERRUPT_LINE] = 0x00;      /* intr_ln interrupt line rw */
     c[PCI_INTERRUPT_PIN] = 0x01;      /* intr_pn interrupt pin ro */
@@ -1367,16 +1349,15 @@ static void ac97_exit (PCIDevice *dev)
 {
     AC97DeviceState *s = AC97_DEVICE(dev);
 
-    memory_region_destroy (&s->io_nam);
-    memory_region_destroy (&s->io_nabm);
+    memory_region_destroy(&s->io_nam);
+    memory_region_destroy(&s->io_nabm);
 }
 
-static Property ac97_properties[] = {
-    DEFINE_AUDIO_PROPERTIES(AC97DeviceState, state.card),
-    DEFINE_PROP_END_OF_LIST(),
+static const Property ac97_properties[] = {
+    DEFINE_AUDIO_PROPERTIES(AC97DeviceState, state.audio_be),
 };
 
-static void ac97_class_init(ObjectClass *klass, void *data)
+static void ac97_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -1399,7 +1380,7 @@ static const TypeInfo ac97_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(AC97DeviceState),
     .class_init    = ac97_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },
@@ -1408,8 +1389,7 @@ static const TypeInfo ac97_info = {
 static void ac97_register_types(void)
 {
     type_register_static(&ac97_info);
-    deprecated_register_soundhw("ac97", "Intel 82801AA AC97 Audio",
-                                0, TYPE_AC97);
+    audio_register_model("ac97", "Intel 82801AA AC97 Audio", TYPE_AC97);
 }
 
 type_init(ac97_register_types)

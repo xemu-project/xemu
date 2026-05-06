@@ -261,6 +261,7 @@ typedef enum {
 #define BDRV_OPT_AUTO_READ_ONLY "auto-read-only"
 #define BDRV_OPT_DISCARD        "discard"
 #define BDRV_OPT_FORCE_SHARE    "force-share"
+#define BDRV_OPT_ACTIVE         "active"
 
 
 #define BDRV_SECTOR_BITS   9
@@ -336,6 +337,17 @@ typedef enum {
 #define BDRV_BLOCK_RECURSE      0x40
 #define BDRV_BLOCK_COMPRESSED   0x80
 
+/*
+ * Block status hints: the bitwise-or of these flags emphasize what
+ * the caller hopes to learn, and some drivers may be able to give
+ * faster answers by doing less work when the hint permits.
+ */
+#define BDRV_WANT_ZERO          BDRV_BLOCK_ZERO
+#define BDRV_WANT_OFFSET_VALID  BDRV_BLOCK_OFFSET_VALID
+#define BDRV_WANT_ALLOCATED     BDRV_BLOCK_ALLOCATED
+#define BDRV_WANT_PRECISE       (BDRV_WANT_ZERO | BDRV_WANT_OFFSET_VALID | \
+                                 BDRV_WANT_OFFSET_VALID)
+
 typedef QTAILQ_HEAD(BlockReopenQueue, BlockReopenQueueEntry) BlockReopenQueue;
 
 typedef struct BDRVReopenState {
@@ -359,7 +371,6 @@ typedef enum BlockOpType {
     BLOCK_OP_TYPE_CHANGE,
     BLOCK_OP_TYPE_COMMIT_SOURCE,
     BLOCK_OP_TYPE_COMMIT_TARGET,
-    BLOCK_OP_TYPE_DATAPLANE,
     BLOCK_OP_TYPE_DRIVE_DEL,
     BLOCK_OP_TYPE_EJECT,
     BLOCK_OP_TYPE_EXTERNAL_SNAPSHOT,

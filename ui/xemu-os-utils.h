@@ -25,29 +25,10 @@ extern "C" {
 #endif
 
 const char *xemu_get_os_info(void);
-void xemu_open_web_browser(const char *url);
 
-#ifndef _WIN32
 #ifdef CONFIG_CPUID_H
 #include <cpuid.h>
 #endif
-#endif
-
-static inline const char *xemu_get_os_platform(void)
-{
-    const char *platform_name;
-
-#if defined(__linux__)
-    platform_name = "Linux";
-#elif defined(_WIN32)
-    platform_name = "Windows";
-#elif defined(__APPLE__)
-    platform_name = "macOS";
-#else
-    platform_name = "Unknown";
-#endif
-    return platform_name;
-}
 
 static inline const char *xemu_get_cpu_info(void)
 {

@@ -181,12 +181,11 @@ static void goldfish_pic_instance_init(Object *obj)
     qdev_init_gpio_in(DEVICE(obj), goldfish_irq_request, GOLDFISH_PIC_IRQ_NB);
 }
 
-static Property goldfish_pic_properties[] = {
+static const Property goldfish_pic_properties[] = {
     DEFINE_PROP_UINT8("index", GoldfishPICState, idx, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void goldfish_pic_class_init(ObjectClass *oc, void *data)
+static void goldfish_pic_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     InterruptStatsProviderClass *ic = INTERRUPT_STATS_PROVIDER_CLASS(oc);
@@ -205,7 +204,7 @@ static const TypeInfo goldfish_pic_info = {
     .class_init = goldfish_pic_class_init,
     .instance_init = goldfish_pic_instance_init,
     .instance_size = sizeof(GoldfishPICState),
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
          { TYPE_INTERRUPT_STATS_PROVIDER },
          { }
     },

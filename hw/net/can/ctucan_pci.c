@@ -27,12 +27,8 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/event_notifier.h"
 #include "qemu/module.h"
-#include "qemu/thread.h"
-#include "qemu/sockets.h"
 #include "qapi/error.h"
-#include "chardev/char.h"
 #include "hw/irq.h"
 #include "hw/pci/pci_device.h"
 #include "hw/qdev-properties.h"
@@ -241,7 +237,7 @@ static void ctucan_pci_instance_init(Object *obj)
 #endif
 }
 
-static void ctucan_pci_class_init(ObjectClass *klass, void *data)
+static void ctucan_pci_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -266,7 +262,7 @@ static const TypeInfo ctucan_pci_info = {
     .instance_size = sizeof(CtuCanPCIState),
     .class_init    = ctucan_pci_class_init,
     .instance_init = ctucan_pci_instance_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },

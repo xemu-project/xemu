@@ -3,7 +3,9 @@
 #
 
 ##
-# = VM run state
+# ************
+# VM run state
+# ************
 ##
 
 ##
@@ -18,7 +20,7 @@
 # @inmigrate: guest is paused waiting for an incoming migration.  Note
 #     that this state does not tell whether the machine will start at
 #     the end of the migration.  This depends on the command-line -S
-#     option and any invocation of 'stop' or 'cont' that has happened
+#     option and any invocation of `stop` or `cont` that has happened
 #     since QEMU was started.
 #
 # @internal-error: An internal error that prevents further guest
@@ -62,15 +64,15 @@
 ##
 # @ShutdownCause:
 #
-# An enumeration of reasons for a Shutdown.
+# An enumeration of reasons for a shutdown.
 #
 # @none: No shutdown request pending
 #
 # @host-error: An error prevents further use of guest
 #
-# @host-qmp-quit: Reaction to the QMP command 'quit'
+# @host-qmp-quit: Reaction to the QMP command `quit`
 #
-# @host-qmp-system-reset: Reaction to the QMP command 'system_reset'
+# @host-qmp-system-reset: Reaction to the QMP command `system_reset`
 #
 # @host-signal: Reaction to a signal, such as SIGINT
 #
@@ -106,7 +108,7 @@
 #
 # @running: true if all VCPUs are runnable, false if not runnable
 #
-# @status: the virtual machine @RunState
+# @status: the virtual machine `RunState`
 #
 # Since: 0.14
 ##
@@ -118,8 +120,6 @@
 # @query-status:
 #
 # Query the run status of the VM
-#
-# Returns: @StatusInfo reflecting the VM
 #
 # Since: 0.14
 #
@@ -135,20 +135,20 @@
 ##
 # @SHUTDOWN:
 #
-# Emitted when the virtual machine has shut down, indicating that qemu
+# Emitted when the virtual machine has shut down, indicating that QEMU
 # is about to exit.
 #
 # @guest: If true, the shutdown was triggered by a guest request (such
 #     as a guest-initiated ACPI shutdown request or other
 #     hardware-specific action) rather than a host request (such as
-#     sending qemu a SIGINT).  (since 2.10)
+#     sending QEMU a SIGINT).  (since 2.10)
 #
-# @reason: The @ShutdownCause which resulted in the SHUTDOWN.
+# @reason: The `ShutdownCause` which resulted in the `SHUTDOWN`.
 #     (since 4.0)
 #
 # .. note:: If the command-line option ``-no-shutdown`` has been
-#    specified, qemu will not exit, and a STOP event will eventually
-#    follow the SHUTDOWN event.
+#    specified, QEMU will not exit, and a `STOP` event will eventually
+#    follow the `SHUTDOWN` event.
 #
 # Since: 0.12
 #
@@ -183,9 +183,9 @@
 # @guest: If true, the reset was triggered by a guest request (such as
 #     a guest-initiated ACPI reboot request or other hardware-specific
 #     action) rather than a host request (such as the QMP command
-#     system_reset).  (since 2.10)
+#     `system_reset`).  (since 2.10)
 #
-# @reason: The @ShutdownCause of the RESET.  (since 4.0)
+# @reason: The `ShutdownCause` of the `RESET`.  (since 4.0)
 #
 # Since: 0.12
 #
@@ -247,8 +247,8 @@
 # saved on disk, for example, S4 state, which is sometimes called
 # hibernate state
 #
-# .. note:: QEMU shuts down (similar to event @SHUTDOWN) when entering
-#    this state.
+# .. note:: QEMU shuts down (similar to event `SHUTDOWN`) when
+#    entering this state.
 #
 # Since: 1.2
 #
@@ -281,9 +281,9 @@
 #
 # @action: action that has been taken
 #
-# .. note:: If action is "reset", "shutdown", or "pause" the WATCHDOG
-#    event is followed respectively by the RESET, SHUTDOWN, or STOP
-#    events.
+# .. note:: If action is "reset", "shutdown", or "pause" the
+#    `WATCHDOG` event is followed respectively by the `RESET`,
+#    `SHUTDOWN`, or `STOP` events.
 #
 # .. note:: This event is rate-limited.
 #
@@ -365,8 +365,8 @@
 # @shutdown: Shutdown the VM and exit, according to the shutdown
 #     action
 #
-# @exit-failure: Shutdown the VM and exit with nonzero status (since
-#     7.1)
+# @exit-failure: Shutdown the VM and exit with nonzero status
+#     (since 7.1)
 #
 # Since: 6.0
 ##
@@ -378,7 +378,7 @@
 #
 # Set watchdog action.
 #
-# @action: @WatchdogAction action taken when watchdog timer expires.
+# @action: `WatchdogAction` action taken when watchdog timer expires.
 #
 # Since: 2.11
 #
@@ -396,13 +396,14 @@
 # Set the actions that will be taken by the emulator in response to
 # guest events.
 #
-# @reboot: @RebootAction action taken on guest reboot.
+# @reboot: `RebootAction` action taken on guest reboot.
 #
-# @shutdown: @ShutdownAction action taken on guest shutdown.
+# @shutdown: `ShutdownAction` action taken on guest shutdown.
 #
-# @panic: @PanicAction action taken on guest panic.
+# @panic: `PanicAction` action taken on guest panic.
 #
-# @watchdog: @WatchdogAction action taken when watchdog timer expires.
+# @watchdog: `WatchdogAction` action taken when watchdog timer
+#     expires.
 #
 # Since: 6.0
 #
@@ -501,10 +502,12 @@
 #
 # @s390: s390 guest panic information type (Since: 2.12)
 #
+# @tdx: tdx guest panic information type (Since: 10.1)
+#
 # Since: 2.9
 ##
 { 'enum': 'GuestPanicInformationType',
-  'data': [ 'hyper-v', 's390' ] }
+  'data': [ 'hyper-v', 's390', 'tdx' ] }
 
 ##
 # @GuestPanicInformation:
@@ -519,28 +522,29 @@
  'base': {'type': 'GuestPanicInformationType'},
  'discriminator': 'type',
  'data': {'hyper-v': 'GuestPanicInformationHyperV',
-          's390': 'GuestPanicInformationS390'}}
+          's390': 'GuestPanicInformationS390',
+          'tdx' : 'GuestPanicInformationTdx'}}
 
 ##
 # @GuestPanicInformationHyperV:
 #
 # Hyper-V specific guest panic information (HV crash MSRs)
 #
-# @arg1: for Windows, STOP code for the guest crash.  For Linux,
+# @arg1: for Windows, `STOP` code for the guest crash.  For Linux,
 #     an error code.
 #
-# @arg2: for Windows, first argument of the STOP.  For Linux, the
+# @arg2: for Windows, first argument of the `STOP`.  For Linux, the
 #     guest OS ID, which has the kernel version in bits 16-47 and
 #     0x8100 in bits 48-63.
 #
-# @arg3: for Windows, second argument of the STOP.  For Linux, the
+# @arg3: for Windows, second argument of the `STOP`.  For Linux, the
 #     program counter of the guest.
 #
-# @arg4: for Windows, third argument of the STOP.  For Linux, the
+# @arg4: for Windows, third argument of the `STOP`.  For Linux, the
 #     RAX register (x86) or the stack pointer (aarch64) of the guest.
 #
-# @arg5: for Windows, fourth argument of the STOP.  For x86 Linux, the
-#     stack pointer of the guest.
+# @arg5: for Windows, fourth argument of the `STOP`.  For x86 Linux,
+#     the stack pointer of the guest.
 #
 # Since: 2.9
 ##
@@ -599,15 +603,38 @@
           'reason': 'S390CrashReason'}}
 
 ##
+# @GuestPanicInformationTdx:
+#
+# TDX Guest panic information specific to TDX, as specified in the
+# "Guest-Hypervisor Communication Interface (GHCI) Specification",
+# section TDG.VP.VMCALL<ReportFatalError>.
+#
+# @error-code: TD-specific error code
+#
+# @message: Human-readable error message provided by the guest.  Not
+#     to be trusted.
+#
+# @gpa: guest-physical address of a page that contains more verbose
+#     error information, as zero-terminated string.  Present when the
+#     "GPA valid" bit (bit 63) is set in @error-code.
+#
+# Since: 10.1
+##
+{'struct': 'GuestPanicInformationTdx',
+ 'data': {'error-code': 'uint32',
+          'message': 'str',
+          '*gpa': 'uint64'}}
+
+##
 # @MEMORY_FAILURE:
 #
 # Emitted when a memory failure occurs on host side.
 #
-# @recipient: recipient is defined as @MemoryFailureRecipient.
+# @recipient: recipient is defined as `MemoryFailureRecipient`.
 #
 # @action: action that has been taken.
 #
-# @flags: flags for MemoryFailureAction.
+# @flags: flags for `MemoryFailureAction`.
 #
 # Since: 5.2
 #

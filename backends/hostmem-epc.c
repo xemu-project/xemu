@@ -14,7 +14,7 @@
 #include <sys/ioctl.h>
 #include "qom/object_interfaces.h"
 #include "qapi/error.h"
-#include "sysemu/hostmem.h"
+#include "system/hostmem.h"
 #include "hw/i386/hostmem-epc.h"
 
 static bool
@@ -36,7 +36,7 @@ sgx_epc_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
 
     backend->aligned = true;
     name = object_get_canonical_path(OBJECT(backend));
-    ram_flags = (backend->share ? RAM_SHARED : 0) | RAM_PROTECTED;
+    ram_flags = (backend->share ? RAM_SHARED : RAM_PRIVATE) | RAM_PROTECTED;
     return memory_region_init_ram_from_fd(&backend->mr, OBJECT(backend), name,
                                           backend->size, ram_flags, fd, 0, errp);
 }
@@ -50,7 +50,7 @@ static void sgx_epc_backend_instance_init(Object *obj)
     m->dump = false;
 }
 
-static void sgx_epc_backend_class_init(ObjectClass *oc, void *data)
+static void sgx_epc_backend_class_init(ObjectClass *oc, const void *data)
 {
     HostMemoryBackendClass *bc = MEMORY_BACKEND_CLASS(oc);
 

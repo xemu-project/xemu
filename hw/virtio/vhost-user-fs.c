@@ -23,7 +23,7 @@
 #include "hw/virtio/vhost.h"
 #include "hw/virtio/vhost-user-fs.h"
 #include "monitor/monitor.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 
 static const int user_feature_bits[] = {
     VIRTIO_F_VERSION_1,
@@ -100,7 +100,7 @@ err_host_notifiers:
     vhost_dev_disable_notifiers(&fs->vhost_dev, vdev);
 }
 
-static void vuf_stop(VirtIODevice *vdev)
+static int vuf_stop(VirtIODevice *vdev)
 {
     VHostUserFS *fs = VHOST_USER_FS(vdev);
     BusState *qbus = BUS(qdev_get_parent_bus(DEVICE(vdev)));
@@ -108,34 +108,39 @@ static void vuf_stop(VirtIODevice *vdev)
     int ret;
 
     if (!k->set_guest_notifiers) {
-        return;
+        return 0;
     }
 
-    vhost_dev_stop(&fs->vhost_dev, vdev, true);
+    ret = vhost_dev_stop(&fs->vhost_dev, vdev, true);
 
-    ret = k->set_guest_notifiers(qbus->parent, fs->vhost_dev.nvqs, false);
-    if (ret < 0) {
+    if (k->set_guest_notifiers(qbus->parent, fs->vhost_dev.nvqs, false) < 0) {
         error_report("vhost guest notifier cleanup failed: %d", ret);
-        return;
+        return -1;
     }
 
     vhost_dev_disable_notifiers(&fs->vhost_dev, vdev);
+    return ret;
 }
 
-static void vuf_set_status(VirtIODevice *vdev, uint8_t status)
+static int vuf_set_status(VirtIODevice *vdev, uint8_t status)
 {
     VHostUserFS *fs = VHOST_USER_FS(vdev);
     bool should_start = virtio_device_should_start(vdev, status);
 
     if (vhost_dev_is_started(&fs->vhost_dev) == should_start) {
-        return;
+        return 0;
     }
 
     if (should_start) {
         vuf_start(vdev);
     } else {
-        vuf_stop(vdev);
+        int ret;
+        ret = vuf_stop(vdev);
+        if (ret < 0) {
+            return ret;
+        }
     }
+    return 0;
 }
 
 static uint64_t vuf_get_features(VirtIODevice *vdev,
@@ -267,7 +272,6 @@ err_virtio:
     g_free(fs->req_vqs);
     virtio_cleanup(vdev);
     g_free(fs->vhost_dev.vqs);
-    return;
 }
 
 static void vuf_device_unrealize(DeviceState *dev)
@@ -403,13 +407,12 @@ static const VMStateDescription vuf_backend_vmstate = {
     },
 };
 
-static Property vuf_properties[] = {
+static const Property vuf_properties[] = {
     DEFINE_PROP_CHR("chardev", VHostUserFS, conf.chardev),
     DEFINE_PROP_STRING("tag", VHostUserFS, conf.tag),
     DEFINE_PROP_UINT16("num-request-queues", VHostUserFS,
                        conf.num_request_queues, 1),
     DEFINE_PROP_UINT16("queue-size", VHostUserFS, conf.queue_size, 128),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void vuf_instance_init(Object *obj)
@@ -420,7 +423,7 @@ static void vuf_instance_init(Object *obj)
                                   "/filesystem@0", DEVICE(obj));
 }
 
-static void vuf_class_init(ObjectClass *klass, void *data)
+static void vuf_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     VirtioDeviceClass *vdc = VIRTIO_DEVICE_CLASS(klass);

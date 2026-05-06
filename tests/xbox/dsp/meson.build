@@ -11,3 +11,5 @@ test('xbox-mcpx-dsp', exe,
      args: ['--tap', '-k'],
      protocol: 'tap',
      suite: ['xbox', 'xbox-mcpx', 'xbox-mcpx-dsp'])
+
+alias_target('test-xbox', exe)

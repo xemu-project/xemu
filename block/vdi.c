@@ -58,7 +58,7 @@
 #include "qapi/qapi-visit-block-core.h"
 #include "block/block_int.h"
 #include "block/qdict.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "qemu/module.h"
 #include "qemu/option.h"
 #include "qemu/bswap.h"
@@ -523,8 +523,8 @@ static int vdi_reopen_prepare(BDRVReopenState *state,
 }
 
 static int coroutine_fn GRAPH_RDLOCK
-vdi_co_block_status(BlockDriverState *bs, bool want_zero, int64_t offset,
-                    int64_t bytes, int64_t *pnum, int64_t *map,
+vdi_co_block_status(BlockDriverState *bs, unsigned int mode,
+                    int64_t offset, int64_t bytes, int64_t *pnum, int64_t *map,
                     BlockDriverState **file)
 {
     BDRVVdiState *s = (BDRVVdiState *)bs->opaque;
@@ -938,7 +938,7 @@ vdi_co_create_opts(BlockDriver *drv, const char *filename,
     qdict = qemu_opts_to_qdict_filtered(opts, NULL, &vdi_create_opts, true);
 
     /* Create and open the file (protocol layer) */
-    ret = bdrv_co_create_file(filename, opts, errp);
+    ret = bdrv_co_create_file(filename, opts, true, errp);
     if (ret < 0) {
         goto done;
     }

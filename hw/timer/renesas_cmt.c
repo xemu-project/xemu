@@ -253,12 +253,11 @@ static const VMStateDescription vmstate_rcmt = {
     }
 };
 
-static Property rcmt_properties[] = {
+static const Property rcmt_properties[] = {
     DEFINE_PROP_UINT64("input-freq", RCMTState, input_freq, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void rcmt_class_init(ObjectClass *klass, void *data)
+static void rcmt_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

@@ -21,7 +21,7 @@
  */
 
 #include "qemu/notify.h"
-#include "exec/memory.h"
+#include "system/memory.h"
 #include "hw/acpi/acpi_dev_interface.h"
 
 /*
@@ -153,6 +153,9 @@ struct ACPIREGS {
     } pm1;
     Notifier wakeup;
 };
+
+/* Return whether ACPI subsystem is built in */
+bool acpi_builtin(void);
 
 /* PM_TMR */
 void acpi_pm_tmr_update(ACPIREGS *ar, bool enable);

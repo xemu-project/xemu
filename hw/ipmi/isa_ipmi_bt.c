@@ -49,6 +49,7 @@ static void isa_ipmi_bt_get_fwinfo(struct IPMIInterface *ii, IPMIFwInfo *info)
     ISAIPMIBTDevice *iib = ISA_IPMI_BT(ii);
 
     ipmi_bt_get_fwinfo(&iib->bt, info);
+    info->irq_source = IPMI_ISA_IRQ;
     info->interrupt_number = iib->isairq;
     info->i2c_slave_address = iib->bt.bmc->slave_addr;
     info->uuid = iib->uuid;
@@ -117,8 +118,6 @@ static void isa_ipmi_bt_realize(DeviceState *dev, Error **errp)
     qdev_set_legacy_instance_id(dev, iib->bt.io_base, iib->bt.io_length);
 
     isa_register_ioport(isadev, &iib->bt.io, iib->bt.io_base);
-
-    vmstate_register(NULL, 0, &vmstate_ISAIPMIBTDevice, dev);
 }
 
 static void isa_ipmi_bt_init(Object *obj)
@@ -135,19 +134,19 @@ static void *isa_ipmi_bt_get_backend_data(IPMIInterface *ii)
     return &iib->bt;
 }
 
-static Property ipmi_isa_properties[] = {
+static const Property ipmi_isa_properties[] = {
     DEFINE_PROP_UINT32("ioport", ISAIPMIBTDevice, bt.io_base,  0xe4),
     DEFINE_PROP_INT32("irq",   ISAIPMIBTDevice, isairq,  5),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void isa_ipmi_bt_class_init(ObjectClass *oc, void *data)
+static void isa_ipmi_bt_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     IPMIInterfaceClass *iic = IPMI_INTERFACE_CLASS(oc);
     AcpiDevAmlIfClass *adevc = ACPI_DEV_AML_IF_CLASS(oc);
 
     dc->realize = isa_ipmi_bt_realize;
+    dc->vmsd = &vmstate_ISAIPMIBTDevice;
     device_class_set_props(dc, ipmi_isa_properties);
 
     iic->get_backend_data = isa_ipmi_bt_get_backend_data;
@@ -162,7 +161,7 @@ static const TypeInfo isa_ipmi_bt_info = {
     .instance_size = sizeof(ISAIPMIBTDevice),
     .instance_init = isa_ipmi_bt_init,
     .class_init    = isa_ipmi_bt_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_IPMI_INTERFACE },
         { TYPE_ACPI_DEV_AML_IF },
         { }

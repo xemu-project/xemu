@@ -30,7 +30,7 @@
 
 struct Terminal3270 {
     EmulatedCcw3270Device cdev;
-    CharBackend chr;
+    CharFrontend chr;
     uint8_t inv[INPUT_BUFFER_SIZE];
     uint8_t outv[OUTPUT_BUFFER_SIZE];
     int in_len;
@@ -283,9 +283,8 @@ static int write_payload_3270(EmulatedCcw3270Device *dev, uint8_t cmd)
     return (retval <= 0) ? 0 : get_cds(t)->count;
 }
 
-static Property terminal_properties[] = {
+static const Property terminal_properties[] = {
     DEFINE_PROP_CHR("chardev", Terminal3270, chr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const VMStateDescription terminal3270_vmstate = {
@@ -293,7 +292,7 @@ static const VMStateDescription terminal3270_vmstate = {
     .unmigratable = 1,
 };
 
-static void terminal_class_init(ObjectClass *klass, void *data)
+static void terminal_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     EmulatedCcw3270Class *ck = EMULATED_CCW_3270_CLASS(klass);

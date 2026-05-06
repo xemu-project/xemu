@@ -28,7 +28,7 @@
 #include "hw/pci/shpc.h"
 #include "hw/pci/slotid_cap.h"
 #include "hw/qdev-properties.h"
-#include "exec/memory.h"
+#include "system/memory.h"
 #include "hw/pci/pci_bus.h"
 #include "hw/hotplug.h"
 #include "qom/object.h"
@@ -168,7 +168,7 @@ static void qdev_pci_bridge_dev_reset(DeviceState *qdev)
     }
 }
 
-static Property pci_bridge_dev_properties[] = {
+static const Property pci_bridge_dev_properties[] = {
                     /* Note: 0 is not a legal chassis number. */
     DEFINE_PROP_UINT8(PCI_BRIDGE_DEV_PROP_CHASSIS_NR, PCIBridgeDev, chassis_nr,
                       0),
@@ -186,7 +186,6 @@ static Property pci_bridge_dev_properties[] = {
                      res_reserve.mem_pref_32, -1),
     DEFINE_PROP_SIZE("pref64-reserve", PCIBridgeDev,
                      res_reserve.mem_pref_64, -1),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static bool pci_device_shpc_present(void *opaque, int version_id)
@@ -241,7 +240,7 @@ void pci_bridge_dev_unplug_request_cb(HotplugHandler *hotplug_dev,
     shpc_device_unplug_request_cb(hotplug_dev, dev, errp);
 }
 
-static void pci_bridge_dev_class_init(ObjectClass *klass, void *data)
+static void pci_bridge_dev_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -269,7 +268,7 @@ static const TypeInfo pci_bridge_dev_info = {
     .instance_size     = sizeof(PCIBridgeDev),
     .class_init        = pci_bridge_dev_class_init,
     .instance_finalize = pci_bridge_dev_instance_finalize,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_HOTPLUG_HANDLER },
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { }
@@ -281,7 +280,7 @@ static const TypeInfo pci_bridge_dev_info = {
  * different pci id, so we can match it easily in the guest for
  * automagic multiseat configuration.  See docs/multiseat.txt for more.
  */
-static void pci_bridge_dev_seat_class_init(ObjectClass *klass, void *data)
+static void pci_bridge_dev_seat_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);

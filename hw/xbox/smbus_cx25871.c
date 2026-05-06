@@ -85,7 +85,7 @@ static void smbus_cx25871_realize(DeviceState *dev, Error **errp)
     cx->cmd = 0;
 }
 
-static void smbus_cx25871_class_initfn(ObjectClass *klass, void *data)
+static void smbus_cx25871_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     SMBusDeviceClass *sc = SMBUS_DEVICE_CLASS(klass);
@@ -100,7 +100,7 @@ static TypeInfo smbus_cx25871_info = {
     .name = TYPE_SMBUS_CX25871,
     .parent = TYPE_SMBUS_DEVICE,
     .instance_size = sizeof(SMBusCX25871Device),
-    .class_init = smbus_cx25871_class_initfn,
+    .class_init = smbus_cx25871_class_init,
 };
 
 static void smbus_cx25871_register_devices(void)

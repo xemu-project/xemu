@@ -1,0 +1,46 @@
+name: Release (Dispatched)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Create release tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.semver.outputs.next }}
+    steps:
+    - name: Clone tree
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+    - name: Determine new tag version
+      id: semver
+      run: |
+        latest=$(
+          git ls-remote --tags --refs "https://github.com/${GITHUB_REPOSITORY}.git" 'v[0-9]*.[0-9]*.[0-9]*' |
+          awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1
+        )
+        [ -z "$latest" ] && latest="v0.0.0"
+        ver="${latest#v}"
+        IFS=. read -r major minor patch <<< "$ver"
+        next="v${major}.${minor}.$((patch+1))"
+        echo "next=$next" >> "$GITHUB_OUTPUT"
+    - name: Push new tag
+      run: |
+        git config user.name "nobody"
+        git config user.email "nobody@nowhere"
+        git tag -a "${{ steps.semver.outputs.next }}" -m "${{ steps.semver.outputs.next }}"
+        git push origin "${{ steps.semver.outputs.next }}"
+
+  release:
+    name: Release
+    needs: tag
+    uses: ./.github/workflows/release.yml
+    with:
+      ref: ${{ needs.tag.outputs.tag }}
+      tag: ${{ needs.tag.outputs.tag }}

@@ -17,8 +17,8 @@
 #include "qemu/module.h"
 #include "block/aio.h"
 #include "block/block.h"
-#include "sysemu/event-loop-base.h"
-#include "sysemu/iothread.h"
+#include "system/event-loop-base.h"
+#include "system/iothread.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-misc.h"
 #include "qemu/error-report.h"
@@ -292,7 +292,7 @@ static void iothread_set_poll_param(Object *obj, Visitor *v,
     }
 }
 
-static void iothread_class_init(ObjectClass *klass, void *class_data)
+static void iothread_class_init(ObjectClass *klass, const void *class_data)
 {
     EventLoopBaseClass *bc = EVENT_LOOP_BASE_CLASS(klass);
 

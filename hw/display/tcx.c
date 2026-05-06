@@ -729,7 +729,6 @@ static uint64_t tcx_dummy_readl(void *opaque, hwaddr addr,
 static void tcx_dummy_writel(void *opaque, hwaddr addr,
                          uint64_t val, unsigned size)
 {
-    return;
 }
 
 static const MemoryRegionOps tcx_dummy_ops = {
@@ -879,15 +878,14 @@ static void tcx_realizefn(DeviceState *dev, Error **errp)
     qemu_console_resize(s->con, s->width, s->height);
 }
 
-static Property tcx_properties[] = {
+static const Property tcx_properties[] = {
     DEFINE_PROP_UINT32("vram_size", TCXState, vram_size, -1),
     DEFINE_PROP_UINT16("width",    TCXState, width,     -1),
     DEFINE_PROP_UINT16("height",   TCXState, height,    -1),
     DEFINE_PROP_UINT16("depth",    TCXState, depth,     -1),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void tcx_class_init(ObjectClass *klass, void *data)
+static void tcx_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

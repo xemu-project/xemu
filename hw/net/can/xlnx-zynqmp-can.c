@@ -1169,15 +1169,14 @@ static const VMStateDescription vmstate_can = {
     }
 };
 
-static Property xlnx_zynqmp_can_properties[] = {
+static const Property xlnx_zynqmp_can_properties[] = {
     DEFINE_PROP_UINT32("ext_clk_freq", XlnxZynqMPCANState, cfg.ext_clk_freq,
                        CAN_DEFAULT_CLOCK),
     DEFINE_PROP_LINK("canbus", XlnxZynqMPCANState, canbus, TYPE_CAN_BUS,
                      CanBusState *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void xlnx_zynqmp_can_class_init(ObjectClass *klass, void *data)
+static void xlnx_zynqmp_can_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);

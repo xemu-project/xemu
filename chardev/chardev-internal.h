@@ -29,14 +29,17 @@
 #include "chardev/char-fe.h"
 #include "qom/object.h"
 
+#define MAX_HUB 4
 #define MAX_MUX 4
 #define MUX_BUFFER_SIZE 32 /* Must be a power of 2.  */
 #define MUX_BUFFER_MASK (MUX_BUFFER_SIZE - 1)
 
 struct MuxChardev {
     Chardev parent;
-    CharBackend *backends[MAX_MUX];
-    CharBackend chr;
+    /* Linked frontends */
+    CharFrontend *frontends[MAX_MUX];
+    /* frontend of the underlying muxed chardev */
+    CharFrontend chr;
     unsigned long mux_bitset;
     int focus;
     bool term_got_escape;
@@ -53,13 +56,59 @@ struct MuxChardev {
     int64_t timestamps_start;
 };
 typedef struct MuxChardev MuxChardev;
+typedef struct HubChardev HubChardev;
+typedef struct HubCharBackend HubCharBackend;
+
+/*
+ * Back-pointer on a hub, actual backend and its index in
+ * `hub->backends` array
+ */
+struct HubCharBackend {
+    HubChardev *hub;
+    CharFrontend fe;
+    unsigned int be_ind;
+};
+
+struct HubChardev {
+    Chardev parent;
+    /* Linked backends */
+    HubCharBackend backends[MAX_HUB];
+    /*
+     * Number of backends attached to this hub. Once attached, a
+     * backend can't be detached, so the counter is only increasing.
+     * To safely remove a backend, hub has to be removed first.
+     */
+    unsigned int be_cnt;
+    /*
+     * Number of CHR_EVEN_OPENED events from all backends. Needed to
+     * send CHR_EVEN_CLOSED only when counter goes to zero.
+     */
+    unsigned int be_event_opened_cnt;
+    /*
+     * Counters of written bytes from a single frontend device
+     * to multiple backend devices.
+     */
+    unsigned int be_written[MAX_HUB];
+    unsigned int be_min_written;
+    /*
+     * Index of a backend device which got EAGAIN on last write,
+     * -1 is invalid index.
+     */
+    int be_eagain_ind;
+};
+typedef struct HubChardev HubChardev;
 
 DECLARE_INSTANCE_CHECKER(MuxChardev, MUX_CHARDEV,
                          TYPE_CHARDEV_MUX)
-#define CHARDEV_IS_MUX(chr)                             \
-    object_dynamic_cast(OBJECT(chr), TYPE_CHARDEV_MUX)
+DECLARE_INSTANCE_CHECKER(HubChardev, HUB_CHARDEV,
+                         TYPE_CHARDEV_HUB)
 
-bool mux_chr_attach_frontend(MuxChardev *d, CharBackend *b,
+#define CHARDEV_IS_MUX(chr)                                \
+    object_dynamic_cast(OBJECT(chr), TYPE_CHARDEV_MUX)
+#define CHARDEV_IS_HUB(chr)                                \
+    object_dynamic_cast(OBJECT(chr), TYPE_CHARDEV_HUB)
+
+bool mux_chr_attach_frontend(MuxChardev *d, CharFrontend *c,
                              unsigned int *tag, Error **errp);
 bool mux_chr_detach_frontend(MuxChardev *d, unsigned int tag);
 void mux_set_focus(Chardev *chr, unsigned int focus);

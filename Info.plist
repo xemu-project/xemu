@@ -30,8 +30,6 @@
   <string>NSApplication</string>
   <key>NSHighResolutionCapable</key>
   <true/>
-  <key>com.apple.security.cs.allow-jit</key>
-  <true/>
   <key>NSMicrophoneUsageDescription</key>
   <string>Microphone used for peripheral emulation, e.g. Xbox Live Communicator.</string>
 </dict>

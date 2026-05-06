@@ -516,12 +516,11 @@ static const VMStateDescription u2f_passthru_vmstate = {
     }
 };
 
-static Property u2f_passthru_properties[] = {
+static const Property u2f_passthru_properties[] = {
     DEFINE_PROP_STRING("hidraw", U2FPassthruState, hidraw),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void u2f_passthru_class_init(ObjectClass *klass, void *data)
+static void u2f_passthru_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     U2FKeyClass *kc = U2F_KEY_CLASS(klass);

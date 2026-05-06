@@ -20,7 +20,7 @@
 #include "qemu/osdep.h"
 #include "qemu.h"
 #include "user-internals.h"
-#include "cpu_loop-common.h"
+#include "user/cpu_loop.h"
 #include "signal-common.h"
 
 #define SPARC64_STACK_BIAS 2047
@@ -220,7 +220,7 @@ void cpu_loop (CPUSPARCState *env)
         cpu_exec_start(cs);
         trapnr = cpu_exec(cs);
         cpu_exec_end(cs);
-        process_queued_cpu_work(cs);
+        qemu_process_cpu_events(cs);
 
         switch (trapnr) {
         case TARGET_TT_SYSCALL:
@@ -357,14 +357,12 @@ void cpu_loop (CPUSPARCState *env)
     }
 }
 
-void target_cpu_copy_regs(CPUArchState *env, struct target_pt_regs *regs)
+void init_main_thread(CPUState *cs, struct image_info *info)
 {
-    int i;
-    env->pc = regs->pc;
-    env->npc = regs->npc;
-    env->y = regs->y;
-    for(i = 0; i < 8; i++)
-        env->gregs[i] = regs->u_regs[i];
-    for(i = 0; i < 8; i++)
-        env->regwptr[i] = regs->u_regs[i + 8];
+    CPUArchState *env = cpu_env(cs);
+
+    env->pc = info->entry;
+    env->npc = env->pc + 4;
+    env->regwptr[WREG_SP] = (info->start_stack - 16 * sizeof(abi_ulong)
+                             - TARGET_STACK_BIAS);
 }

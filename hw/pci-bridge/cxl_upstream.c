@@ -362,17 +362,16 @@ static void cxl_usp_exitfn(PCIDevice *d)
     pci_bridge_exitfn(d);
 }
 
-static Property cxl_upstream_props[] = {
+static const Property cxl_upstream_props[] = {
     DEFINE_PROP_UINT64("sn", CXLUpstreamPort, sn, UI64_NULL),
     DEFINE_PROP_STRING("cdat", CXLUpstreamPort, cxl_cstate.cdat.filename),
     DEFINE_PROP_PCIE_LINK_SPEED("x-speed", CXLUpstreamPort,
                                 speed, PCIE_LINK_SPEED_32),
     DEFINE_PROP_PCIE_LINK_WIDTH("x-width", CXLUpstreamPort,
                                 width, PCIE_LINK_WIDTH_16),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void cxl_upstream_class_init(ObjectClass *oc, void *data)
+static void cxl_upstream_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(oc);
@@ -395,7 +394,7 @@ static const TypeInfo cxl_usp_info = {
     .parent = TYPE_PCIE_PORT,
     .instance_size = sizeof(CXLUpstreamPort),
     .class_init = cxl_upstream_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_PCIE_DEVICE },
         { INTERFACE_CXL_DEVICE },
         { }

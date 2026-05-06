@@ -90,6 +90,12 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoHmac, qcrypto_hmac_free)
  * The memory referenced in @result must be released with a call
  * to g_free() when no longer required by the caller.
  *
+ * If @result_len is set to a NULL pointer, no result will be returned, and
+ * the hmac object can be used for further invocations of qcrypto_hmac_bytes()
+ * or qcrypto_hmac_bytesv() until a non-NULL pointer is provided. This allows
+ * to build the hmac across memory regions that are not available at the same
+ * time.
+ *
  * Returns:
  *  0 on success, -1 on error
  */
@@ -123,11 +129,17 @@ int qcrypto_hmac_bytesv(QCryptoHmac *hmac,
  * The memory referenced in @result must be released with a call
  * to g_free() when no longer required by the caller.
  *
+ * If @result_len is set to a NULL pointer, no result will be returned, and
+ * the hmac object can be used for further invocations of qcrypto_hmac_bytes()
+ * or qcrypto_hmac_bytesv() until a non-NULL pointer is provided. This allows
+ * to build the hmac across memory regions that are not available at the same
+ * time.
+ *
  * Returns:
  *  0 on success, -1 on error
  */
 int qcrypto_hmac_bytes(QCryptoHmac *hmac,
-                       const char *buf,
+                       const void *buf,
                        size_t len,
                        uint8_t **result,
                        size_t *resultlen,
@@ -175,7 +187,7 @@ int qcrypto_hmac_digestv(QCryptoHmac *hmac,
  * Returns: 0 on success, -1 on error
  */
 int qcrypto_hmac_digest(QCryptoHmac *hmac,
-                        const char *buf,
+                        const void *buf,
                         size_t len,
                         char **digest,
                         Error **errp);

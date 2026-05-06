@@ -1,0 +1,20 @@
+name: Pre-release
+
+on:
+  push:
+    branches:
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    name: Pre-release
+    if: github.repository_owner == 'xemu-project'
+    uses: ./.github/workflows/release.yml
+    with:
+      ref: ${{ github.sha }}
+      tag: pre-release
+      pre-release: true

@@ -111,15 +111,14 @@ void pcie_chassis_del_slot(PCIESlot *s)
     QLIST_REMOVE(s, next);
 }
 
-static Property pcie_port_props[] = {
+static const Property pcie_port_props[] = {
     DEFINE_PROP_UINT8("port", PCIEPort, port, 0),
     DEFINE_PROP_UINT16("aer_log_max", PCIEPort,
                        parent_obj.parent_obj.exp.aer_log.log_max,
                        PCIE_AER_LOG_MAX_DEFAULT),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void pcie_port_class_init(ObjectClass *oc, void *data)
+static void pcie_port_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
@@ -189,7 +188,7 @@ int pcie_count_ds_ports(PCIBus *bus)
     return dsp_count;
 }
 
-static bool pcie_slot_is_hotpluggbale_bus(HotplugHandler *plug_handler,
+static bool pcie_slot_is_hotpluggable_bus(HotplugHandler *plug_handler,
                                           BusState *bus)
 {
     PCIESlot *s = PCIE_SLOT(bus->parent);
@@ -204,16 +203,15 @@ static const TypeInfo pcie_port_type_info = {
     .class_init = pcie_port_class_init,
 };
 
-static Property pcie_slot_props[] = {
+static const Property pcie_slot_props[] = {
     DEFINE_PROP_UINT8("chassis", PCIESlot, chassis, 0),
     DEFINE_PROP_UINT16("slot", PCIESlot, slot, 0),
     DEFINE_PROP_BOOL("hotplug", PCIESlot, hotplug, true),
     DEFINE_PROP_BOOL("x-do-not-expose-native-hotplug-cap", PCIESlot,
                      hide_native_hotplug_cap, false),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void pcie_slot_class_init(ObjectClass *oc, void *data)
+static void pcie_slot_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(oc);
@@ -223,7 +221,7 @@ static void pcie_slot_class_init(ObjectClass *oc, void *data)
     hc->plug = pcie_cap_slot_plug_cb;
     hc->unplug = pcie_cap_slot_unplug_cb;
     hc->unplug_request = pcie_cap_slot_unplug_request_cb;
-    hc->is_hotpluggable_bus = pcie_slot_is_hotpluggbale_bus;
+    hc->is_hotpluggable_bus = pcie_slot_is_hotpluggable_bus;
 }
 
 static const TypeInfo pcie_slot_type_info = {
@@ -232,7 +230,7 @@ static const TypeInfo pcie_slot_type_info = {
     .instance_size = sizeof(PCIESlot),
     .abstract = true,
     .class_init = pcie_slot_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_HOTPLUG_HANDLER },
         { }
     }

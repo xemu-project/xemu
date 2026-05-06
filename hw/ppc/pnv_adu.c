@@ -185,12 +185,11 @@ static void pnv_adu_realize(DeviceState *dev, Error **errp)
                           PNV9_XSCOM_ADU_SIZE);
 }
 
-static Property pnv_adu_properties[] = {
+static const Property pnv_adu_properties[] = {
     DEFINE_PROP_LINK("lpc", PnvADU, lpc, TYPE_PNV_LPC, PnvLpcController *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pnv_adu_class_init(ObjectClass *klass, void *data)
+static void pnv_adu_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -205,7 +204,7 @@ static const TypeInfo pnv_adu_type_info = {
     .parent        = TYPE_DEVICE,
     .instance_size = sizeof(PnvADU),
     .class_init    = pnv_adu_class_init,
-    .interfaces    = (InterfaceInfo[]) {
+    .interfaces    = (const InterfaceInfo[]) {
         { TYPE_PNV_XSCOM_INTERFACE },
         { } },
 };

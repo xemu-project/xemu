@@ -360,4 +360,7 @@ enum MCPX_HW_NOTIFIER {
 
 // clang-format on
 
+#define EP_FRAME_US       5333 /* 256/48000 sec (~5.33ms) */
+#define MONITOR_BYTES_PER_MS 192  /* 48000 Hz * 2ch * 2 bytes / 1000 */
+
 #endif

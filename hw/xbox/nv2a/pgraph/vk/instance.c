@@ -22,12 +22,6 @@
 #include "renderer.h"
 #include "xemu-version.h"
 
-#include <SDL.h>
-#include <SDL_syswm.h>
-#include <SDL_vulkan.h>
-
-#include <volk.h>
-
 #define VkExtensionPropertiesArray GArray
 #define StringArray GArray
 
@@ -37,15 +31,7 @@ static char const *const validation_layers[] = {
     "VK_LAYER_KHRONOS_validation",
 };
 
-static char const *const required_instance_extensions[] = {
-    VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
-    VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME,
-    VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
-};
-
 static char const *const required_device_extensions[] = {
-    VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,
-    VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
 #ifdef WIN32
     VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,
     VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,
@@ -97,25 +83,6 @@ static bool check_validation_layer_support(void)
     return true;
 }
 
-static void create_window(PGRAPHVkState *r, Error **errp)
-{
-    r->window = SDL_CreateWindow(
-        "SDL Offscreen Window", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        640, 480, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
-
-    if (r->window == NULL) {
-        error_setg(errp, "SDL_CreateWindow failed: %s", SDL_GetError());
-    }
-}
-
-static void destroy_window(PGRAPHVkState *r)
-{
-    if (r->window) {
-        SDL_DestroyWindow(r->window);
-        r->window = NULL;
-    }
-}
-
 static VkExtensionPropertiesArray *
 get_available_instance_extensions(PGRAPHState *pg)
 {
@@ -147,31 +114,6 @@ is_extension_available(VkExtensionPropertiesArray *available_extensions,
     }
 
     return false;
-}
-
-static StringArray *get_required_instance_extension_names(PGRAPHState *pg)
-{
-    PGRAPHVkState *r = pg->vk_renderer_state;
-
-    // Add instance extensions SDL lists as required
-    unsigned int sdl_count = 0;
-    SDL_Vulkan_GetInstanceExtensions((SDL_Window *)r->window, &sdl_count, NULL);
-
-    StringArray *extensions =
-        g_array_sized_new(FALSE, FALSE, sizeof(char *),
-                          sdl_count + ARRAY_SIZE(required_instance_extensions));
-
-    if (sdl_count) {
-        g_array_set_size(extensions, sdl_count);
-        SDL_Vulkan_GetInstanceExtensions((SDL_Window *)r->window, &sdl_count,
-                                         (const char **)extensions->data);
-    }
-
-    // Add additional required extensions
-    g_array_append_vals(extensions, required_instance_extensions,
-                        ARRAY_SIZE(required_instance_extensions));
-
-    return extensions;
 }
 
 static bool
@@ -207,17 +149,22 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
     PGRAPHVkState *r = pg->vk_renderer_state;
     VkResult result;
 
-    create_window(r, errp);
-    if (*errp) {
-        return false;
-    }
-
     result = volkInitialize();
     if (result != VK_SUCCESS) {
         error_setg(errp, "volkInitialize failed");
-        destroy_window(r);
         return false;
     }
+
+    uint32_t instance_version = VK_API_VERSION_1_0;
+    if (vkEnumerateInstanceVersion) {
+        vkEnumerateInstanceVersion(&instance_version);
+        instance_version = MIN(instance_version, VK_API_VERSION_1_3);
+    }
+    if (instance_version < VK_API_VERSION_1_1) {
+        error_setg(errp, "Vulkan 1.1 or higher is required");
+        return false;
+    }
+    r->vk_api_version = instance_version;
 
     VkApplicationInfo app_info = {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -226,39 +173,24 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
             xemu_version_major, xemu_version_minor, xemu_version_patch),
         .pEngineName = "No Engine",
         .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-        .apiVersion = VK_API_VERSION_1_3,
+        .apiVersion = r->vk_api_version,
     };
 
     g_autoptr(VkExtensionPropertiesArray) available_extensions =
         get_available_instance_extensions(pg);
 
     g_autoptr(StringArray) enabled_extension_names =
-        get_required_instance_extension_names(pg);
-
-    bool all_required_extensions_available = true;
-    for (int i = 0; i < enabled_extension_names->len; i++) {
-        const char *required_extension =
-            g_array_index(enabled_extension_names, const char *, i);
-        if (!is_extension_available(available_extensions, required_extension)) {
-            fprintf(stderr,
-                    "Error: Required instance extension not available: %s\n",
-                    required_extension);
-            all_required_extensions_available = false;
-        }
-    }
-
-    if (!all_required_extensions_available) {
-        error_setg(errp, "Required instance extensions not available");
-        goto error;
-    }
+        g_array_new(FALSE, FALSE, sizeof(char *));
 
     add_optional_instance_extension_names(pg, available_extensions,
                                           enabled_extension_names);
 
-    fprintf(stderr, "Enabled instance extensions:\n");
-    for (int i = 0; i < enabled_extension_names->len; i++) {
-        fprintf(stderr, "- %s\n",
-                g_array_index(enabled_extension_names, char *, i));
+    if (enabled_extension_names->len > 0) {
+        fprintf(stderr, "Enabled instance extensions:\n");
+        for (int i = 0; i < enabled_extension_names->len; i++) {
+            fprintf(stderr, "- %s\n",
+                    g_array_index(enabled_extension_names, char *, i));
+        }
     }
 
     VkInstanceCreateInfo create_info = {
@@ -319,11 +251,6 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
     }
 
     return true;
-
-error:
-    volkFinalize();
-    destroy_window(r);
-    return false;
 }
 
 static bool is_queue_family_indicies_complete(QueueFamilyIndices indices)
@@ -425,6 +352,12 @@ static bool check_device_support_required_extensions(VkPhysicalDevice device)
 
 static bool is_device_compatible(VkPhysicalDevice device)
 {
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(device, &props);
+    if (props.apiVersion < VK_API_VERSION_1_1) {
+        return false;
+    }
+
     QueueFamilyIndices indices = pgraph_vk_find_queue_families(device);
 
     return is_queue_family_indicies_complete(indices) &&
@@ -488,6 +421,7 @@ static bool select_physical_device(PGRAPHState *pg, Error **errp)
     vkGetPhysicalDeviceProperties(r->physical_device, &r->device_props);
     xemu_settings_set_string(&g_config.display.vulkan.preferred_physical_device,
                              r->device_props.deviceName);
+    r->vk_api_version = MIN(r->vk_api_version, r->device_props.apiVersion);
 
     fprintf(stderr,
             "Selected physical device: %s\n"
@@ -643,62 +577,23 @@ static bool init_allocator(PGRAPHState *pg, Error **errp)
     PGRAPHVkState *r = pg->vk_renderer_state;
     VkResult result;
 
-    VmaVulkanFunctions vulkanFunctions = {
-        /// Required when using VMA_DYNAMIC_VULKAN_FUNCTIONS.
-        .vkGetInstanceProcAddr = vkGetInstanceProcAddr,
-        /// Required when using VMA_DYNAMIC_VULKAN_FUNCTIONS.
-        .vkGetDeviceProcAddr = vkGetDeviceProcAddr,
-        .vkGetPhysicalDeviceProperties = vkGetPhysicalDeviceProperties,
-        .vkGetPhysicalDeviceMemoryProperties = vkGetPhysicalDeviceMemoryProperties,
-        .vkAllocateMemory = vkAllocateMemory,
-        .vkFreeMemory = vkFreeMemory,
-        .vkMapMemory = vkMapMemory,
-        .vkUnmapMemory = vkUnmapMemory,
-        .vkFlushMappedMemoryRanges = vkFlushMappedMemoryRanges,
-        .vkInvalidateMappedMemoryRanges = vkInvalidateMappedMemoryRanges,
-        .vkBindBufferMemory = vkBindBufferMemory,
-        .vkBindImageMemory = vkBindImageMemory,
-        .vkGetBufferMemoryRequirements = vkGetBufferMemoryRequirements,
-        .vkGetImageMemoryRequirements = vkGetImageMemoryRequirements,
-        .vkCreateBuffer = vkCreateBuffer,
-        .vkDestroyBuffer = vkDestroyBuffer,
-        .vkCreateImage = vkCreateImage,
-        .vkDestroyImage = vkDestroyImage,
-        .vkCmdCopyBuffer = vkCmdCopyBuffer,
-    #if VMA_DEDICATED_ALLOCATION || VMA_VULKAN_VERSION >= 1001000
-        /// Fetch "vkGetBufferMemoryRequirements2" on Vulkan >= 1.1, fetch "vkGetBufferMemoryRequirements2KHR" when using VK_KHR_dedicated_allocation extension.
-        .vkGetBufferMemoryRequirements2KHR = vkGetBufferMemoryRequirements2,
-        /// Fetch "vkGetImageMemoryRequirements2" on Vulkan >= 1.1, fetch "vkGetImageMemoryRequirements2KHR" when using VK_KHR_dedicated_allocation extension.
-        .vkGetImageMemoryRequirements2KHR = vkGetImageMemoryRequirements2,
-    #endif
-    #if VMA_BIND_MEMORY2 || VMA_VULKAN_VERSION >= 1001000
-        /// Fetch "vkBindBufferMemory2" on Vulkan >= 1.1, fetch "vkBindBufferMemory2KHR" when using VK_KHR_bind_memory2 extension.
-        .vkBindBufferMemory2KHR = vkBindBufferMemory2,
-        /// Fetch "vkBindImageMemory2" on Vulkan >= 1.1, fetch "vkBindImageMemory2KHR" when using VK_KHR_bind_memory2 extension.
-        .vkBindImageMemory2KHR = vkBindImageMemory2,
-    #endif
-    #if VMA_MEMORY_BUDGET || VMA_VULKAN_VERSION >= 1001000
-        /// Fetch from "vkGetPhysicalDeviceMemoryProperties2" on Vulkan >= 1.1, but you can also fetch it from "vkGetPhysicalDeviceMemoryProperties2KHR" if you enabled extension VK_KHR_get_physical_device_properties2.
-        .vkGetPhysicalDeviceMemoryProperties2KHR = vkGetPhysicalDeviceMemoryProperties2KHR,
-    #endif
-    #if VMA_KHR_MAINTENANCE4 || VMA_VULKAN_VERSION >= 1003000
-        /// Fetch from "vkGetDeviceBufferMemoryRequirements" on Vulkan >= 1.3, but you can also fetch it from "vkGetDeviceBufferMemoryRequirementsKHR" if you enabled extension VK_KHR_maintenance4.
-        .vkGetDeviceBufferMemoryRequirements = vkGetDeviceBufferMemoryRequirements,
-        /// Fetch from "vkGetDeviceImageMemoryRequirements" on Vulkan >= 1.3, but you can also fetch it from "vkGetDeviceImageMemoryRequirementsKHR" if you enabled extension VK_KHR_maintenance4.
-        .vkGetDeviceImageMemoryRequirements = vkGetDeviceImageMemoryRequirements,
-    #endif
-    };
-
     VmaAllocatorCreateInfo create_info = {
         .flags = (r->memory_budget_extension_enabled ?
                       VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT :
                       0),
-        .vulkanApiVersion = VK_API_VERSION_1_3,
+        .vulkanApiVersion = r->vk_api_version,
         .instance = r->instance,
         .physicalDevice = r->physical_device,
         .device = r->device,
-        .pVulkanFunctions = &vulkanFunctions,
     };
+
+    VmaVulkanFunctions vulkan_functions;
+    VkResult res = vmaImportVulkanFunctionsFromVolk(&create_info, &vulkan_functions);
+    if (res != VK_SUCCESS) {
+        error_setg(errp, "vmaImportVulkanFunctionsFromVolk failed");
+        return false;
+    }
+    create_info.pVulkanFunctions = &vulkan_functions;
 
     result = vmaCreateAllocator(&create_info, &r->allocator);
     if (result != VK_SUCCESS) {
@@ -753,5 +648,4 @@ void pgraph_vk_finalize_instance(PGRAPHState *pg)
     }
 
     volkFinalize();
-    destroy_window(r);
 }

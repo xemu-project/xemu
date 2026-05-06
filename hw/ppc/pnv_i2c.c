@@ -9,7 +9,7 @@
 #include "qemu/osdep.h"
 #include "qemu/module.h"
 #include "qemu/log.h"
-#include "sysemu/reset.h"
+#include "system/reset.h"
 
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
@@ -543,14 +543,13 @@ static void pnv_i2c_realize(DeviceState *dev, Error **errp)
     qdev_init_gpio_out(DEVICE(dev), &i2c->psi_irq, 1);
 }
 
-static Property pnv_i2c_properties[] = {
+static const Property pnv_i2c_properties[] = {
     DEFINE_PROP_LINK("chip", PnvI2C, chip, TYPE_PNV_CHIP, PnvChip *),
     DEFINE_PROP_UINT32("engine", PnvI2C, engine, 1),
     DEFINE_PROP_UINT32("num-busses", PnvI2C, num_busses, 1),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pnv_i2c_class_init(ObjectClass *klass, void *data)
+static void pnv_i2c_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PnvXScomInterfaceClass *xscomc = PNV_XSCOM_INTERFACE_CLASS(klass);
@@ -570,7 +569,7 @@ static const TypeInfo pnv_i2c_info = {
     .parent        = TYPE_DEVICE,
     .instance_size = sizeof(PnvI2C),
     .class_init    = pnv_i2c_class_init,
-    .interfaces    = (InterfaceInfo[]) {
+    .interfaces    = (const InterfaceInfo[]) {
         { TYPE_PNV_XSCOM_INTERFACE },
         { }
     }

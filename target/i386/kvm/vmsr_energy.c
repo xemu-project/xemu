@@ -27,16 +27,6 @@ char *vmsr_compute_default_paths(void)
     return g_build_filename(state, "run", "qemu-vmsr-helper.sock", NULL);
 }
 
-bool is_host_cpu_intel(void)
-{
-    int family, model, stepping;
-    char vendor[CPUID_VENDOR_SZ + 1];
-
-    host_cpu_vendor_fms(vendor, &family, &model, &stepping);
-
-    return g_str_equal(vendor, CPUID_VENDOR_INTEL);
-}
-
 int is_rapl_enabled(void)
 {
     const char *path = "/sys/class/powercap/intel-rapl/enabled";
@@ -67,13 +57,9 @@ QIOChannelSocket *vmsr_open_socket(const char *path)
     };
 
     QIOChannelSocket *sioc = qio_channel_socket_new();
-    Error *local_err = NULL;
 
     qio_channel_set_name(QIO_CHANNEL(sioc), "vmsr-helper");
-    qio_channel_socket_connect_sync(sioc,
-                                    &saddr,
-                                    &local_err);
-    if (local_err) {
+    if (qio_channel_socket_connect_sync(sioc, &saddr, NULL) < 0) {
         /* Close socket. */
         qio_channel_close(QIO_CHANNEL(sioc), NULL);
         object_unref(OBJECT(sioc));
@@ -285,7 +271,6 @@ void vmsr_read_thread_stat(pid_t pid,
     }
 
     fclose(file);
-    return;
 }
 
 /* Read QEMU stat task folder to retrieve all QEMU threads ID */

@@ -74,7 +74,7 @@ _filter_qemu_io()
 {
     _filter_win32 | \
     gsed -e "s/[0-9]* ops\; [0-9/:. sec]* ([0-9/.inf]* [EPTGMKiBbytes]*\/sec and [0-9/.inf]* ops\/sec)/X ops\; XX:XX:XX.X (XXX YYY\/sec and XXX ops\/sec)/" \
-        -e "s/: line [0-9][0-9]*:  *[0-9][0-9]*\( Aborted\| Killed\)/:\1/" \
+        -e "s/: line [0-9][0-9]*:  *[0-9][0-9]*\( Aborted\| Killed\) \{2,\}/:\1 /" \
         -e "s/qemu-io> //g"
 }
 
@@ -84,6 +84,12 @@ _filter_qemu()
     gsed -e "s#\\(^\\|(qemu) \\)$(basename $QEMU_PROG):#\1QEMU_PROG:#" \
         -e 's#^QEMU [0-9]\+\.[0-9]\+\.[0-9]\+ monitor#QEMU X.Y.Z monitor#' \
         -e $'s#\r##' # QEMU monitor uses \r\n line endings
+}
+
+# replace occurrences of QEMU_IMG_PROG with "qemu-img"
+_filter_qemu_img()
+{
+    sed -e "s#$QEMU_IMG_PROG#qemu-img#g"
 }
 
 # replace problematic QMP output like timestamps
@@ -223,6 +229,7 @@ _filter_img_info()
     discard=0
     regex_json_spec_start='^ *"format-specific": \{'
     regex_json_child_start='^ *"children": \['
+    regex_json_limit_start='^ *"limits": \{'
     gsed -e "s#$REMOTE_TEST_DIR#TEST_DIR#g" \
         -e "s#$IMGPROTO:$TEST_DIR#TEST_DIR#g" \
         -e "s#$TEST_DIR#TEST_DIR#g" \
@@ -255,7 +262,7 @@ _filter_img_info()
                 discard=1
             elif [[ $line =~ "Child node '/" ]]; then
                 discard=1
-            elif [[ $line =~ $regex_json_spec_start ]]; then
+            elif [[ $line =~ $regex_json_spec_start || $line =~ $regex_json_limit_start ]]; then
                 discard=2
                 regex_json_end="^${line%%[^ ]*}\\},? *$"
             elif [[ $line =~ $regex_json_child_start ]]; then

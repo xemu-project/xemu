@@ -79,7 +79,7 @@ static const VMStateDescription vmstate_mcpx_aci = {
     },
 };
 
-static void mcpx_aci_class_init(ObjectClass *klass, void *data)
+static void mcpx_aci_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);

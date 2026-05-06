@@ -21,6 +21,7 @@
 
 import argparse
 import json
+import pathlib
 import sys
 
 # Count the number of errors found
@@ -42,6 +43,7 @@ def check_fields_match(name, s_field, d_field):
     # Some fields changed names between qemu versions.  This list
     # is used to allow such changes in each section / description.
     changed_names = {
+        'acpi-ghes': ['ghes_addr_le', 'hw_error_le'],
         'apic': ['timer', 'timer_expiry'],
         'e1000': ['dev', 'parent_obj'],
         'ehci': ['dev', 'pcidev'],
@@ -90,6 +92,7 @@ def check_fields_match(name, s_field, d_field):
                       'mem_win_size', 'mig_mem_win_size',
                       'io_win_addr', 'mig_io_win_addr',
                       'io_win_size', 'mig_io_win_size'],
+        'hpet': ['num_timers', 'num_timers_save'],
     }
 
     if not name in changed_names:
@@ -380,10 +383,10 @@ def main():
     help_text = "Parse JSON-formatted vmstate dumps from QEMU in files SRC and DEST.  Checks whether migration from SRC to DEST QEMU versions would break based on the VMSTATE information contained within the JSON outputs.  The JSON output is created from a QEMU invocation with the -dump-vmstate parameter and a filename argument to it.  Other parameters to QEMU do not matter, except the -M (machine type) parameter."
 
     parser = argparse.ArgumentParser(description=help_text)
-    parser.add_argument('-s', '--src', type=argparse.FileType('r'),
+    parser.add_argument('-s', '--src', type=pathlib.Path,
                         required=True,
                         help='json dump from src qemu')
-    parser.add_argument('-d', '--dest', type=argparse.FileType('r'),
+    parser.add_argument('-d', '--dest', type=pathlib.Path,
                         required=True,
                         help='json dump from dest qemu')
     parser.add_argument('--reverse', required=False, default=False,
@@ -391,10 +394,10 @@ def main():
                         help='reverse the direction')
     args = parser.parse_args()
 
-    src_data = json.load(args.src)
-    dest_data = json.load(args.dest)
-    args.src.close()
-    args.dest.close()
+    with open(args.src, 'r', encoding='utf-8') as src_fh:
+        src_data = json.load(src_fh)
+    with open(args.dest, 'r', encoding='utf-8') as dst_fh:
+        dest_data = json.load(dst_fh)
 
     if args.reverse:
         temp = src_data

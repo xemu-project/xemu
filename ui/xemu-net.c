@@ -29,7 +29,7 @@
 #include "hw/qdev-properties.h"
 #include "qapi/error.h"
 #include "monitor/qdev.h"
-#include "qapi/qmp/qdict.h"
+#include "qobject/qdict.h"
 #include "qemu/option.h"
 #include "qemu/config-file.h"
 #include "net/net.h"

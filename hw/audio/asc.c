@@ -12,9 +12,10 @@
 
 #include "qemu/osdep.h"
 #include "qemu/timer.h"
+#include "qapi/error.h"
 #include "hw/sysbus.h"
 #include "hw/irq.h"
-#include "audio/audio.h"
+#include "qemu/audio.h"
 #include "hw/audio/asc.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
@@ -406,7 +407,6 @@ static void asc_fifo_write(void *opaque, hwaddr addr, uint64_t value,
     } else {
         fs->fifo[addr] = value;
     }
-    return;
 }
 
 static const MemoryRegionOps asc_fifo_ops = {
@@ -489,7 +489,7 @@ static void asc_write(void *opaque, hwaddr addr, uint64_t value,
         {
             int vol = (value & 0xe0);
 
-            AUD_set_volume_out(s->voice, 0, vol, vol);
+            AUD_set_volume_out_lr(s->voice, 0, vol, vol);
             break;
         }
     }
@@ -634,8 +634,6 @@ static void asc_unrealize(DeviceState *dev)
 
     g_free(s->mixbuf);
     g_free(s->silentbuf);
-
-    AUD_remove_card(&s->card);
 }
 
 static void asc_realize(DeviceState *dev, Error **errp)
@@ -643,22 +641,27 @@ static void asc_realize(DeviceState *dev, Error **errp)
     ASCState *s = ASC(dev);
     struct audsettings as;
 
-    if (!AUD_register_card("Apple Sound Chip", &s->card, errp)) {
+    if (!AUD_backend_check(&s->audio_be, errp)) {
         return;
     }
 
     as.freq = ASC_FREQ;
     as.nchannels = 2;
     as.fmt = AUDIO_FORMAT_U8;
-    as.endianness = AUDIO_HOST_ENDIANNESS;
+    as.endianness = HOST_BIG_ENDIAN;
 
-    s->voice = AUD_open_out(&s->card, s->voice, "asc.out", s, asc_out_cb,
+    s->voice = AUD_open_out(s->audio_be, s->voice, "asc.out", s, asc_out_cb,
                             &as);
+    if (!s->voice) {
+        error_setg(errp, "Initializing audio stream failed");
+        return;
+    }
+
     s->shift = 1;
     s->samples = AUD_get_buffer_size_out(s->voice) >> s->shift;
     s->mixbuf = g_malloc0(s->samples << s->shift);
 
-    s->silentbuf = g_malloc0(s->samples << s->shift);
+    s->silentbuf = g_malloc(s->samples << s->shift);
     memset(s->silentbuf, 0x80, s->samples << s->shift);
 
     /* Add easc registers if required */
@@ -695,13 +698,12 @@ static void asc_init(Object *obj)
     sysbus_init_mmio(sbd, &s->asc);
 }
 
-static Property asc_properties[] = {
-    DEFINE_AUDIO_PROPERTIES(ASCState, card),
+static const Property asc_properties[] = {
+    DEFINE_AUDIO_PROPERTIES(ASCState, audio_be),
     DEFINE_PROP_UINT8("asctype", ASCState, type, ASC_TYPE_ASC),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void asc_class_init(ObjectClass *oc, void *data)
+static void asc_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     ResettableClass *rc = RESETTABLE_CLASS(oc);

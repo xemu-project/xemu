@@ -38,6 +38,16 @@ struct PCIIPMIKCSDevice {
     uint32_t uuid;
 };
 
+static void pci_ipmi_kcs_get_fwinfo(struct IPMIInterface *ii, IPMIFwInfo *info)
+{
+    PCIIPMIKCSDevice *pik = PCI_IPMI_KCS(ii);
+
+    ipmi_kcs_get_fwinfo(&pik->kcs, info);
+    info->irq_source = IPMI_PCI_IRQ;
+    info->interrupt_number = pci_intx(&pik->dev);
+    info->uuid = pik->uuid;
+}
+
 static void pci_ipmi_raise_irq(IPMIKCS *ik)
 {
     PCIIPMIKCSDevice *pik = ik->opaque;
@@ -108,7 +118,7 @@ static void *pci_ipmi_kcs_get_backend_data(IPMIInterface *ii)
     return &pik->kcs;
 }
 
-static void pci_ipmi_kcs_class_init(ObjectClass *oc, void *data)
+static void pci_ipmi_kcs_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     PCIDeviceClass *pdc = PCI_DEVICE_CLASS(oc);
@@ -125,6 +135,7 @@ static void pci_ipmi_kcs_class_init(ObjectClass *oc, void *data)
 
     iic->get_backend_data = pci_ipmi_kcs_get_backend_data;
     ipmi_kcs_class_init(iic);
+    iic->get_fwinfo = pci_ipmi_kcs_get_fwinfo;
 }
 
 static const TypeInfo pci_ipmi_kcs_info = {
@@ -133,7 +144,7 @@ static const TypeInfo pci_ipmi_kcs_info = {
     .instance_size = sizeof(PCIIPMIKCSDevice),
     .instance_init = pci_ipmi_kcs_instance_init,
     .class_init    = pci_ipmi_kcs_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_IPMI_INTERFACE },
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { }

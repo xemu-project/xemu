@@ -354,7 +354,7 @@ static void usb_xid_light_gun_handle_data(USBDevice *dev, USBPacket *p)
     }
 }
 
-static void usb_xid_light_gun_class_initfn(ObjectClass *klass, void *data)
+static void usb_xid_light_gun_class_init(ObjectClass *klass, const void *data)
 {
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
@@ -389,9 +389,8 @@ static void usb_xbox_light_gun_realize(USBDevice *dev, Error **errp)
     s->out_state_capabilities.bReportId = 0;
 }
 
-static Property xid_properties[] = {
+static const Property xid_properties[] = {
     DEFINE_PROP_UINT8("index", USBXIDLightGunState, device_index, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const VMStateDescription vmstate_usb_xbox = {
@@ -403,7 +402,7 @@ static const VMStateDescription vmstate_usb_xbox = {
                                 VMSTATE_END_OF_LIST() },
 };
 
-static void usb_xbox_light_gun_class_initfn(ObjectClass *klass, void *data)
+static void usb_xbox_light_gun_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
@@ -412,7 +411,7 @@ static void usb_xbox_light_gun_class_initfn(ObjectClass *klass, void *data)
     uc->usb_desc = &desc_xbox_light_gun;
     uc->realize = usb_xbox_light_gun_realize;
     uc->unrealize = usb_xbox_gamepad_unrealize;
-    usb_xid_light_gun_class_initfn(klass, data);
+    usb_xid_light_gun_class_init(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd = &vmstate_usb_xbox;
     device_class_set_props(dc, xid_properties);
@@ -423,7 +422,7 @@ static const TypeInfo usb_xbox_light_gun_info = {
     .name = TYPE_USB_XID_LIGHT_GUN,
     .parent = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBXIDLightGunState),
-    .class_init = usb_xbox_light_gun_class_initfn,
+    .class_init = usb_xbox_light_gun_class_init,
 };
 
 static void usb_xid_register_types(void)

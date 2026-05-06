@@ -13,13 +13,6 @@ config MALTA
     select SERIAL_MM
     select SMBUS_EEPROM
 
-config MIPSSIM
-    bool
-    default y
-    depends on MIPS
-    select SERIAL_MM
-    select MIPSNET
-
 config JAZZ
     bool
     default y
@@ -76,7 +69,7 @@ config LOONGSON3V
 
 config MIPS_CPS
     bool
-    select MIPS_ITU
+    select MIPS_ITU if TCG
 
 config MIPS_BOSTON
     bool

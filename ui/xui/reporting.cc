@@ -44,7 +44,7 @@ const std::string &CompatibilityReport::GetSerializedReport()
 	json report = {
 		{"token", token},
 		{"xemu_version", xemu_version},
-		{"xemu_branch", xemu_branch},
+		{"xemu_branch", ""},
 		{"xemu_commit", xemu_commit},
 		{"xemu_date", xemu_date},
 		{"os_platform", os_platform},

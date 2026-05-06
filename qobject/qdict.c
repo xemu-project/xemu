@@ -11,11 +11,11 @@
  */
 
 #include "qemu/osdep.h"
-#include "qapi/qmp/qnum.h"
-#include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qbool.h"
-#include "qapi/qmp/qnull.h"
-#include "qapi/qmp/qstring.h"
+#include "qobject/qnum.h"
+#include "qobject/qdict.h"
+#include "qobject/qbool.h"
+#include "qobject/qnull.h"
+#include "qobject/qstring.h"
 #include "qobject-internal.h"
 
 /**
@@ -207,6 +207,19 @@ double qdict_get_double(const QDict *qdict, const char *key)
 int64_t qdict_get_int(const QDict *qdict, const char *key)
 {
     return qnum_get_int(qobject_to(QNum, qdict_get(qdict, key)));
+}
+
+/**
+ * qdict_get_uint(): Get an unsigned integer mapped by 'key'
+ *
+ * This function assumes that 'key' exists and it stores a
+ * QNum representable as uint.
+ *
+ * Return unsigned integer mapped by 'key'.
+ */
+uint64_t qdict_get_uint(const QDict *qdict, const char *key)
+{
+    return qnum_get_uint(qobject_to(QNum, qdict_get(qdict, key)));
 }
 
 /**

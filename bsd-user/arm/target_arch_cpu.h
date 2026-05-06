@@ -37,7 +37,7 @@ static inline void target_cpu_init(CPUARMState *env,
     }
 }
 
-static inline void target_cpu_loop(CPUARMState *env)
+static inline G_NORETURN void target_cpu_loop(CPUARMState *env)
 {
     int trapnr, si_signo, si_code;
     CPUState *cs = env_cpu(env);
@@ -46,7 +46,7 @@ static inline void target_cpu_loop(CPUARMState *env)
         cpu_exec_start(cs);
         trapnr = cpu_exec(cs);
         cpu_exec_end(cs);
-        process_queued_cpu_work(cs);
+        qemu_process_cpu_events(cs);
         switch (trapnr) {
         case EXCP_UDEF:
         case EXCP_NOCP:

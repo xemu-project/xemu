@@ -28,9 +28,10 @@
 #include "qapi/error.h"
 #include "cpu.h"
 #include "trace.h"
-#include "exec/exec-all.h"
 #include "exec/helper-proto.h"
-#include "sysemu/cpu-timers.h"
+#include "exec/watchpoint.h"
+#include "system/cpu-timers.h"
+#include "exec/icount.h"
 
 /*
  * The following M-mode trigger CSRs are implemented:
@@ -478,7 +479,7 @@ static void type2_breakpoint_insert(CPURISCVState *env, target_ulong index)
     bool enabled = type2_breakpoint_enabled(ctrl);
     CPUState *cs = env_cpu(env);
     int flags = BP_CPU | BP_STOP_BEFORE_ACCESS;
-    uint32_t size;
+    uint32_t size, def_size;
 
     if (!enabled) {
         return;
@@ -501,7 +502,9 @@ static void type2_breakpoint_insert(CPURISCVState *env, target_ulong index)
             cpu_watchpoint_insert(cs, addr, size, flags,
                                   &env->cpu_watchpoint[index]);
         } else {
-            cpu_watchpoint_insert(cs, addr, 8, flags,
+            def_size = riscv_cpu_mxl(env) == MXL_RV64 ? 8 : 4;
+
+            cpu_watchpoint_insert(cs, addr, def_size, flags,
                                   &env->cpu_watchpoint[index]);
         }
     }
@@ -549,8 +552,6 @@ static void type2_reg_write(CPURISCVState *env, target_ulong index,
     default:
         g_assert_not_reached();
     }
-
-    return;
 }
 
 /* type 6 trigger */
@@ -665,8 +666,6 @@ static void type6_reg_write(CPURISCVState *env, target_ulong index,
     default:
         g_assert_not_reached();
     }
-
-    return;
 }
 
 /* icount trigger type */
@@ -847,8 +846,6 @@ static void itrigger_reg_write(CPURISCVState *env, target_ulong index,
     default:
         g_assert_not_reached();
     }
-
-    return;
 }
 
 static int itrigger_get_adjust_count(CPURISCVState *env)

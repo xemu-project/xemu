@@ -48,10 +48,6 @@ config PPC405
     bool
     default y
     depends on PPC
-    select M48T59
-    select PFLASH_CFI02
-    select PPC4XX
-    select SERIAL_MM
 
 config PPC440
     bool
@@ -96,7 +92,7 @@ config AMIGAONE
     select VT82C686
     select SMBUS_EEPROM
 
-config PEGASOS2
+config PEGASOS
     bool
     default y
     depends on PPC

@@ -66,10 +66,12 @@ undocumented; you can get a complete list by running
 .. toctree::
    :maxdepth: 1
 
+   riscv/microblaze-v-generic
    riscv/microchip-icicle-kit
    riscv/shakti-c
    riscv/sifive_u
    riscv/virt
+   riscv/xiangshan-kunminghu
 
 RISC-V CPU firmware
 -------------------

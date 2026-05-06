@@ -38,8 +38,8 @@
 #include "qapi/qapi-visit-block-core.h"
 #include "qapi/qapi-visit-block-export.h"
 #include "qapi/qapi-visit-control.h"
-#include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qstring.h"
+#include "qobject/qdict.h"
+#include "qobject/qstring.h"
 #include "qapi/qobject-input-visitor.h"
 
 #include "qemu/help-texts.h"
@@ -58,7 +58,7 @@
 #include "storage-daemon/qapi/qapi-commands.h"
 #include "storage-daemon/qapi/qapi-init-commands.h"
 
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "trace/control.h"
 
 static const char *pid_file;

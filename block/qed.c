@@ -23,8 +23,8 @@
 #include "qemu/memalign.h"
 #include "trace.h"
 #include "qed.h"
-#include "sysemu/block-backend.h"
-#include "qapi/qmp/qdict.h"
+#include "system/block-backend.h"
+#include "qobject/qdict.h"
 #include "qapi/qobject-input-visitor.h"
 #include "qapi/qapi-visit-block-core.h"
 
@@ -353,6 +353,7 @@ static void bdrv_qed_detach_aio_context(BlockDriverState *bs)
 
     qed_cancel_need_check_timer(s);
     timer_free(s->need_check_timer);
+    s->need_check_timer = NULL;
 }
 
 static void bdrv_qed_attach_aio_context(BlockDriverState *bs,
@@ -787,7 +788,7 @@ bdrv_qed_co_create_opts(BlockDriver *drv, const char *filename,
     }
 
     /* Create and open the file (protocol layer) */
-    ret = bdrv_co_create_file(filename, opts, errp);
+    ret = bdrv_co_create_file(filename, opts, true, errp);
     if (ret < 0) {
         goto fail;
     }
@@ -832,9 +833,9 @@ fail:
 }
 
 static int coroutine_fn GRAPH_RDLOCK
-bdrv_qed_co_block_status(BlockDriverState *bs, bool want_zero, int64_t pos,
-                         int64_t bytes, int64_t *pnum, int64_t *map,
-                         BlockDriverState **file)
+bdrv_qed_co_block_status(BlockDriverState *bs, unsigned int mode,
+                         int64_t pos, int64_t bytes, int64_t *pnum,
+                         int64_t *map, BlockDriverState **file)
 {
     BDRVQEDState *s = bs->opaque;
     size_t len = MIN(bytes, SIZE_MAX);

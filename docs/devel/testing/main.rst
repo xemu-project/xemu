@@ -5,18 +5,31 @@ Testing in QEMU
 
 QEMU's testing infrastructure is fairly complex as it covers
 everything from unit testing and exercising specific sub-systems all
-the way to full blown acceptance tests. To get an overview of the
+the way to full blown functional tests. To get an overview of the
 tests you can run ``make check-help`` from either the source or build
 tree.
 
-Most (but not all) tests are also integrated into the meson build
-system so can be run directly from the build tree, for example:
-
-.. code::
+Most (but not all) tests are also integrated as an automated test into
+the meson build system so can be run directly from the build tree,
+for example::
 
   [./pyvenv/bin/]meson test --suite qemu:softfloat
 
 will run just the softfloat tests.
+
+An automated test is written with one of the test frameworks using its
+generic test functions/classes. The test framework can run the tests and
+report their success or failure [1]_.
+
+An automated test has essentially three parts:
+
+1. The test initialization of the parameters, where the expected parameters,
+   like inputs and expected results, are set up;
+2. The call to the code that should be tested;
+3. An assertion, comparing the result from the previous call with the expected
+   result set during the initialization of the parameters. If the result
+   matches the expected result, the test has been successful; otherwise, it has
+   failed.
 
 The rest of this document will cover the details for specific test
 groups.
@@ -39,12 +52,22 @@ Before running tests, it is best to build QEMU programs first. Some tests
 expect the executables to exist and will fail with obscure messages if they
 cannot find them.
 
+.. _unit-tests:
+
 Unit tests
 ~~~~~~~~~~
 
-Unit tests, which can be invoked with ``make check-unit``, are simple C tests
-that typically link to individual QEMU object files and exercise them by
-calling exported functions.
+A unit test is responsible for exercising individual software components as a
+unit, like interfaces, data structures, and functionality, uncovering errors
+within the boundaries of a component. The verification effort is in the
+smallest software unit and focuses on the internal processing logic and data
+structures. A test case of unit tests should be designed to uncover errors
+due to erroneous computations, incorrect comparisons, or improper control
+flow [2]_.
+
+In QEMU, unit tests can be invoked with ``make check-unit``. They are
+simple C tests that typically link to individual QEMU object files and
+exercise them by calling exported functions.
 
 If you are writing new code in QEMU, consider adding a unit test, especially
 for utility modules that are relatively stateless or have few dependencies. To
@@ -126,6 +149,8 @@ successfully on various hosts. The following list shows some best practices:
   #ifdef in the codes. If the whole test suite cannot run on Windows, disable
   the build in the meson.build file.
 
+.. _qapi-tests:
+
 QAPI schema tests
 ~~~~~~~~~~~~~~~~~
 
@@ -153,12 +178,54 @@ parser (either fixing a bug or extending/modifying the syntax). To do this:
 
   ``qapi-schema += foo.json``
 
+The reference output can be automatically updated to match the latest QAPI
+code generator by running the tests with the QEMU_TEST_REGENERATE environment
+variable set.
+
+.. code::
+
+   QEMU_TEST_REGENERATE=1 make check-qapi-schema
+
+The resulting changes must be reviewed by the author to ensure they match
+the intended results before adding the updated reference output to the
+same commit that alters the generator code.
+
+.. _tracetool-tests:
+
+Tracetool tests
+~~~~~~~~~~~~~~~
+
+The tracetool tests validate the generated source files used for defining
+probes for various tracing backends and source formats. The test operates
+by running the tracetool program against a sample trace-events file, and
+comparing the generated output against known good reference output. The
+tests can be run with:
+
+.. code::
+
+  make check-tracetool
+
+The reference output is stored in files under tests/tracetool, and when
+the tracetool backend/format output is intentionally changed, the reference
+files need to be updated. This can be automated by setting the
+QEMU_TEST_REGENERATE=1 environment variable:
+
+.. code::
+
+   QEMU_TEST_REGENERATE=1 make check-tracetool
+
+The resulting changes must be reviewed by the author to ensure they match
+the intended results, before adding the updated reference output to the
+same commit that alters the generator code.
+
 check-block
 ~~~~~~~~~~~
 
 ``make check-block`` runs a subset of the block layer iotests (the tests that
 are in the "auto" group).
 See the "QEMU iotests" section below for more information.
+
+.. _qemu-iotests:
 
 QEMU iotests
 ------------
@@ -577,9 +644,9 @@ below steps to debug it:
 2. Add "V=1" to the command line, try again, to see the verbose output.
 3. Further add "DEBUG=1" to the command line. This will pause in a shell prompt
    in the container right before testing starts. You could either manually
-   build QEMU and run tests from there, or press Ctrl-D to let the Docker
+   build QEMU and run tests from there, or press :kbd:`Ctrl+d` to let the Docker
    testing continue.
-4. If you press Ctrl-D, the same building and testing procedure will begin, and
+4. If you press :kbd:`Ctrl+d`, the same building and testing procedure will begin, and
    will hopefully run into the error again. After that, you will be dropped to
    the prompt for debug.
 
@@ -678,6 +745,8 @@ For example:
 The above exitcode=0 has TSan continue without error if any warnings are found.
 This allows for running the test and then checking the warnings afterwards.
 If you want TSan to stop and exit with error on warnings, use exitcode=66.
+
+.. _tsan-suppressions:
 
 TSan Suppressions
 ~~~~~~~~~~~~~~~~~
@@ -877,6 +946,10 @@ changing the ``-c`` option.
 Functional tests using Python
 -----------------------------
 
+A functional test focuses on the functional requirement of the software,
+attempting to find errors like incorrect functions, interface errors,
+behavior errors, and initialization and termination errors [3]_.
+
 The ``tests/functional`` directory hosts functional tests written in
 Python. You can run the functional tests simply by executing:
 
@@ -885,22 +958,6 @@ Python. You can run the functional tests simply by executing:
   make check-functional
 
 See :ref:`checkfunctional-ref` for more details.
-
-Integration tests using the Avocado Framework
----------------------------------------------
-
-The ``tests/avocado`` directory hosts integration tests. They're usually
-higher level tests, and may interact with external resources and with
-various guest operating systems.
-
-You can run the avocado tests simply by executing:
-
-.. code::
-
-  make check-avocado
-
-See :ref:`checkavocado-ref` for more details.
-
 
 .. _checktcg-ref:
 
@@ -1016,3 +1073,27 @@ coverage-html`` which will create
 Further analysis can be conducted by running the ``gcov`` command
 directly on the various .gcda output files. Please read the ``gcov``
 documentation for more information.
+
+Flaky tests
+-----------
+
+A flaky test is defined as a test that exhibits both a passing and a failing
+result with the same code on different runs. Some usual reasons for an
+intermittent/flaky test are async wait, concurrency, and test order dependency
+[4]_.
+
+In QEMU, tests that are identified to be flaky are normally disabled by
+default. Set the QEMU_TEST_FLAKY_TESTS environment variable before running
+the tests to enable them.
+
+References
+----------
+
+.. [1] Sommerville, Ian (2016). Software Engineering. p. 233.
+.. [2] Pressman, Roger S. & Maxim, Bruce R. (2020). Software Engineering,
+       A Practitioner’s Approach. p. 48, 376, 378, 381.
+.. [3] Pressman, Roger S. & Maxim, Bruce R. (2020). Software Engineering,
+       A Practitioner’s Approach. p. 388.
+.. [4] Luo, Qingzhou, et al. An empirical analysis of flaky tests.
+       Proceedings of the 22nd ACM SIGSOFT International Symposium on
+       Foundations of Software Engineering. 2014.

@@ -67,7 +67,7 @@ struct SHSerialState {
     int flags;
     int rtrg;
 
-    CharBackend chr;
+    CharFrontend chr;
     QEMUTimer fifo_timeout_timer;
     uint64_t etu; /* Elementary Time Unit (ns) */
 
@@ -77,10 +77,6 @@ struct SHSerialState {
     qemu_irq tei;
     qemu_irq bri;
 };
-
-typedef struct {} SHSerialStateClass;
-
-OBJECT_DEFINE_TYPE(SHSerialState, sh_serial, SH_SERIAL, SYS_BUS_DEVICE)
 
 static void sh_serial_clear_fifo(SHSerialState *s)
 {
@@ -320,7 +316,7 @@ static uint64_t sh_serial_read(void *opaque, hwaddr offs,
 
 static int sh_serial_can_receive(SHSerialState *s)
 {
-    return s->scr & (1 << 4);
+    return s->scr & (1 << 4) ? SH_RX_FIFO_LENGTH - s->rx_head : 0;
 }
 
 static void sh_serial_receive_break(SHSerialState *s)
@@ -353,22 +349,20 @@ static void sh_serial_receive1(void *opaque, const uint8_t *buf, int size)
     if (s->feat & SH_SERIAL_FEAT_SCIF) {
         int i;
         for (i = 0; i < size; i++) {
-            if (s->rx_cnt < SH_RX_FIFO_LENGTH) {
-                s->rx_fifo[s->rx_head++] = buf[i];
-                if (s->rx_head == SH_RX_FIFO_LENGTH) {
-                    s->rx_head = 0;
+            s->rx_fifo[s->rx_head++] = buf[i];
+            if (s->rx_head == SH_RX_FIFO_LENGTH) {
+                s->rx_head = 0;
+            }
+            s->rx_cnt++;
+            if (s->rx_cnt >= s->rtrg) {
+                s->flags |= SH_SERIAL_FLAG_RDF;
+                if (s->scr & (1 << 6) && s->rxi) {
+                    timer_del(&s->fifo_timeout_timer);
+                    qemu_set_irq(s->rxi, 1);
                 }
-                s->rx_cnt++;
-                if (s->rx_cnt >= s->rtrg) {
-                    s->flags |= SH_SERIAL_FLAG_RDF;
-                    if (s->scr & (1 << 6) && s->rxi) {
-                        timer_del(&s->fifo_timeout_timer);
-                        qemu_set_irq(s->rxi, 1);
-                    }
-                } else {
-                    timer_mod(&s->fifo_timeout_timer,
-                        qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + 15 * s->etu);
-                }
+            } else {
+                timer_mod(&s->fifo_timeout_timer,
+                    qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + 15 * s->etu);
             }
         }
     } else {
@@ -436,30 +430,37 @@ static void sh_serial_realize(DeviceState *d, Error **errp)
     s->etu = NANOSECONDS_PER_SECOND / 9600;
 }
 
-static void sh_serial_finalize(Object *obj)
+static void sh_serial_unrealize(DeviceState *dev)
 {
-    SHSerialState *s = SH_SERIAL(obj);
+    SHSerialState *s = SH_SERIAL(dev);
 
     timer_del(&s->fifo_timeout_timer);
 }
 
-static void sh_serial_init(Object *obj)
-{
-}
-
-static Property sh_serial_properties[] = {
+static const Property sh_serial_properties[] = {
     DEFINE_PROP_CHR("chardev", SHSerialState, chr),
     DEFINE_PROP_UINT8("features", SHSerialState, feat, 0),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void sh_serial_class_init(ObjectClass *oc, void *data)
+static void sh_serial_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     device_class_set_props(dc, sh_serial_properties);
     dc->realize = sh_serial_realize;
+    dc->unrealize = sh_serial_unrealize;
     device_class_set_legacy_reset(dc, sh_serial_reset);
     /* Reason: part of SuperH CPU/SoC, needs to be wired up */
     dc->user_creatable = false;
 }
+
+static const TypeInfo sh_serial_types[] = {
+    {
+        .name           = TYPE_SH_SERIAL,
+        .parent         = TYPE_SYS_BUS_DEVICE,
+        .instance_size  = sizeof(SHSerialState),
+        .class_init     = sh_serial_class_init,
+    },
+};
+
+DEFINE_TYPES(sh_serial_types)

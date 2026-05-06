@@ -534,9 +534,8 @@ static const MemoryRegionOps stm32l4x5_usart_base_ops = {
     },
 };
 
-static Property stm32l4x5_usart_base_properties[] = {
+static const Property stm32l4x5_usart_base_properties[] = {
     DEFINE_PROP_CHR("chardev", Stm32l4x5UsartBaseState, chr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void stm32l4x5_usart_base_init(Object *obj)
@@ -595,7 +594,8 @@ static void stm32l4x5_usart_base_realize(DeviceState *dev, Error **errp)
                              s, NULL, true);
 }
 
-static void stm32l4x5_usart_base_class_init(ObjectClass *klass, void *data)
+static void stm32l4x5_usart_base_class_init(ObjectClass *klass,
+                                            const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -606,21 +606,21 @@ static void stm32l4x5_usart_base_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_stm32l4x5_usart_base;
 }
 
-static void stm32l4x5_usart_class_init(ObjectClass *oc, void *data)
+static void stm32l4x5_usart_class_init(ObjectClass *oc, const void *data)
 {
     Stm32l4x5UsartBaseClass *subc = STM32L4X5_USART_BASE_CLASS(oc);
 
     subc->type = STM32L4x5_USART;
 }
 
-static void stm32l4x5_uart_class_init(ObjectClass *oc, void *data)
+static void stm32l4x5_uart_class_init(ObjectClass *oc, const void *data)
 {
     Stm32l4x5UsartBaseClass *subc = STM32L4X5_USART_BASE_CLASS(oc);
 
     subc->type = STM32L4x5_UART;
 }
 
-static void stm32l4x5_lpuart_class_init(ObjectClass *oc, void *data)
+static void stm32l4x5_lpuart_class_init(ObjectClass *oc, const void *data)
 {
     Stm32l4x5UsartBaseClass *subc = STM32L4X5_USART_BASE_CLASS(oc);
 

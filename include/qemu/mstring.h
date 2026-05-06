@@ -41,7 +41,7 @@ static inline MString *mstring_from_str(const char *str)
     return mstr;
 }
 
-static inline __attribute__((format(printf, 1, 2))) MString *
+static inline MString * G_GNUC_PRINTF(1, 2)
 mstring_from_fmt(const char *fmt, ...)
 {
     MString *mstr = g_malloc(sizeof(MString));
@@ -62,7 +62,7 @@ static inline void mstring_append(MString *mstr, const char *str)
     g_string_append(mstr->gstr, str);
 }
 
-static inline __attribute__((format(printf, 2, 3))) void
+static inline void G_GNUC_PRINTF(2, 3)
 mstring_append_fmt(MString *mstr, const char *fmt, ...)
 {
     va_list args;

@@ -48,10 +48,6 @@ static void vhost_vdpa_device_pci_instance_init(Object *obj)
                               "bootindex");
 }
 
-static Property vhost_vdpa_device_pci_properties[] = {
-    DEFINE_PROP_END_OF_LIST(),
-};
-
 static int vhost_vdpa_device_pci_post_init(VhostVdpaDevice *v, Error **errp)
 {
     VhostVdpaDevicePCI *dev = container_of(v, VhostVdpaDevicePCI, vdev);
@@ -74,13 +70,13 @@ vhost_vdpa_device_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
     qdev_realize(DEVICE(&dev->vdev), BUS(&vpci_dev->bus), errp);
 }
 
-static void vhost_vdpa_device_pci_class_init(ObjectClass *klass, void *data)
+static void vhost_vdpa_device_pci_class_init(ObjectClass *klass,
+                                             const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     VirtioPCIClass *k = VIRTIO_PCI_CLASS(klass);
 
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
-    device_class_set_props(dc, vhost_vdpa_device_pci_properties);
     k->realize = vhost_vdpa_device_pci_realize;
 }
 

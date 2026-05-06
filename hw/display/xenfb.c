@@ -29,7 +29,7 @@
 
 #include "ui/input.h"
 #include "ui/console.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "hw/xen/xen-legacy-backend.h"
 
 #include "hw/xen/interface/io/fbif.h"
@@ -283,8 +283,7 @@ static void xenfb_mouse_event(DeviceState *dev, QemuConsole *src,
                 scale = surface_height(surface) - 1;
                 break;
             default:
-                scale = 0x8000;
-                break;
+                g_assert_not_reached();
             }
             xenfb->axis[move->axis] = move->value * scale / 0x7fff;
         }

@@ -7,9 +7,8 @@
 #include "qemu/osdep.h"
 #include "hw/virtio/virtio-input.h"
 
-static Property vinput_properties[] = {
+static const Property vinput_properties[] = {
     DEFINE_PROP_CHR("chardev", VHostUserBase, chardev),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void vinput_realize(DeviceState *dev, Error **errp)
@@ -31,7 +30,7 @@ static const VMStateDescription vmstate_vhost_input = {
     .unmigratable = 1,
 };
 
-static void vhost_input_class_init(ObjectClass *klass, void *data)
+static void vhost_input_class_init(ObjectClass *klass, const void *data)
 {
     VHostUserBaseClass *vubc = VHOST_USER_BASE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);

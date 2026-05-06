@@ -22,7 +22,7 @@
 #include "net/eth.h"
 #include "net/clients.h"
 #include "clients.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "qemu/iov.h"

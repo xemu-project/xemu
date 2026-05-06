@@ -49,7 +49,9 @@ private:
     UpdateAvailability  m_update_availability;
     int                 m_update_percentage;
     QemuThread          m_thread;
-    std::string         m_latest_version;
+    std::string         m_release_version;
+    std::string         m_release_url;
+    std::string         m_release_package_url;
     bool                m_should_cancel;
     UpdateStatus        m_status;
     UpdaterCallback     m_on_complete;
@@ -66,7 +68,8 @@ public:
     bool is_update_available() { return m_update_availability == UPDATE_AVAILABLE; }
     bool is_checking_for_update() { return m_status == UPDATER_CHECKING_FOR_UPDATE; }
     bool is_updating() { return m_status == UPDATER_UPDATING; }
-    std::string get_update_version() { return m_latest_version; }
+    const std::string& get_release_version() { return m_release_version; }
+    const std::string& get_release_url() { return m_release_url; }
     void cancel() { m_should_cancel = true; }
     void update();
     void update_internal();

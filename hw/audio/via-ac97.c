@@ -53,7 +53,7 @@ static void codec_volume_set_out(ViaAC97State *s)
     rvol /= 255;
     mute = CODEC_REG(s, AC97_Master_Volume_Mute) >> MUTE_SHIFT;
     mute |= CODEC_REG(s, AC97_PCM_Out_Volume_Mute) >> MUTE_SHIFT;
-    AUD_set_volume_out(s->vo, mute, lvol, rvol);
+    AUD_set_volume_out_lr(s->vo, mute, lvol, rvol);
 }
 
 static void codec_reset(ViaAC97State *s)
@@ -175,7 +175,7 @@ static void out_cb(void *opaque, int avail)
     ViaAC97SGDChannel *c = &s->aur;
     int temp, to_copy, copied;
     bool stop = false;
-    uint8_t tmpbuf[4096];
+    QEMU_UNINITIALIZED uint8_t tmpbuf[4096];
 
     if (c->stat & STAT_PAUSED) {
         return;
@@ -239,7 +239,7 @@ static void open_voice_out(ViaAC97State *s)
         .fmt = s->aur.type & BIT(5) ? AUDIO_FORMAT_S16 : AUDIO_FORMAT_S8,
         .endianness = 0,
     };
-    s->vo = AUD_open_out(&s->card, s->vo, "via-ac97.out", s, out_cb, &as);
+    s->vo = AUD_open_out(s->audio_be, s->vo, "via-ac97.out", s, out_cb, &as);
 }
 
 static uint64_t sgd_read(void *opaque, hwaddr addr, unsigned size)
@@ -426,7 +426,7 @@ static void via_ac97_realize(PCIDevice *pci_dev, Error **errp)
     ViaAC97State *s = VIA_AC97(pci_dev);
     Object *o = OBJECT(s);
 
-    if (!AUD_register_card ("via-ac97", &s->card, errp)) {
+    if (!AUD_backend_check(&s->audio_be, errp)) {
         return;
     }
 
@@ -455,16 +455,14 @@ static void via_ac97_exit(PCIDevice *dev)
 {
     ViaAC97State *s = VIA_AC97(dev);
 
-    AUD_close_out(&s->card, s->vo);
-    AUD_remove_card(&s->card);
+    AUD_close_out(s->audio_be, s->vo);
 }
 
-static Property via_ac97_properties[] = {
-    DEFINE_AUDIO_PROPERTIES(ViaAC97State, card),
-    DEFINE_PROP_END_OF_LIST(),
+static const Property via_ac97_properties[] = {
+    DEFINE_AUDIO_PROPERTIES(ViaAC97State, audio_be),
 };
 
-static void via_ac97_class_init(ObjectClass *klass, void *data)
+static void via_ac97_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -488,7 +486,7 @@ static const TypeInfo via_ac97_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(ViaAC97State),
     .class_init    = via_ac97_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },
@@ -502,7 +500,7 @@ static void via_mc97_realize(PCIDevice *pci_dev, Error **errp)
     pci_set_long(pci_dev->config + PCI_INTERRUPT_PIN, 0x03);
 }
 
-static void via_mc97_class_init(ObjectClass *klass, void *data)
+static void via_mc97_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -523,7 +521,7 @@ static const TypeInfo via_mc97_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIDevice),
     .class_init    = via_mc97_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },

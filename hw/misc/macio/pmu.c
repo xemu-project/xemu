@@ -34,8 +34,8 @@
 #include "hw/irq.h"
 #include "hw/misc/macio/pmu.h"
 #include "qemu/timer.h"
-#include "sysemu/runstate.h"
-#include "sysemu/rtc.h"
+#include "system/runstate.h"
+#include "system/rtc.h"
 #include "qapi/error.h"
 #include "qemu/cutils.h"
 #include "qemu/log.h"
@@ -760,12 +760,11 @@ static void pmu_init(Object *obj)
     sysbus_init_mmio(d, &s->mem);
 }
 
-static Property pmu_properties[] = {
+static const Property pmu_properties[] = {
     DEFINE_PROP_BOOL("has-adb", PMUState, has_adb, true),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void pmu_class_init(ObjectClass *oc, void *data)
+static void pmu_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
@@ -809,7 +808,7 @@ static void mos6522_pmu_reset_hold(Object *obj, ResetType type)
     s->last_b = ms->b = TACK | TREQ;
 }
 
-static void mos6522_pmu_class_init(ObjectClass *oc, void *data)
+static void mos6522_pmu_class_init(ObjectClass *oc, const void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(oc);
     MOS6522DeviceClass *mdc = MOS6522_CLASS(oc);

@@ -16,15 +16,15 @@
 #include "qapi/error.h"
 #include "qom/object.h"
 #include "exec/target_page.h"
-#include "exec/address-spaces.h"
+#include "system/address-spaces.h"
 #include "migration/vmstate.h"
 
 #include "hw/sysbus.h"
 #include "hw/xen/xen.h"
 #include "xen_overlay.h"
 
-#include "sysemu/kvm.h"
-#include "sysemu/kvm_xen.h"
+#include "system/kvm.h"
+#include "system/kvm_xen.h"
 #include <linux/kvm.h>
 
 #include "hw/xen/interface/memory.h"
@@ -151,7 +151,7 @@ static void xen_overlay_reset(DeviceState *dev)
     kvm_xen_soft_reset();
 }
 
-static void xen_overlay_class_init(ObjectClass *klass, void *data)
+static void xen_overlay_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

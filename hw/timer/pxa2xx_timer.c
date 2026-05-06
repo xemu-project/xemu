@@ -11,49 +11,49 @@
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
 #include "qemu/timer.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "qom/object.h"
-#include "sysemu/watchdog.h"
+#include "system/watchdog.h"
 
-#define OSMR0	0x00
-#define OSMR1	0x04
-#define OSMR2	0x08
-#define OSMR3	0x0c
-#define OSMR4	0x80
-#define OSMR5	0x84
-#define OSMR6	0x88
-#define OSMR7	0x8c
-#define OSMR8	0x90
-#define OSMR9	0x94
-#define OSMR10	0x98
-#define OSMR11	0x9c
-#define OSCR	0x10	/* OS Timer Count */
-#define OSCR4	0x40
-#define OSCR5	0x44
-#define OSCR6	0x48
-#define OSCR7	0x4c
-#define OSCR8	0x50
-#define OSCR9	0x54
-#define OSCR10	0x58
-#define OSCR11	0x5c
-#define OSSR	0x14	/* Timer status register */
-#define OWER	0x18
-#define OIER	0x1c	/* Interrupt enable register  3-0 to E3-E0 */
-#define OMCR4	0xc0	/* OS Match Control registers */
-#define OMCR5	0xc4
-#define OMCR6	0xc8
-#define OMCR7	0xcc
-#define OMCR8	0xd0
-#define OMCR9	0xd4
-#define OMCR10	0xd8
-#define OMCR11	0xdc
-#define OSNR	0x20
+#define OSMR0   0x00
+#define OSMR1   0x04
+#define OSMR2   0x08
+#define OSMR3   0x0c
+#define OSMR4   0x80
+#define OSMR5   0x84
+#define OSMR6   0x88
+#define OSMR7   0x8c
+#define OSMR8   0x90
+#define OSMR9   0x94
+#define OSMR10  0x98
+#define OSMR11  0x9c
+#define OSCR    0x10    /* OS Timer Count */
+#define OSCR4   0x40
+#define OSCR5   0x44
+#define OSCR6   0x48
+#define OSCR7   0x4c
+#define OSCR8   0x50
+#define OSCR9   0x54
+#define OSCR10  0x58
+#define OSCR11  0x5c
+#define OSSR    0x14    /* Timer status register */
+#define OWER    0x18
+#define OIER    0x1c    /* Interrupt enable register  3-0 to E3-E0 */
+#define OMCR4   0xc0    /* OS Match Control registers */
+#define OMCR5   0xc4
+#define OMCR6   0xc8
+#define OMCR7   0xcc
+#define OMCR8   0xd0
+#define OMCR9   0xd4
+#define OMCR10  0xd8
+#define OMCR11  0xdc
+#define OSNR    0x20
 
-#define PXA25X_FREQ	3686400	/* 3.6864 MHz */
+#define PXA25X_FREQ 3686400 /* 3.6864 MHz */
 
 static int pxa2xx_timer4_freq[8] = {
     [0] = 0,
@@ -106,7 +106,7 @@ struct PXA2xxTimerInfo {
     PXA2xxTimer4 tm4[8];
 };
 
-#define PXA2XX_TIMER_HAVE_TM4	0
+#define PXA2XX_TIMER_HAVE_TM4   0
 
 static inline int pxa2xx_timer_has_tm4(PXA2xxTimerInfo *s)
 {
@@ -230,7 +230,7 @@ static uint64_t pxa2xx_timer_read(void *opaque, hwaddr offset,
                      NANOSECONDS_PER_SECOND);
     case OIER:
         return s->irq_enabled;
-    case OSSR:	/* Status register */
+    case OSSR:  /* Status register */
         return s->events;
     case OWER:
         return s->reset3;
@@ -336,7 +336,7 @@ static void pxa2xx_timer_write(void *opaque, hwaddr offset,
     case OIER:
         s->irq_enabled = value & 0xfff;
         break;
-    case OSSR:	/* Status register */
+    case OSSR:  /* Status register */
         value &= s->events;
         s->events &= ~value;
         for (i = 0; i < 4; i ++, value >>= 1)
@@ -345,7 +345,7 @@ static void pxa2xx_timer_write(void *opaque, hwaddr offset,
         if (pxa2xx_timer_has_tm4(s) && !(s->events & 0xff0) && value)
             qemu_irq_lower(s->irq4);
         break;
-    case OWER:	/* XXX: Reset on OSMR3 match? */
+    case OWER:  /* XXX: Reset on OSMR3 match? */
         s->reset3 = value;
         break;
     case OMCR7:  tm ++;
@@ -549,14 +549,13 @@ static const VMStateDescription vmstate_pxa2xx_timer_regs = {
     }
 };
 
-static Property pxa25x_timer_dev_properties[] = {
+static const Property pxa25x_timer_dev_properties[] = {
     DEFINE_PROP_UINT32("freq", PXA2xxTimerInfo, freq, PXA25X_FREQ),
     DEFINE_PROP_BIT("tm4", PXA2xxTimerInfo, flags,
                     PXA2XX_TIMER_HAVE_TM4, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pxa25x_timer_dev_class_init(ObjectClass *klass, void *data)
+static void pxa25x_timer_dev_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -571,7 +570,7 @@ static const TypeInfo pxa25x_timer_dev_info = {
     .class_init    = pxa25x_timer_dev_class_init,
 };
 
-static void pxa2xx_timer_class_init(ObjectClass *oc, void *data)
+static void pxa2xx_timer_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 

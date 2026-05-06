@@ -124,7 +124,7 @@ hwaddr pgraph_get_texture_palette_phys_addr_length(PGRAPHState *pg, int texture_
     default: assert(false); break;
     }
     if (length) {
-        *length = palette_length;
+        *length = palette_length * 4;
     }
 
     hwaddr palette_dma_len;

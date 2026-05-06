@@ -55,6 +55,7 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
 {
     assert(v < MCPX_HW_MAX_VOICES);
     memset(&d->vp.filters[v].svf, 0, sizeof(d->vp.filters[v].svf));
+    hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
     if (d->vp.filters[v].resampler) {
         src_reset(d->vp.filters[v].resampler);
     }
@@ -133,15 +134,17 @@ static void voice_off(MCPXAPUState *d, uint16_t v)
 static void voice_lock(MCPXAPUState *d, uint16_t v, bool lock)
 {
     assert(v < MCPX_HW_MAX_VOICES);
-    qemu_spin_lock(&d->vp.voice_spinlocks[v]);
+    qemu_mutex_lock(&d->lock);
+
     uint64_t mask = 1LL << (v % 64);
     if (lock) {
         d->vp.voice_locked[v / 64] |= mask;
     } else {
         d->vp.voice_locked[v / 64] &= ~mask;
     }
-    qemu_spin_unlock(&d->vp.voice_spinlocks[v]);
-    qemu_cond_broadcast(&d->cond);
+
+    qemu_cond_signal(&d->cond);
+    qemu_mutex_unlock(&d->lock);
 }
 
 static bool is_voice_locked(MCPXAPUState *d, uint16_t v)
@@ -1640,17 +1643,6 @@ static void *voice_worker_thread(void *arg)
     return NULL;
 }
 
-static void voice_work_acquire_voice_lock_for_processing(MCPXAPUState *d, int v)
-{
-    qemu_spin_lock(&d->vp.voice_spinlocks[v]);
-    while (is_voice_locked(d, v)) {
-        /* Stall until voice is available */
-        qemu_spin_unlock(&d->vp.voice_spinlocks[v]);
-        qemu_cond_wait(&d->cond, &d->lock);
-        qemu_spin_lock(&d->vp.voice_spinlocks[v]);
-    }
-}
-
 static void voice_work_enqueue(MCPXAPUState *d, int v, int list)
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
@@ -1660,17 +1652,6 @@ static void voice_work_enqueue(MCPXAPUState *d, int v, int list)
         .voice = v,
         .list = list,
     };
-
-    voice_work_acquire_voice_lock_for_processing(d, v);
-}
-
-static void voice_work_release_voice_locks(MCPXAPUState *d)
-{
-    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
-
-    for (int i = 0; i < vwd->queue_len; i++) {
-        qemu_spin_unlock(&d->vp.voice_spinlocks[vwd->queue[i].voice]);
-    }
 }
 
 static void voice_work_schedule(MCPXAPUState *d)
@@ -1722,6 +1703,19 @@ static void voice_work_schedule(MCPXAPUState *d)
     }
 }
 
+static bool any_queued_voice_locked(MCPXAPUState *d)
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    for (int i = 0; i < vwd->queue_len; i++) {
+        if (is_voice_locked(d, vwd->queue[i].voice)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static void
 voice_work_dispatch(MCPXAPUState *d,
                     float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
@@ -1729,6 +1723,19 @@ voice_work_dispatch(MCPXAPUState *d,
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
 
     int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+
+    while (true) {
+        if (qatomic_read(&d->pause_requested)) {
+            vwd->queue_len = 0;
+            return;
+        }
+
+        if (!any_queued_voice_locked(d)) {
+            break;
+        }
+
+        qemu_cond_timedwait(&d->cond, &d->lock, 1);
+    }
 
     qemu_mutex_lock(&vwd->lock);
 
@@ -1740,7 +1747,6 @@ voice_work_dispatch(MCPXAPUState *d,
         qemu_cond_broadcast(&vwd->work_pending);
         qemu_cond_wait(&vwd->work_finished, &vwd->lock);
         assert(!vwd->workers_pending);
-        voice_work_release_voice_locks(d);
         vwd->queue_len = 0;
 
         // Add voice contributions
@@ -1761,7 +1767,7 @@ static void voice_work_init(MCPXAPUState *d)
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
 
-    int num_workers = g_config.audio.vp.num_workers ?: SDL_GetCPUCount();
+    int num_workers = g_config.audio.vp.num_workers ?: SDL_GetNumLogicalCPUCores();
     vwd->num_workers = MAX(1, MIN(num_workers, MAX_VOICE_WORKERS));
     vwd->workers = g_malloc0_n(vwd->num_workers, sizeof(VoiceWorker));
     vwd->workers_should_exit = false;
@@ -1852,10 +1858,6 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
 
 void mcpx_apu_vp_init(MCPXAPUState *d)
 {
-    for (int i = 0; i < MCPX_HW_MAX_VOICES; i++) {
-        qemu_spin_init(&d->vp.voice_spinlocks[i]);
-    }
-
     voice_work_init(d);
 }
 

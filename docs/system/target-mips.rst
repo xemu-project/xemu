@@ -12,8 +12,6 @@ machine types are emulated:
 
 -  An ACER Pica \"pica61\". This machine needs the 64-bit emulator.
 
--  MIPS emulator pseudo board \"mipssim\"
-
 -  A MIPS Magnum R4000 machine \"magnum\". This machine needs the
    64-bit emulator.
 
@@ -80,15 +78,6 @@ The Loongson-3 virtual platform emulation supports:
 
 -  Both KVM and TCG supported
 
-The mipssim pseudo board emulation provides an environment similar to
-what the proprietary MIPS emulator uses for running Linux. It supports:
-
--  A range of MIPS CPUs, default is the 24Kf
-
--  PC style serial port
-
--  MIPSnet network emulation
-
 .. include:: cpu-models-mips.rst.inc
 
 .. _nanoMIPS-System-emulator:
@@ -112,5 +101,5 @@ https://mipsdistros.mips.com/LinuxDistro/nanomips/kernels/v4.15.18-432-gb2eb9a8b
 Start system emulation of Malta board with nanoMIPS I7200 CPU::
 
    qemu-system-mipsel -cpu I7200 -kernel <kernel_image_file> \
-       -M malta -serial stdio -m <memory_size> -hda <disk_image_file> \
+       -M malta -serial stdio -m <memory_size> -drive file=<disk_image_file>,format=raw \
        -append "mem=256m@0x0 rw console=ttyS0 vga=cirrus vesa=0x111 root=/dev/sda"

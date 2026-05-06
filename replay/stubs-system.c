@@ -1,5 +1,5 @@
 #include "qemu/osdep.h"
-#include "sysemu/replay.h"
+#include "system/replay.h"
 #include "ui/input.h"
 
 void replay_input_event(QemuConsole *src, InputEvent *evt)
@@ -15,7 +15,7 @@ void replay_input_sync_event(void)
 void replay_add_blocker(const char *feature)
 {
 }
-void replay_audio_in(size_t *recorded, void *samples, size_t *wpos, size_t size)
+void replay_audio_in(size_t *recorded, st_sample *samples, size_t *wpos, size_t size)
 {
 }
 void replay_audio_out(size_t *played)
