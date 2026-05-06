@@ -112,7 +112,7 @@ static void usb_xid_arcade_stick_handle_data(USBDevice *dev, USBPacket *p)
     }
 }
 
-static void usb_xid_arcade_stick_class_initfn(ObjectClass *klass, void *data)
+static void usb_xid_arcade_stick_class_init(ObjectClass *klass, const void *data)
 {
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
@@ -147,9 +147,8 @@ static void usb_xbox_arcade_stick_realize(USBDevice *dev, Error **errp)
     s->out_state_capabilities.report_id = 0;
 }
 
-static Property xid_properties[] = {
+static const Property xid_properties[] = {
     DEFINE_PROP_UINT8("index", USBXIDGamepadState, device_index, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const VMStateDescription vmstate_usb_arcade_stick = {
@@ -161,7 +160,7 @@ static const VMStateDescription vmstate_usb_arcade_stick = {
                                 VMSTATE_END_OF_LIST() },
 };
 
-static void usb_xbox_arcade_stick_class_initfn(ObjectClass *klass, void *data)
+static void usb_xbox_arcade_stick_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
@@ -170,7 +169,7 @@ static void usb_xbox_arcade_stick_class_initfn(ObjectClass *klass, void *data)
     uc->usb_desc = &desc_xbox_arcade_stick;
     uc->realize = usb_xbox_arcade_stick_realize;
     uc->unrealize = usb_xbox_gamepad_unrealize;
-    usb_xid_arcade_stick_class_initfn(klass, data);
+    usb_xid_arcade_stick_class_init(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd = &vmstate_usb_arcade_stick;
     device_class_set_props(dc, xid_properties);
@@ -181,7 +180,7 @@ static const TypeInfo usb_xbox_arcade_stick_info = {
     .name = TYPE_USB_XID_ARCADE_STICK,
     .parent = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBXIDGamepadState),
-    .class_init = usb_xbox_arcade_stick_class_initfn,
+    .class_init = usb_xbox_arcade_stick_class_init,
 };
 
 static void usb_xid_register_types(void)
