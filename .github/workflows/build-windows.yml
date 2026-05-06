@@ -29,7 +29,7 @@ jobs:
       CROSSAR: ${{ matrix.arch == 'arm64' && 'aarch64' || 'x86_64' }}-w64-mingw32.static-${{ matrix.arch == 'arm64' && 'ar' || 'gcc-ar' }}
     steps:
     - name: Download source package
-      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
       with:
         name: src
     - name: Install zstd
@@ -39,7 +39,7 @@ jobs:
       run: tar -xf xemu-${{ inputs.pkg_version }}.tar.zst --strip-components=2
     - name: Initialize compiler cache
       id: cache
-      uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v4
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
       with:
         path: |
           ${{ env.CCACHE_DIR }}
@@ -75,7 +75,7 @@ jobs:
     - name: Report ccache stats
       run: ccache -s
     - name: Upload build artifact
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
       with:
         name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}
         path: dist
@@ -93,7 +93,7 @@ jobs:
         configuration: [debug, release]
     steps:
     - name: Download artifacts
-      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
       with:
         name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}
         path: dist
@@ -118,7 +118,7 @@ jobs:
         7z a -tzip ../dist-pdb/${{ steps.package_id.outputs.pkg_filename}} * "-xr!*.pdb"
         7z a -tzip ../dist-pdb/${{ steps.package_id.outputs.pdb_filename}} "-ir!*.pdb"
     - name: Upload build artifact
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
       with:
         name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}-pdb
         path: dist-pdb

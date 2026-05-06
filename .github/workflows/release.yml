@@ -46,7 +46,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
       run: python3 .github/scripts/gen-changelog.py --ref ${{ inputs.ref }} -o CHANGELOG.md
     - name: Download artifacts
-      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
       with:
         path: dist
         merge-multiple: true
@@ -57,7 +57,7 @@ jobs:
         cp xemu-${{ needs.build.outputs.pkg_version }}-windows-x86_64.zip xemu-win-x86_64-release.zip
         cp xemu-${{ needs.build.outputs.pkg_version }}-windows-arm64.zip xemu-win-aarch64-release.zip
     - name: Create release
-      uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+      uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
       with:
         name: ${{ inputs.pre-release && 'Latest Development Build' || inputs.tag }}
         tag_name: ${{ inputs.tag }}
