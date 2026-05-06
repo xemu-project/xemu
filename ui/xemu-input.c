@@ -400,7 +400,7 @@ void xemu_input_init(void)
 
     for (int i = 0; i < 49; i++) {
         if ((sdl_sbc_kbd_scancode_map[i] < SDL_SCANCODE_UNKNOWN) ||
-            (sdl_sbc_kbd_scancode_map[i] >= SDL_NUM_SCANCODES)) {
+            (sdl_sbc_kbd_scancode_map[i] >= SDL_SCANCODE_COUNT)) {
             fprintf(stderr,
                     "WARNING: Keyboard steel battalion controller map scancode "
                     "out of range (%d) : Disabled\n",
@@ -705,22 +705,22 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
         }
 
         // Update SBC Axes
-        int mouseX, mouseY;
+        float mouseX, mouseY;
         uint32_t mouseBtn = SDL_GetMouseState(&mouseX, &mouseY);
 
-        if (mouseBtn & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+        if (mouseBtn & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) {
             state->sbc.buttons |= SBC_BUTTON_MAIN_WEAPON;
         }
-        if (mouseBtn & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
+        if (mouseBtn & SDL_BUTTON_MASK(SDL_BUTTON_RIGHT)) {
             state->sbc.buttons |= SBC_BUTTON_LOCK_ON;
         }
-        if(mouseBtn & SDL_BUTTON(SDL_BUTTON_X1) ||
-           mouseBtn & SDL_BUTTON(SDL_BUTTON_X2)) {
+        if(mouseBtn & SDL_BUTTON_MASK(SDL_BUTTON_X1) ||
+           mouseBtn & SDL_BUTTON_MASK(SDL_BUTTON_X2)) {
             state->sbc.buttons |= SBC_BUTTON_SUB_WEAPON;
         }
 
         int32_t windowWidth, windowHeight;
-        SDL_GL_GetDrawableSize(
+        SDL_GetWindowSizeInPixels(
             m_window, &windowWidth,
             &windowHeight); // get the mouse location relative to the Viewport,
                             // not the Window
@@ -838,21 +838,21 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
         state->sbc.buttons = 0;
 
         const uint64_t sdl_button_map_sbc[8][2] = {
-            { SDL_CONTROLLER_BUTTON_A, SBC_BUTTON_MAIN_WEAPON },
-            { SDL_CONTROLLER_BUTTON_B, SBC_BUTTON_LOCK_ON },
-            { SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SBC_BUTTON_FUNC1 },
-            { SDL_CONTROLLER_BUTTON_LEFTSTICK, SBC_BUTTON_SIGHT_CHANGE },
-            { SDL_CONTROLLER_BUTTON_DPAD_UP, SBC_BUTTON_GEAR_UP },
-            { SDL_CONTROLLER_BUTTON_DPAD_DOWN, SBC_BUTTON_GEAR_DOWN },
-            { SDL_CONTROLLER_BUTTON_DPAD_LEFT, SBC_BUTTON_TUNER_LEFT },
-            { SDL_CONTROLLER_BUTTON_DPAD_RIGHT, SBC_BUTTON_TUNER_RIGHT }
+            { SDL_GAMEPAD_BUTTON_SOUTH, SBC_BUTTON_MAIN_WEAPON },
+            { SDL_GAMEPAD_BUTTON_EAST, SBC_BUTTON_LOCK_ON },
+            { SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, SBC_BUTTON_FUNC1 },
+            { SDL_GAMEPAD_BUTTON_LEFT_STICK, SBC_BUTTON_SIGHT_CHANGE },
+            { SDL_GAMEPAD_BUTTON_DPAD_UP, SBC_BUTTON_GEAR_UP },
+            { SDL_GAMEPAD_BUTTON_DPAD_DOWN, SBC_BUTTON_GEAR_DOWN },
+            { SDL_GAMEPAD_BUTTON_DPAD_LEFT, SBC_BUTTON_TUNER_LEFT },
+            { SDL_GAMEPAD_BUTTON_DPAD_RIGHT, SBC_BUTTON_TUNER_RIGHT }
         };
 
         if (state->sbc.gearLever == 0)
             state->sbc.gearLever = 255;
 
         for (int i = 0; i < 8; i++) {
-            if (SDL_GameControllerGetButton(state->sdl_gamecontroller,
+            if (SDL_GetGamepadButton(state->sdl_gamepad,
                                             sdl_button_map_sbc[i][0]))
                 state->sbc.buttons |= sdl_button_map_sbc[i][1];
         }
@@ -912,19 +912,24 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
                     state->sbc.gearLever--;
             }
         }
+#define SDL_GET_AXIS(state, axis)    \
+    SDL_GetGamepadAxis(              \
+        (state)->sdl_gamepad, axis)
 
-        state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X] = SDL_GameControllerGetAxis(
-            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_LEFTX);
-        state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] = SDL_GameControllerGetAxis(
-            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_LEFTY);
-        state->sbc.axis[SBC_AXIS_AIMING_X] = SDL_GameControllerGetAxis(
-            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_RIGHTX);
-        state->sbc.axis[SBC_AXIS_AIMING_Y] = SDL_GameControllerGetAxis(
-            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_RIGHTY);
-        state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] = SDL_GameControllerGetAxis(
-            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
-        state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] = SDL_GameControllerGetAxis(
-            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+        state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X] = 
+            SDL_GET_AXIS(state, SDL_GAMEPAD_AXIS_LEFTX);
+        state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] = 
+            SDL_GET_AXIS(state, SDL_GAMEPAD_AXIS_LEFTY);
+        state->sbc.axis[SBC_AXIS_AIMING_X] = 
+            SDL_GET_AXIS(state, SDL_GAMEPAD_AXIS_RIGHTX);
+        state->sbc.axis[SBC_AXIS_AIMING_Y] = 
+            SDL_GET_AXIS(state, SDL_GAMEPAD_AXIS_RIGHTY);
+        state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] = 
+            SDL_GET_AXIS(state, SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
+        state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] =
+            SDL_GET_AXIS(state, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
+
+#undef SDL_GET_AXIS
 
         state->sbc.previousButtons = state->sbc.buttons;
     } else {
