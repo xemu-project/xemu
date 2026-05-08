@@ -46,6 +46,8 @@ typedef struct SMBusCX25871Device {
     uint8_t cmd;
 } SMBusCX25871Device;
 
+static SMBusCX25871Device *conexant_device = NULL;
+
 static void smbus_cx25871_quick_cmd(SMBusDevice *dev, uint8_t read)
 {
     DPRINTF("smbus_cx25871_quick_cmd: addr=0x%02x read=%d\n", dev->i2c.address, read);
@@ -116,14 +118,22 @@ void smbus_cx25871_init(I2CBus *smbus, int address)
     dev = qdev_new(TYPE_SMBUS_CX25871);
     qdev_prop_set_uint8(dev, "address", address);
     qdev_realize_and_unref(dev, (BusState *)smbus, &error_fatal);
+
+    Object *obj = object_resolve_path_type("", TYPE_SMBUS_CX25871, NULL);
+    if (obj) {
+        conexant_device = SMBUS_CX25871(obj);
+    }
 }
 
 void smbus_cx25871_notify_vblank(void)
 {
-    Object *obj = object_resolve_path_type("", TYPE_SMBUS_CX25871, NULL);
-    if (obj) {
-        SMBusCX25871Device *cx = SMBUS_CX25871(obj);
-        cx->registers[0x06] =
-            (cx->registers[0x06] & 0xF0) | ((cx->registers[0x06] + 1) & 0x03);
+    if (unlikely(!conexant_device)) {
+        return;
     }
+
+#define FIELD_CNT_MASK 0x0F
+    conexant_device->registers[0x06] =
+        (conexant_device->registers[0x06] & (~FIELD_CNT_MASK)) |
+        ((conexant_device->registers[0x06] + 1) & FIELD_CNT_MASK);
+#undef FIELD_CNT_MASK
 }
