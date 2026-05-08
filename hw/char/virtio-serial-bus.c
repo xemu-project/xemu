@@ -622,7 +622,7 @@ static void guest_reset(VirtIOSerial *vser)
     }
 }
 
-static void set_status(VirtIODevice *vdev, uint8_t status)
+static int set_status(VirtIODevice *vdev, uint8_t status)
 {
     VirtIOSerial *vser;
     VirtIOSerialPort *port;
@@ -650,6 +650,7 @@ static void set_status(VirtIODevice *vdev, uint8_t status)
             vsc->enable_backend(port, vdev->vm_running);
         }
     }
+    return 0;
 }
 
 static void vser_reset(VirtIODevice *vdev)
@@ -835,13 +836,12 @@ static int virtio_serial_load_device(VirtIODevice *vdev, QEMUFile *f,
 
 static void virtser_bus_dev_print(Monitor *mon, DeviceState *qdev, int indent);
 
-static Property virtser_props[] = {
+static const Property virtser_props[] = {
     DEFINE_PROP_UINT32("nr", VirtIOSerialPort, id, VIRTIO_CONSOLE_BAD_ID),
     DEFINE_PROP_STRING("name", VirtIOSerialPort, name),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void virtser_bus_class_init(ObjectClass *klass, void *data)
+static void virtser_bus_class_init(ObjectClass *klass, const void *data)
 {
     BusClass *k = BUS_CLASS(klass);
     k->print_dev = virtser_bus_dev_print;
@@ -1093,7 +1093,7 @@ static void virtio_serial_device_realize(DeviceState *dev, Error **errp)
     QLIST_INSERT_HEAD(&vserdevices.devices, vser, next);
 }
 
-static void virtio_serial_port_class_init(ObjectClass *klass, void *data)
+static void virtio_serial_port_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *k = DEVICE_CLASS(klass);
 
@@ -1153,15 +1153,14 @@ static const VMStateDescription vmstate_virtio_console = {
     },
 };
 
-static Property virtio_serial_properties[] = {
+static const Property virtio_serial_properties[] = {
     DEFINE_PROP_UINT32("max_ports", VirtIOSerial, serial.max_virtserial_ports,
                                                   31),
     DEFINE_PROP_BIT64("emergency-write", VirtIOSerial, host_features,
                       VIRTIO_CONSOLE_F_EMERG_WRITE, true),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void virtio_serial_class_init(ObjectClass *klass, void *data)
+static void virtio_serial_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     VirtioDeviceClass *vdc = VIRTIO_DEVICE_CLASS(klass);
@@ -1190,7 +1189,7 @@ static const TypeInfo virtio_device_info = {
     .parent = TYPE_VIRTIO_DEVICE,
     .instance_size = sizeof(VirtIOSerial),
     .class_init = virtio_serial_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_HOTPLUG_HANDLER },
         { }
     }

@@ -41,7 +41,7 @@ typedef struct OprtnsCommand {
 
 struct SCLPConsoleLM {
     SCLPEvent event;
-    CharBackend chr;
+    CharFrontend chr;
     bool echo;                  /* immediate echo of input if true        */
     uint32_t write_errors;      /* errors writing to char layer           */
     uint32_t length;            /* length of byte stream in buffer        */
@@ -214,7 +214,7 @@ static int process_mdb(SCLPEvent *event, MDBO *mdbo)
 {
     int rc;
     int len;
-    uint8_t buffer[SIZE_BUFFER];
+    QEMU_UNINITIALIZED uint8_t buffer[SIZE_BUFFER];
 
     len = be16_to_cpu(mdbo->length);
     len -= sizeof(mdbo->length) + sizeof(mdbo->type)
@@ -333,14 +333,13 @@ static void console_reset(DeviceState *dev)
    scon->write_errors = 0;
 }
 
-static Property console_properties[] = {
+static const Property console_properties[] = {
     DEFINE_PROP_CHR("chardev", SCLPConsoleLM, chr),
     DEFINE_PROP_UINT32("write_errors", SCLPConsoleLM, write_errors, 0),
     DEFINE_PROP_BOOL("echo", SCLPConsoleLM, echo, true),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void console_class_init(ObjectClass *klass, void *data)
+static void console_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     SCLPEventClass *ec = SCLP_EVENT_CLASS(klass);

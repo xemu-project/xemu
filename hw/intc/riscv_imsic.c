@@ -22,7 +22,7 @@
 #include "qemu/module.h"
 #include "qemu/error-report.h"
 #include "qemu/bswap.h"
-#include "exec/address-spaces.h"
+#include "system/address-spaces.h"
 #include "hw/sysbus.h"
 #include "hw/pci/msi.h"
 #include "hw/boards.h"
@@ -31,8 +31,8 @@
 #include "hw/irq.h"
 #include "target/riscv/cpu.h"
 #include "target/riscv/cpu_bits.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/kvm.h"
+#include "system/system.h"
+#include "system/kvm.h"
 #include "migration/vmstate.h"
 
 #define IMSIC_MMIO_PAGE_LE             0x00
@@ -349,7 +349,19 @@ static void riscv_imsic_realize(DeviceState *dev, Error **errp)
     CPUState *cpu = cpu_by_arch_id(imsic->hartid);
     CPURISCVState *env = cpu ? cpu_env(cpu) : NULL;
 
+    /* Claim the CPU interrupt to be triggered by this IMSIC */
+    if (riscv_cpu_claim_interrupts(rcpu,
+            (imsic->mmode) ? MIP_MEIP : MIP_SEIP) < 0) {
+        error_setg(errp, "%s already claimed",
+                   (imsic->mmode) ? "MEIP" : "SEIP");
+        return;
+    }
+
     if (!kvm_irqchip_in_kernel()) {
+        /* Create output IRQ lines */
+        imsic->external_irqs = g_malloc(sizeof(qemu_irq) * imsic->num_pages);
+        qdev_init_gpio_out(dev, imsic->external_irqs, imsic->num_pages);
+
         imsic->num_eistate = imsic->num_pages * imsic->num_irqs;
         imsic->eidelivery = g_new0(uint32_t, imsic->num_pages);
         imsic->eithreshold = g_new0(uint32_t, imsic->num_pages);
@@ -361,18 +373,6 @@ static void riscv_imsic_realize(DeviceState *dev, Error **errp)
                           IMSIC_MMIO_SIZE(imsic->num_pages));
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &imsic->mmio);
 
-    /* Claim the CPU interrupt to be triggered by this IMSIC */
-    if (riscv_cpu_claim_interrupts(rcpu,
-            (imsic->mmode) ? MIP_MEIP : MIP_SEIP) < 0) {
-        error_setg(errp, "%s already claimed",
-                   (imsic->mmode) ? "MEIP" : "SEIP");
-        return;
-    }
-
-    /* Create output IRQ lines */
-    imsic->external_irqs = g_malloc(sizeof(qemu_irq) * imsic->num_pages);
-    qdev_init_gpio_out(dev, imsic->external_irqs, imsic->num_pages);
-
     /* Force select AIA feature and setup CSR read-modify-write callback */
     if (env) {
         if (!imsic->mmode) {
@@ -381,25 +381,33 @@ static void riscv_imsic_realize(DeviceState *dev, Error **errp)
         } else {
             rcpu->cfg.ext_smaia = true;
         }
-        riscv_cpu_set_aia_ireg_rmw_fn(env, (imsic->mmode) ? PRV_M : PRV_S,
-                                      riscv_imsic_rmw, imsic);
+
+        if (!kvm_irqchip_in_kernel()) {
+            riscv_cpu_set_aia_ireg_rmw_fn(env, (imsic->mmode) ? PRV_M : PRV_S,
+                                          riscv_imsic_rmw, imsic);
+        }
     }
 
     msi_nonbroken = true;
 }
 
-static Property riscv_imsic_properties[] = {
+static const Property riscv_imsic_properties[] = {
     DEFINE_PROP_BOOL("mmode", RISCVIMSICState, mmode, 0),
     DEFINE_PROP_UINT32("hartid", RISCVIMSICState, hartid, 0),
     DEFINE_PROP_UINT32("num-pages", RISCVIMSICState, num_pages, 0),
     DEFINE_PROP_UINT32("num-irqs", RISCVIMSICState, num_irqs, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
+
+static bool riscv_imsic_state_needed(void *opaque)
+{
+    return !kvm_irqchip_in_kernel();
+}
 
 static const VMStateDescription vmstate_riscv_imsic = {
     .name = "riscv_imsic",
-    .version_id = 1,
-    .minimum_version_id = 1,
+    .version_id = 2,
+    .minimum_version_id = 2,
+    .needed = riscv_imsic_state_needed,
     .fields = (const VMStateField[]) {
             VMSTATE_VARRAY_UINT32(eidelivery, RISCVIMSICState,
                                   num_pages, 0,
@@ -414,7 +422,7 @@ static const VMStateDescription vmstate_riscv_imsic = {
         }
 };
 
-static void riscv_imsic_class_init(ObjectClass *klass, void *data)
+static void riscv_imsic_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -465,15 +473,17 @@ DeviceState *riscv_imsic_create(hwaddr addr, uint32_t hartid, bool mmode,
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, addr);
 
-    for (i = 0; i < num_pages; i++) {
-        if (!i) {
-            qdev_connect_gpio_out_named(dev, NULL, i,
-                                        qdev_get_gpio_in(DEVICE(cpu),
+    if (!kvm_irqchip_in_kernel()) {
+        for (i = 0; i < num_pages; i++) {
+            if (!i) {
+                qdev_connect_gpio_out_named(dev, NULL, i,
+                                            qdev_get_gpio_in(DEVICE(cpu),
                                             (mmode) ? IRQ_M_EXT : IRQ_S_EXT));
-        } else {
-            qdev_connect_gpio_out_named(dev, NULL, i,
-                                        qdev_get_gpio_in(DEVICE(cpu),
+            } else {
+                qdev_connect_gpio_out_named(dev, NULL, i,
+                                            qdev_get_gpio_in(DEVICE(cpu),
                                             IRQ_LOCAL_MAX + i - 1));
+            }
         }
     }
 

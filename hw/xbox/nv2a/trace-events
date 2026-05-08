@@ -11,7 +11,8 @@ nv2a_pgraph_method(uint32_t subchannel, uint32_t graphics_class, uint32_t method
 nv2a_pgraph_method_abbrev(uint32_t subchannel, uint32_t graphics_class, uint32_t method, const char *name, unsigned int count) "%d: 0x%"PRIx32" -> 0x%04"PRIx32" %s * %d"
 nv2a_pgraph_method_unhandled(uint32_t subchannel, uint32_t graphics_class, uint32_t method, uint32_t parameter) "%d: 0x%"PRIx32" -> 0x%04"PRIx32" 0x%"PRIx32
 nv2a_pgraph_surface_compare_mismatch(const char *field, long int a, long int b) "%20s -- %8ld vs %8ld"
-nv2a_pgraph_surface_cpu_access(uint32_t addr, uint32_t offset) "0x%08"PRIx32"+0x%"PRIx32
+nv2a_pgraph_surface_cpu_read(uint32_t addr, uint32_t offset) "0x%08"PRIx32"+0x%"PRIx32
+nv2a_pgraph_surface_cpu_write(uint32_t addr, uint32_t offset) "0x%08"PRIx32"+0x%"PRIx32
 nv2a_pgraph_surface_create_color(uint32_t addr, uint32_t width, uint32_t height, const char *layout, uint32_t anti_aliasing, uint32_t clip_x, uint32_t clip_width, uint32_t clip_y, uint32_t clip_height, uint32_t pitch) "Create: [COLOR @ 0x%08" PRIx32 " (%dx%d)] (%s) aa:%d, clip:x=%d,w=%d,y=%d,h=%d,p=%d"
 nv2a_pgraph_surface_create_zeta(uint32_t addr, uint32_t width, uint32_t height, const char *layout, uint32_t anti_aliasing, uint32_t clip_x, uint32_t clip_width, uint32_t clip_y, uint32_t clip_height, uint32_t pitch) " Create: [ZETA  @ 0x%08" PRIx32 " (%dx%d)] (%s) aa:%d, clip:x=%d,w=%d,y=%d,h=%d,p=%d"
 nv2a_pgraph_surface_download(const char *binding, const char *layout, uint32_t addr, uint32_t width, uint32_t height, uint32_t pitch, uint32_t bytes_per_pixel) "[GPU->RAM] %s (%s) surface @ 0x%08" PRIx32 " (w=%d,h=%d,p=%d,bpp=%d)"

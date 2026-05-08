@@ -46,6 +46,10 @@ config PCI_I440FX
     select PCI
     select PAM
 
+config PCI_EXPRESS_ASPEED
+    bool
+    select PCI_EXPRESS
+
 config PCI_EXPRESS_Q35
     bool
     select PCI_EXPRESS
@@ -54,6 +58,7 @@ config PCI_EXPRESS_Q35
 config PCI_EXPRESS_GENERIC_BRIDGE
     bool
     select PCI_EXPRESS
+    imply ACPI_PCI
 
 config PCI_EXPRESS_XILINX
     bool
@@ -98,6 +103,9 @@ config DINO
 config ASTRO
     bool
     select PCI
+
+config PCI_EXPRESS_FSL_IMX8M_PHY
+    bool
 
 config GT64120
     bool

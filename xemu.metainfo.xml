@@ -1,48 +1,56 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>app.xemu.xemu</id>
-
   <name>xemu</name>
   <summary>Original Xbox Emulator</summary>
-
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-2.0-only</project_license>
-
   <supports>
     <control>pointing</control>
     <control>keyboard</control>
     <control>gamepad</control>
   </supports>
-
   <description>
     <p>
        A free and open-source application that emulates the original Microsoft Xbox game console. Supports connecting up to 4 controllers for local play, networking for multiplayer, resolution scaling, and more.
     </p>
   </description>
-
   <screenshots>
-    <screenshot type="default"><image>https://xemu.app/screenshots/0.png</image></screenshot>
-    <screenshot><image>https://xemu.app/screenshots/1.png</image></screenshot>
-    <screenshot><image>https://xemu.app/screenshots/2.png</image></screenshot>
-    <screenshot><image>https://xemu.app/screenshots/3.png</image></screenshot>
-    <screenshot><image>https://xemu.app/screenshots/4.png</image></screenshot>
-    <screenshot><image>https://xemu.app/screenshots/5.png</image></screenshot>
+    <screenshot type="default">
+      <image>https://xemu.app/screenshots/0.png</image>
+      <caption>"Xbox Dashboard" running in xemu</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://xemu.app/screenshots/1.png</image>
+      <caption>"Halo: Combat Evolved" (Campaign) running in xemu</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://xemu.app/screenshots/2.png</image>
+      <caption>"Fuzion Frenzy" running in xemu</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://xemu.app/screenshots/3.png</image>
+      <caption>"Halo: Combat Evolved" (Multiplayer) running in xemu</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://xemu.app/screenshots/4.png</image>
+      <caption>"Tony Hawk's Pro Skater 2x" running in xemu</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://xemu.app/screenshots/5.png</image>
+      <caption>xemu Settings Menu</caption>
+    </screenshot>
   </screenshots>
-
   <categories>
     <category>Game</category>
     <category>Emulator</category>
   </categories>
-
   <content_rating type="oars-1.1"/>
-
   <url type="homepage">https://xemu.app</url>
   <url type="bugtracker">https://github.com/xemu-project/xemu/issues</url>
   <url type="help">https://xemu.app/docs</url>
   <url type="faq">https://xemu.app/docs/faq</url>
-
   <launchable type="desktop-id">xemu.desktop</launchable>
-
   <provides>
     <binary>xemu</binary>
   </provides>

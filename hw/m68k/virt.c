@@ -10,7 +10,8 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 #include "qemu/guest-random.h"
-#include "sysemu/sysemu.h"
+#include "exec/target_page.h"
+#include "system/system.h"
 #include "cpu.h"
 #include "hw/boards.h"
 #include "hw/qdev-properties.h"
@@ -24,9 +25,9 @@
 #include "net/net.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "sysemu/qtest.h"
-#include "sysemu/runstate.h"
-#include "sysemu/reset.h"
+#include "system/qtest.h"
+#include "system/runstate.h"
+#include "system/reset.h"
 
 #include "hw/intc/m68k_irqc.h"
 #include "hw/misc/virt_ctrl.h"
@@ -228,7 +229,7 @@ static void virt_init(MachineState *machine)
         }
 
         kernel_size = load_elf(kernel_filename, NULL, NULL, NULL,
-                               &elf_entry, NULL, &high, NULL, 1,
+                               &elf_entry, NULL, &high, NULL, ELFDATA2MSB,
                                EM_68K, 0, 0);
         if (kernel_size < 0) {
             error_report("could not load kernel '%s'", kernel_filename);
@@ -282,7 +283,7 @@ static void virt_init(MachineState *machine)
 
         /* load initrd */
         if (initrd_filename) {
-            initrd_size = get_image_size(initrd_filename);
+            initrd_size = get_image_size(initrd_filename, NULL);
             if (initrd_size < 0) {
                 error_report("could not load initial ram disk '%s'",
                              initrd_filename);
@@ -291,7 +292,7 @@ static void virt_init(MachineState *machine)
 
             initrd_base = (ram_size - initrd_size) & TARGET_PAGE_MASK;
             load_image_targphys(initrd_filename, initrd_base,
-                                ram_size - initrd_base);
+                                ram_size - initrd_base, NULL);
             BOOTINFO2(param_ptr, BI_RAMDISK, initrd_base,
                       initrd_size);
         } else {
@@ -309,7 +310,7 @@ static void virt_init(MachineState *machine)
     }
 }
 
-static void virt_machine_class_init(ObjectClass *oc, void *data)
+static void virt_machine_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     mc->desc = "QEMU M68K Virtual Machine";
@@ -338,7 +339,7 @@ type_init(virt_machine_register_types)
 #define DEFINE_VIRT_MACHINE_IMPL(latest, ...) \
     static void MACHINE_VER_SYM(class_init, virt, __VA_ARGS__)( \
         ObjectClass *oc, \
-        void *data) \
+        const void *data) \
     { \
         MachineClass *mc = MACHINE_CLASS(oc); \
         MACHINE_VER_SYM(options, virt, __VA_ARGS__)(mc); \
@@ -366,10 +367,31 @@ type_init(virt_machine_register_types)
 #define DEFINE_VIRT_MACHINE(major, minor) \
     DEFINE_VIRT_MACHINE_IMPL(false, major, minor)
 
-static void virt_machine_9_2_options(MachineClass *mc)
+static void virt_machine_10_2_options(MachineClass *mc)
 {
 }
-DEFINE_VIRT_MACHINE_AS_LATEST(9, 2)
+DEFINE_VIRT_MACHINE_AS_LATEST(10, 2)
+
+static void virt_machine_10_1_options(MachineClass *mc)
+{
+    virt_machine_10_2_options(mc);
+    compat_props_add(mc->compat_props, hw_compat_10_1, hw_compat_10_1_len);
+}
+DEFINE_VIRT_MACHINE(10, 1)
+
+static void virt_machine_10_0_options(MachineClass *mc)
+{
+    virt_machine_10_1_options(mc);
+    compat_props_add(mc->compat_props, hw_compat_10_0, hw_compat_10_0_len);
+}
+DEFINE_VIRT_MACHINE(10, 0)
+
+static void virt_machine_9_2_options(MachineClass *mc)
+{
+    virt_machine_10_0_options(mc);
+    compat_props_add(mc->compat_props, hw_compat_9_2, hw_compat_9_2_len);
+}
+DEFINE_VIRT_MACHINE(9, 2)
 
 static void virt_machine_9_1_options(MachineClass *mc)
 {

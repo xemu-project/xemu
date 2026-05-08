@@ -25,7 +25,6 @@
 #include "qapi/error.h"
 #include "ui/console.h"
 #include "ui/input.h"
-#include "sysemu/sysemu.h"
 #include "monitor/monitor.h"
 #include "chardev/char.h"
 
@@ -38,12 +37,11 @@ static char mon_buffer[12*4096];
 static const size_t mon_buffer_size = sizeof(mon_buffer);
 static size_t offset;
 
-static void char_xemu_class_init(ObjectClass *oc, void *data);
 static void xemu_monitor_open(Chardev *chr, ChardevBackend *backend,
                              bool *be_opened, Error **errp);
 static int xemu_monitor_buffer_append(Chardev *chr, const uint8_t *buf, int len);
 
-static void char_xemu_class_init(ObjectClass *oc, void *data)
+static void char_xemu_class_init(ObjectClass *oc, const void *data)
 {
     ChardevClass *cc = CHARDEV_CLASS(oc);
 

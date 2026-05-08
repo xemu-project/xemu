@@ -25,9 +25,8 @@
 #include "hw/qdev-properties.h"
 #include "qapi/error.h"
 
-static Property cpu_cluster_properties[] = {
+static const Property cpu_cluster_properties[] = {
     DEFINE_PROP_UINT32("cluster-id", CPUClusterState, cluster_id, 0),
-    DEFINE_PROP_END_OF_LIST()
 };
 
 typedef struct CallbackData {
@@ -73,7 +72,7 @@ static void cpu_cluster_realize(DeviceState *dev, Error **errp)
     assert(cbdata.cpu_count > 0);
 }
 
-static void cpu_cluster_class_init(ObjectClass *klass, void *data)
+static void cpu_cluster_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

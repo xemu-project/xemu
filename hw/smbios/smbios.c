@@ -17,11 +17,12 @@
 
 #include "qemu/osdep.h"
 #include "qemu/units.h"
+#include "qemu/bswap.h"
 #include "qapi/error.h"
 #include "qemu/config-file.h"
 #include "qemu/module.h"
 #include "qemu/option.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "qemu/uuid.h"
 #include "hw/firmware/smbios.h"
 #include "hw/loader.h"
@@ -178,6 +179,10 @@ static const QemuOptDesc qemu_smbios_type0_opts[] = {
         .name = "uefi",
         .type = QEMU_OPT_BOOL,
         .help = "uefi support",
+    },{
+        .name = "vm",
+        .type = QEMU_OPT_BOOL,
+        .help = "virtual machine",
     },
     { /* end of list */ }
 };
@@ -573,9 +578,13 @@ static void smbios_build_type_0_table(void)
 
     t->bios_characteristics = cpu_to_le64(0x08); /* Not supported */
     t->bios_characteristics_extension_bytes[0] = 0;
-    t->bios_characteristics_extension_bytes[1] = 0x14; /* TCD/SVVP | VM */
+
+    t->bios_characteristics_extension_bytes[1] = 0x04; /* TCD/SVVP */
     if (smbios_type0.uefi) {
         t->bios_characteristics_extension_bytes[1] |= 0x08; /* |= UEFI */
+    }
+    if (smbios_type0.vm) {
+        t->bios_characteristics_extension_bytes[1] |= 0x10; /* |= VM */
     }
 
     if (smbios_type0.have_major_minor) {
@@ -1285,6 +1294,9 @@ static int save_opt_one(void *opaque,
             g_byte_array_append(data, (guint8 *)buf, ret);
         }
 
+        buf[0] = '\0';
+        g_byte_array_append(data, (guint8 *)buf, 1);
+
         qemu_close(fd);
 
         *opt->dest = g_renew(char *, *opt->dest, (*opt->ndest) + 1);
@@ -1328,7 +1340,7 @@ void smbios_entry_add(QemuOpts *opts, Error **errp)
             return;
         }
 
-        size = get_image_size(val);
+        size = get_image_size(val, NULL);
         if (size == -1 || size < sizeof(struct smbios_structure_header)) {
             error_setg(errp, "Cannot read SMBIOS file %s", val);
             return;
@@ -1401,6 +1413,7 @@ void smbios_entry_add(QemuOpts *opts, Error **errp)
             save_opt(&smbios_type0.version, opts, "version");
             save_opt(&smbios_type0.date, opts, "date");
             smbios_type0.uefi = qemu_opt_get_bool(opts, "uefi", false);
+            smbios_type0.vm = qemu_opt_get_bool(opts, "vm", true);
 
             val = qemu_opt_get(opts, "release");
             if (val) {

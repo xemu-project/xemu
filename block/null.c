@@ -12,13 +12,13 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qstring.h"
+#include "qobject/qdict.h"
+#include "qobject/qstring.h"
 #include "qemu/module.h"
 #include "qemu/option.h"
 #include "block/block-io.h"
 #include "block/block_int.h"
-#include "sysemu/replay.h"
+#include "system/replay.h"
 
 #define NULL_OPT_LATENCY "latency-ns"
 #define NULL_OPT_ZEROES  "read-zeroes"
@@ -173,18 +173,17 @@ static inline BlockAIOCB *null_aio_common(BlockDriverState *bs,
 {
     NullAIOCB *acb;
     BDRVNullState *s = bs->opaque;
+    AioContext *ctx = qemu_get_current_aio_context();
 
     acb = qemu_aio_get(&null_aiocb_info, bs, cb, opaque);
     /* Only emulate latency after vcpu is running. */
     if (s->latency_ns) {
-        aio_timer_init(bdrv_get_aio_context(bs), &acb->timer,
-                       QEMU_CLOCK_REALTIME, SCALE_NS,
+        aio_timer_init(ctx, &acb->timer, QEMU_CLOCK_REALTIME, SCALE_NS,
                        null_timer_cb, acb);
         timer_mod_ns(&acb->timer,
                      qemu_clock_get_ns(QEMU_CLOCK_REALTIME) + s->latency_ns);
     } else {
-        replay_bh_schedule_oneshot_event(bdrv_get_aio_context(bs),
-                                         null_bh_cb, acb);
+        replay_bh_schedule_oneshot_event(ctx, null_bh_cb, acb);
     }
     return &acb->common;
 }
@@ -227,9 +226,9 @@ static int null_reopen_prepare(BDRVReopenState *reopen_state,
 }
 
 static int coroutine_fn null_co_block_status(BlockDriverState *bs,
-                                             bool want_zero, int64_t offset,
-                                             int64_t bytes, int64_t *pnum,
-                                             int64_t *map,
+                                             unsigned int mode,
+                                             int64_t offset, int64_t bytes,
+                                             int64_t *pnum, int64_t *map,
                                              BlockDriverState **file)
 {
     BDRVNullState *s = bs->opaque;

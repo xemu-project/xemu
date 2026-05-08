@@ -23,7 +23,7 @@ def find_deps(exe_or_dll, search_path, analyzed_deps):
     output = subprocess.check_output(["objdump", "-p", exe_or_dll], text=True)
     output = output.split("\n")
     for line in output:
-        if not line.startswith("\tDLL Name: "):
+        if not line.lstrip().startswith("DLL Name: "):
             continue
 
         dep = line.split("DLL Name: ")[1].strip()
@@ -37,10 +37,10 @@ def find_deps(exe_or_dll, search_path, analyzed_deps):
 
         analyzed_deps.add(dep)
         # locate the dll dependencies recursively
-        rdeps = find_deps(dll, search_path, analyzed_deps)
+        analyzed_deps, rdeps = find_deps(dll, search_path, analyzed_deps)
         deps.extend(rdeps)
 
-    return deps
+    return analyzed_deps, deps
 
 def main():
     parser = argparse.ArgumentParser(description="QEMU NSIS build helper.")
@@ -92,18 +92,18 @@ def main():
         dlldir = os.path.join(destdir + prefix, "dll")
         os.mkdir(dlldir)
 
+        analyzed_deps = set()
         for exe in glob.glob(os.path.join(destdir + prefix, "*.exe")):
             signcode(exe)
 
             # find all dll dependencies
-            deps = set(find_deps(exe, search_path, set()))
+            analyzed_deps, deps = find_deps(exe, search_path, analyzed_deps)
+            deps = set(deps)
             deps.remove(exe)
 
             # copy all dlls to the DLLDIR
             for dep in deps:
                 dllfile = os.path.join(dlldir, os.path.basename(dep))
-                if (os.path.exists(dllfile)):
-                    continue
                 print("Copying '%s' to '%s'" % (dep, dllfile))
                 shutil.copy(dep, dllfile)
 
@@ -114,7 +114,7 @@ def main():
             "-DSRCDIR=" + args.srcdir,
             "-DBINDIR=" + destdir + prefix,
         ]
-        if args.cpu == "x86_64":
+        if args.cpu == "aarch64" or args.cpu == "x86_64":
             makensis += ["-DW64"]
         makensis += ["-DDLLDIR=" + dlldir]
 

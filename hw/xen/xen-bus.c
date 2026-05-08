@@ -18,8 +18,8 @@
 #include "hw/xen/xen-bus-helper.h"
 #include "monitor/monitor.h"
 #include "qapi/error.h"
-#include "qapi/qmp/qdict.h"
-#include "sysemu/sysemu.h"
+#include "qobject/qdict.h"
+#include "system/system.h"
 #include "net/net.h"
 #include "trace.h"
 
@@ -156,8 +156,8 @@ again:
             !strcmp(key[i], "hotplug-status"))
             continue;
 
-        if (xs_node_scanf(xenbus->xsh, tid, path, key[i], NULL, "%ms",
-                          &val) == 1) {
+        val = xs_node_read(xenbus->xsh, tid, NULL, NULL, "%s/%s", path, key[i]);
+        if (val) {
             qdict_put_str(opts, key[i], val);
             free(val);
         }
@@ -353,10 +353,10 @@ static void xen_bus_realize(BusState *bus, Error **errp)
             xs_node_watch(xenbus->xsh, node, key, xen_bus_backend_changed,
                           xenbus, &local_err);
         if (local_err) {
-            /* This need not be treated as a hard error so don't propagate */
-            error_reportf_err(local_err,
-                              "failed to set up '%s' enumeration watch: ",
-                              type[i]);
+            warn_reportf_err(local_err,
+                             "failed to set up '%s' enumeration watch: ",
+                             type[i]);
+            local_err = NULL;
         }
 
         g_free(node);
@@ -380,7 +380,7 @@ static void xen_bus_unplug_request(HotplugHandler *hotplug,
     xen_device_unplug(xendev, errp);
 }
 
-static void xen_bus_class_init(ObjectClass *class, void *data)
+static void xen_bus_class_init(ObjectClass *class, const void *data)
 {
     BusClass *bus_class = BUS_CLASS(class);
     HotplugHandlerClass *hotplug_class = HOTPLUG_HANDLER_CLASS(class);
@@ -399,7 +399,7 @@ static const TypeInfo xen_bus_type_info = {
     .instance_size = sizeof(XenBus),
     .class_size = sizeof(XenBusClass),
     .class_init = xen_bus_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_HOTPLUG_HANDLER },
         { }
     },
@@ -648,6 +648,16 @@ int xen_device_frontend_scanf(XenDevice *xendev, const char *key,
     va_end(ap);
 
     return rc;
+}
+
+char *xen_device_frontend_read(XenDevice *xendev, const char *key)
+{
+    XenBus *xenbus = XEN_BUS(qdev_get_parent_bus(DEVICE(xendev)));
+
+    g_assert(xenbus->xsh);
+
+    return xs_node_read(xenbus->xsh, XBT_NULL, NULL, NULL, "%s/%s",
+                        xendev->frontend_path, key);
 }
 
 static void xen_device_frontend_set_state(XenDevice *xendev,
@@ -1092,13 +1102,12 @@ unrealize:
     xen_device_unrealize(dev);
 }
 
-static Property xen_device_props[] = {
+static const Property xen_device_props[] = {
     DEFINE_PROP_UINT16("frontend-id", XenDevice, frontend_id,
                        DOMID_INVALID),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void xen_device_class_init(ObjectClass *class, void *data)
+static void xen_device_class_init(ObjectClass *class, const void *data)
 {
     DeviceClass *dev_class = DEVICE_CLASS(class);
 

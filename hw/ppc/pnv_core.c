@@ -18,7 +18,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/reset.h"
+#include "system/reset.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
@@ -248,21 +248,25 @@ static void pnv_core_power10_xscom_write(void *opaque, hwaddr addr,
 
             if (val & PPC_BIT(7 + 8 * i)) { /* stop */
                 val &= ~PPC_BIT(7 + 8 * i);
-                cpu_pause(cs);
                 env->quiesced = true;
+                ppc_maybe_interrupt(env);
+                cpu_pause(cs);
             }
             if (val & PPC_BIT(6 + 8 * i)) { /* start */
                 val &= ~PPC_BIT(6 + 8 * i);
                 env->quiesced = false;
+                ppc_maybe_interrupt(env);
                 cpu_resume(cs);
             }
             if (val & PPC_BIT(4 + 8 * i)) { /* sreset */
                 val &= ~PPC_BIT(4 + 8 * i);
                 env->quiesced = false;
+                ppc_maybe_interrupt(env);
                 pnv_cpu_do_nmi_resume(cs);
             }
             if (val & PPC_BIT(3 + 8 * i)) { /* clear maint */
                 env->quiesced = false;
+                ppc_maybe_interrupt(env);
                 /*
                  * Hardware has very particular cases for where clear maint
                  * must be used and where start must be used to resume a
@@ -435,7 +439,7 @@ static void pnv_core_unrealize(DeviceState *dev)
     g_free(pc->threads);
 }
 
-static Property pnv_core_properties[] = {
+static const Property pnv_core_properties[] = {
     DEFINE_PROP_UINT32("hwid", PnvCore, hwid, 0),
     DEFINE_PROP_UINT64("hrmor", PnvCore, hrmor, 0),
     DEFINE_PROP_BOOL("big-core", PnvCore, big_core, false),
@@ -443,10 +447,9 @@ static Property pnv_core_properties[] = {
                      false),
     DEFINE_PROP_BOOL("lpar-per-core", PnvCore, lpar_per_core, false),
     DEFINE_PROP_LINK("chip", PnvCore, chip, TYPE_PNV_CHIP, PnvChip *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pnv_core_power8_class_init(ObjectClass *oc, void *data)
+static void pnv_core_power8_class_init(ObjectClass *oc, const void *data)
 {
     PnvCoreClass *pcc = PNV_CORE_CLASS(oc);
 
@@ -454,7 +457,7 @@ static void pnv_core_power8_class_init(ObjectClass *oc, void *data)
     pcc->xscom_size = PNV_XSCOM_EX_SIZE;
 }
 
-static void pnv_core_power9_class_init(ObjectClass *oc, void *data)
+static void pnv_core_power9_class_init(ObjectClass *oc, const void *data)
 {
     PnvCoreClass *pcc = PNV_CORE_CLASS(oc);
 
@@ -462,7 +465,7 @@ static void pnv_core_power9_class_init(ObjectClass *oc, void *data)
     pcc->xscom_size = PNV_XSCOM_EX_SIZE;
 }
 
-static void pnv_core_power10_class_init(ObjectClass *oc, void *data)
+static void pnv_core_power10_class_init(ObjectClass *oc, const void *data)
 {
     PnvCoreClass *pcc = PNV_CORE_CLASS(oc);
 
@@ -470,7 +473,12 @@ static void pnv_core_power10_class_init(ObjectClass *oc, void *data)
     pcc->xscom_size = PNV10_XSCOM_EC_SIZE;
 }
 
-static void pnv_core_class_init(ObjectClass *oc, void *data)
+static void pnv_core_power11_class_init(ObjectClass *oc, const void *data)
+{
+    pnv_core_power10_class_init(oc, data);
+}
+
+static void pnv_core_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
@@ -501,6 +509,7 @@ static const TypeInfo pnv_core_infos[] = {
     DEFINE_PNV_CORE_TYPE(power8, "power8nvl_v1.0"),
     DEFINE_PNV_CORE_TYPE(power9, "power9_v2.2"),
     DEFINE_PNV_CORE_TYPE(power10, "power10_v2.0"),
+    DEFINE_PNV_CORE_TYPE(power11, "power11_v2.0"),
 };
 
 DEFINE_TYPES(pnv_core_infos)
@@ -693,12 +702,11 @@ static void pnv_quad_power10_realize(DeviceState *dev, Error **errp)
                           pqc->xscom_qme_size);
 }
 
-static Property pnv_quad_properties[] = {
+static const Property pnv_quad_properties[] = {
     DEFINE_PROP_UINT32("quad-id", PnvQuad, quad_id, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pnv_quad_power9_class_init(ObjectClass *oc, void *data)
+static void pnv_quad_power9_class_init(ObjectClass *oc, const void *data)
 {
     PnvQuadClass *pqc = PNV_QUAD_CLASS(oc);
     DeviceClass *dc = DEVICE_CLASS(oc);
@@ -709,7 +717,7 @@ static void pnv_quad_power9_class_init(ObjectClass *oc, void *data)
     pqc->xscom_size = PNV9_XSCOM_EQ_SIZE;
 }
 
-static void pnv_quad_power10_class_init(ObjectClass *oc, void *data)
+static void pnv_quad_power10_class_init(ObjectClass *oc, const void *data)
 {
     PnvQuadClass *pqc = PNV_QUAD_CLASS(oc);
     DeviceClass *dc = DEVICE_CLASS(oc);
@@ -723,7 +731,13 @@ static void pnv_quad_power10_class_init(ObjectClass *oc, void *data)
     pqc->xscom_qme_size = PNV10_XSCOM_QME_SIZE;
 }
 
-static void pnv_quad_class_init(ObjectClass *oc, void *data)
+static void pnv_quad_power11_class_init(ObjectClass *oc, const void *data)
+{
+    /* Power11 quad is similar to Power10 quad */
+    pnv_quad_power10_class_init(oc, data);
+}
+
+static void pnv_quad_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
@@ -749,6 +763,11 @@ static const TypeInfo pnv_quad_infos[] = {
         .parent = TYPE_PNV_QUAD,
         .name = PNV_QUAD_TYPE_NAME("power10"),
         .class_init = pnv_quad_power10_class_init,
+    },
+    {
+        .parent = TYPE_PNV_QUAD,
+        .name = PNV_QUAD_TYPE_NAME("power11"),
+        .class_init = pnv_quad_power11_class_init,
     },
 };
 

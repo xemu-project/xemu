@@ -11,13 +11,6 @@ XEMU_COMMIT=$( \
   elif test -e XEMU_COMMIT; then \
     cat XEMU_COMMIT; \
   fi)
-XEMU_BRANCH=$( \
-  cd "$dir"; \
-  if test -e .git; then \
-    git symbolic-ref --short HEAD || echo $XEMU_COMMIT; \
-  elif test -e XEMU_BRANCH; then \
-    cat XEMU_BRANCH; \
-  fi)
 XEMU_VERSION=$( \
   cd "$dir"; \
   if test -e .git; then \
@@ -49,7 +42,6 @@ cat <<EOF
 #define XEMU_VERSION_MINOR $XEMU_VERSION_MINOR
 #define XEMU_VERSION_PATCH $XEMU_VERSION_PATCH
 #define XEMU_VERSION_COMMIT $XEMU_VERSION_COMMIT
-#define XEMU_BRANCH        "$XEMU_BRANCH"
 #define XEMU_COMMIT        "$XEMU_COMMIT"
 #define XEMU_DATE          "$XEMU_DATE"
 EOF

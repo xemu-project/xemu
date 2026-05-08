@@ -3,7 +3,7 @@
  *
  * QEMU supports PCI hotplug via ACPI. This module
  * implements the interface between QEMU and the ACPI BIOS.
- * Interface specification - see docs/specs/acpi_pci_hotplug.txt
+ * Interface specification - see docs/specs/acpi_pci_hotplug.rst
  *
  * Copyright (c) 2013, Red Hat Inc, Michael S. Tsirkin (mst@redhat.com)
  * Copyright (c) 2006 Fabrice Bellard
@@ -28,10 +28,17 @@
 #define HW_ACPI_PCIHP_H
 
 #include "hw/acpi/acpi.h"
+#include "hw/acpi/aml-build.h"
 #include "hw/hotplug.h"
 
 #define ACPI_PCIHP_IO_BASE_PROP "acpi-pcihp-io-base"
 #define ACPI_PCIHP_IO_LEN_PROP "acpi-pcihp-io-len"
+
+/* PCI Hot-plug registers bases. See docs/specs/acpi_pci_hotplug.rst */
+#define ACPI_PCIHP_SEJ_BASE 0x8
+#define ACPI_PCIHP_BNMR_BASE 0x10
+
+#define ACPI_PCIHP_SIZE 0x0018
 
 typedef struct AcpiPciHpPciStatus {
     uint32_t up;
@@ -55,10 +62,10 @@ typedef struct AcpiPciHpState {
     bool use_acpi_root_pci_hotplug;
 } AcpiPciHpState;
 
-void acpi_pcihp_init(Object *owner, AcpiPciHpState *, PCIBus *root,
+void acpi_pcihp_init(Object *owner, AcpiPciHpState *,
                      MemoryRegion *io, uint16_t io_base);
 
-bool acpi_pcihp_is_hotpluggbale_bus(AcpiPciHpState *s, BusState *bus);
+bool acpi_pcihp_is_hotpluggable_bus(AcpiPciHpState *s, BusState *bus);
 void acpi_pcihp_device_pre_plug_cb(HotplugHandler *hotplug_dev,
                                    DeviceState *dev, Error **errp);
 void acpi_pcihp_device_plug_cb(HotplugHandler *hotplug_dev, AcpiPciHpState *s,
@@ -68,6 +75,14 @@ void acpi_pcihp_device_unplug_cb(HotplugHandler *hotplug_dev, AcpiPciHpState *s,
 void acpi_pcihp_device_unplug_request_cb(HotplugHandler *hotplug_dev,
                                          AcpiPciHpState *s, DeviceState *dev,
                                          Error **errp);
+
+void build_acpi_pci_hotplug(Aml *table, AmlRegionSpace rs, uint64_t pcihp_addr);
+void build_append_pci_dsm_func0_common(Aml *ctx, Aml *retvar);
+void build_append_pcihp_resources(Aml *table,
+                                  uint64_t io_addr, uint64_t io_len);
+bool build_append_notification_callback(Aml *parent_scope, const PCIBus *bus);
+
+void build_append_pci_bus_devices(Aml *parent_scope, PCIBus *bus);
 
 /* Called on reset */
 void acpi_pcihp_reset(AcpiPciHpState *s);

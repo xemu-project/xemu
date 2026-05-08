@@ -416,6 +416,26 @@ definitions instead of typedefs in headers and function prototypes; this
 avoids problems with duplicated typedefs and reduces the need to include
 headers from other headers.
 
+Bitfields
+---------
+
+C bitfields can be a cause of non-portability issues, especially under windows
+where `MSVC has a different way to lay them out than GCC
+<https://gcc.gnu.org/onlinedocs/gcc/x86-Type-Attributes.html>`_, or where
+endianness matters.
+
+For this reason, we disallow usage of bitfields in packed structures and in any
+structures which are supposed to exactly match a specific layout in guest
+memory. Some existing code may use it, and we carefully ensured the layout was
+the one expected.
+
+We also suggest avoiding bitfields even in structures where the exact
+layout does not matter, unless you can show that they provide a significant
+usability benefit.
+
+We encourage the usage of ``include/hw/registerfields.h`` as a safe replacement
+for bitfields.
+
 Reserved namespaces in C and POSIX
 ----------------------------------
 
@@ -426,8 +446,8 @@ Low level memory management
 ===========================
 
 Use of the ``malloc/free/realloc/calloc/valloc/memalign/posix_memalign``
-APIs is not allowed in the QEMU codebase. Instead of these routines,
-use the GLib memory allocation routines
+or ``alloca/g_alloca/g_newa/g_newa0`` APIs is not allowed in the QEMU codebase.
+Instead of these routines, use the GLib memory allocation routines
 ``g_malloc/g_malloc0/g_new/g_new0/g_realloc/g_free``
 or QEMU's ``qemu_memalign/qemu_blockalign/qemu_vfree`` APIs.
 

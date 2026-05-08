@@ -21,7 +21,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/scsi/emulation.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "trace.h"
 
 #ifdef __linux__
@@ -772,12 +772,11 @@ static SCSIRequest *scsi_new_request(SCSIDevice *d, uint32_t tag, uint32_t lun,
     return scsi_req_alloc(&scsi_generic_req_ops, d, tag, lun, hba_private);
 }
 
-static Property scsi_generic_properties[] = {
+static const Property scsi_generic_properties[] = {
     DEFINE_PROP_DRIVE("drive", SCSIDevice, conf.blk),
     DEFINE_PROP_BOOL("share-rw", SCSIDevice, conf.share_rw, false),
     DEFINE_PROP_UINT32("io_timeout", SCSIDevice, io_timeout,
                        DEFAULT_IO_TIMEOUT),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static int scsi_generic_parse_cdb(SCSIDevice *dev, SCSICommand *cmd,
@@ -787,7 +786,7 @@ static int scsi_generic_parse_cdb(SCSIDevice *dev, SCSICommand *cmd,
     return scsi_bus_parse_cdb(dev, cmd, buf, buf_len, hba_private);
 }
 
-static void scsi_generic_class_initfn(ObjectClass *klass, void *data)
+static void scsi_generic_class_initfn(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     SCSIDeviceClass *sc = SCSI_DEVICE_CLASS(klass);

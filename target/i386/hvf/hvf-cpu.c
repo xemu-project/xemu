@@ -11,17 +11,15 @@
 #include "cpu.h"
 #include "host-cpu.h"
 #include "qapi/error.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "hw/boards.h"
-#include "sysemu/hvf.h"
-#include "hw/core/accel-cpu.h"
+#include "system/hvf.h"
+#include "accel/accel-cpu-target.h"
 #include "hvf-i386.h"
 
 static void hvf_cpu_max_instance_init(X86CPU *cpu)
 {
     CPUX86State *env = &cpu->env;
-
-    host_cpu_max_instance_init(cpu);
 
     env->cpuid_min_level =
         hvf_get_supported_cpuid(0x0, 0, R_EAX);
@@ -61,20 +59,21 @@ static void hvf_cpu_xsave_init(void)
 static void hvf_cpu_instance_init(CPUState *cs)
 {
     X86CPU *cpu = X86_CPU(cs);
+    X86CPUClass *xcc = X86_CPU_GET_CLASS(cpu);
 
     host_cpu_instance_init(cpu);
 
     /* Special cases not set in the X86CPUDefinition structs: */
     /* TODO: in-kernel irqchip for hvf */
 
-    if (cpu->max_features) {
+    if (xcc->max_features) {
         hvf_cpu_max_instance_init(cpu);
     }
 
     hvf_cpu_xsave_init();
 }
 
-static void hvf_cpu_accel_class_init(ObjectClass *oc, void *data)
+static void hvf_cpu_accel_class_init(ObjectClass *oc, const void *data)
 {
     AccelCPUClass *acc = ACCEL_CPU_CLASS(oc);
 

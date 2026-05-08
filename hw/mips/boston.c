@@ -37,11 +37,11 @@
 #include "qemu/guest-random.h"
 #include "qemu/log.h"
 #include "chardev/char.h"
-#include "sysemu/device_tree.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/qtest.h"
-#include "sysemu/runstate.h"
-#include "sysemu/reset.h"
+#include "system/device_tree.h"
+#include "system/system.h"
+#include "system/qtest.h"
+#include "system/runstate.h"
+#include "system/reset.h"
 
 #include <libfdt.h>
 #include "qom/object.h"
@@ -68,7 +68,7 @@ struct BostonState {
     SerialMM *uart;
     Clock *cpuclk;
 
-    CharBackend lcd_display;
+    CharFrontend lcd_display;
     char lcd_content[8];
     bool lcd_inited;
 
@@ -220,7 +220,7 @@ static void boston_lcd_write(void *opaque, hwaddr addr,
 static const MemoryRegionOps boston_lcd_ops = {
     .read = boston_lcd_read,
     .write = boston_lcd_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
 static uint64_t boston_platreg_read(void *opaque, hwaddr addr,
@@ -299,7 +299,7 @@ static void boston_platreg_write(void *opaque, hwaddr addr,
 static const MemoryRegionOps boston_platreg_ops = {
     .read = boston_platreg_read,
     .write = boston_platreg_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
 static void mips_boston_instance_init(Object *obj)
@@ -358,8 +358,8 @@ static void gen_firmware(void *p, hwaddr kernel_entry, hwaddr fdt_addr)
                        kernel_entry);
 }
 
-static const void *boston_fdt_filter(void *opaque, const void *fdt_orig,
-                                     const void *match_data, hwaddr *load_addr)
+static void *boston_fdt_filter(void *opaque, const void *fdt_orig,
+                               const void *match_data, hwaddr *load_addr)
 {
     BostonState *s = BOSTON(opaque);
     MachineState *machine = s->mach;
@@ -395,7 +395,6 @@ static const void *boston_fdt_filter(void *opaque, const void *fdt_orig,
                         1, ram_high_sz);
 
     fdt = g_realloc(fdt, fdt_totalsize(fdt));
-    qemu_fdt_dumpdtb(fdt, fdt_sz);
 
     s->fdt_base = *load_addr;
 
@@ -758,7 +757,7 @@ static void boston_mach_init(MachineState *machine)
 
     s->uart = serial_mm_init(sys_mem, boston_memmap[BOSTON_UART].base, 2,
                              get_cps_irq(&s->cps, 3), 10000000,
-                             serial_hd(0), DEVICE_NATIVE_ENDIAN);
+                             serial_hd(0), DEVICE_LITTLE_ENDIAN);
 
     lcd = g_new(MemoryRegion, 1);
     memory_region_init_io(lcd, NULL, &boston_lcd_ops, s, "boston-lcd", 0x8);
@@ -779,7 +778,7 @@ static void boston_mach_init(MachineState *machine)
 
     if (machine->firmware) {
         fw_size = load_image_targphys(machine->firmware,
-                                      0x1fc00000, 4 * MiB);
+                                      0x1fc00000, 4 * MiB, NULL);
         if (fw_size == -1) {
             error_report("unable to load firmware image '%s'",
                           machine->firmware);
@@ -792,12 +791,12 @@ static void boston_mach_init(MachineState *machine)
         kernel_size = load_elf(machine->kernel_filename, NULL,
                            cpu_mips_kseg0_to_phys, NULL,
                            &kernel_entry, NULL, &kernel_high,
-                           NULL, 0, EM_MIPS, 1, 0);
+                           NULL, ELFDATA2LSB, EM_MIPS, 1, 0);
 
         if (kernel_size > 0) {
             int dt_size;
             g_autofree const void *dtb_file_data = NULL;
-            g_autofree const void *dtb_load_data = NULL;
+            void *dtb_load_data = NULL;
             hwaddr dtb_paddr = QEMU_ALIGN_UP(kernel_high, 64 * KiB);
             hwaddr dtb_vaddr = cpu_mips_phys_to_kseg0(NULL, dtb_paddr);
 
@@ -810,6 +809,12 @@ static void boston_mach_init(MachineState *machine)
 
             dtb_load_data = boston_fdt_filter(s, dtb_file_data,
                                               NULL, &dtb_vaddr);
+            if (!dtb_load_data) {
+                /* boston_fdt_filter() already printed the error for us */
+                exit(1);
+            }
+
+            machine->fdt = dtb_load_data;
 
             /* Calculate real fdt size after filter */
             dt_size = fdt_totalsize(dtb_load_data);
@@ -818,7 +823,8 @@ static void boston_mach_init(MachineState *machine)
                                 rom_ptr(dtb_paddr, dt_size));
         } else {
             /* Try to load file as FIT */
-            fit_err = load_fit(&boston_fit_loader, machine->kernel_filename, s);
+            fit_err = load_fit(&boston_fit_loader, machine->kernel_filename,
+                               &machine->fdt, s);
             if (fit_err) {
                 error_report("unable to load kernel image");
                 exit(1);

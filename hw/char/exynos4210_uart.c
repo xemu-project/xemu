@@ -154,7 +154,7 @@ struct Exynos4210UartState {
     QEMUTimer *fifo_timeout_timer;
     uint64_t wordtime;        /* word time in ns */
 
-    CharBackend       chr;
+    CharFrontend       chr;
     qemu_irq          irq;
     qemu_irq          dmairq;
 
@@ -704,15 +704,14 @@ static void exynos4210_uart_realize(DeviceState *dev, Error **errp)
                              NULL, s, NULL, true);
 }
 
-static Property exynos4210_uart_properties[] = {
+static const Property exynos4210_uart_properties[] = {
     DEFINE_PROP_CHR("chardev", Exynos4210UartState, chr),
     DEFINE_PROP_UINT32("channel", Exynos4210UartState, channel, 0),
     DEFINE_PROP_UINT32("rx-size", Exynos4210UartState, rx.size, 16),
     DEFINE_PROP_UINT32("tx-size", Exynos4210UartState, tx.size, 16),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void exynos4210_uart_class_init(ObjectClass *klass, void *data)
+static void exynos4210_uart_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

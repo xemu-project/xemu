@@ -28,7 +28,6 @@
 #include "hw/irq.h"
 #include "hw/pci/pci_device.h"
 #include "hw/pci/pci_host.h"
-#include "qemu/bswap.h"
 #include "qemu/module.h"
 #include "qom/object.h"
 
@@ -153,7 +152,7 @@ static void sh_pcic_pci_realize(PCIDevice *d, Error **errp)
                  PCI_STATUS_FAST_BACK | PCI_STATUS_DEVSEL_MEDIUM);
 }
 
-static void sh_pcic_pci_class_init(ObjectClass *klass, void *data)
+static void sh_pcic_pci_class_init(ObjectClass *klass, const void *data)
 {
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -168,7 +167,7 @@ static void sh_pcic_pci_class_init(ObjectClass *klass, void *data)
     dc->user_creatable = false;
 }
 
-static void sh_pcic_host_class_init(ObjectClass *klass, void *data)
+static void sh_pcic_host_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -186,7 +185,7 @@ static const TypeInfo sh_pcic_types[] = {
         .parent         = TYPE_PCI_DEVICE,
         .instance_size  = sizeof(PCIDevice),
         .class_init     = sh_pcic_pci_class_init,
-        .interfaces = (InterfaceInfo[]) {
+        .interfaces = (const InterfaceInfo[]) {
             { INTERFACE_CONVENTIONAL_PCI_DEVICE },
             { },
         },

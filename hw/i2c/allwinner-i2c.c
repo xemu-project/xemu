@@ -407,7 +407,7 @@ static const MemoryRegionOps allwinner_i2c_ops = {
     .write = allwinner_i2c_write,
     .valid.min_access_size = 1,
     .valid.max_access_size = 4,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
 static const VMStateDescription allwinner_i2c_vmstate = {
@@ -438,7 +438,7 @@ static void allwinner_i2c_realize(DeviceState *dev, Error **errp)
     s->bus = i2c_init_bus(dev, "i2c");
 }
 
-static void allwinner_i2c_class_init(ObjectClass *klass, void *data)
+static void allwinner_i2c_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);

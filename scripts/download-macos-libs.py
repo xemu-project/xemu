@@ -10,16 +10,15 @@ import os.path
 from tarfile import TarFile
 import subprocess
 
-# MIRROR = 'http://packages.macports.org/macports/packages'
-MIRROR = 'http://nue.de.packages.macports.org/macports/packages'
+MIRROR = 'https://packages.macports.org'
 
 # FIXME: Inline macports key
 # FIXME: Move packages to archive directory to track used vs unused
 # FIXME: Support multiple mirrors
 
 class LibInstaller:
-	DARWIN_TARGET_X64="darwin_17" # macOS 10.13
-	DARWIN_TARGET_ARM64="darwin_21" # macOS 12.x
+	DARWIN_TARGET_X64="darwin_21" # macOS 11
+	DARWIN_TARGET_ARM64="darwin_23" # macOS 14.x
 
 	def __init__(self, arch):
 		self._queue = []
@@ -150,7 +149,9 @@ class LibInstaller:
 						if pkg_name.startswith('openssl'): # FIXME
 							new_prefix = f'prefix={self._extract_path}/opt/local/libexec/openssl11\n'
 						lines[i] = new_prefix
-						break
+					elif l.strip().startswith('Requires.private:'):
+						if pkg_name.startswith('libepoxy'):
+							lines[i] = ''
 				with open(extracted_path, 'w') as f:
 					f.write(''.join(lines))
 
@@ -180,13 +181,14 @@ def main():
 	args = ap.parse_args()
 	li = LibInstaller(args.arch)
 	li.install_pkgs([
-		'libsdl2',
+		'SDL3',
 		'glib2',
 		'libsamplerate',
 		'libpixman',
 		'libepoxy',
 		'libpcap',
-		'libslirp'])
+		'libslirp',
+		'libusb'])
 
 if __name__ == '__main__':
 	main()

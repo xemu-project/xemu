@@ -9,9 +9,10 @@
 
 #include "qemu/osdep.h"
 #include "block/block_int-common.h"
-#include "sysemu/blockdev.h"
-#include "sysemu/block-backend.h"
+#include "system/blockdev.h"
+#include "system/block-backend.h"
 #include "hw/block/block.h"
+#include "migration/cpr.h"
 #include "qapi/error.h"
 #include "qapi/qapi-types-block.h"
 
@@ -73,6 +74,10 @@ bool blk_check_size_and_read_all(BlockBackend *blk, DeviceState *dev,
     int64_t blk_len;
     int ret;
     g_autofree char *dev_id = NULL;
+
+    if (cpr_is_incoming()) {
+        return true;
+    }
 
     blk_len = blk_getlength(blk);
     if (blk_len < 0) {
@@ -252,8 +257,11 @@ bool blkconf_apply_backend_options(BlockConf *conf, bool readonly,
     blk_set_enable_write_cache(blk, wce);
     blk_set_on_error(blk, rerror, werror);
 
-    block_acct_setup(blk_get_stats(blk), conf->account_invalid,
-                     conf->account_failed);
+    if (!block_acct_setup(blk_get_stats(blk), conf->account_invalid,
+                          conf->account_failed, conf->stats_intervals,
+                          conf->num_stats_intervals, errp)) {
+        return false;
+    }
     return true;
 }
 

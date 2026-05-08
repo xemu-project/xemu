@@ -24,8 +24,8 @@
 #include "qemu/help-texts.h"
 #include "qapi/error.h"
 #include "qemu/cutils.h"
-#include "sysemu/block-backend.h"
-#include "sysemu/runstate.h" /* for qemu_system_killed() prototype */
+#include "system/block-backend.h"
+#include "system/runstate.h" /* for qemu_system_killed() prototype */
 #include "block/block_int.h"
 #include "block/nbd.h"
 #include "qemu/main-loop.h"
@@ -37,8 +37,8 @@
 #include "qemu/log.h"
 #include "qemu/systemd.h"
 #include "block/snapshot.h"
-#include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qstring.h"
+#include "qobject/qdict.h"
+#include "qobject/qstring.h"
 #include "qom/object_interfaces.h"
 #include "io/channel-socket.h"
 #include "io/net-listener.h"
@@ -57,19 +57,20 @@
 #define HAVE_NBD_DEVICE 0
 #endif
 
-#define SOCKET_PATH                "/var/lock/qemu-nbd-%s"
-#define QEMU_NBD_OPT_CACHE         256
-#define QEMU_NBD_OPT_AIO           257
-#define QEMU_NBD_OPT_DISCARD       258
-#define QEMU_NBD_OPT_DETECT_ZEROES 259
-#define QEMU_NBD_OPT_OBJECT        260
-#define QEMU_NBD_OPT_TLSCREDS      261
-#define QEMU_NBD_OPT_IMAGE_OPTS    262
-#define QEMU_NBD_OPT_FORK          263
-#define QEMU_NBD_OPT_TLSAUTHZ      264
-#define QEMU_NBD_OPT_PID_FILE      265
-#define QEMU_NBD_OPT_SELINUX_LABEL 266
-#define QEMU_NBD_OPT_TLSHOSTNAME   267
+#define SOCKET_PATH                  "/var/lock/qemu-nbd-%s"
+#define QEMU_NBD_OPT_CACHE           256
+#define QEMU_NBD_OPT_AIO             257
+#define QEMU_NBD_OPT_DISCARD         258
+#define QEMU_NBD_OPT_DETECT_ZEROES   259
+#define QEMU_NBD_OPT_OBJECT          260
+#define QEMU_NBD_OPT_TLSCREDS        261
+#define QEMU_NBD_OPT_IMAGE_OPTS      262
+#define QEMU_NBD_OPT_FORK            263
+#define QEMU_NBD_OPT_TLSAUTHZ        264
+#define QEMU_NBD_OPT_PID_FILE        265
+#define QEMU_NBD_OPT_SELINUX_LABEL   266
+#define QEMU_NBD_OPT_TLSHOSTNAME     267
+#define QEMU_NBD_OPT_HANDSHAKE_LIMIT 268
 
 #define MBR_SIZE 512
 
@@ -80,6 +81,7 @@ static int nb_fds;
 static QIONetListener *server;
 static QCryptoTLSCreds *tlscreds;
 static const char *tlsauthz;
+static int handshake_limit = NBD_DEFAULT_HANDSHAKE_MAX_SECS;
 
 static void usage(const char *name)
 {
@@ -101,6 +103,7 @@ static void usage(const char *name)
 "  -v, --verbose             display extra debugging information\n"
 "  -x, --export-name=NAME    expose export by name (default is empty string)\n"
 "  -D, --description=TEXT    export a human-readable description\n"
+"      --handshake-limit=N   limit client's handshake to N seconds (default 10)\n"
 "\n"
 "Exposing part of the image:\n"
 "  -o, --offset=OFFSET       offset into the image\n"
@@ -390,8 +393,7 @@ static void nbd_accept(QIONetListener *listener, QIOChannelSocket *cioc,
 
     nb_fds++;
     nbd_update_server_watch();
-    /* TODO - expose handshake timeout as command line option */
-    nbd_client_new(cioc, NBD_DEFAULT_HANDSHAKE_MAX_SECS,
+    nbd_client_new(cioc, handshake_limit,
                    tlscreds, tlsauthz, nbd_client_closed, NULL);
 }
 
@@ -569,6 +571,8 @@ int main(int argc, char **argv)
         { "object", required_argument, NULL, QEMU_NBD_OPT_OBJECT },
         { "export-name", required_argument, NULL, 'x' },
         { "description", required_argument, NULL, 'D' },
+        { "handshake-limit", required_argument, NULL,
+          QEMU_NBD_OPT_HANDSHAKE_LIMIT },
         { "tls-creds", required_argument, NULL, QEMU_NBD_OPT_TLSCREDS },
         { "tls-hostname", required_argument, NULL, QEMU_NBD_OPT_TLSHOSTNAME },
         { "tls-authz", required_argument, NULL, QEMU_NBD_OPT_TLSAUTHZ },
@@ -815,6 +819,13 @@ int main(int argc, char **argv)
         case QEMU_NBD_OPT_SELINUX_LABEL:
             selinux_label = optarg;
             break;
+        case QEMU_NBD_OPT_HANDSHAKE_LIMIT:
+            if (qemu_strtoi(optarg, NULL, 0, &handshake_limit) < 0 ||
+                handshake_limit < 0) {
+                error_report("Invalid handshake limit '%s'", optarg);
+                exit(EXIT_FAILURE);
+            }
+            break;
         }
     }
 
@@ -841,10 +852,6 @@ int main(int argc, char **argv)
         export_name = "";
     }
 
-    if (!trace_init_backends()) {
-        exit(1);
-    }
-    trace_init_file();
     qemu_set_log(LOG_TRACE, &error_fatal);
 
     socket_activation = check_socket_activation();
@@ -1033,6 +1040,18 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
 #endif /* WIN32 */
     }
+
+    /*
+     * trace_init must be done after daemonization.  Why? Because at
+     * least the simple backend spins up a helper thread as well as an
+     * atexit() handler that waits on that thread, but the helper
+     * thread won't survive a fork, leading to deadlock in the child
+     * if we initialized pre-fork.
+     */
+    if (!trace_init_backends()) {
+        exit(1);
+    }
+    trace_init_file();
 
     if (opts.device != NULL && sockpath == NULL) {
         sockpath = g_malloc(128);

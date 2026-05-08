@@ -14,18 +14,24 @@
 #include <libfdt.h>
 #include "hw/arm/boot.h"
 #include "hw/arm/linux-boot-if.h"
-#include "sysemu/kvm.h"
-#include "sysemu/tcg.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/numa.h"
+#include "cpu.h"
+#include "exec/tswap.h"
+#include "exec/target_page.h"
+#include "system/kvm.h"
+#include "system/tcg.h"
+#include "system/system.h"
+#include "system/memory.h"
+#include "system/numa.h"
 #include "hw/boards.h"
-#include "sysemu/reset.h"
+#include "system/reset.h"
 #include "hw/loader.h"
+#include "hw/mem/memory-device.h"
 #include "elf.h"
-#include "sysemu/device_tree.h"
+#include "system/device_tree.h"
 #include "qemu/config-file.h"
 #include "qemu/option.h"
 #include "qemu/units.h"
+#include "qemu/bswap.h"
 
 /* Kernel boot protocol is specified in the kernel docs
  * Documentation/arm/Booting and Documentation/arm64/booting.txt
@@ -331,81 +337,6 @@ static void set_kernel_args(const struct arm_boot_info *info, AddressSpace *as)
     WRITE_WORD(p, 0);
 }
 
-static void set_kernel_args_old(const struct arm_boot_info *info,
-                                AddressSpace *as)
-{
-    hwaddr p;
-    const char *s;
-    int initrd_size = info->initrd_size;
-    hwaddr base = info->loader_start;
-
-    /* see linux/include/asm-arm/setup.h */
-    p = base + KERNEL_ARGS_ADDR;
-    /* page_size */
-    WRITE_WORD(p, 4096);
-    /* nr_pages */
-    WRITE_WORD(p, info->ram_size / 4096);
-    /* ramdisk_size */
-    WRITE_WORD(p, 0);
-#define FLAG_READONLY 1
-#define FLAG_RDLOAD   4
-#define FLAG_RDPROMPT 8
-    /* flags */
-    WRITE_WORD(p, FLAG_READONLY | FLAG_RDLOAD | FLAG_RDPROMPT);
-    /* rootdev */
-    WRITE_WORD(p, (31 << 8) | 0); /* /dev/mtdblock0 */
-    /* video_num_cols */
-    WRITE_WORD(p, 0);
-    /* video_num_rows */
-    WRITE_WORD(p, 0);
-    /* video_x */
-    WRITE_WORD(p, 0);
-    /* video_y */
-    WRITE_WORD(p, 0);
-    /* memc_control_reg */
-    WRITE_WORD(p, 0);
-    /* unsigned char sounddefault */
-    /* unsigned char adfsdrives */
-    /* unsigned char bytes_per_char_h */
-    /* unsigned char bytes_per_char_v */
-    WRITE_WORD(p, 0);
-    /* pages_in_bank[4] */
-    WRITE_WORD(p, 0);
-    WRITE_WORD(p, 0);
-    WRITE_WORD(p, 0);
-    WRITE_WORD(p, 0);
-    /* pages_in_vram */
-    WRITE_WORD(p, 0);
-    /* initrd_start */
-    if (initrd_size) {
-        WRITE_WORD(p, info->initrd_start);
-    } else {
-        WRITE_WORD(p, 0);
-    }
-    /* initrd_size */
-    WRITE_WORD(p, initrd_size);
-    /* rd_start */
-    WRITE_WORD(p, 0);
-    /* system_rev */
-    WRITE_WORD(p, 0);
-    /* system_serial_low */
-    WRITE_WORD(p, 0);
-    /* system_serial_high */
-    WRITE_WORD(p, 0);
-    /* mem_fclk_21285 */
-    WRITE_WORD(p, 0);
-    /* zero unused fields */
-    while (p < base + KERNEL_ARGS_ADDR + 256 + 1024) {
-        WRITE_WORD(p, 0);
-    }
-    s = info->kernel_cmdline;
-    if (s) {
-        address_space_write(as, p, MEMTXATTRS_UNSPECIFIED, s, strlen(s) + 1);
-    } else {
-        WRITE_WORD(p, 0);
-    }
-}
-
 static int fdt_add_memory_node(void *fdt, uint32_t acells, hwaddr mem_base,
                                uint32_t scells, hwaddr mem_len,
                                int numa_node_id)
@@ -432,13 +363,12 @@ out:
     return ret;
 }
 
-static void fdt_add_psci_node(void *fdt)
+static void fdt_add_psci_node(void *fdt, ARMCPU *armcpu)
 {
     uint32_t cpu_suspend_fn;
     uint32_t cpu_off_fn;
     uint32_t cpu_on_fn;
     uint32_t migrate_fn;
-    ARMCPU *armcpu = ARM_CPU(qemu_get_cpu(0));
     const char *psci_method;
     int64_t psci_conduit;
     int rc;
@@ -511,8 +441,32 @@ static void fdt_add_psci_node(void *fdt)
     qemu_fdt_setprop_cell(fdt, "/psci", "migrate", migrate_fn);
 }
 
+static int fdt_add_pmem_node(void *fdt, uint32_t acells, uint32_t scells,
+                             int64_t mem_base, int64_t size, int64_t node)
+{
+    int ret;
+
+    g_autofree char *nodename = g_strdup_printf("/pmem@%" PRIx64, mem_base);
+
+    qemu_fdt_add_subnode(fdt, nodename);
+    qemu_fdt_setprop_string(fdt, nodename, "compatible", "pmem-region");
+    ret = qemu_fdt_setprop_sized_cells(fdt, nodename, "reg", acells,
+                                       mem_base, scells, size);
+    if (ret) {
+        return ret;
+    }
+
+    if (node >= 0) {
+        return qemu_fdt_setprop_cell(fdt, nodename, "numa-node-id",
+                                     node);
+    }
+
+    return 0;
+}
+
 int arm_load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
-                 hwaddr addr_limit, AddressSpace *as, MachineState *ms)
+                 hwaddr addr_limit, AddressSpace *as, MachineState *ms,
+                 ARMCPU *cpu)
 {
     void *fdt = NULL;
     int size, rc, n = 0;
@@ -520,11 +474,12 @@ int arm_load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
     unsigned int i;
     hwaddr mem_base, mem_len;
     char **node_path;
+    g_autoptr(MemoryDeviceInfoList) md_list = NULL;
     Error *err = NULL;
 
     if (binfo->dtb_filename) {
         char *filename;
-        filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, binfo->dtb_filename);
+        filename = qemu_find_file(QEMU_FILE_TYPE_DTB, binfo->dtb_filename);
         if (!filename) {
             fprintf(stderr, "Couldn't open dtb file %s\n", binfo->dtb_filename);
             goto fail;
@@ -623,6 +578,23 @@ int arm_load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
         }
     }
 
+    md_list = qmp_memory_device_list();
+    for (MemoryDeviceInfoList *m = md_list; m != NULL; m = m->next) {
+        MemoryDeviceInfo *mi = m->value;
+
+        if (mi->type == MEMORY_DEVICE_INFO_KIND_NVDIMM) {
+            PCDIMMDeviceInfo *di = mi->u.nvdimm.data;
+
+            rc = fdt_add_pmem_node(fdt, acells, scells,
+                                   di->addr, di->size, di->node);
+            if (rc < 0) {
+                fprintf(stderr, "couldn't add NVDIMM /pmem@%"PRIx64" node\n",
+                        di->addr);
+                goto fail;
+            }
+        }
+    }
+
     rc = fdt_path_offset(fdt, "/chosen");
     if (rc < 0) {
         qemu_fdt_add_subnode(fdt, "/chosen");
@@ -655,13 +627,11 @@ int arm_load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
         }
     }
 
-    fdt_add_psci_node(fdt);
+    fdt_add_psci_node(fdt, cpu);
 
     if (binfo->modify_dtb) {
         binfo->modify_dtb(binfo, fdt);
     }
-
-    qemu_fdt_dumpdtb(fdt, size);
 
     /* Put the DTB into the memory map as a ROM image: this will ensure
      * the DTB is copied again upon reset, even if addr points into RAM.
@@ -743,7 +713,7 @@ static void do_cpu_reset(void *opaque)
             } else {
                 if (arm_feature(env, ARM_FEATURE_EL3) &&
                     (info->secure_boot ||
-                     (info->secure_board_setup && cs == first_cpu))) {
+                     (info->secure_board_setup && cpu == info->primary_cpu))) {
                     /* Start this CPU in Secure SVC */
                     target_el = 3;
                 }
@@ -751,17 +721,13 @@ static void do_cpu_reset(void *opaque)
 
             arm_emulate_firmware_reset(cs, target_el);
 
-            if (cs == first_cpu) {
+            if (cpu == info->primary_cpu) {
                 AddressSpace *as = arm_boot_address_space(cpu, info);
 
                 cpu_set_pc(cs, info->loader_start);
 
                 if (!have_dtb(info)) {
-                    if (old_param) {
-                        set_kernel_args_old(info, as);
-                    } else {
-                        set_kernel_args(info, as);
-                    }
+                    set_kernel_args(info, as);
                 }
             } else if (info->secondary_cpu_reset_hook) {
                 info->secondary_cpu_reset_hook(cpu, info);
@@ -798,7 +764,7 @@ static ssize_t arm_load_elf(struct arm_boot_info *info, uint64_t *pentry,
         Elf64_Ehdr h64;
     } elf_header;
     int data_swab = 0;
-    bool big_endian;
+    int elf_data_order;
     ssize_t ret;
     Error *err = NULL;
 
@@ -814,12 +780,12 @@ static ssize_t arm_load_elf(struct arm_boot_info *info, uint64_t *pentry,
     }
 
     if (elf_is64) {
-        big_endian = elf_header.h64.e_ident[EI_DATA] == ELFDATA2MSB;
-        info->endianness = big_endian ? ARM_ENDIANNESS_BE8
-                                      : ARM_ENDIANNESS_LE;
+        elf_data_order = elf_header.h64.e_ident[EI_DATA];
+        info->endianness = elf_data_order == ELFDATA2MSB ? ARM_ENDIANNESS_BE8
+                                                         : ARM_ENDIANNESS_LE;
     } else {
-        big_endian = elf_header.h32.e_ident[EI_DATA] == ELFDATA2MSB;
-        if (big_endian) {
+        elf_data_order = elf_header.h32.e_ident[EI_DATA];
+        if (elf_data_order == ELFDATA2MSB) {
             if (bswap32(elf_header.h32.e_flags) & EF_ARM_BE8) {
                 info->endianness = ARM_ENDIANNESS_BE8;
             } else {
@@ -839,8 +805,8 @@ static ssize_t arm_load_elf(struct arm_boot_info *info, uint64_t *pentry,
     }
 
     ret = load_elf_as(info->kernel_filename, NULL, NULL, NULL,
-                      pentry, lowaddr, highaddr, NULL, big_endian, elf_machine,
-                      1, data_swab, as);
+                      pentry, lowaddr, highaddr, NULL, elf_data_order,
+                      elf_machine, 1, data_swab, as);
     if (ret <= 0) {
         /* The header loaded but the image didn't */
         error_report("Couldn't load elf '%s': %s",
@@ -857,7 +823,7 @@ static uint64_t load_aarch64_image(const char *filename, hwaddr mem_base,
     hwaddr kernel_load_offset = KERNEL64_LOAD_ADDR;
     uint64_t kernel_size = 0;
     uint8_t *buffer;
-    int size;
+    ssize_t size;
 
     /* On aarch64, it's the bootloader's job to uncompress the kernel. */
     size = load_image_gzipped_buffer(filename, LOAD_IMAGE_MAX_GUNZIP_BYTES,
@@ -998,7 +964,8 @@ static void arm_setup_direct_kernel_boot(ARMCPU *cpu,
         /* 32-bit ARM */
         entry = info->loader_start + KERNEL_LOAD_ADDR;
         kernel_size = load_image_targphys_as(info->kernel_filename, entry,
-                                             ram_end - KERNEL_LOAD_ADDR, as);
+                                             ram_end - KERNEL_LOAD_ADDR, as,
+                                             NULL);
         is_linux = 1;
         if (kernel_size >= 0) {
             image_low_addr = entry;
@@ -1059,7 +1026,7 @@ static void arm_setup_direct_kernel_boot(ARMCPU *cpu,
                                                      info->initrd_start,
                                                      ram_end -
                                                      info->initrd_start,
-                                                     as);
+                                                     as, NULL);
             }
             if (initrd_size < 0) {
                 error_report("could not load initrd '%s'",
@@ -1238,6 +1205,9 @@ void arm_load_kernel(ARMCPU *cpu, MachineState *ms, struct arm_boot_info *info)
     info->dtb_filename = ms->dtb;
     info->dtb_limit = 0;
 
+    /* We assume the CPU passed as argument is the primary CPU.  */
+    info->primary_cpu = cpu;
+
     /* Load the kernel.  */
     if (!info->kernel_filename || info->firmware_loaded) {
         arm_setup_firmware_boot(cpu, info);
@@ -1287,12 +1257,8 @@ void arm_load_kernel(ARMCPU *cpu, MachineState *ms, struct arm_boot_info *info)
 
             object_property_set_int(cpuobj, "psci-conduit", info->psci_conduit,
                                     &error_abort);
-            /*
-             * Secondary CPUs start in PSCI powered-down state. Like the
-             * code in do_cpu_reset(), we assume first_cpu is the primary
-             * CPU.
-             */
-            if (cs != first_cpu) {
+            /* Secondary CPUs start in PSCI powered-down state.  */
+            if (ARM_CPU(cs) != info->primary_cpu) {
                 object_property_set_bool(cpuobj, "start-powered-off", true,
                                          &error_abort);
             }
@@ -1327,7 +1293,8 @@ void arm_load_kernel(ARMCPU *cpu, MachineState *ms, struct arm_boot_info *info)
      * decided whether to enable PSCI and set the psci-conduit CPU properties.
      */
     if (!info->skip_dtb_autoload && have_dtb(info)) {
-        if (arm_load_dtb(info->dtb_start, info, info->dtb_limit, as, ms) < 0) {
+        if (arm_load_dtb(info->dtb_start, info, info->dtb_limit,
+                         as, ms, cpu) < 0) {
             exit(1);
         }
     }

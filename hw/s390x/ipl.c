@@ -15,9 +15,9 @@
 #include "qemu/osdep.h"
 #include "qemu/datadir.h"
 #include "qapi/error.h"
-#include "sysemu/reset.h"
-#include "sysemu/runstate.h"
-#include "sysemu/tcg.h"
+#include "system/reset.h"
+#include "system/runstate.h"
+#include "system/tcg.h"
 #include "elf.h"
 #include "hw/loader.h"
 #include "hw/qdev-properties.h"
@@ -26,7 +26,6 @@
 #include "hw/s390x/vfio-ccw.h"
 #include "hw/s390x/css.h"
 #include "hw/s390x/ebcdic.h"
-#include "target/s390x/kvm/pv.h"
 #include "hw/scsi/scsi.h"
 #include "hw/virtio/virtio-net.h"
 #include "ipl.h"
@@ -49,13 +48,6 @@
 #define BIOS_MAX_SIZE                   0x300000UL
 #define IPL_PSW_MASK                    (PSW_MASK_32 | PSW_MASK_64)
 
-static bool iplb_extended_needed(void *opaque)
-{
-    S390IPLState *ipl = S390_IPL(object_resolve_path(TYPE_S390_IPL, NULL));
-
-    return ipl->iplbext_migration;
-}
-
 /* Place the IPLB chain immediately before the BIOS in memory */
 static uint64_t find_iplb_chain_addr(uint64_t bios_addr, uint16_t count)
 {
@@ -67,7 +59,6 @@ static const VMStateDescription vmstate_iplb_extended = {
     .name = "ipl/iplb_extended",
     .version_id = 0,
     .minimum_version_id = 0,
-    .needed = iplb_extended_needed,
     .fields = (const VMStateField[]) {
         VMSTATE_UINT8_ARRAY(reserved_ext, IplParameterBlock, 4096 - 200),
         VMSTATE_END_OF_LIST()
@@ -170,15 +161,15 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
 
         bios_size = load_elf(bios_filename, NULL,
                              bios_translate_addr, &fwbase,
-                             &ipl->bios_start_addr, NULL, NULL, NULL, 1,
-                             EM_S390, 0, 0);
+                             &ipl->bios_start_addr, NULL, NULL, NULL,
+                             ELFDATA2MSB, EM_S390, 0, 0);
         if (bios_size > 0) {
             /* Adjust ELF start address to final location */
             ipl->bios_start_addr += fwbase;
         } else {
             /* Try to load non-ELF file */
             bios_size = load_image_targphys(bios_filename, ZIPL_IMAGE_START,
-                                            4096);
+                                            4096, NULL);
             ipl->bios_start_addr = ZIPL_IMAGE_START;
         }
         g_free(bios_filename);
@@ -195,9 +186,10 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
     if (ipl->kernel) {
         kernel_size = load_elf(ipl->kernel, NULL, NULL, NULL,
                                &pentry, NULL,
-                               NULL, NULL, 1, EM_S390, 0, 0);
+                               NULL, NULL, ELFDATA2MSB, EM_S390, 0, 0);
         if (kernel_size < 0) {
-            kernel_size = load_image_targphys(ipl->kernel, 0, ms->ram_size);
+            kernel_size = load_image_targphys(ipl->kernel, 0, ms->ram_size,
+                                              NULL);
             if (kernel_size < 0) {
                 error_setg(errp, "could not load kernel '%s'", ipl->kernel);
                 return;
@@ -256,7 +248,8 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
                 initrd_offset += 0x100000;
             }
             initrd_size = load_image_targphys(ipl->initrd, initrd_offset,
-                                              ms->ram_size - initrd_offset);
+                                              ms->ram_size - initrd_offset,
+                                              NULL);
             if (initrd_size == -1) {
                 error_setg(errp, "could not load initrd '%s'", ipl->initrd);
                 return;
@@ -291,15 +284,12 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
     qemu_register_reset(resettable_cold_reset_fn, dev);
 }
 
-static Property s390_ipl_properties[] = {
+static const Property s390_ipl_properties[] = {
     DEFINE_PROP_STRING("kernel", S390IPLState, kernel),
     DEFINE_PROP_STRING("initrd", S390IPLState, initrd),
     DEFINE_PROP_STRING("cmdline", S390IPLState, cmdline),
     DEFINE_PROP_STRING("firmware", S390IPLState, firmware),
     DEFINE_PROP_BOOL("enforce_bios", S390IPLState, enforce_bios, false),
-    DEFINE_PROP_BOOL("iplbext_migration", S390IPLState, iplbext_migration,
-                     true),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void s390_ipl_set_boot_menu(S390IPLState *ipl)
@@ -687,7 +677,7 @@ static void s390_ipl_prepare_qipl(S390CPU *cpu)
     cpu_physical_memory_unmap(addr, len, 1, len);
 }
 
-int s390_ipl_prepare_pv_header(Error **errp)
+int s390_ipl_prepare_pv_header(struct S390PVResponse *pv_resp, Error **errp)
 {
     IplParameterBlock *ipib = s390_ipl_get_iplb_pv();
     IPLBlockPV *ipib_pv = &ipib->pv;
@@ -696,12 +686,13 @@ int s390_ipl_prepare_pv_header(Error **errp)
 
     cpu_physical_memory_read(ipib_pv->pv_header_addr, hdr,
                              ipib_pv->pv_header_len);
-    rc = s390_pv_set_sec_parms((uintptr_t)hdr, ipib_pv->pv_header_len, errp);
+    rc = s390_pv_set_sec_parms((uintptr_t)hdr, ipib_pv->pv_header_len,
+                               pv_resp, errp);
     g_free(hdr);
     return rc;
 }
 
-int s390_ipl_pv_unpack(void)
+int s390_ipl_pv_unpack(struct S390PVResponse *pv_resp)
 {
     IplParameterBlock *ipib = s390_ipl_get_iplb_pv();
     IPLBlockPV *ipib_pv = &ipib->pv;
@@ -710,7 +701,8 @@ int s390_ipl_pv_unpack(void)
     for (i = 0; i < ipib_pv->num_comp; i++) {
         rc = s390_pv_unpack(ipib_pv->components[i].addr,
                             TARGET_PAGE_ALIGN(ipib_pv->components[i].size),
-                            ipib_pv->components[i].tweak_pref);
+                            ipib_pv->components[i].tweak_pref,
+                            pv_resp);
         if (rc) {
             break;
         }
@@ -747,7 +739,7 @@ static void s390_ipl_reset(DeviceState *dev)
     }
 }
 
-static void s390_ipl_class_init(ObjectClass *klass, void *data)
+static void s390_ipl_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

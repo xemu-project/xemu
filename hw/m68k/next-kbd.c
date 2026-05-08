@@ -162,7 +162,7 @@ static const MemoryRegionOps kbd_ops = {
     .write = kbd_writefn,
     .valid.min_access_size = 1,
     .valid.max_access_size = 4,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_BIG_ENDIAN,
 };
 
 static const int qcode_to_nextkbd_keycode[] = {
@@ -312,7 +312,7 @@ static const VMStateDescription nextkbd_vmstate = {
     .unmigratable = 1,    /* TODO: Implement this when m68k CPU is migratable */
 };
 
-static void nextkbd_class_init(ObjectClass *oc, void *data)
+static void nextkbd_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 

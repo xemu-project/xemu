@@ -82,12 +82,10 @@ struct linux_binprm {
     int (*core_dump)(int, const CPUArchState *); /* coredump routine */
 };
 
-void do_init_thread(struct target_pt_regs *regs, struct image_info *infop);
 abi_ulong loader_build_argptr(int envc, int argc, abi_ulong sp,
                               abi_ulong stringp, int push_ptr);
 int loader_exec(int fdexec, const char *filename, char **argv, char **envp,
-             struct target_pt_regs *regs, struct image_info *infop,
-             struct linux_binprm *);
+                struct image_info *infop, struct linux_binprm *);
 
 uint32_t get_elf_eflags(int fd);
 int load_elf_binary(struct linux_binprm *bprm, struct image_info *info);
@@ -98,13 +96,37 @@ abi_long memcpy_to_target(abi_ulong dest, const void *src,
 
 extern unsigned long guest_stack_size;
 
-#if defined(TARGET_S390X) || defined(TARGET_AARCH64) || defined(TARGET_ARM)
-uint32_t get_elf_hwcap(void);
+/* Note that Elf32 and Elf64 use uint32_t for e_flags. */
+const char *get_elf_cpu_model(uint32_t eflags);
+
+abi_ulong get_elf_hwcap(CPUState *cs);
+abi_ulong get_elf_hwcap2(CPUState *cs);
 const char *elf_hwcap_str(uint32_t bit);
-#endif
-#if defined(TARGET_AARCH64) || defined(TARGET_ARM)
-uint64_t get_elf_hwcap2(void);
 const char *elf_hwcap2_str(uint32_t bit);
-#endif
+const char *get_elf_platform(CPUState *cs);
+const char *get_elf_base_platform(CPUState *cs);
+bool init_guest_commpage(void);
+
+struct target_elf_gregset_t;
+void elf_core_copy_regs(struct target_elf_gregset_t *, const CPUArchState *);
+
+typedef struct {
+    const uint8_t *image;
+    const uint32_t *relocs;
+    unsigned image_size;
+    unsigned reloc_count;
+    unsigned sigreturn_ofs;
+    unsigned rt_sigreturn_ofs;
+    unsigned sigreturn_region_start_ofs;
+    unsigned sigreturn_region_end_ofs;
+} VdsoImageInfo;
+
+/* Note that both Elf32_Word and Elf64_Word are uint32_t. */
+const VdsoImageInfo *get_vdso_image_info(uint32_t elf_flags);
+
+bool arch_parse_elf_property(uint32_t pr_type, uint32_t pr_datasz,
+                             const uint32_t *data,
+                             struct image_info *info,
+                             Error **errp);
 
 #endif /* LINUX_USER_LOADER_H */

@@ -14,6 +14,7 @@ body:
 
         If you have questions about how to provide the information below, join the Discord server to get help from the community.
   - type: textarea
+    id: feature-request
     attributes:
       label: Feature Request
       description: |
@@ -23,12 +24,14 @@ body:
     validations:
       required: true
   - type: textarea
+    id: alternatives
     attributes:
       label: Alternatives
       description: Possible alternative options that you have considered.
     validations:
       required: false
   - type: textarea
+    id: additional-context
     attributes:
       label: Additional Context
       description: Any other context or screenshots about the feature request.

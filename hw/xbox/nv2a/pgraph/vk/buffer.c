@@ -18,7 +18,6 @@
  */
 
 #include "renderer.h"
-#include <vulkan/vulkan_core.h>
 
 static void create_buffer(PGRAPHState *pg, StorageBuffer *buffer)
 {

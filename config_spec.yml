@@ -7,6 +7,7 @@ general:
       type: bool
       default: true
   screenshot_dir: string
+  games_dir: string
   skip_boot_anim: bool
   # throttle_io: bool
   last_viewed_menu_index: integer
@@ -52,6 +53,10 @@ input:
       peripheral_param_1: string
   gamecontrollerdb_path: string
   auto_bind:
+    type: bool
+    default: true
+  # Deprecated: use 'enable_rumble' on the controller mapping settings instead
+  allow_vibration:
     type: bool
     default: true
   background_input_capture: bool
@@ -132,6 +137,91 @@ input:
     rtrigger:
       type: integer
       default: 18 # w
+  gamepad_mappings:
+    type: array
+    items:
+      gamepad_id: string
+      enable_rumble:
+        type: bool
+        default: true
+      # steel_battalion_mapping:
+      # ...
+      controller_mapping:
+        a:
+          type: integer
+          default: 0
+        b:
+          type: integer
+          default: 1
+        x:
+          type: integer
+          default: 2
+        y:
+          type: integer
+          default: 3
+        back:
+          type: integer
+          default: 4
+        guide:
+          type: integer
+          default: 5
+        start:
+          type: integer
+          default: 6
+        lstick_btn:
+          type: integer
+          default: 7
+        rstick_btn:
+          type: integer
+          default: 8
+        lshoulder:
+          type: integer
+          default: 9
+        rshoulder:
+          type: integer
+          default: 10
+        dpad_up:
+          type: integer
+          default: 11
+        dpad_down:
+          type: integer
+          default: 12
+        dpad_left:
+          type: integer
+          default: 13
+        dpad_right:
+          type: integer
+          default: 14
+        axis_left_x:
+          type: integer
+          default: 0
+        axis_left_y:
+          type: integer
+          default: 1
+        axis_right_x:
+          type: integer
+          default: 2
+        axis_right_y:
+          type: integer
+          default: 3
+        axis_trigger_left:
+          type: integer
+          default: 4
+        axis_trigger_right:
+          type: integer
+          default: 5
+        invert_axis_left_x:
+          type: bool
+          default: false
+        invert_axis_left_y:
+          type: bool
+          default: false
+        invert_axis_right_x:
+          type: bool
+          default: false
+        invert_axis_right_y:
+          type: bool
+          default: false
 
 display:
   renderer:
@@ -142,10 +232,15 @@ display:
     validation_layers: bool
     debug_shaders: bool
     assert_on_validation_msg: bool
+    preferred_physical_device: string
   quality:
     surface_scale:
       type: integer
       default: 1
+  filtering:
+    type: enum
+    values: [linear, nearest]
+    default: linear
   window:
     fullscreen_on_startup: bool
     fullscreen_exclusive: bool
@@ -209,9 +304,19 @@ display:
       advanced_tree_state:
         type: bool
         default: false
+  setup_nvidia_profile:
+    type: bool
+    default: true
 
 audio:
+  vp:
+    num_workers:
+      type: integer
+      default: 0  # 0 = auto
   use_dsp: bool
+  hrtf:
+    type: bool
+    default: true
   volume_limit:
     type: number
     default: 1

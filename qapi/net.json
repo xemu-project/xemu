@@ -3,7 +3,9 @@
 #
 
 ##
-# = Net devices
+# ***********
+# Net devices
+# ***********
 ##
 
 { 'include': 'sockets.json' }
@@ -113,6 +115,121 @@
     'str': 'str' } }
 
 ##
+# @NetDevPasstOptions:
+#
+# Unprivileged user-mode network connectivity using passt
+#
+# @path: Filename of the passt program to run (by default 'passt', and
+#     use PATH)
+#
+# @quiet: don't print informational messages (default, passed as
+#     '--quiet')
+#
+# @vhost-user: enable vhost-user
+#
+# @mtu: assign MTU via DHCP/NDP
+#
+# @address: IPv4 or IPv6 address
+#
+# @netmask: IPv4 mask
+#
+# @mac: source MAC address
+#
+# @gateway: IPv4 or IPv6 address as gateway
+#
+# @interface: interface for addresses and routes
+#
+# @outbound: bind to address as outbound source
+#
+# @outbound-if4: bind to outbound interface for IPv4
+#
+# @outbound-if6: bind to outbound interface for IPv6
+#
+# @dns: IPv4 or IPv6 address as DNS
+#
+# @search: search domains
+#
+# @fqdn: FQDN to configure client with
+#
+# @dhcp-dns: enable/disable DNS list in DHCP/DHCPv6/NDP
+#
+# @dhcp-search: enable/disable list in DHCP/DHCPv6/NDP
+#
+# @map-host-loopback: addresse to refer to host
+#
+# @map-guest-addr: addr to translate to guest's address
+#
+# @dns-forward: forward DNS queries sent to
+#
+# @dns-host: host nameserver to direct queries to
+#
+# @tcp: enable/disable TCP
+#
+# @udp: enable/disable UDP
+#
+# @icmp: enable/disable ICMP
+#
+# @dhcp: enable/disable DHCP
+#
+# @ndp: enable/disable NDP
+#
+# @dhcpv6: enable/disable DHCPv6
+#
+# @ra: enable/disable route advertisements
+#
+# @freebind: bind to any address for forwarding
+#
+# @ipv4: enable/disable IPv4
+#
+# @ipv6: enable/disable IPv6
+#
+# @tcp-ports: TCP ports to forward
+#
+# @udp-ports: UDP ports to forward
+#
+# @param: parameter to pass to passt command
+#
+# Since: 10.1
+##
+{ 'struct': 'NetDevPasstOptions',
+  'data': {
+    '*path':               'str',
+    '*quiet':              'bool',
+    '*vhost-user':         'bool',
+    '*mtu':                'int',
+    '*address':            'str',
+    '*netmask':            'str',
+    '*mac':                'str',
+    '*gateway':            'str',
+    '*interface':          'str',
+    '*outbound':           'str',
+    '*outbound-if4':       'str',
+    '*outbound-if6':       'str',
+    '*dns':                'str',
+    '*search':             ['String'],
+    '*fqdn':               'str',
+    '*dhcp-dns':           'bool',
+    '*dhcp-search':        'bool',
+    '*map-host-loopback':  'str',
+    '*map-guest-addr':     'str',
+    '*dns-forward':        'str',
+    '*dns-host':           'str',
+    '*tcp':                'bool',
+    '*udp':                'bool',
+    '*icmp':               'bool',
+    '*dhcp':               'bool',
+    '*ndp':                'bool',
+    '*dhcpv6':             'bool',
+    '*ra':                 'bool',
+    '*freebind':           'bool',
+    '*ipv4':               'bool',
+    '*ipv6':               'bool',
+    '*tcp-ports':          ['String'],
+    '*udp-ports':          ['String'],
+    '*param':             ['String'] },
+    'if': 'CONFIG_PASST' }
+
+##
 # @NetdevUserOptions:
 #
 # Use the user mode network stack which requires no administrator
@@ -150,12 +267,12 @@
 # @domainname: guest-visible domain name of the virtual nameserver
 #     (since 3.0)
 #
-# @ipv6-prefix: IPv6 network prefix (default is fec0::) (since 2.6).
-#     The network prefix is given in the usual hexadecimal IPv6
-#     address notation.
+# @ipv6-prefix: IPv6 network prefix (default is fec0::).  The network
+#     prefix is given in the usual hexadecimal IPv6 address notation.
+#     (since 2.6)
 #
-# @ipv6-prefixlen: IPv6 network prefix length (default is 64) (since
-#     2.6)
+# @ipv6-prefixlen: IPv6 network prefix length (default is 64)
+#     (since 2.6)
 #
 # @ipv6-host: guest-visible IPv6 address of the host (since 2.6)
 #
@@ -166,8 +283,8 @@
 #
 # @smbserver: IP address of the built-in SMB server
 #
-# @hostfwd: redirect incoming TCP or UDP host connections to guest
-#     endpoints
+# @hostfwd: redirect incoming TCP, UDP or UNIX host connections to
+#     guest endpoints
 #
 # @guestfwd: forward guest TCP connections
 #
@@ -387,8 +504,8 @@
 #
 # @hubid: hub identifier number
 #
-# @netdev: used to connect hub to a netdev instead of a device (since
-#     2.12)
+# @netdev: used to connect hub to a netdev instead of a device
+#     (since 2.12)
 #
 # Since: 1.2
 ##
@@ -454,25 +571,36 @@
 #     (default: 0).
 #
 # @inhibit: Don't load a default XDP program, use one already loaded
-#     to the interface (default: false).  Requires @sock-fds.
+#     to the interface (default: false).  Requires @sock-fds or
+#     @map-path.
 #
 # @sock-fds: A colon (:) separated list of file descriptors for
 #     already open but not bound AF_XDP sockets in the queue order.
 #     One fd per queue.  These descriptors should already be added
-#     into XDP socket map for corresponding queues.  Requires
-#     @inhibit.
+#     into XDP socket map for corresponding queues.  @sock-fds and
+#     @map-path are mutually exclusive.  Requires @inhibit.
+#
+# @map-path: The path to a pinned xsk map to push file descriptors
+#     for bound AF_XDP sockets into.  @map-path and @sock-fds are
+#     mutually exclusive.  Requires @inhibit.  (Since 10.1)
+#
+# @map-start-index: Use @map-path to insert xsk sockets starting from
+#     this index number (default: 0).  Requires @map-path.
+#     (Since 10.1)
 #
 # Since: 8.2
 ##
 { 'struct': 'NetdevAFXDPOptions',
   'data': {
-    'ifname':       'str',
-    '*mode':        'AFXDPMode',
-    '*force-copy':  'bool',
-    '*queues':      'int',
-    '*start-queue': 'int',
-    '*inhibit':     'bool',
-    '*sock-fds':    'str' },
+    'ifname':           'str',
+    '*mode':            'AFXDPMode',
+    '*force-copy':      'bool',
+    '*queues':          'int',
+    '*start-queue':     'int',
+    '*inhibit':         'bool',
+    '*sock-fds':        'str',
+    '*map-path':        'str',
+    '*map-start-index': 'int32' },
   'if': 'CONFIG_AF_XDP' }
 
 ##
@@ -510,8 +638,8 @@
 # @queues: number of queues to be created for multiqueue vhost-vdpa
 #     (default: 1)
 #
-# @x-svq: Start device with (experimental) shadow virtqueue.  (Since
-#     7.1) (default: false)
+# @x-svq: Start device with (experimental) shadow virtqueue.
+#     (Since 7.1) (default: false)
 #
 # Features:
 #
@@ -646,21 +774,12 @@
 #
 # @server: create server socket (default: false)
 #
-# @reconnect: For a client socket, if a socket is disconnected, then
-#     attempt a reconnect after the given number of seconds.  Setting
-#     this to zero disables this function.  (default: 0) (since 8.0)
+# @reconnect-ms: For a client socket, if a socket is disconnected,
+#     then attempt a reconnect after the given number of milliseconds.
+#     Setting this to zero disables this function.
+#     (default: 0) (Since: 9.2)
 #
-# @reconnect-ms: For a client socket, if a socket is disconnected, then
-#     attempt a reconnect after the given number of milliseconds.  Setting
-#     this to zero disables this function.  This member is mutually
-#     exclusive with @reconnect.  (default: 0) (Since: 9.2)
-#
-# Only SocketAddress types 'unix', 'inet' and 'fd' are supported.
-#
-# Features:
-#
-# @deprecated: Member @reconnect is deprecated.  Use @reconnect-ms
-#     instead.
+# Only `SocketAddress` types 'unix', 'inet' and 'fd' are supported.
 #
 # Since: 7.2
 ##
@@ -668,7 +787,6 @@
   'data': {
     'addr':   'SocketAddress',
     '*server': 'bool',
-    '*reconnect': { 'type': 'int', 'features': [ 'deprecated' ] },
     '*reconnect-ms': 'int' } }
 
 ##
@@ -680,7 +798,7 @@
 #
 # @local: local address
 #
-# Only SocketAddress types 'unix', 'inet' and 'fd' are supported.
+# Only `SocketAddress` types 'unix', 'inet' and 'fd' are supported.
 #
 # If remote address is present and it's a multicast address, local
 # address is optional.  Otherwise local address is required and remote
@@ -742,12 +860,15 @@
 #
 # @af-xdp: since 8.2
 #
+# @passt: since 10.1
+#
 # Since: 2.7
 ##
 { 'enum': 'NetClientDriver',
   'data': [ 'none', 'nic', 'user', 'tap', 'l2tpv3', 'socket', 'stream',
             'dgram', 'vde', 'bridge', 'hubport', 'netmap', 'vhost-user',
             'vhost-vdpa', 'pcap',
+            { 'name': 'passt', 'if': 'CONFIG_PASST' },
             { 'name': 'af-xdp', 'if': 'CONFIG_AF_XDP' },
             { 'name': 'vmnet-host', 'if': 'CONFIG_VMNET' },
             { 'name': 'vmnet-shared', 'if': 'CONFIG_VMNET' },
@@ -769,6 +890,8 @@
   'discriminator': 'type',
   'data': {
     'nic':      'NetLegacyNicOptions',
+    'passt':    { 'type': 'NetDevPasstOptions',
+                  'if': 'CONFIG_PASST' },
     'user':     'NetdevUserOptions',
     'tap':      'NetdevTapOptions',
     'l2tpv3':   'NetdevL2TPv3Options',
@@ -859,7 +982,7 @@
 #
 # @name: net client name
 #
-# Returns: list of @RxFilterInfo for all NICs (or for the given NIC).
+# Returns: list of info for all NICs (or for the given NIC).
 #
 # Errors:
 #     - if the given @name doesn't exist
@@ -904,7 +1027,7 @@
 ##
 # @NIC_RX_FILTER_CHANGED:
 #
-# Emitted once until the 'query-rx-filter' command is executed, the
+# Emitted once until the `query-rx-filter` command is executed, the
 # first event will always be emitted
 #
 # @name: net client name
@@ -946,7 +1069,6 @@
 #
 # Since: 4.0
 ##
-
 { 'struct': 'AnnounceParameters',
   'data': { 'initial': 'int',
             'max': 'int',
@@ -1044,4 +1166,42 @@
 #          "timestamp": {"seconds": 1663330937, "microseconds": 526695} }
 ##
 { 'event': 'NETDEV_STREAM_DISCONNECTED',
+  'data': { 'netdev-id': 'str' } }
+
+##
+# @NETDEV_VHOST_USER_CONNECTED:
+#
+# Emitted when the vhost-user chardev is connected
+#
+# @netdev-id: QEMU netdev id that is connected
+#
+# @chardev-id: The character device id used by the QEMU netdev
+#
+# Since: 10.0
+#
+# .. qmp-example::
+#
+#     <- { "timestamp": {"seconds": 1739538638, "microseconds": 354181 },
+#          "event": "NETDEV_VHOST_USER_CONNECTED",
+#          "data": { "netdev-id": "netdev0", "chardev-id": "chr0" } }
+##
+{ 'event': 'NETDEV_VHOST_USER_CONNECTED',
+  'data': { 'netdev-id': 'str', 'chardev-id': 'str' } }
+
+##
+# @NETDEV_VHOST_USER_DISCONNECTED:
+#
+# Emitted when the vhost-user chardev is disconnected
+#
+# @netdev-id: QEMU netdev id that is disconnected
+#
+# Since: 10.0
+#
+# .. qmp-example::
+#
+#     <- { "timestamp": { "seconds": 1739538634, "microseconds": 920450 },
+#          "event": "NETDEV_VHOST_USER_DISCONNECTED",
+#          "data": { "netdev-id": "netdev0" } }
+##
+{ 'event': 'NETDEV_VHOST_USER_DISCONNECTED',
   'data': { 'netdev-id': 'str' } }

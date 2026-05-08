@@ -6,7 +6,7 @@
 #include "qapi/type-helpers.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "migration/vmstate.h"
 #include "monitor/monitor.h"
 #include "trace.h"
@@ -18,16 +18,15 @@ static char *usb_get_dev_path(DeviceState *dev);
 static char *usb_get_fw_dev_path(DeviceState *qdev);
 static void usb_qdev_unrealize(DeviceState *qdev);
 
-static Property usb_props[] = {
+static const Property usb_props[] = {
     DEFINE_PROP_STRING("port", USBDevice, port_path),
     DEFINE_PROP_STRING("serial", USBDevice, serial),
     DEFINE_PROP_BIT("msos-desc", USBDevice, flags,
                     USB_DEV_FLAG_MSOS_DESC_ENABLE, true),
     DEFINE_PROP_STRING("pcap", USBDevice, pcap_filename),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void usb_bus_class_init(ObjectClass *klass, void *data)
+static void usb_bus_class_init(ObjectClass *klass, const void *data)
 {
     BusClass *k = BUS_CLASS(klass);
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(klass);
@@ -43,7 +42,7 @@ static const TypeInfo usb_bus_info = {
     .parent = TYPE_BUS,
     .instance_size = sizeof(USBBus),
     .class_init = usb_bus_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_HOTPLUG_HANDLER },
         { }
     }
@@ -260,10 +259,9 @@ static void usb_qdev_realize(DeviceState *qdev, Error **errp)
     }
 
     if (dev->pcap_filename) {
-        int fd = qemu_open_old(dev->pcap_filename,
-                               O_CREAT | O_WRONLY | O_TRUNC | O_BINARY, 0666);
+        int fd = qemu_create(dev->pcap_filename,
+                             O_WRONLY | O_TRUNC | O_BINARY, 0666, errp);
         if (fd < 0) {
-            error_setg(errp, "open %s failed", dev->pcap_filename);
             usb_qdev_unrealize(qdev);
             return;
         }
@@ -412,7 +410,7 @@ void usb_claim_port(USBDevice *dev, Error **errp)
     } else {
         if (bus->nfree == 1 && strcmp(object_get_typename(OBJECT(dev)), "usb-hub") != 0) {
             /* Create a new hub and chain it on */
-            hub = usb_try_new("usb-hub");
+            hub = USB_DEVICE(qdev_try_new("usb-hub"));
             if (hub) {
                 usb_realize_and_unref(hub, bus, NULL);
             }
@@ -663,7 +661,8 @@ USBDevice *usbdevice_create(const char *driver)
         return NULL;
     }
 
-    dev = f->usbdevice_init ? f->usbdevice_init() : usb_new(f->name);
+    dev = f->usbdevice_init ? f->usbdevice_init()
+                            : USB_DEVICE(qdev_new(f->name));
     if (!dev) {
         error_report("Failed to create USB device '%s'", f->name);
         return NULL;
@@ -713,7 +712,7 @@ static void usb_device_instance_init(Object *obj)
     }
 }
 
-static void usb_device_class_init(ObjectClass *klass, void *data)
+static void usb_device_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *k = DEVICE_CLASS(klass);
     k->bus_type = TYPE_USB_BUS;

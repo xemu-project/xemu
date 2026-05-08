@@ -271,13 +271,16 @@ static void qmp_chardev_open_serial(Chardev *chr,
     if (fd < 0) {
         return;
     }
-    if (!g_unix_set_fd_nonblocking(fd, true, NULL)) {
-        error_setg_errno(errp, errno, "Failed to set FD nonblocking");
+    if (!qemu_set_blocking(fd, false, errp)) {
+        close(fd);
         return;
     }
     tty_serial_init(fd, 115200, 'N', 8, 1);
 
-    qemu_chr_open_fd(chr, fd, fd);
+    if (!qemu_chr_open_fd(chr, fd, fd, errp)) {
+        close(fd);
+        return;
+    }
 }
 #endif /* __linux__ || __sun__ */
 
@@ -298,7 +301,7 @@ static void qemu_chr_parse_serial(QemuOpts *opts, ChardevBackend *backend,
     serial->device = g_strdup(device);
 }
 
-static void char_serial_class_init(ObjectClass *oc, void *data)
+static void char_serial_class_init(ObjectClass *oc, const void *data)
 {
     ChardevClass *cc = CHARDEV_CLASS(oc);
 

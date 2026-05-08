@@ -8,17 +8,14 @@ This is the main entry point for generating C code from the QAPI schema.
 """
 
 import argparse
+from importlib import import_module
 import sys
 from typing import Optional
 
-from .commands import gen_commands
+from .backend import QAPIBackend, QAPICBackend
 from .common import must_match
 from .error import QAPIError
-from .events import gen_events
-from .introspect import gen_introspect
 from .schema import QAPISchema
-from .types import gen_types
-from .visit import gen_visit
 
 
 def invalid_prefix_char(prefix: str) -> Optional[str]:
@@ -28,31 +25,36 @@ def invalid_prefix_char(prefix: str) -> Optional[str]:
     return None
 
 
-def generate(schema_file: str,
-             output_dir: str,
-             prefix: str,
-             unmask: bool = False,
-             builtins: bool = False,
-             gen_tracing: bool = False) -> None:
-    """
-    Generate C code for the given schema into the target directory.
+def create_backend(path: str) -> QAPIBackend:
+    if path is None:
+        return QAPICBackend()
 
-    :param schema_file: The primary QAPI schema file.
-    :param output_dir: The output directory to store generated code.
-    :param prefix: Optional C-code prefix for symbol names.
-    :param unmask: Expose non-ABI names through introspection?
-    :param builtins: Generate code for built-in types?
+    module_path, dot, class_name = path.rpartition('.')
+    if not dot:
+        raise QAPIError("argument of -B must be of the form MODULE.CLASS")
 
-    :raise QAPIError: On failures.
-    """
-    assert invalid_prefix_char(prefix) is None
+    try:
+        mod = import_module(module_path)
+    except Exception as ex:
+        raise QAPIError(f"unable to import '{module_path}': {ex}") from ex
 
-    schema = QAPISchema(schema_file)
-    gen_types(schema, output_dir, prefix, builtins)
-    gen_visit(schema, output_dir, prefix, builtins)
-    gen_commands(schema, output_dir, prefix, gen_tracing)
-    gen_events(schema, output_dir, prefix)
-    gen_introspect(schema, output_dir, prefix, unmask)
+    try:
+        klass = getattr(mod, class_name)
+    except AttributeError as ex:
+        raise QAPIError(
+            f"module '{module_path}' has no class '{class_name}'") from ex
+
+    try:
+        backend = klass()
+    except Exception as ex:
+        raise QAPIError(
+            f"backend '{path}' cannot be instantiated: {ex}") from ex
+
+    if not isinstance(backend, QAPIBackend):
+        raise QAPIError(
+            f"backend '{path}' must be an instance of QAPIBackend")
+
+    return backend
 
 
 def main() -> int:
@@ -75,6 +77,8 @@ def main() -> int:
     parser.add_argument('-u', '--unmask-non-abi-names', action='store_true',
                         dest='unmask',
                         help="expose non-ABI names in introspection")
+    parser.add_argument('-B', '--backend', default=None,
+                        help="Python module name for code generator")
 
     # Option --suppress-tracing exists so we can avoid solving build system
     # problems.  TODO Drop it when we no longer need it.
@@ -91,12 +95,14 @@ def main() -> int:
         return 1
 
     try:
-        generate(args.schema,
-                 output_dir=args.output_dir,
-                 prefix=args.prefix,
-                 unmask=args.unmask,
-                 builtins=args.builtins,
-                 gen_tracing=not args.suppress_tracing)
+        schema = QAPISchema(args.schema)
+        backend = create_backend(args.backend)
+        backend.generate(schema,
+                         output_dir=args.output_dir,
+                         prefix=args.prefix,
+                         unmask=args.unmask,
+                         builtins=args.builtins,
+                         gen_tracing=not args.suppress_tracing)
     except QAPIError as err:
         print(err, file=sys.stderr)
         return 1

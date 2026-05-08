@@ -80,6 +80,8 @@ this code that are retained.
 #ifndef SOFTFLOAT_TYPES_H
 #define SOFTFLOAT_TYPES_H
 
+#include "hw/registerfields.h"
+
 /*
  * Software IEC/IEEE floating-point types.
  */
@@ -151,6 +153,8 @@ typedef enum __attribute__((__packed__)) {
     float_round_to_odd       = 5,
     /* Not an IEEE rounding mode: round to closest odd, overflow to inf */
     float_round_to_odd_inf   = 6,
+    /* Not an IEEE rounding mode: round to nearest even, overflow to max */
+    float_round_nearest_even_max = 7,
 } FloatRoundMode;
 
 /*
@@ -163,8 +167,10 @@ enum {
     float_flag_overflow        = 0x0004,
     float_flag_underflow       = 0x0008,
     float_flag_inexact         = 0x0010,
-    float_flag_input_denormal  = 0x0020,
-    float_flag_output_denormal = 0x0040,
+    /* We flushed an input denormal to 0 (because of flush_inputs_to_zero) */
+    float_flag_input_denormal_flushed = 0x0020,
+    /* We flushed an output denormal to 0 (because of flush_to_zero) */
+    float_flag_output_denormal_flushed = 0x0040,
     float_flag_invalid_isi     = 0x0080,  /* inf - inf */
     float_flag_invalid_imz     = 0x0100,  /* inf * 0 */
     float_flag_invalid_idi     = 0x0200,  /* inf / inf */
@@ -172,6 +178,13 @@ enum {
     float_flag_invalid_sqrt    = 0x0800,  /* sqrt(-x) */
     float_flag_invalid_cvti    = 0x1000,  /* non-nan to integer */
     float_flag_invalid_snan    = 0x2000,  /* any operand was snan */
+    /*
+     * An input was denormal and we used it (without flushing it to zero).
+     * Not set if we do not actually use the denormal input (e.g.
+     * because some other input was a NaN, or because the operation
+     * wasn't actually carried out (divide-by-zero; invalid))
+     */
+    float_flag_input_denormal_used = 0x4000,
 };
 
 /*
@@ -221,6 +234,156 @@ typedef enum __attribute__((__packed__)) {
 } Float2NaNPropRule;
 
 /*
+ * 3-input NaN propagation rule, for fused multiply-add. Individual
+ * architectures have different rules for which input NaN is
+ * propagated to the output when there is more than one NaN on the
+ * input.
+ *
+ * If default_nan_mode is enabled then it is valid not to set a NaN
+ * propagation rule, because the softfloat code guarantees not to try
+ * to pick a NaN to propagate in default NaN mode.  When not in
+ * default-NaN mode, it is an error for the target not to set the rule
+ * in float_status if it uses a muladd, and we will assert if we need
+ * to handle an input NaN and no rule was selected.
+ *
+ * The naming scheme for Float3NaNPropRule values is:
+ *  float_3nan_prop_s_abc:
+ *    = "Prefer SNaN over QNaN, then operand A over B over C"
+ *  float_3nan_prop_abc:
+ *    = "Prefer A over B over C regardless of SNaN vs QNAN"
+ *
+ * For QEMU, the multiply-add operation is A * B + C.
+ */
+
+/*
+ * We set the Float3NaNPropRule enum values up so we can select the
+ * right value in pickNaNMulAdd in a data driven way.
+ */
+FIELD(3NAN, 1ST, 0, 2)   /* which operand is most preferred ? */
+FIELD(3NAN, 2ND, 2, 2)   /* which operand is next most preferred ? */
+FIELD(3NAN, 3RD, 4, 2)   /* which operand is least preferred ? */
+FIELD(3NAN, SNAN, 6, 1)  /* do we prefer SNaN over QNaN ? */
+
+#define PROPRULE(X, Y, Z) \
+    ((X << R_3NAN_1ST_SHIFT) | (Y << R_3NAN_2ND_SHIFT) | (Z << R_3NAN_3RD_SHIFT))
+
+typedef enum __attribute__((__packed__)) {
+    float_3nan_prop_none = 0,     /* No propagation rule specified */
+    float_3nan_prop_abc = PROPRULE(0, 1, 2),
+    float_3nan_prop_acb = PROPRULE(0, 2, 1),
+    float_3nan_prop_bac = PROPRULE(1, 0, 2),
+    float_3nan_prop_bca = PROPRULE(1, 2, 0),
+    float_3nan_prop_cab = PROPRULE(2, 0, 1),
+    float_3nan_prop_cba = PROPRULE(2, 1, 0),
+    float_3nan_prop_s_abc = float_3nan_prop_abc | R_3NAN_SNAN_MASK,
+    float_3nan_prop_s_acb = float_3nan_prop_acb | R_3NAN_SNAN_MASK,
+    float_3nan_prop_s_bac = float_3nan_prop_bac | R_3NAN_SNAN_MASK,
+    float_3nan_prop_s_bca = float_3nan_prop_bca | R_3NAN_SNAN_MASK,
+    float_3nan_prop_s_cab = float_3nan_prop_cab | R_3NAN_SNAN_MASK,
+    float_3nan_prop_s_cba = float_3nan_prop_cba | R_3NAN_SNAN_MASK,
+} Float3NaNPropRule;
+
+#undef PROPRULE
+
+/*
+ * Rule for result of fused multiply-add 0 * Inf + NaN.
+ * This must be a NaN, but implementations differ on whether this
+ * is the input NaN or the default NaN.
+ *
+ * You don't need to set this if default_nan_mode is enabled.
+ * When not in default-NaN mode, it is an error for the target
+ * not to set the rule in float_status if it uses muladd, and we
+ * will assert if we need to handle an input NaN and no rule was
+ * selected.
+ */
+typedef enum __attribute__((__packed__)) {
+    /* No propagation rule specified */
+    float_infzeronan_none = 0,
+    /* Result is never the default NaN (so always the input NaN) */
+    float_infzeronan_dnan_never = 1,
+    /* Result is always the default NaN */
+    float_infzeronan_dnan_always = 2,
+    /* Result is the default NaN if the input NaN is quiet */
+    float_infzeronan_dnan_if_qnan = 3,
+    /*
+     * Don't raise Invalid for 0 * Inf + NaN. Default is to raise.
+     * IEEE 754-2008 section 7.2 makes it implementation defined whether
+     * 0 * Inf + QNaN raises Invalid or not. Note that 0 * Inf + SNaN will
+     * raise the Invalid flag for the SNaN anyway.
+     *
+     * This is a flag which can be ORed in with any of the above
+     * DNaN behaviour options.
+     */
+    float_infzeronan_suppress_invalid = (1 << 7),
+} FloatInfZeroNaNRule;
+
+/*
+ * When flush_to_zero is set, should we detect denormal results to
+ * be flushed before or after rounding? For most architectures this
+ * should be set to match the tininess_before_rounding setting,
+ * but a few architectures, e.g. MIPS MSA, detect FTZ before
+ * rounding but tininess after rounding.
+ *
+ * This enum is arranged so that the default if the target doesn't
+ * configure it matches the default for tininess_before_rounding
+ * (i.e. "after rounding").
+ */
+typedef enum __attribute__((__packed__)) {
+    float_ftz_after_rounding = 0,
+    float_ftz_before_rounding = 1,
+} FloatFTZDetection;
+
+/*
+ * floatx80 is primarily used by x86 and m68k, and there are
+ * differences in the handling, largely related to the explicit
+ * Integer bit which floatx80 has and the other float formats do not.
+ * These flag values allow specification of the target's requirements
+ * and can be ORed together to set floatx80_behaviour.
+ */
+typedef enum __attribute__((__packed__)) {
+    /* In the default Infinity value, is the Integer bit 0 ? */
+    floatx80_default_inf_int_bit_is_zero = 1,
+    /*
+     * Are Pseudo-infinities (Inf with the Integer bit zero) valid?
+     * If so, floatx80_is_infinity() will return true for them.
+     * If not, floatx80_invalid_encoding will return false for them,
+     * and using them as inputs to a float op will raise Invalid.
+     */
+    floatx80_pseudo_inf_valid = 2,
+    /*
+     * Are Pseudo-NaNs (NaNs where the Integer bit is zero) valid?
+     * If not, floatx80_invalid_encoding() will return false for them,
+     * and using them as inputs to a float op will raise Invalid.
+     */
+    floatx80_pseudo_nan_valid = 4,
+    /*
+     * Are Unnormals (0 < exp < 0x7fff, Integer bit zero) valid?
+     * If not, floatx80_invalid_encoding() will return false for them,
+     * and using them as inputs to a float op will raise Invalid.
+     */
+    floatx80_unnormal_valid = 8,
+
+    /*
+     * If the exponent is 0 and the Integer bit is set, Intel call
+     * this a "pseudo-denormal"; x86 supports that only on input
+     * (treating them as denormals by ignoring the Integer bit).
+     * For m68k, the integer bit is considered validly part of the
+     * input value when the exponent is 0, and may be 0 or 1,
+     * giving extra range. They may also be generated as outputs.
+     * (The m68k manual actually calls these values part of the
+     * normalized number range, not the denormalized number range.)
+     *
+     * By default you get the Intel behaviour where the Integer
+     * bit is ignored; if this is set then the Integer bit value
+     * is honoured, m68k-style.
+     *
+     * Either way, floatx80_invalid_encoding() will always accept
+     * pseudo-denormals.
+     */
+    floatx80_pseudo_denormal_valid = 16,
+} FloatX80Behaviour;
+
+/*
  * Floating Point Status. Individual architectures may maintain
  * several versions of float_status for different functions. The
  * correct status for the operation is then passed by reference to
@@ -231,20 +394,34 @@ typedef struct float_status {
     uint16_t float_exception_flags;
     FloatRoundMode float_rounding_mode;
     FloatX80RoundPrec floatx80_rounding_precision;
+    FloatX80Behaviour floatx80_behaviour;
     Float2NaNPropRule float_2nan_prop_rule;
+    Float3NaNPropRule float_3nan_prop_rule;
+    FloatInfZeroNaNRule float_infzeronan_rule;
     bool tininess_before_rounding;
-    /* should denormalised results go to zero and set the inexact flag? */
+    /* should denormalised results go to zero and set output_denormal_flushed? */
     bool flush_to_zero;
-    /* should denormalised inputs go to zero and set the input_denormal flag? */
+    /* do we detect and flush denormal results before or after rounding? */
+    FloatFTZDetection ftz_detection;
+    /* should denormalised inputs go to zero and set input_denormal_flushed? */
     bool flush_inputs_to_zero;
     bool default_nan_mode;
+    /*
+     * The pattern to use for the default NaN. Here the high bit specifies
+     * the default NaN's sign bit, and bits 6..0 specify the high bits of the
+     * fractional part. The low bits of the fractional part are copies of bit 0.
+     * The exponent of the default NaN is (as for any NaN) always all 1s.
+     * Note that a value of 0 here is not a valid NaN. The target must set
+     * this to the correct non-zero value, or we will assert when trying to
+     * create a default NaN.
+     */
+    uint8_t default_nan_pattern;
     /*
      * The flags below are not used on all specializations and may
      * constant fold away (see snan_bit_is_one()/no_signalling_nans() in
      * softfloat-specialize.inc.c)
      */
     bool snan_bit_is_one;
-    bool use_first_nan;
     bool no_signaling_nans;
     /* should overflowed results subtract re_bias to its exponent? */
     bool rebias_overflow;

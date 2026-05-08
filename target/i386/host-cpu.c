@@ -12,10 +12,10 @@
 #include "host-cpu.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 
 /* Note: Only safe for use on x86(-64) hosts */
-static uint32_t host_cpu_phys_bits(void)
+uint32_t host_cpu_phys_bits(void)
 {
     uint32_t eax;
     uint32_t host_phys_bits;
@@ -80,7 +80,6 @@ bool host_cpu_realizefn(CPUState *cs, Error **errp)
     return true;
 }
 
-#define CPUID_MODEL_ID_SZ 48
 /**
  * cpu_x86_fill_model_id:
  * Get CPUID model ID string from host CPU.
@@ -109,18 +108,22 @@ void host_cpu_vendor_fms(char *vendor, int *family, int *model, int *stepping)
 {
     uint32_t eax, ebx, ecx, edx;
 
-    host_cpuid(0x0, 0, &eax, &ebx, &ecx, &edx);
+    host_cpuid(0x0, 0, NULL, &ebx, &ecx, &edx);
     x86_cpu_vendor_words2str(vendor, ebx, edx, ecx);
+
+    if (!family && !model && !stepping) {
+        return;
+    }
 
     host_cpuid(0x1, 0, &eax, &ebx, &ecx, &edx);
     if (family) {
-        *family = ((eax >> 8) & 0x0F) + ((eax >> 20) & 0xFF);
+        *family = x86_cpu_family(eax);
     }
     if (model) {
-        *model = ((eax >> 4) & 0x0F) | ((eax & 0xF0000) >> 12);
+        *model = x86_cpu_model(eax);
     }
     if (stepping) {
-        *stepping = eax & 0x0F;
+        *stepping = x86_cpu_stepping(eax);
     }
 }
 
@@ -128,29 +131,27 @@ void host_cpu_instance_init(X86CPU *cpu)
 {
     X86CPUClass *xcc = X86_CPU_GET_CLASS(cpu);
 
-    if (xcc->model) {
-        uint32_t ebx = 0, ecx = 0, edx = 0;
-        char vendor[CPUID_VENDOR_SZ + 1];
-
-        host_cpuid(0, 0, NULL, &ebx, &ecx, &edx);
-        x86_cpu_vendor_words2str(vendor, ebx, edx, ecx);
-        object_property_set_str(OBJECT(cpu), "vendor", vendor, &error_abort);
-    }
-}
-
-void host_cpu_max_instance_init(X86CPU *cpu)
-{
     char vendor[CPUID_VENDOR_SZ + 1] = { 0 };
     char model_id[CPUID_MODEL_ID_SZ + 1] = { 0 };
     int family, model, stepping;
 
+    /*
+     * setting vendor applies to both max/host and builtin_x86_defs CPU.
+     * FIXME: this probably should warn or should be skipped if vendors do
+     * not match, because family numbers are incompatible between Intel and AMD.
+     */
+    host_cpu_vendor_fms(vendor, &family, &model, &stepping);
+    object_property_set_str(OBJECT(cpu), "vendor", vendor, &error_abort);
+
+    if (!xcc->max_features) {
+        return;
+    }
+
+    host_cpu_fill_model_id(model_id);
+
     /* Use max host physical address bits if -cpu max option is applied */
     object_property_set_bool(OBJECT(cpu), "host-phys-bits", true, &error_abort);
 
-    host_cpu_vendor_fms(vendor, &family, &model, &stepping);
-    host_cpu_fill_model_id(model_id);
-
-    object_property_set_str(OBJECT(cpu), "vendor", vendor, &error_abort);
     object_property_set_int(OBJECT(cpu), "family", family, &error_abort);
     object_property_set_int(OBJECT(cpu), "model", model, &error_abort);
     object_property_set_int(OBJECT(cpu), "stepping", stepping,
@@ -159,7 +160,16 @@ void host_cpu_max_instance_init(X86CPU *cpu)
                             &error_abort);
 }
 
-static void host_cpu_class_init(ObjectClass *oc, void *data)
+bool is_host_cpu_intel(void)
+{
+    char vendor[CPUID_VENDOR_SZ + 1];
+
+    host_cpu_vendor_fms(vendor, NULL, NULL, NULL);
+
+    return g_str_equal(vendor, CPUID_VENDOR_INTEL);
+}
+
+static void host_cpu_class_init(ObjectClass *oc, const void *data)
 {
     X86CPUClass *xcc = X86_CPU_CLASS(oc);
 

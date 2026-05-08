@@ -263,9 +263,8 @@ static const VMStateDescription vmstate_ibex_timer = {
     }
 };
 
-static Property ibex_timer_properties[] = {
+static const Property ibex_timer_properties[] = {
     DEFINE_PROP_UINT32("timebase-freq", IbexTimerState, timebase_freq, 10000),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ibex_timer_init(Object *obj)
@@ -287,7 +286,7 @@ static void ibex_timer_realize(DeviceState *dev, Error **errp)
 }
 
 
-static void ibex_timer_class_init(ObjectClass *klass, void *data)
+static void ibex_timer_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

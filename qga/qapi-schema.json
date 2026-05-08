@@ -2,7 +2,24 @@
 # vim: filetype=python
 
 ##
-# = QEMU guest agent protocol commands and structs
+# This manual describes the commands supported by the QEMU Guest Agent
+# Protocol.
+#
+# For locating  a particular item, please see the `qapi-qga-index`.
+#
+# The following notation is used in examples:
+#
+# .. qmp-example::
+#
+#   -> ... text sent by client (commands) ...
+#   <- ... text sent by server (command responses and events) ...
+#
+# Example text is formatted for readability.  However, in real
+# protocol usage, its commonly emitted as a single line.
+#
+# Please refer to the
+# :doc:`QEMU Machine Protocol Specification </interop/qmp-spec>`
+# for the general format of commands, responses, and events.
 ##
 
 { 'pragma': { 'doc-required': true } }
@@ -79,11 +96,11 @@
 # In cases where a partial stale response was previously received by
 # the client, this cannot always be done reliably.  One particular
 # scenario being if qemu-ga responses are fed character-by-character
-# into a JSON parser.  In these situations, using guest-sync-delimited
-# may be optimal.
+# into a JSON parser.  In these situations, using
+# `guest-sync-delimited` may be optimal.
 #
 # For clients that fetch responses line by line and convert them to
-# JSON objects, guest-sync should be sufficient, but note that in
+# JSON objects, `guest-sync` should be sufficient, but note that in
 # cases where the channel is dirty some attempts at parsing the
 # response may result in a parser error.
 #
@@ -136,9 +153,9 @@
 # This command tries to set guest's System Time to the given value,
 # then sets the Hardware Clock (RTC) to the current System Time.  This
 # will make it easier for a guest to resynchronize without waiting for
-# NTP. If no @time is specified, then the time to set is read from
-# RTC. However, this may not be supported on all platforms (i.e.
-# Windows). If that's the case users are advised to always pass a
+# NTP.  If no @time is specified, then the time to set is read from
+# RTC.  However, this may not be supported on all platforms (i.e.
+# Windows).  If that's the case users are advised to always pass a
 # value.
 #
 # @time: time of nanoseconds, relative to the Epoch of 1970-01-01 in
@@ -180,12 +197,11 @@
 { 'struct': 'GuestAgentInfo',
   'data': { 'version': 'str',
             'supported_commands': ['GuestAgentCommandInfo'] } }
+
 ##
 # @guest-info:
 #
 # Get some information about the guest agent.
-#
-# Returns: @GuestAgentInfo
 #
 # Since: 0.15.0
 ##
@@ -202,7 +218,7 @@
 #
 # This command does NOT return a response on success.  Success
 # condition is indicated by the VM exiting with a zero exit status or,
-# when running with --no-shutdown, by issuing the query-status QMP
+# when running with --no-shutdown, by issuing the `query-status` QMP
 # command to confirm the VM status is "shutdown".
 #
 # Since: 0.15.0
@@ -232,7 +248,7 @@
 #
 # Close an open file in the guest
 #
-# @handle: filehandle returned by guest-file-open
+# @handle: filehandle returned by `guest-file-open`
 #
 # Since: 0.15.0
 ##
@@ -263,12 +279,10 @@
 # As this command is just for limited, ad-hoc debugging, such as log
 # file access, the number of bytes to read is limited to 48 MB.
 #
-# @handle: filehandle returned by guest-file-open
+# @handle: filehandle returned by `guest-file-open`
 #
 # @count: maximum number of bytes to read (default is 4KB, maximum is
 #     48MB)
-#
-# Returns: @GuestFileRead
 #
 # Since: 0.15.0
 ##
@@ -296,21 +310,18 @@
 #
 # Write to an open file in the guest.
 #
-# @handle: filehandle returned by guest-file-open
+# @handle: filehandle returned by `guest-file-open`
 #
 # @buf-b64: base64-encoded string representing data to be written
 #
 # @count: bytes to write (actual bytes, after base64-decode), default
 #     is all content in buf-b64 buffer after base64 decoding
 #
-# Returns: @GuestFileWrite
-#
 # Since: 0.15.0
 ##
 { 'command': 'guest-file-write',
   'data':    { 'handle': 'int', 'buf-b64': 'str', '*count': 'int' },
   'returns': 'GuestFileWrite' }
-
 
 ##
 # @GuestFileSeek:
@@ -329,7 +340,7 @@
 ##
 # @QGASeek:
 #
-# Symbolic names for use in @guest-file-seek
+# Symbolic names for use in `guest-file-seek`
 #
 # @set: Set to the specified offset (same effect as 'whence':0)
 #
@@ -344,7 +355,7 @@
 ##
 # @GuestFileWhence:
 #
-# Controls the meaning of offset to @guest-file-seek.
+# Controls the meaning of offset to `guest-file-seek`.
 #
 # @value: Integral value (0 for set, 1 for cur, 2 for end), available
 #     for historical reasons, and might differ from the host's or
@@ -364,13 +375,11 @@
 # current file position afterward.  Also encapsulates ftell()'s
 # functionality, with offset=0 and whence=1.
 #
-# @handle: filehandle returned by guest-file-open
+# @handle: filehandle returned by `guest-file-open`
 #
 # @offset: bytes to skip over in the file stream
 #
 # @whence: Symbolic or numeric code for interpreting offset
-#
-# Returns: @GuestFileSeek
 #
 # Since: 0.15.0
 ##
@@ -384,7 +393,7 @@
 #
 # Write file changes buffered in userspace to disk/kernel buffers
 #
-# @handle: filehandle returned by guest-file-open
+# @handle: filehandle returned by `guest-file-open`
 #
 # Since: 0.15.0
 ##
@@ -411,9 +420,6 @@
 #
 # Get guest fsfreeze state.
 #
-# Returns: GuestFsfreezeStatus ("thawed", "frozen", etc., as defined
-#     below)
-#
 # .. note:: This may fail to properly report the current state as a
 #    result of some other guest processes having issued an fs
 #    freeze/thaw.
@@ -428,18 +434,18 @@
 # @guest-fsfreeze-freeze:
 #
 # Sync and freeze all freezable, local guest filesystems.  If this
-# command succeeded, you may call @guest-fsfreeze-thaw later to
+# command succeeded, you may call `guest-fsfreeze-thaw` later to
 # unfreeze.
 #
 # On error, all filesystems will be thawed.  If no filesystems are
-# frozen as a result of this call, then @guest-fsfreeze-status will
-# remain "thawed" and calling @guest-fsfreeze-thaw is not necessary.
+# frozen as a result of this call, then `guest-fsfreeze-status` will
+# remain "thawed" and calling `guest-fsfreeze-thaw` is not necessary.
 #
 # Returns: Number of file systems currently frozen.
 #
 # .. note:: On Windows, the command is implemented with the help of a
-#    Volume Shadow-copy Service DLL helper.  The frozen state is limited
-#    for up to 10 seconds by VSS.
+#    Volume Shadow-copy Service DLL helper.  The frozen state is
+#    limited for up to 10 seconds by VSS.
 #
 # Since: 0.15.0
 ##
@@ -451,7 +457,7 @@
 # @guest-fsfreeze-freeze-list:
 #
 # Sync and freeze specified guest filesystems.  See also
-# @guest-fsfreeze-freeze.
+# `guest-fsfreeze-freeze`.
 #
 # On error, all filesystems will be thawed.
 #
@@ -476,9 +482,9 @@
 # Returns: Number of file systems thawed by this call
 #
 # .. note:: If the return value does not match the previous call to
-#    guest-fsfreeze-freeze, this likely means some freezable filesystems
-#    were unfrozen before this call, and that the filesystem state may
-#    have changed before issuing this command.
+#    `guest-fsfreeze-freeze`, this likely means some freezable
+#    filesystems were unfrozen before this call, and that the
+#    filesystem state may have changed before issuing this command.
 #
 # Since: 0.15.0
 ##
@@ -507,7 +513,8 @@
 ##
 # @GuestFilesystemTrimResponse:
 #
-# @paths: list of @GuestFilesystemTrimResult per path that was trimmed
+# @paths: list of `GuestFilesystemTrimResult` per path that was
+#     trimmed
 #
 # Since: 2.4
 ##
@@ -528,8 +535,7 @@
 #     discarded.  The default value is zero, meaning "discard every
 #     free block".
 #
-# Returns: A @GuestFilesystemTrimResponse which contains the status of
-#     all trimmed paths.  (since 2.4)
+# Returns: status of all trimmed paths.  (since 2.4)
 #
 # Since: 1.2
 ##
@@ -552,16 +558,16 @@
 #
 # This command does NOT return a response on success.  There is a high
 # chance the command succeeded if the VM exits with a zero exit status
-# or, when running with --no-shutdown, by issuing the query-status QMP
-# command to to confirm the VM status is "shutdown". However, the VM
-# could also exit (or set its status to "shutdown") due to other
+# or, when running with --no-shutdown, by issuing the `query-status`
+# QMP command to to confirm the VM status is "shutdown".  However, the
+# VM could also exit (or set its status to "shutdown") due to other
 # reasons.
 #
 # Errors:
 #     - If suspend to disk is not supported, Unsupported
 #
-# .. note:: It's strongly recommended to issue the guest-sync command
-#    before sending commands when the guest resumes.
+# .. note:: It's strongly recommended to issue the `guest-sync`
+#    command before sending commands when the guest resumes.
 #
 # Since: 1.1
 ##
@@ -580,8 +586,8 @@
 # - pm-utils (via pm-hibernate)
 # - manual write into sysfs
 #
-# IMPORTANT: guest-suspend-ram requires working wakeup support in
-# QEMU. You should check QMP command query-current-machine returns
+# IMPORTANT: `guest-suspend-ram` requires working wakeup support in
+# QEMU.  You should check QMP command `query-current-machine` returns
 # wakeup-suspend-support: true before issuing this command.  Failure
 # in doing so can result in a suspended guest that QEMU will not be
 # able to awaken, forcing the user to power cycle the guest to bring
@@ -590,15 +596,15 @@
 # This command does NOT return a response on success.  There are two
 # options to check for success:
 #
-# 1. Wait for the SUSPEND QMP event from QEMU
-# 2. Issue the query-status QMP command to confirm the VM status is
+# 1. Wait for the `SUSPEND` QMP event from QEMU
+# 2. Issue the `query-status` QMP command to confirm the VM status is
 #    "suspended"
 #
 # Errors:
 #     - If suspend to ram is not supported, Unsupported
 #
-# .. note:: It's strongly recommended to issue the guest-sync command
-#    before sending commands when the guest resumes.
+# .. note:: It's strongly recommended to issue the `guest-sync`
+#    command before sending commands when the guest resumes.
 #
 # Since: 1.1
 ##
@@ -616,8 +622,8 @@
 # - systemd hybrid-sleep
 # - pm-utils (via pm-suspend-hybrid)
 #
-# IMPORTANT: guest-suspend-hybrid requires working wakeup support in
-# QEMU. You should check QMP command query-current-machine returns
+# IMPORTANT: `guest-suspend-hybrid` requires working wakeup support in
+# QEMU.  You should check QMP command `query-current-machine` returns
 # wakeup-suspend-support: true before issuing this command.  Failure
 # in doing so can result in a suspended guest that QEMU will not be
 # able to awaken, forcing the user to power cycle the guest to bring
@@ -626,15 +632,15 @@
 # This command does NOT return a response on success.  There are two
 # options to check for success:
 #
-# 1. Wait for the SUSPEND QMP event from QEMU
-# 2. Issue the query-status QMP command to confirm the VM status is
+# 1. Wait for the `SUSPEND` QMP event from QEMU
+# 2. Issue the `query-status` QMP command to confirm the VM status is
 #    "suspended"
 #
 # Errors:
 #     - If hybrid suspend is not supported, Unsupported
 #
-# .. note:: It's strongly recommended to issue the guest-sync command
-#    before sending commands when the guest resumes.
+# .. note:: It's strongly recommended to issue the `guest-sync`
+#    command before sending commands when the guest resumes.
 #
 # Since: 1.1
 ##
@@ -732,8 +738,6 @@
 #
 # Get list of guest IP addresses, MAC addresses and netmasks.
 #
-# Returns: List of GuestNetworkInterface
-#
 # Since: 1.1
 ##
 { 'command': 'guest-network-get-interfaces',
@@ -790,7 +794,7 @@
 #     There's no restriction on list length or on repeating the same
 #     @logical-id (with possibly different @online field).  Preferably
 #     the input list should describe a modified subset of
-#     @guest-get-vcpus' return value.
+#     `guest-get-vcpus`' return value.
 #
 # Returns: The length of the initial sublist that has been
 #     successfully processed.  The guest agent maximizes this value.
@@ -871,7 +875,6 @@
             'sd', 'unknown', 'ieee1394', 'ssa', 'fibre', 'raid', 'iscsi',
             'sas', 'mmc', 'virtual', 'file-backed-virtual', 'nvme' ],
   'if': { 'any': [ 'CONFIG_WIN32', 'CONFIG_LINUX' ] } }
-
 
 ##
 # @GuestPCIAddress:
@@ -1045,10 +1048,11 @@
 #
 # @used-bytes: file system used bytes (since 3.0)
 #
-# @total-bytes: filesystem capacity in bytes for unprivileged users (since 3.0)
+# @total-bytes: filesystem capacity in bytes for unprivileged users
+#     (since 3.0)
 #
-# @total-bytes-privileged: filesystem capacity in bytes for privileged users
-#     (since 9.1)
+# @total-bytes-privileged: filesystem capacity in bytes for privileged
+#     users (since 9.1)
 #
 # @disk: an array of disk hardware information that the volume lies
 #     on, which may be empty if the disk type is not supported
@@ -1066,7 +1070,7 @@
 #
 # Returns: The list of filesystems information mounted in the guest.
 #     The returned mountpoints may be specified to
-#     @guest-fsfreeze-freeze-list.  Network filesystems (such as CIFS
+#     `guest-fsfreeze-freeze-list`.  Network filesystems (such as CIFS
 #     and NFS) are not listed.
 #
 # Since: 2.2
@@ -1168,7 +1172,8 @@
 ##
 # @GuestMemoryBlockResponse:
 #
-# @phys-index: same with the 'phys-index' member of @GuestMemoryBlock.
+# @phys-index: same with the 'phys-index' member of
+#     `GuestMemoryBlock`.
 #
 # @response: the result of memory block operation.
 #
@@ -1198,11 +1203,11 @@
 #     guest-supported identifiers.  There's no restriction on list
 #     length or on repeating the same @phys-index (with possibly
 #     different @online field).  Preferably the input list should
-#     describe a modified subset of @guest-get-memory-blocks' return
+#     describe a modified subset of `guest-get-memory-blocks`' return
 #     value.
 #
 # Returns: The operation results, it is a list of
-#     @GuestMemoryBlockResponse, which is corresponding to the input
+#     `GuestMemoryBlockResponse`, which is corresponding to the input
 #     list.
 #
 #     Note: it will return an empty list if the @mem-blks list was
@@ -1234,8 +1239,6 @@
 #
 # Get information relating to guest memory blocks.
 #
-# Returns: @GuestMemoryBlockInfo
-#
 # Since: 2.3
 ##
 { 'command': 'guest-get-memory-block-info',
@@ -1257,7 +1260,7 @@
 #
 # @err-data: base64-encoded stderr of the process.  Note: @out-data
 #     and @err-data are present only if 'capture-output' was specified
-#     for 'guest-exec'.  This field will only be populated after the
+#     for `guest-exec`.  This field will only be populated after the
 #     process exits.
 #
 # @out-truncated: true if stdout was not fully captured due to size
@@ -1272,16 +1275,15 @@
   'data': { 'exited': 'bool', '*exitcode': 'int', '*signal': 'int',
             '*out-data': 'str', '*err-data': 'str',
             '*out-truncated': 'bool', '*err-truncated': 'bool' }}
+
 ##
 # @guest-exec-status:
 #
 # Check status of process associated with PID retrieved via
-# guest-exec.  Reap the process and associated metadata if it has
+# `guest-exec`.  Reap the process and associated metadata if it has
 # exited.
 #
-# @pid: pid returned from guest-exec
-#
-# Returns: GuestExecStatus
+# @pid: pid returned from `guest-exec`
 #
 # Since: 2.5
 ##
@@ -1302,7 +1304,7 @@
 ##
 # @GuestExecCaptureOutputMode:
 #
-# An enumeration of guest-exec capture modes.
+# An enumeration of `guest-exec` capture modes.
 #
 # @none: do not capture any output
 #
@@ -1311,7 +1313,7 @@
 # @stderr: only capture stderr
 #
 # @separated: capture both stdout and stderr, but separated into
-#     GuestExecStatus out-data and err-data, respectively
+#     `GuestExecStatus` out-data and err-data, respectively
 #
 # @merged: capture both stdout and stderr, but merge together into
 #     out-data.  Not effective on windows guests.
@@ -1325,10 +1327,10 @@
 ##
 # @GuestExecCaptureOutput:
 #
-# Controls what guest-exec output gets captures.
+# Controls what `guest-exec` output gets captures.
 #
 # @flag: captures both stdout and stderr if true.  Equivalent to
-#     GuestExecCaptureOutputMode::all.  (since 2.5)
+#     `GuestExecCaptureOutputMode`::all.  (since 2.5)
 #
 # @mode: capture mode; preferred interface
 #
@@ -1363,7 +1365,6 @@
                '*input-data': 'str', '*capture-output': 'GuestExecCaptureOutput' },
   'returns': 'GuestExec' }
 
-
 ##
 # @GuestHostName:
 #
@@ -1389,7 +1390,6 @@
 ##
 { 'command': 'guest-get-host-name',
   'returns': 'GuestHostName' }
-
 
 ##
 # @GuestUser:
@@ -1440,8 +1440,6 @@
 # @guest-get-timezone:
 #
 # Retrieves the timezone information from the guest.
-#
-# Returns: A GuestTimezone dictionary.
 #
 # Since: 2.10
 ##
@@ -1494,10 +1492,11 @@
 #
 # .. note:: On POSIX systems the fields @id, @name, @pretty-name,
 #    @version, @version-id, @variant and @variant-id follow the
-#    definition specified in os-release(5). Refer to the manual page for
-#    exact description of the fields.  Their values are taken from the
-#    os-release file.  If the file is not present in the system, or the
-#    values are not present in the file, the fields are not included.
+#    definition specified in os-release(5).  Refer to the manual page
+#    for exact description of the fields.  Their values are taken from
+#    the os-release file.  If the file is not present in the system,
+#    or the values are not present in the file, the fields are not
+#    included.
 #
 #    On Windows the values are filled from information gathered from
 #    the system.
@@ -1515,8 +1514,6 @@
 # @guest-get-osinfo:
 #
 # Retrieve guest operating system information
-#
-# Returns: @GuestOSInfo
 #
 # Since: 2.10
 ##
@@ -1587,8 +1584,6 @@
 #
 # Retrieve information about device drivers in Windows guest
 #
-# Returns: @GuestDeviceInfo
-#
 # Since: 5.2
 ##
 { 'command': 'guest-get-devices',
@@ -1615,8 +1610,6 @@
 # systems (not implemented for other systems).
 #
 # @username: the user account to add the authorized keys
-#
-# Returns: @GuestAuthorizedKeys
 #
 # Since: 5.2
 ##
@@ -1648,7 +1641,7 @@
 # @guest-ssh-remove-authorized-keys:
 #
 # Remove public keys from the user .ssh/authorized_keys on Unix
-# systems (not implemented for other systems). It's not an error if
+# systems (not implemented for other systems).  It's not an error if
 # the key is already missing.
 #
 # @username: the user account to remove the authorized keys
@@ -1768,7 +1761,6 @@
   'data': [ 'linux' ],
   'if': 'CONFIG_LINUX' }
 
-
 ##
 # @GuestLinuxCpuStats:
 #
@@ -1844,13 +1836,56 @@
 }
 
 ##
+# @GuestLoadAverage:
+#
+# Statistics about process load information
+#
+# @load1m: 1-minute load avage
+#
+# @load5m: 5-minute load avage
+#
+# @load15m: 15-minute load avage
+#
+# Since: 10.0
+##
+{ 'struct': 'GuestLoadAverage',
+  'data': {
+      'load1m': 'number',
+      'load5m': 'number',
+      'load15m': 'number'
+  },
+  'if': { 'any': ['CONFIG_WIN32', 'CONFIG_GETLOADAVG'] }
+}
+
+##
+# @guest-get-load:
+#
+# Retrieve CPU process load information
+#
+# .. note:: Windows does not have load average API, so QGA emulates it
+#    by calculating the average CPU usage in the last 1, 5, 15 minutes
+#    similar as Linux does this.  Calculation starts from the first
+#    time this command is called.
+#
+# Returns: load information
+#
+# Since: 10.0
+##
+{ 'command': 'guest-get-load',
+  'returns': 'GuestLoadAverage',
+  'if': { 'any': ['CONFIG_WIN32', 'CONFIG_GETLOADAVG'] }
+}
+
+##
 # @GuestNetworkRoute:
 #
 # Route information, currently, only linux supported.
 #
-# @iface: The destination network or host's egress network interface in the routing table
+# @iface: The destination network or host's egress network interface
+#     in the routing table
 #
-# @destination: The IP address of the target network or host, The final destination of the packet
+# @destination: The IP address of the target network or host, The
+#     final destination of the packet
 #
 # @metric: Route metric
 #
@@ -1866,7 +1901,8 @@
 #
 # @use: Route usage count (not for windows)
 #
-# @window: TCP window size, used for flow control (not for windows, IPv4 only)
+# @window: TCP window size, used for flow control (not for windows,
+#     IPv4 only)
 #
 # @mtu: Data link layer maximum packet size (not for windows)
 #
@@ -1881,7 +1917,6 @@
 # @version: IP version (4 or 6)
 #
 # Since: 9.1
-
 ##
 { 'struct': 'GuestNetworkRoute',
   'data': {'iface': 'str',
@@ -1907,6 +1942,7 @@
 # @guest-network-get-route:
 #
 # Retrieve information about route of network.
+#
 # Returns: List of route info of guest.
 #
 # Since: 9.1

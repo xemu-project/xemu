@@ -1,0 +1,23 @@
+[package]
+name = "hpet"
+version = "0.1.0"
+authors = ["Zhao Liu <zhao1.liu@intel.com>"]
+description = "IA-PC High Precision Event Timer emulation in Rust"
+
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+common = { path = "../../../common" }
+util = { path = "../../../util" }
+migration = { path = "../../../migration" }
+bql = { path = "../../../bql" }
+qom = { path = "../../../qom" }
+system = { path = "../../../system" }
+hwcore = { path = "../../../hw/core" }
+
+[lints]
+workspace = true

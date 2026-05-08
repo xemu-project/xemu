@@ -36,6 +36,7 @@
 static RENDERDOC_API_1_6_0 *rdoc_api = NULL;
 
 int renderdoc_capture_frames = 0;
+bool renderdoc_trace_frames = false;
 
 void nv2a_dbg_renderdoc_init(void)
 {
@@ -89,7 +90,8 @@ bool nv2a_dbg_renderdoc_available(void)
     return rdoc_api != NULL;
 }
 
-void nv2a_dbg_renderdoc_capture_frames(int num_frames)
+void nv2a_dbg_renderdoc_capture_frames(int num_frames, bool trace)
 {
     renderdoc_capture_frames += num_frames;
+    renderdoc_trace_frames = trace;
 }

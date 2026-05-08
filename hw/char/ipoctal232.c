@@ -93,13 +93,16 @@
 #define ISR_RXRDY(CH) (((CH) & 1) ? BIT(5) : BIT(1))
 #define ISR_BREAK(CH) (((CH) & 1) ? BIT(6) : BIT(2))
 
-typedef struct IPOctalState IPOctalState;
+#define TYPE_IPOCTAL "ipoctal232"
+
+OBJECT_DECLARE_SIMPLE_TYPE(IPOctalState, IPOCTAL)
+
 typedef struct SCC2698Channel SCC2698Channel;
 typedef struct SCC2698Block SCC2698Block;
 
 struct SCC2698Channel {
     IPOctalState *ipoctal;
-    CharBackend dev;
+    CharFrontend dev;
     bool rx_enabled;
     uint8_t mr[2];
     uint8_t mr_idx;
@@ -121,10 +124,6 @@ struct IPOctalState {
     SCC2698Block blk[N_BLOCKS];
     uint8_t irq_vector;
 };
-
-#define TYPE_IPOCTAL "ipoctal232"
-
-OBJECT_DECLARE_SIMPLE_TYPE(IPOctalState, IPOCTAL)
 
 static const VMStateDescription vmstate_scc2698_channel = {
     .name = "scc2698_channel",
@@ -184,9 +183,9 @@ static void update_irq(IPOctalState *dev, unsigned block)
     unsigned intno = block / 2;
 
     if ((blk0->isr & blk0->imr) || (blk1->isr & blk1->imr)) {
-        qemu_irq_raise(idev->irq[intno]);
+        qemu_irq_raise(&idev->irq[intno]);
     } else {
-        qemu_irq_lower(idev->irq[intno]);
+        qemu_irq_lower(&idev->irq[intno]);
     }
 }
 
@@ -558,7 +557,7 @@ static void ipoctal_realize(DeviceState *dev, Error **errp)
     }
 }
 
-static Property ipoctal_properties[] = {
+static const Property ipoctal_properties[] = {
     DEFINE_PROP_CHR("chardev0", IPOctalState, ch[0].dev),
     DEFINE_PROP_CHR("chardev1", IPOctalState, ch[1].dev),
     DEFINE_PROP_CHR("chardev2", IPOctalState, ch[2].dev),
@@ -567,10 +566,9 @@ static Property ipoctal_properties[] = {
     DEFINE_PROP_CHR("chardev5", IPOctalState, ch[5].dev),
     DEFINE_PROP_CHR("chardev6", IPOctalState, ch[6].dev),
     DEFINE_PROP_CHR("chardev7", IPOctalState, ch[7].dev),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ipoctal_class_init(ObjectClass *klass, void *data)
+static void ipoctal_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     IPackDeviceClass *ic = IPACK_DEVICE_CLASS(klass);

@@ -6,12 +6,14 @@
 #ifndef ARM_TARGET_PROC_H
 #define ARM_TARGET_PROC_H
 
+#include "target/arm/cpu-features.h" /* for MIDR_EL1 field definitions */
+
 static int open_cpuinfo(CPUArchState *cpu_env, int fd)
 {
     ARMCPU *cpu = env_archcpu(cpu_env);
     int arch, midr_rev, midr_part, midr_var, midr_impl;
-    target_ulong elf_hwcap = get_elf_hwcap();
-    target_ulong elf_hwcap2 = get_elf_hwcap2();
+    target_ulong elf_hwcap = get_elf_hwcap(env_cpu(cpu_env));
+    target_ulong elf_hwcap2 = get_elf_hwcap2(env_cpu(cpu_env));
     const char *elf_name;
     int num_cpus, len_part, len_var;
 

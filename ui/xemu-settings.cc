@@ -19,7 +19,7 @@
 
 #include "qemu/osdep.h"
 #include <stdlib.h>
-#include <SDL_filesystem.h>
+#include <SDL3/SDL_filesystem.h>
 #include <string.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -31,6 +31,7 @@
 #include <iostream>
 #include <locale.h>
 
+#include "xemu-controllers.h"
 #include "xemu-settings.h"
 
 #define DEFINE_CONFIG_TREE
@@ -76,12 +77,16 @@ const char *xemu_settings_get_base_path(void)
         return base_path;
     }
 
-    char *base = xemu_settings_detect_portable_mode()
-                 ? SDL_GetBasePath()
-                 : SDL_GetPrefPath("xemu", "xemu");
-    assert(base != NULL);
-    base_path = g_strdup(base);
-    SDL_free(base);
+    if (xemu_settings_detect_portable_mode()) {
+        const char *base = SDL_GetBasePath();
+        assert(base != NULL);
+        base_path = g_strdup(base);
+    } else {
+        char *base = SDL_GetPrefPath("xemu", "xemu");
+        assert(base != NULL);
+        base_path = g_strdup(base);
+        SDL_free(base);
+    }
     fprintf(stderr, "%s: base path: %s\n", __func__, base_path);
     return base_path;
 }
@@ -217,6 +222,11 @@ void xemu_settings_save(void)
     /* Ensure numeric values are printed with '.' radix, no grouping */
     setlocale(LC_NUMERIC, "C");
 
+    // The global controller vibration setting is replaced with a per-controller config.
+    // xemu_settings_load_gamepad_mapping should have migrated that setting to any connected
+    // controller, so we can set it to true (default) now to remove it from the user config.
+    g_config.input.allow_vibration = true;
+
     config_tree.update_from_struct(&g_config);
     fprintf(fd, "%s", config_tree.generate_delta_toml().c_str());
     fclose(fd);
@@ -253,4 +263,83 @@ void remove_net_nat_forward_ports(unsigned int index)
     cnode->children.erase(cnode->children.begin()+index);
     cnode->free_allocations(&g_config);
     cnode->store_to_struct(&g_config);
+}
+
+bool xemu_settings_load_gamepad_mapping(const char *guid,
+                                        GamepadMappings **mapping)
+{
+    unsigned int i;
+    unsigned int gamepad_mappings_count = g_config.input.gamepad_mappings_count;
+    for (i = 0; i < gamepad_mappings_count; ++i) {
+        *mapping = &g_config.input.gamepad_mappings[i];
+        if (strcmp((*mapping)->gamepad_id, guid) != 0) {
+            continue;
+        }
+
+        // Migrate global 'allow_vibration' setting to the controller config
+        if (!g_config.input.allow_vibration) {
+            (*mapping)->enable_rumble = g_config.input.allow_vibration;
+        }
+
+        return false;
+    }
+
+    auto cnode = config_tree.child("input")->child("gamepad_mappings");
+    cnode->update_from_struct(&g_config);
+    cnode->free_allocations(&g_config);
+
+    cnode->children.push_back(*cnode->array_item_type);
+    CNode *mapping_node = &cnode->children.back();
+
+    mapping_node->child("gamepad_id")->set_string(guid);
+
+    cnode->store_to_struct(&g_config);
+
+    *mapping =
+        &g_config.input
+             .gamepad_mappings[g_config.input.gamepad_mappings_count - 1];
+
+    // Migrate global 'allow_vibration' setting to the controller config
+    if (!g_config.input.allow_vibration) {
+        (*mapping)->enable_rumble = g_config.input.allow_vibration;
+    }
+
+    return true;
+}
+
+void xemu_settings_reset_controller_mapping(const char *guid)
+{
+    unsigned int gamepad_mappings_count = g_config.input.gamepad_mappings_count;
+
+    unsigned int i;
+    struct config::input::gamepad_mappings *mapping;
+
+    for (i = 0; i < gamepad_mappings_count; ++i) {
+        mapping = &g_config.input.gamepad_mappings[i];
+        if (strcmp(mapping->gamepad_id, guid) == 0) {
+            break;
+        }
+    }
+
+    if (i == gamepad_mappings_count) {
+        return;
+    }
+
+    CNode *cnode = config_tree.child("input")->child("gamepad_mappings");
+    cnode->update_from_struct(&g_config);
+
+    // Careful not to free the mapping array, as other controllers may be using
+    // it
+    CNode *mapping_node = &cnode->children[i];
+    mapping_node->reset_to_defaults();
+    mapping_node->child("gamepad_id")->set_string(guid);
+    mapping_node->store_to_struct(mapping);
+}
+
+void xemu_settings_reset_keyboard_mapping(void)
+{
+  auto cnode = config_tree.child("input")->child("keyboard_controller_scancode_map");
+  cnode->update_from_struct(&g_config);
+  cnode->reset_to_defaults();
+  cnode->store_to_struct(&g_config);
 }

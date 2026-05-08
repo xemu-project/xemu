@@ -27,15 +27,16 @@
 #include "migration/vmstate.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "sysemu/cpus.h"
+#include "system/cpus.h"
 #include "qemu/main-loop.h"
 #include "qemu/option.h"
 #include "qemu/seqlock.h"
-#include "sysemu/replay.h"
-#include "sysemu/runstate.h"
+#include "system/replay.h"
+#include "system/runstate.h"
 #include "hw/core/cpu.h"
-#include "sysemu/cpu-timers.h"
-#include "sysemu/cpu-timers-internal.h"
+#include "system/cpu-timers.h"
+#include "system/cpu-timers-internal.h"
+#include "exec/icount.h"
 
 /* clock and ticks */
 
@@ -245,14 +246,14 @@ void qemu_timer_notify_cb(void *opaque, QEMUClockType type)
 
     if (qemu_in_vcpu_thread()) {
         /*
-         * A CPU is currently running; kick it back out to the
+         * A CPU is currently running; send it out of the
          * tcg_cpu_exec() loop so it will recalculate its
          * icount deadline immediately.
          */
-        qemu_cpu_kick(current_cpu);
+        cpu_exit(current_cpu);
     } else if (first_cpu) {
         /*
-         * qemu_cpu_kick is not enough to kick a halted CPU out of
+         * cpu_exit() is not enough to kick a halted CPU out of
          * qemu_tcg_wait_io_event.  async_run_on_cpu, instead,
          * causes cpu_thread_is_idle to return false.  This way,
          * handle_icount_deadline can run.

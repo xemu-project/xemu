@@ -217,7 +217,7 @@ static void allwinner_cpucfg_write(void *opaque, hwaddr offset,
 static const MemoryRegionOps allwinner_cpucfg_ops = {
     .read = allwinner_cpucfg_read,
     .write = allwinner_cpucfg_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
         .max_access_size = 4,
@@ -258,7 +258,7 @@ static const VMStateDescription allwinner_cpucfg_vmstate = {
     }
 };
 
-static void allwinner_cpucfg_class_init(ObjectClass *klass, void *data)
+static void allwinner_cpucfg_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

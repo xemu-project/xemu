@@ -47,7 +47,7 @@
 #include "qemu/log.h"
 #include "qemu/systemd.h"
 #include "qapi/util.h"
-#include "qapi/qmp/qstring.h"
+#include "qobject/qstring.h"
 #include "io/channel-socket.h"
 #include "trace/control.h"
 #include "qemu-version.h"
@@ -733,8 +733,11 @@ static void coroutine_fn prh_co_entry(void *opaque)
     uint32_t flags;
     int r;
 
-    qio_channel_set_blocking(QIO_CHANNEL(client->ioc),
-                             false, NULL);
+    if (!qio_channel_set_blocking(QIO_CHANNEL(client->ioc),
+                                  false, &local_err)) {
+        goto out;
+    }
+
     qio_channel_set_follow_coroutine_ctx(QIO_CHANNEL(client->ioc), true);
 
     /* A very simple negotiation for future extensibility.  No features
@@ -786,6 +789,7 @@ static void coroutine_fn prh_co_entry(void *opaque)
         }
     }
 
+out:
     if (local_err) {
         if (verbose == 0) {
             error_free(local_err);
@@ -794,7 +798,6 @@ static void coroutine_fn prh_co_entry(void *opaque)
         }
     }
 
-out:
     object_unref(OBJECT(client->ioc));
     g_free(client);
 }

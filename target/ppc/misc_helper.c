@@ -20,7 +20,7 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "cpu.h"
-#include "exec/exec-all.h"
+#include "exec/cputlb.h"
 #include "exec/helper-proto.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
@@ -233,6 +233,16 @@ void helper_store_dawrx0(CPUPPCState *env, target_ulong value)
     ppc_store_dawrx0(env, value);
 }
 
+void helper_store_dawr1(CPUPPCState *env, target_ulong value)
+{
+    ppc_store_dawr1(env, value);
+}
+
+void helper_store_dawrx1(CPUPPCState *env, target_ulong value)
+{
+    ppc_store_dawrx1(env, value);
+}
+
 /*
  * DPDES register is shared. Each bit reflects the state of the
  * doorbell interrupt of a thread of the same core.
@@ -318,64 +328,77 @@ target_ulong helper_load_sprd(CPUPPCState *env)
      * accessed by powernv machines.
      */
     PowerPCCPU *cpu = env_archcpu(env);
-    PnvCore *pc = pnv_cpu_state(cpu)->pnv_core;
-    target_ulong sprc = env->spr[SPR_POWER_SPRC];
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
 
-    switch (sprc & 0x3e0) {
-    case 0: /* SCRATCH0-3 */
-    case 1: /* SCRATCH4-7 */
-        return pc->scratch[(sprc >> 3) & 0x7];
-
-    case 0x1e0: /* core thread state */
-        if (env->excp_model == POWERPC_EXCP_POWER9) {
-            /*
-             * Only implement for POWER9 because skiboot uses it to check
-             * big-core mode. Other bits are unimplemented so we would
-             * prefer to get unimplemented message on POWER10 if it were
-             * used anywhere.
-             */
-            if (pc->big_core) {
-                return PPC_BIT(63);
-            } else {
-                return 0;
-            }
-        }
-        /* fallthru */
-
-    default:
-        qemu_log_mask(LOG_UNIMP, "mfSPRD: Unimplemented SPRC:0x"
-                                  TARGET_FMT_lx"\n", sprc);
-        break;
+    if (pcc->load_sprd) {
+        return pcc->load_sprd(env);
     }
+
     return 0;
 }
 
 void helper_store_sprd(CPUPPCState *env, target_ulong val)
 {
-    target_ulong sprc = env->spr[SPR_POWER_SPRC];
     PowerPCCPU *cpu = env_archcpu(env);
-    PnvCore *pc = pnv_cpu_state(cpu)->pnv_core;
-    int nr;
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
 
-    switch (sprc & 0x3e0) {
-    case 0: /* SCRATCH0-3 */
-    case 1: /* SCRATCH4-7 */
-        /*
-         * Log stores to SCRATCH, because some firmware uses these for
-         * debugging and logging, but they would normally be read by the BMC,
-         * which is not implemented in QEMU yet. This gives a way to get at the
-         * information. Could also dump these upon checkstop.
-         */
-        nr = (sprc >> 3) & 0x7;
-        qemu_log("SPRD write 0x" TARGET_FMT_lx " to SCRATCH%d\n", val, nr);
-        pc->scratch[nr] = val;
-        break;
-    default:
-        qemu_log_mask(LOG_UNIMP, "mtSPRD: Unimplemented SPRC:0x"
-                                  TARGET_FMT_lx"\n", sprc);
-        break;
+    if (pcc->store_sprd) {
+        return pcc->store_sprd(env, val);
     }
 }
+
+target_ulong helper_load_pmsr(CPUPPCState *env)
+{
+    target_ulong lowerps = extract64(env->spr[SPR_PMCR], PPC_BIT_NR(15), 8);
+    target_ulong val = 0;
+
+    val |= PPC_BIT(63); /* verion 0x1 (POWER9/10) */
+    /* Pmin = 0 */
+    /* XXX: POWER9 should be 3 */
+    val |= 4ULL << PPC_BIT_NR(31); /* Pmax */
+    val |= lowerps << PPC_BIT_NR(15); /* Local actual Pstate */
+    val |= lowerps << PPC_BIT_NR(7); /* Global actual Pstate */
+
+    return val;
+}
+
+static void ppc_set_pmcr(PowerPCCPU *cpu, target_ulong val)
+{
+    cpu->env.spr[SPR_PMCR] = val;
+}
+
+void helper_store_pmcr(CPUPPCState *env, target_ulong val)
+{
+    PowerPCCPU *cpu = env_archcpu(env);
+    CPUState *cs = env_cpu(env);
+    CPUState *ccs;
+
+    /* Leave version field unchanged (0x1) */
+    val &= ~PPC_BITMASK(60, 63);
+    val |= PPC_BIT(63);
+
+    val &= ~PPC_BITMASK(0, 7); /* UpperPS ignored */
+    if (val & PPC_BITMASK(16, 59)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "Non-zero PMCR reserved bits "
+                      TARGET_FMT_lx"\n", val);
+        val &= ~PPC_BITMASK(16, 59);
+    }
+
+    /* DPDES behaves as 1-thread in LPAR-per-thread mode */
+    if (ppc_cpu_lpar_single_threaded(cs)) {
+        ppc_set_pmcr(cpu, val);
+        return;
+    }
+
+    /* Does iothread need to be locked for walking CPU list? */
+    bql_lock();
+    THREAD_SIBLING_FOREACH(cs, ccs) {
+        PowerPCCPU *ccpu = POWERPC_CPU(ccs);
+        ppc_set_pmcr(ccpu, val);
+    }
+    bql_unlock();
+}
+
 #endif /* defined(TARGET_PPC64) */
 
 void helper_store_pidr(CPUPPCState *env, target_ulong val)

@@ -24,9 +24,9 @@
 #include "qemu/cpuid.h"
 #include "host/cpuinfo.h"
 #include "cpu.h"
-#include "x86.h"
+#include "emulate/x86.h"
 #include "vmx.h"
-#include "sysemu/hvf.h"
+#include "system/hvf.h"
 #include "hvf-i386.h"
 
 static bool cached_xcr0;
@@ -73,7 +73,7 @@ uint32_t hvf_get_supported_cpuid(uint32_t func, uint32_t idx,
              CPUID_MSR | CPUID_PAE | CPUID_MCE | CPUID_CX8 | CPUID_APIC |
              CPUID_SEP | CPUID_MTRR | CPUID_PGE | CPUID_MCA | CPUID_CMOV |
              CPUID_PAT | CPUID_PSE36 | CPUID_CLFLUSH | CPUID_MMX |
-             CPUID_FXSR | CPUID_SSE | CPUID_SSE2 | CPUID_SS;
+             CPUID_FXSR | CPUID_SSE | CPUID_SSE2 | CPUID_SS | CPUID_HT;
         ecx &= CPUID_EXT_SSE3 | CPUID_EXT_PCLMULQDQ | CPUID_EXT_SSSE3 |
              CPUID_EXT_FMA | CPUID_EXT_CX16 | CPUID_EXT_PCID |
              CPUID_EXT_SSE41 | CPUID_EXT_SSE42 | CPUID_EXT_MOVBE |

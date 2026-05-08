@@ -21,21 +21,21 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "cpu.h"
-#include "exec/exec-all.h"
+#include "exec/cputlb.h"
 #include "exec/page-protection.h"
+#include "exec/target_page.h"
 #include "gdbstub/helpers.h"
 #include "qemu/host-utils.h"
 #include "hw/loader.h"
 
-static inline void get_phys_nommu(hwaddr *phys_addr, int *prot,
-                                  target_ulong address)
+static void get_phys_nommu(hwaddr *phys_addr, int *prot, vaddr address)
 {
     *phys_addr = address;
     *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
 }
 
 static int get_phys_mmu(OpenRISCCPU *cpu, hwaddr *phys_addr, int *prot,
-                        target_ulong addr, int need, bool super)
+                        vaddr addr, int need, bool super)
 {
     int idx = (addr >> TARGET_PAGE_BITS) & TLB_MASK;
     uint32_t imr = cpu->env.tlb.itlb[idx].mr;
@@ -94,7 +94,7 @@ static int get_phys_mmu(OpenRISCCPU *cpu, hwaddr *phys_addr, int *prot,
     }
 }
 
-static void raise_mmu_exception(OpenRISCCPU *cpu, target_ulong address,
+static void raise_mmu_exception(OpenRISCCPU *cpu, vaddr address,
                                 int exception)
 {
     CPUState *cs = CPU(cpu);

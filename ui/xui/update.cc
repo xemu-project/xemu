@@ -22,23 +22,22 @@
 #include "viewport-manager.hh"
 #include <stdio.h>
 #include <stdlib.h>
-#include <SDL_filesystem.h>
+#include <SDL3/SDL_filesystem.h>
 #include "util/miniz/miniz.h"
 #include "xemu-version.h"
+#include <nlohmann/json.hpp>
 
-#if defined(_WIN32)
-const char *version_url = "https://raw.githubusercontent.com/xemu-project/xemu/ppa-snapshot/XEMU_VERSION";
+using json = nlohmann::json;
+
+const char *releases_url = "https://api.github.com/repos/xemu-project/xemu/releases/latest";
+
 #if defined(__x86_64__)
-const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-win-x86_64-release.zip";
+#define PACKAGE_ARCH "x86_64"
 #elif defined(__aarch64__)
-const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-win-aarch64-release.zip";
+#define PACKAGE_ARCH "arm64"
 #else
-#error Unknown update path
+#error Unhandled package arch
 #endif
-#else
-FIXME
-#endif
-
 
 #define DPRINTF(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__);
 
@@ -88,7 +87,21 @@ void AutoUpdateWindow::Draw()
         ImGui::Text("%s", status_msg[updater.get_status()]);
     }
 
+    if (updater.is_update_available()) {
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+
+        ImGui::Text("Current version: %s", xemu_version);
+        ImGui::Text("Latest version: %s", updater.get_release_version().c_str());
+
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y));
+
+        if (ImGui::SmallButton("Release notes...")) {
+            SDL_OpenURL(updater.get_release_url().c_str());
+        }
+    }
+
     if (updater.is_updating()) {
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y));
         ImGui::ProgressBar(updater.get_update_progress_percentage()/100.0f,
                            ImVec2(-1.0f, 0.0f));
     }
@@ -129,7 +142,7 @@ Updater::Updater()
     m_status = UPDATER_IDLE;
     m_update_availability = UPDATE_AVAILABILITY_UNKNOWN;
     m_update_percentage = 0;
-    m_latest_version = "Unknown";
+    m_release_version = "Unknown";
     m_should_cancel = false;
 }
 
@@ -152,7 +165,7 @@ void *Updater::checker_thread_worker_func(void *updater)
 void Updater::check_for_update_internal()
 {
     g_autoptr(GByteArray) data = g_byte_array_new();
-    int res = http_get(version_url, data, NULL, NULL);
+    int res = http_get(releases_url, data, NULL, NULL);
 
     if (m_should_cancel) {
         m_should_cancel = false;
@@ -163,12 +176,39 @@ void Updater::check_for_update_internal()
         goto finished;
     }
 
-    m_latest_version = std::string((const char *)data->data, data->len);
+    try {
+        json release = json::parse(std::string((const char *)data->data, data->len));
+        m_release_url = release.value("html_url", "https://github.com/xemu-project/xemu/releases/latest");
+        m_release_version = release["tag_name"].get<std::string>();
+        if (!m_release_version.empty() && m_release_version[0] == 'v') {
+            m_release_version = m_release_version.substr(1);
+        }
 
-    if (m_latest_version != xemu_version) {
-        m_update_availability = UPDATE_AVAILABLE;
-    } else {
-        m_update_availability = UPDATE_NOT_AVAILABLE;
+        m_release_package_url.clear();
+        std::string expected_filename = "xemu-" + m_release_version + "-windows-" PACKAGE_ARCH ".zip";
+        for (const auto &asset : release["assets"]) {
+            std::string name = asset["name"].get<std::string>();
+            if (name == expected_filename) {
+                m_release_package_url = asset["browser_download_url"].get<std::string>();
+                break;
+            }
+        }
+
+        if (m_release_package_url.empty()) {
+            DPRINTF("Could not find asset matching %s\n", expected_filename.c_str());
+            m_status = UPDATER_ERROR;
+            goto finished;
+        }
+
+        if (m_release_version != xemu_version) {
+            m_update_availability = UPDATE_AVAILABLE;
+        } else {
+            m_update_availability = UPDATE_NOT_AVAILABLE;
+        }
+    } catch (const json::exception &e) {
+        DPRINTF("JSON parse error: %s\n", e.what());
+        m_status = UPDATER_ERROR;
+        goto finished;
     }
 
     m_status = UPDATER_IDLE;
@@ -215,7 +255,7 @@ void Updater::update_internal()
         return static_cast<Updater *>(info->userptr)->progress_cb(info);
     };
 
-    int res = http_get(download_url, data, &progress_info, NULL);
+    int res = http_get(m_release_package_url.c_str(), data, &progress_info, NULL);
 
     if (m_should_cancel) {
         m_should_cancel = false;

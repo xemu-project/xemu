@@ -22,7 +22,10 @@
 #define QEMU_AVR_CPU_H
 
 #include "cpu-qom.h"
+#include "exec/cpu-common.h"
 #include "exec/cpu-defs.h"
+#include "exec/cpu-interrupt.h"
+#include "system/memory.h"
 
 #ifdef CONFIG_USER_ONLY
 #error "AVR 8-bit does not support user mode"
@@ -44,8 +47,16 @@
 
 /* Number of CPU registers */
 #define NUMBER_OF_CPU_REGISTERS 32
-/* Number of IO registers accessible by ld/st/in/out */
-#define NUMBER_OF_IO_REGISTERS 64
+
+/* CPU registers mapped into i/o ports 0x38-0x3f. */
+#define REG_38_RAMPD  0
+#define REG_38_RAMPX  1
+#define REG_38_RAMPY  2
+#define REG_38_RAMPZ  3
+#define REG_38_EIDN   4
+#define REG_38_SPL    5
+#define REG_38_SPH    6
+#define REG_38_SREG   7
 
 /*
  * Offsets of AVR memory regions in host memory space.
@@ -60,8 +71,6 @@
 #define OFFSET_CODE 0x00000000
 /* CPU registers, IO registers, and SRAM */
 #define OFFSET_DATA 0x00800000
-/* CPU registers specifically, these are mapped at the start of data */
-#define OFFSET_CPU_REGISTERS OFFSET_DATA
 /*
  * IO registers, including status register, stack pointer, and memory
  * mapped peripherals, mapped just after CPU registers
@@ -144,6 +153,9 @@ struct ArchCPU {
 
     CPUAVRState env;
 
+    MemoryRegion cpu_reg1;
+    MemoryRegion cpu_reg2;
+
     /* Initial value of stack pointer */
     uint32_t init_sp;
 };
@@ -183,6 +195,8 @@ static inline void set_avr_feature(CPUAVRState *env, int feature)
 }
 
 void avr_cpu_tcg_init(void);
+void avr_cpu_translate_code(CPUState *cs, TranslationBlock *tb,
+                            int *max_insns, vaddr pc, void *host_pc);
 
 int cpu_avr_exec(CPUState *cpu);
 
@@ -190,24 +204,6 @@ enum {
     TB_FLAGS_FULL_ACCESS = 1,
     TB_FLAGS_SKIP = 2,
 };
-
-static inline void cpu_get_tb_cpu_state(CPUAVRState *env, vaddr *pc,
-                                        uint64_t *cs_base, uint32_t *pflags)
-{
-    uint32_t flags = 0;
-
-    *pc = env->pc_w * 2;
-    *cs_base = 0;
-
-    if (env->fullacc) {
-        flags |= TB_FLAGS_FULL_ACCESS;
-    }
-    if (env->skip) {
-        flags |= TB_FLAGS_SKIP;
-    }
-
-    *pflags = flags;
-}
 
 static inline int cpu_interrupts_enabled(CPUAVRState *env)
 {
@@ -242,6 +238,7 @@ bool avr_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                       MMUAccessType access_type, int mmu_idx,
                       bool probe, uintptr_t retaddr);
 
-#include "exec/cpu-all.h"
+extern const MemoryRegionOps avr_cpu_reg1;
+extern const MemoryRegionOps avr_cpu_reg2;
 
 #endif /* QEMU_AVR_CPU_H */

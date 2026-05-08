@@ -30,12 +30,15 @@ extern const PropertyInfo qdev_prop_pcie_link_speed;
 extern const PropertyInfo qdev_prop_pcie_link_width;
 extern const PropertyInfo qdev_prop_cpus390entitlement;
 extern const PropertyInfo qdev_prop_iothread_vq_mapping_list;
+extern const PropertyInfo qdev_prop_endian_mode;
+extern const PropertyInfo qdev_prop_vmapple_virtio_blk_variant;
+extern const PropertyInfo qdev_prop_virtio_gpu_output_list;
 
 #define DEFINE_PROP_PCI_DEVFN(_n, _s, _f, _d)                   \
     DEFINE_PROP_SIGNED(_n, _s, _f, _d, qdev_prop_pci_devfn, int32_t)
 
 #define DEFINE_PROP_CHR(_n, _s, _f)             \
-    DEFINE_PROP(_n, _s, _f, qdev_prop_chr, CharBackend)
+    DEFINE_PROP(_n, _s, _f, qdev_prop_chr, CharFrontend)
 #define DEFINE_PROP_NETDEV(_n, _s, _f)             \
     DEFINE_PROP(_n, _s, _f, qdev_prop_netdev, NICPeers)
 #define DEFINE_PROP_DRIVE(_n, _s, _f) \
@@ -84,7 +87,7 @@ extern const PropertyInfo qdev_prop_iothread_vq_mapping_list;
                 .set_default = true)
 
 #define DEFINE_PROP_AUDIODEV(_n, _s, _f) \
-    DEFINE_PROP(_n, _s, _f, qdev_prop_audiodev, QEMUSoundCard)
+    DEFINE_PROP(_n, _s, _f, qdev_prop_audiodev, AudioBackend *)
 
 #define DEFINE_PROP_UUID_NODEFAULT(_name, _state, _field) \
     DEFINE_PROP(_name, _state, _field, qdev_prop_uuid, QemuUUID)
@@ -96,5 +99,20 @@ extern const PropertyInfo qdev_prop_iothread_vq_mapping_list;
 #define DEFINE_PROP_IOTHREAD_VQ_MAPPING_LIST(_name, _state, _field) \
     DEFINE_PROP(_name, _state, _field, qdev_prop_iothread_vq_mapping_list, \
                 IOThreadVirtQueueMappingList *)
+
+#define DEFINE_PROP_ENDIAN(_name, _state, _field, _default) \
+    DEFINE_PROP_UNSIGNED(_name, _state, _field, _default, \
+                         qdev_prop_endian_mode, EndianMode)
+#define DEFINE_PROP_ENDIAN_NODEFAULT(_name, _state, _field) \
+    DEFINE_PROP_ENDIAN(_name, _state, _field, ENDIAN_MODE_UNSPECIFIED)
+
+#define DEFINE_PROP_VMAPPLE_VIRTIO_BLK_VARIANT(_name, _state, _fld, _default) \
+    DEFINE_PROP_UNSIGNED(_name, _state, _fld, _default, \
+                         qdev_prop_vmapple_virtio_blk_variant, \
+                         VMAppleVirtioBlkVariant)
+
+#define DEFINE_PROP_VIRTIO_GPU_OUTPUT_LIST(_name, _state, _field) \
+    DEFINE_PROP(_name, _state, _field, qdev_prop_virtio_gpu_output_list, \
+                VirtIOGPUOutputList *)
 
 #endif

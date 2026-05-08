@@ -21,26 +21,32 @@
 #include "qemu/qemu-print.h"
 #include "qapi/error.h"
 #include "qapi/type-helpers.h"
-#include "hw/core/tcg-cpu-ops.h"
+#include "hw/core/cpu.h"
+#include "accel/tcg/cpu-ops.h"
+#include "accel/tcg/helper-retaddr.h"
 #include "trace.h"
 #include "disas/disas.h"
-#include "exec/exec-all.h"
+#include "exec/cpu-common.h"
+#include "exec/cpu-interrupt.h"
+#include "exec/page-protection.h"
+#include "exec/mmap-lock.h"
+#include "exec/translation-block.h"
 #include "tcg/tcg.h"
 #include "qemu/atomic.h"
 #include "qemu/rcu.h"
 #include "exec/log.h"
 #include "qemu/main-loop.h"
-#include "sysemu/cpus.h"
-#include "exec/cpu-all.h"
-#include "sysemu/cpu-timers.h"
+#include "exec/icount.h"
 #include "exec/replay-core.h"
-#include "sysemu/tcg.h"
+#include "system/tcg.h"
 #include "exec/helper-proto-common.h"
+#include "tcg-accel-ops.h"
 #include "tb-jmp-cache.h"
 #include "tb-hash.h"
+#include "tb-code-hash.h"
 #include "tb-context.h"
+#include "tb-internal.h"
 #include "internal-common.h"
-#include "internal-target.h"
 
 /* -icount align implementation. */
 
@@ -144,45 +150,10 @@ static void init_delay_params(SyncClocks *sc, const CPUState *cpu)
 }
 #endif /* CONFIG USER ONLY */
 
-bool tcg_cflags_has(CPUState *cpu, uint32_t flags)
-{
-    return cpu->tcg_cflags & flags;
-}
-
-void tcg_cflags_set(CPUState *cpu, uint32_t flags)
-{
-    cpu->tcg_cflags |= flags;
-}
-
-uint32_t curr_cflags(CPUState *cpu)
-{
-    uint32_t cflags = cpu->tcg_cflags;
-
-    /*
-     * Record gdb single-step.  We should be exiting the TB by raising
-     * EXCP_DEBUG, but to simplify other tests, disable chaining too.
-     *
-     * For singlestep and -d nochain, suppress goto_tb so that
-     * we can log -d cpu,exec after every TB.
-     */
-    if (unlikely(cpu->singlestep_enabled)) {
-        cflags |= CF_NO_GOTO_TB | CF_NO_GOTO_PTR | CF_SINGLE_STEP | 1;
-    } else if (qatomic_read(&one_insn_per_tb)) {
-        cflags |= CF_NO_GOTO_TB | 1;
-    } else if (qemu_loglevel_mask(CPU_LOG_TB_NOCHAIN)) {
-        cflags |= CF_NO_GOTO_TB;
-    }
-
-    return cflags;
-}
-
 struct tb_desc {
-    vaddr pc;
-    uint64_t cs_base;
+    TCGTBCPUState s;
     CPUArchState *env;
     tb_page_addr_t page_addr0;
-    uint32_t flags;
-    uint32_t cflags;
 };
 
 static bool tb_lookup_cmp(const void *p, const void *d)
@@ -190,11 +161,11 @@ static bool tb_lookup_cmp(const void *p, const void *d)
     const TranslationBlock *tb = p;
     const struct tb_desc *desc = d;
 
-    if ((tb_cflags(tb) & CF_PCREL || tb->pc == desc->pc) &&
+    if ((tb_cflags(tb) & CF_PCREL || tb->pc == desc->s.pc) &&
         tb_page_addr0(tb) == desc->page_addr0 &&
-        tb->cs_base == desc->cs_base &&
-        tb->flags == desc->flags &&
-        (tb_cflags(tb) & ~CF_INVALID) == desc->cflags) {
+        tb->cs_base == desc->s.cs_base &&
+        tb->flags == desc->s.flags &&
+        (tb_cflags(tb) & ~CF_INVALID) == desc->s.cflags) {
         /* check next page if needed */
         tb_page_addr_t tb_phys_page1 = tb_page_addr1(tb);
         if (tb_phys_page1 == -1) {
@@ -212,7 +183,7 @@ static bool tb_lookup_cmp(const void *p, const void *d)
              * is different for the new TB.  Therefore any exception raised
              * here by the faulting lookup is not premature.
              */
-            virt_page1 = TARGET_PAGE_ALIGN(desc->pc);
+            virt_page1 = TARGET_PAGE_ALIGN(desc->s.pc);
             phys_page1 = get_page_addr_code(desc->env, virt_page1);
             if (tb_phys_page1 == phys_page1) {
                 return true;
@@ -223,35 +194,28 @@ static bool tb_lookup_cmp(const void *p, const void *d)
 }
 
 static TranslationBlock *
-tb_htable_lookup_common(CPUState *cpu, vaddr pc, uint64_t cs_base,
-                        uint32_t flags, uint32_t cflags, const struct qht *ht,
+tb_htable_lookup_common(CPUState *cpu, TCGTBCPUState s, const struct qht *ht,
                         qht_lookup_func_t func)
 {
     tb_page_addr_t phys_pc;
     struct tb_desc desc;
     uint32_t h;
 
+    desc.s = s;
     desc.env = cpu_env(cpu);
-    desc.cs_base = cs_base;
-    desc.flags = flags;
-    desc.cflags = cflags;
-    desc.pc = pc;
-    phys_pc = get_page_addr_code(desc.env, pc);
+    phys_pc = get_page_addr_code(desc.env, s.pc);
     if (phys_pc == -1) {
         return NULL;
     }
     desc.page_addr0 = phys_pc;
-    h = tb_hash_func(phys_pc, (cflags & CF_PCREL ? 0 : pc),
-                     flags, cs_base, cflags);
+    h = tb_hash_func(phys_pc, (s.cflags & CF_PCREL ? 0 : s.pc),
+                     s.flags, s.cs_base, s.cflags);
     return qht_lookup_custom(ht, &desc, h, func);
 }
 
-TranslationBlock *tb_htable_lookup(CPUState *cpu, uint64_t pc,
-                                   uint64_t cs_base, uint32_t flags,
-                                   uint32_t cflags)
+static TranslationBlock *tb_htable_lookup(CPUState *cpu, TCGTBCPUState s)
 {
-    return tb_htable_lookup_common(cpu, pc, cs_base, flags, cflags,
-                                   &tb_ctx.htable, tb_lookup_cmp);
+    return tb_htable_lookup_common(cpu, s, &tb_ctx.htable, tb_lookup_cmp);
 }
 
 static bool inv_tb_lookup_cmp(const void *p, const void *d)
@@ -260,47 +224,55 @@ static bool inv_tb_lookup_cmp(const void *p, const void *d)
     const struct tb_desc *desc = d;
 
     return tb_lookup_cmp(p, d) &&
-           tb->ihash == tb_code_hash_func(desc->env, desc->pc, tb->size);
+           tb->ihash == tb_code_hash_func(desc->env, desc->s.pc, tb->size);
 }
 
-TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, uint64_t pc,
-                                       uint64_t cs_base, uint32_t flags,
-                                       uint32_t cflags)
+TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, TCGTBCPUState s)
 {
-    return tb_htable_lookup_common(cpu, pc, cs_base, flags, cflags,
-                                   &tb_ctx.inv_htable, inv_tb_lookup_cmp);
+    return tb_htable_lookup_common(cpu, s, &tb_ctx.inv_htable, inv_tb_lookup_cmp);
 }
 
-/* Might cause an exception, so have a longjmp destination ready */
-static inline TranslationBlock *tb_lookup(CPUState *cpu, vaddr pc,
-                                          uint64_t cs_base, uint32_t flags,
-                                          uint32_t cflags)
+/**
+ * tb_lookup:
+ * @cpu: CPU that will execute the returned translation block
+ * @pc: guest PC
+ * @cs_base: arch-specific value associated with translation block
+ * @flags: arch-specific translation block flags
+ * @cflags: CF_* flags
+ *
+ * Look up a translation block inside the QHT using @pc, @cs_base, @flags and
+ * @cflags. Uses @cpu's tb_jmp_cache. Might cause an exception, so have a
+ * longjmp destination ready.
+ *
+ * Returns: an existing translation block or NULL.
+ */
+static inline TranslationBlock *tb_lookup(CPUState *cpu, TCGTBCPUState s)
 {
     TranslationBlock *tb;
     CPUJumpCache *jc;
     uint32_t hash;
 
     /* we should never be trying to look up an INVALID tb */
-    tcg_debug_assert(!(cflags & CF_INVALID));
+    tcg_debug_assert(!(s.cflags & CF_INVALID));
 
-    hash = tb_jmp_cache_hash_func(pc);
+    hash = tb_jmp_cache_hash_func(s.pc);
     jc = cpu->tb_jmp_cache;
 
     tb = qatomic_read(&jc->array[hash].tb);
     if (likely(tb &&
-               jc->array[hash].pc == pc &&
-               tb->cs_base == cs_base &&
-               tb->flags == flags &&
-               tb_cflags(tb) == cflags)) {
+               jc->array[hash].pc == s.pc &&
+               tb->cs_base == s.cs_base &&
+               tb->flags == s.flags &&
+               tb_cflags(tb) == s.cflags)) {
         goto hit;
     }
 
-    tb = tb_htable_lookup(cpu, pc, cs_base, flags, cflags);
+    tb = tb_htable_lookup(cpu, s);
     if (tb == NULL) {
         return NULL;
     }
 
-    jc->array[hash].pc = pc;
+    jc->array[hash].pc = s.pc;
     qatomic_set(&jc->array[hash].tb, tb);
 
 hit:
@@ -308,7 +280,7 @@ hit:
      * As long as tb is not NULL, the contents are consistent.  Therefore,
      * the virtual PC has to match for non-CF_PCREL translations.
      */
-    assert((tb_cflags(tb) & CF_PCREL) || tb->pc == pc);
+    assert((tb_cflags(tb) & CF_PCREL) || tb->pc == s.pc);
     return tb;
 }
 
@@ -325,14 +297,11 @@ static void log_cpu_exec(vaddr pc, CPUState *cpu,
         if (qemu_loglevel_mask(CPU_LOG_TB_CPU)) {
             FILE *logfile = qemu_log_trylock();
             if (logfile) {
-                int flags = 0;
+                int flags = CPU_DUMP_CCOP;
 
                 if (qemu_loglevel_mask(CPU_LOG_TB_FPU)) {
                     flags |= CPU_DUMP_FPU;
                 }
-#if defined(TARGET_I386)
-                flags |= CPU_DUMP_CCOP;
-#endif
                 if (qemu_loglevel_mask(CPU_LOG_TB_VPU)) {
                     flags |= CPU_DUMP_VPU;
                 }
@@ -428,9 +397,6 @@ const void *HELPER(lookup_tb_ptr)(CPUArchState *env)
 {
     CPUState *cpu = env_cpu(env);
     TranslationBlock *tb;
-    vaddr pc;
-    uint64_t cs_base;
-    uint32_t flags, cflags;
 
     /*
      * By definition we've just finished a TB, so I/O is OK.
@@ -440,23 +406,34 @@ const void *HELPER(lookup_tb_ptr)(CPUArchState *env)
      * The next TB, if we chain to it, will clear the flag again.
      */
     cpu->neg.can_do_io = true;
-    cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
 
-    cflags = curr_cflags(cpu);
-    if (check_for_breakpoints(cpu, pc, &cflags)) {
+    TCGTBCPUState s = cpu->cc->tcg_ops->get_tb_cpu_state(cpu);
+    s.cflags = curr_cflags(cpu);
+
+    if (check_for_breakpoints(cpu, s.pc, &s.cflags)) {
         cpu_loop_exit(cpu);
     }
 
-    tb = tb_lookup(cpu, pc, cs_base, flags, cflags);
+    tb = tb_lookup(cpu, s);
     if (tb == NULL) {
         return tcg_code_gen_epilogue;
     }
 
     if (qemu_loglevel_mask(CPU_LOG_TB_CPU | CPU_LOG_EXEC)) {
-        log_cpu_exec(pc, cpu, tb);
+        log_cpu_exec(s.pc, cpu, tb);
     }
 
     return tb->tc.ptr;
+}
+
+/* Return the current PC from CPU, which may be cached in TB. */
+static vaddr log_pc(CPUState *cpu, const TranslationBlock *tb)
+{
+    if (tb_cflags(tb) & CF_PCREL) {
+        return cpu->cc->get_pc(cpu);
+    } else {
+        return tb->pc;
+    }
 }
 
 /* Execute a TB, and fix up the CPU state afterwards if necessary */
@@ -593,11 +570,7 @@ static void cpu_exec_longjmp_cleanup(CPUState *cpu)
 
 void cpu_exec_step_atomic(CPUState *cpu)
 {
-    CPUArchState *env = cpu_env(cpu);
     TranslationBlock *tb;
-    vaddr pc;
-    uint64_t cs_base;
-    uint32_t flags, cflags;
     int tb_exit;
 
     if (sigsetjmp(cpu->jmp_env, 0) == 0) {
@@ -606,13 +579,13 @@ void cpu_exec_step_atomic(CPUState *cpu)
         g_assert(!cpu->running);
         cpu->running = true;
 
-        cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+        TCGTBCPUState s = cpu->cc->tcg_ops->get_tb_cpu_state(cpu);
+        s.cflags = curr_cflags(cpu);
 
-        cflags = curr_cflags(cpu);
         /* Execute in a serial context. */
-        cflags &= ~CF_PARALLEL;
+        s.cflags &= ~CF_PARALLEL;
         /* After 1 insn, return and release the exclusive lock. */
-        cflags |= CF_NO_GOTO_TB | CF_NO_GOTO_PTR | 1;
+        s.cflags |= CF_NO_GOTO_TB | CF_NO_GOTO_PTR | 1;
         /*
          * No need to check_for_breakpoints here.
          * We only arrive in cpu_exec_step_atomic after beginning execution
@@ -620,16 +593,16 @@ void cpu_exec_step_atomic(CPUState *cpu)
          * Any breakpoint for this insn will have been recognized earlier.
          */
 
-        tb = tb_lookup(cpu, pc, cs_base, flags, cflags);
+        tb = tb_lookup(cpu, s);
         if (tb == NULL) {
             mmap_lock();
-            tb = tb_gen_code(cpu, pc, cs_base, flags, cflags);
+            tb = tb_gen_code(cpu, s);
             mmap_unlock();
         }
 
         cpu_exec_enter(cpu);
         /* execute the generated code */
-        trace_exec_tb(tb, pc);
+        trace_exec_tb(tb, s.pc);
         cpu_tb_exec(cpu, tb, &tb_exit);
         cpu_exec_exit(cpu);
     } else {
@@ -697,7 +670,6 @@ static inline void tb_add_jump(TranslationBlock *tb, int n,
 
  out_unlock_next:
     qemu_spin_unlock(&tb_next->jmp_lock);
-    return;
 }
 
 static inline bool cpu_handle_halt(CPUState *cpu)
@@ -763,10 +735,10 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
      * If user mode only, we simulate a fake exception which will be
      * handled outside the cpu execution loop.
      */
-#if defined(TARGET_I386)
     const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
-    tcg_ops->fake_user_interrupt(cpu);
-#endif /* TARGET_I386 */
+    if (tcg_ops->fake_user_interrupt) {
+        tcg_ops->fake_user_interrupt(cpu);
+    }
     *ret = cpu->exception_index;
     cpu->exception_index = -1;
     return true;
@@ -799,6 +771,22 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
     return false;
 }
 
+void tcg_kick_vcpu_thread(CPUState *cpu)
+{
+#ifndef CONFIG_USER_ONLY
+    /*
+     * Ensure cpu_exec will see the reason why the exit request was set.
+     * FIXME: this is not always needed.  Other accelerators instead
+     * read interrupt_request and set exit_request on demand from the
+     * CPU thread; see kvm_arch_pre_run() for example.
+     */
+    qatomic_store_release(&cpu->exit_request, true);
+#endif
+
+    /* Ensure cpu_exec will see the exit request after TCG has exited.  */
+    qatomic_store_release(&cpu->neg.icount_decr.u16.high, -1);
+}
+
 static inline bool icount_exit_request(CPUState *cpu)
 {
     if (!icount_enabled()) {
@@ -825,61 +813,53 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
     /* Clear the interrupt flag now since we're processing
      * cpu->interrupt_request and cpu->exit_request.
      * Ensure zeroing happens before reading cpu->exit_request or
-     * cpu->interrupt_request (see also smp_wmb in cpu_exit())
+     * cpu->interrupt_request (see also store-release in
+     * tcg_kick_vcpu_thread())
      */
     qatomic_set_mb(&cpu->neg.icount_decr.u16.high, 0);
 
-    if (unlikely(qatomic_read(&cpu->interrupt_request))) {
-        int interrupt_request;
+#ifdef CONFIG_USER_ONLY
+    assert(!cpu_test_interrupt(cpu, ~0));
+#else
+    if (unlikely(cpu_test_interrupt(cpu, ~0))) {
         bql_lock();
-        interrupt_request = cpu->interrupt_request;
-        if (unlikely(cpu->singlestep_enabled & SSTEP_NOIRQ)) {
-            /* Mask out external interrupts for this step. */
-            interrupt_request &= ~CPU_INTERRUPT_SSTEP_MASK;
-        }
-        if (interrupt_request & CPU_INTERRUPT_DEBUG) {
-            cpu->interrupt_request &= ~CPU_INTERRUPT_DEBUG;
+        if (cpu_test_interrupt(cpu, CPU_INTERRUPT_DEBUG)) {
+            cpu_reset_interrupt(cpu, CPU_INTERRUPT_DEBUG);
             cpu->exception_index = EXCP_DEBUG;
             bql_unlock();
             return true;
         }
-#if !defined(CONFIG_USER_ONLY)
         if (replay_mode == REPLAY_MODE_PLAY && !replay_has_interrupt()) {
             /* Do nothing */
-        } else if (interrupt_request & CPU_INTERRUPT_HALT) {
+        } else if (cpu_test_interrupt(cpu, CPU_INTERRUPT_HALT)) {
             replay_interrupt();
-            cpu->interrupt_request &= ~CPU_INTERRUPT_HALT;
+            cpu_reset_interrupt(cpu, CPU_INTERRUPT_HALT);
             cpu->halted = 1;
             cpu->exception_index = EXCP_HLT;
             bql_unlock();
             return true;
-        }
-#if defined(TARGET_I386)
-        else if (interrupt_request & CPU_INTERRUPT_INIT) {
-            X86CPU *x86_cpu = X86_CPU(cpu);
-            CPUArchState *env = &x86_cpu->env;
-            replay_interrupt();
-            cpu_svm_check_intercept_param(env, SVM_EXIT_INIT, 0, 0);
-            do_cpu_init(x86_cpu);
-            cpu->exception_index = EXCP_HALTED;
-            bql_unlock();
-            return true;
-        }
-#else
-        else if (interrupt_request & CPU_INTERRUPT_RESET) {
-            replay_interrupt();
-            cpu_reset(cpu);
-            bql_unlock();
-            return true;
-        }
-#endif /* !TARGET_I386 */
-        /* The target hook has 3 exit conditions:
-           False when the interrupt isn't processed,
-           True when it is, and we should restart on a new TB,
-           and via longjmp via cpu_loop_exit.  */
-        else {
+        } else {
             const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
+            int interrupt_request = cpu->interrupt_request;
 
+            if (cpu_test_interrupt(cpu, CPU_INTERRUPT_RESET)) {
+                replay_interrupt();
+                tcg_ops->cpu_exec_reset(cpu);
+                bql_unlock();
+                return true;
+            }
+
+            if (unlikely(cpu->singlestep_enabled & SSTEP_NOIRQ)) {
+                /* Mask out external interrupts for this step. */
+                interrupt_request &= ~CPU_INTERRUPT_SSTEP_MASK;
+            }
+
+            /*
+             * The target hook has 3 exit conditions:
+             * False when the interrupt isn't processed,
+             * True when it is, and we should restart on a new TB,
+             * and via longjmp via cpu_loop_exit.
+             */
             if (tcg_ops->cpu_exec_interrupt(cpu, interrupt_request)) {
                 if (!tcg_ops->need_replay_interrupt ||
                     tcg_ops->need_replay_interrupt(interrupt_request)) {
@@ -898,13 +878,9 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
                 cpu->exception_index = -1;
                 *last_tb = NULL;
             }
-            /* The target hook may have updated the 'cpu->interrupt_request';
-             * reload the 'interrupt_request' value */
-            interrupt_request = cpu->interrupt_request;
         }
-#endif /* !CONFIG_USER_ONLY */
-        if (interrupt_request & CPU_INTERRUPT_EXITTB) {
-            cpu->interrupt_request &= ~CPU_INTERRUPT_EXITTB;
+        if (cpu_test_interrupt(cpu, CPU_INTERRUPT_EXITTB)) {
+            cpu_reset_interrupt(cpu, CPU_INTERRUPT_EXITTB);
             /* ensure that no TB jump will be modified as
                the program flow was changed */
             *last_tb = NULL;
@@ -913,10 +889,13 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
         /* If we exit via cpu_loop_exit/longjmp it is reset in cpu_exec */
         bql_unlock();
     }
+#endif /* !CONFIG_USER_ONLY */
 
-    /* Finally, check if we need to exit to the main loop.  */
-    if (unlikely(qatomic_read(&cpu->exit_request)) || icount_exit_request(cpu)) {
-        qatomic_set(&cpu->exit_request, 0);
+    /*
+     * Finally, check if we need to exit to the main loop.
+     * The corresponding store-release is in cpu_exit.
+     */
+    if (unlikely(qatomic_load_acquire(&cpu->exit_request)) || icount_exit_request(cpu)) {
         if (cpu->exception_index == -1) {
             cpu->exception_index = EXCP_INTERRUPT;
         }
@@ -986,11 +965,8 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
 
         while (!cpu_handle_interrupt(cpu, &last_tb)) {
             TranslationBlock *tb;
-            vaddr pc;
-            uint64_t cs_base;
-            uint32_t flags, cflags;
-
-            cpu_get_tb_cpu_state(cpu_env(cpu), &pc, &cs_base, &flags);
+            TCGTBCPUState s = cpu->cc->tcg_ops->get_tb_cpu_state(cpu);
+            s.cflags = cpu->cflags_next_tb;
 
             /*
              * When requested, use an exact setting for cflags for the next
@@ -999,33 +975,32 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
              * have CF_INVALID set, -1 is a convenient invalid value that
              * does not require tcg headers for cpu_common_reset.
              */
-            cflags = cpu->cflags_next_tb;
-            if (cflags == -1) {
-                cflags = curr_cflags(cpu);
+            if (s.cflags == -1) {
+                s.cflags = curr_cflags(cpu);
             } else {
                 cpu->cflags_next_tb = -1;
             }
 
-            if (check_for_breakpoints(cpu, pc, &cflags)) {
+            if (check_for_breakpoints(cpu, s.pc, &s.cflags)) {
                 break;
             }
 
-            tb = tb_lookup(cpu, pc, cs_base, flags, cflags);
+            tb = tb_lookup(cpu, s);
             if (tb == NULL) {
                 CPUJumpCache *jc;
                 uint32_t h;
 
                 mmap_lock();
-                tb = tb_gen_code(cpu, pc, cs_base, flags, cflags);
+                tb = tb_gen_code(cpu, s);
                 mmap_unlock();
 
                 /*
                  * We add the TB in the virtual pc hash table
                  * for the fast lookup
                  */
-                h = tb_jmp_cache_hash_func(pc);
+                h = tb_jmp_cache_hash_func(s.pc);
                 jc = cpu->tb_jmp_cache;
-                jc->array[h].pc = pc;
+                jc->array[h].pc = s.pc;
                 qatomic_set(&jc->array[h].tb, tb);
             }
 
@@ -1045,7 +1020,7 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
                 tb_add_jump(last_tb, tb_exit, tb);
             }
 
-            cpu_loop_exec_tb(cpu, tb, pc, &last_tb, &tb_exit);
+            cpu_loop_exec_tb(cpu, tb, s.pc, &last_tb, &tb_exit);
 
             /* Try to align the host and virtual clocks
                if the guest is in advance */
@@ -1100,11 +1075,17 @@ bool tcg_exec_realizefn(CPUState *cpu, Error **errp)
 
     if (!tcg_target_initialized) {
         /* Check mandatory TCGCPUOps handlers */
+        const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
 #ifndef CONFIG_USER_ONLY
-        assert(cpu->cc->tcg_ops->cpu_exec_halt);
-        assert(cpu->cc->tcg_ops->cpu_exec_interrupt);
+        assert(tcg_ops->cpu_exec_halt);
+        assert(tcg_ops->cpu_exec_interrupt);
+        assert(tcg_ops->cpu_exec_reset);
+        assert(tcg_ops->pointer_wrap);
 #endif /* !CONFIG_USER_ONLY */
-        cpu->cc->tcg_ops->initialize();
+        assert(tcg_ops->translate_code);
+        assert(tcg_ops->get_tb_cpu_state);
+        assert(tcg_ops->mmu_index);
+        tcg_ops->initialize();
         tcg_target_initialized = true;
     }
 

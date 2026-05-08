@@ -175,7 +175,7 @@ static bool gen_pop(DisasContext *ctx, arg_cmpp *a, bool ret, bool ret_val)
         return false;
     }
 
-    MemOp memop = get_ol(ctx) == MXL_RV32 ? MO_TEUL : MO_TEUQ;
+    MemOp memop = get_ol(ctx) == MXL_RV32 ? MO_UL : MO_UQ;
     int reg_size = memop_size(memop);
     target_ulong stack_adj = ROUND_UP(ctpop32(reg_bitmap) * reg_size, 16) +
                              a->spimm;
@@ -185,6 +185,7 @@ static bool gen_pop(DisasContext *ctx, arg_cmpp *a, bool ret, bool ret_val)
 
     tcg_gen_addi_tl(addr, sp, stack_adj - reg_size);
 
+    memop |= mo_endian(ctx);
     for (i = X_Sn + 11; i >= 0; i--) {
         if (reg_bitmap & (1 << i)) {
             TCGv dest = dest_gpr(ctx, i);
@@ -203,6 +204,14 @@ static bool gen_pop(DisasContext *ctx, arg_cmpp *a, bool ret, bool ret_val)
 
     if (ret) {
         TCGv ret_addr = get_gpr(ctx, xRA, EXT_SIGN);
+#ifndef CONFIG_USER_ONLY
+        if (ctx->cfg_ptr->ext_smctr || ctx->cfg_ptr->ext_ssctr) {
+            TCGv type = tcg_constant_tl(CTRDATA_TYPE_RETURN);
+            TCGv src = tcg_temp_new();
+            gen_pc_plus_diff(src, ctx, 0);
+            gen_helper_ctr_add_entry(tcg_env, src, ret_addr, type);
+        }
+#endif
         tcg_gen_mov_tl(cpu_pc, ret_addr);
         tcg_gen_lookup_and_goto_ptr();
         ctx->base.is_jmp = DISAS_NORETURN;
@@ -220,7 +229,7 @@ static bool trans_cm_push(DisasContext *ctx, arg_cm_push *a)
         return false;
     }
 
-    MemOp memop = get_ol(ctx) == MXL_RV32 ? MO_TEUL : MO_TEUQ;
+    MemOp memop = get_ol(ctx) == MXL_RV32 ? MO_UL : MO_UQ;
     int reg_size = memop_size(memop);
     target_ulong stack_adj = ROUND_UP(ctpop32(reg_bitmap) * reg_size, 16) +
                              a->spimm;
@@ -230,6 +239,7 @@ static bool trans_cm_push(DisasContext *ctx, arg_cm_push *a)
 
     tcg_gen_subi_tl(addr, sp, reg_size);
 
+    memop |= mo_endian(ctx);
     for (i = X_Sn + 11; i >= 0; i--) {
         if (reg_bitmap & (1 << i)) {
             TCGv val = get_gpr(ctx, i, EXT_NONE);
@@ -308,6 +318,19 @@ static bool trans_cm_jalt(DisasContext *ctx, arg_cm_jalt *a)
         gen_pc_plus_diff(succ_pc, ctx, ctx->cur_insn_len);
         gen_set_gpr(ctx, xRA, succ_pc);
     }
+
+#ifndef CONFIG_USER_ONLY
+    if (ctx->cfg_ptr->ext_smctr || ctx->cfg_ptr->ext_ssctr) {
+        if (a->index >= 32) {
+            TCGv type = tcg_constant_tl(CTRDATA_TYPE_DIRECT_CALL);
+            gen_helper_ctr_add_entry(tcg_env, cpu_pc, addr, type);
+        } else {
+            TCGv type = tcg_constant_tl(CTRDATA_TYPE_DIRECT_JUMP);
+            gen_helper_ctr_add_entry(tcg_env, cpu_pc, addr, type);
+        }
+    }
+#endif
+
 
     tcg_gen_mov_tl(cpu_pc, addr);
 

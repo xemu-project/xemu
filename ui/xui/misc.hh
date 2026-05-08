@@ -21,28 +21,23 @@
 #include <memory>
 #include <stdexcept>
 #include <cstdio>
+#include <functional>
+#include <SDL3/SDL_dialog.h>
 #include "common.hh"
 #include "xemu-hud.h"
 
-extern "C" {
-#include <noc_file_dialog.h>
-}
+using FileDialogCallback = std::function<void(const char *path)>;
 
-static inline const char *PausedFileOpen(int flags, const char *filters,
-                                         const char *default_path,
-                                         const char *default_name)
-{
-    bool is_running = runstate_is_running();
-    if (is_running) {
-        vm_stop(RUN_STATE_PAUSED);
-    }
-    const char *r = noc_file_dialog_open(flags, filters, default_path, default_name);
-    if (is_running) {
-        vm_start();
-    }
+void ShowOpenFileDialog(const SDL_DialogFileFilter *filters, int nfilters,
+                        const char *default_location,
+                        FileDialogCallback callback);
 
-    return r;
-}
+void ShowSaveFileDialog(const SDL_DialogFileFilter *filters, int nfilters,
+                        const char *default_location,
+                        FileDialogCallback callback);
+
+void ShowOpenFolderDialog(const char *default_location,
+                          FileDialogCallback callback);
 
 template<typename ... Args>
 std::string string_format( const std::string& format, Args ... args )
@@ -55,12 +50,15 @@ std::string string_format( const std::string& format, Args ... args )
     return std::string( buf.get(), buf.get() + size - 1 ); // We don't want the '\0' inside
 }
 
-static inline bool IsShortcutKeyPressed(int scancode)
+static inline bool IsShortcutKeyPressed(ImGuiKey key)
 {
     ImGuiIO& io = ImGui::GetIO();
-    const bool is_osx = io.ConfigMacOSXBehaviors;
-    const bool is_shortcut_key = (is_osx ? (io.KeySuper && !io.KeyCtrl) : (io.KeyCtrl && !io.KeySuper)) && !io.KeyAlt && !io.KeyShift; // OS X style: Shortcuts using Cmd/Super instead of Ctrl
-    return is_shortcut_key && ImGui::IsKeyPressed((enum ImGuiKey)scancode);
+
+    if (io.KeyAlt || io.KeyShift) {
+        return false;
+    }
+
+    return io.KeyCtrl && ImGui::IsKeyPressed(key);
 }
 
 static inline float mix(float a, float b, float t)

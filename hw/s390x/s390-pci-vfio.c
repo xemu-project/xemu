@@ -20,7 +20,8 @@
 #include "hw/s390x/s390-pci-clp.h"
 #include "hw/s390x/s390-pci-vfio.h"
 #include "hw/vfio/pci.h"
-#include "hw/vfio/vfio-common.h"
+#include "hw/vfio/vfio-container-legacy.h"
+#include "hw/vfio/vfio-helpers.h"
 
 /*
  * Get the current DMA available count from vfio.  Returns true if vfio is
@@ -61,7 +62,7 @@ S390PCIDMACount *s390_pci_start_dma_count(S390pciState *s,
 {
     S390PCIDMACount *cnt;
     uint32_t avail;
-    VFIOPCIDevice *vpdev = container_of(pbdev->pdev, VFIOPCIDevice, pdev);
+    VFIOPCIDevice *vpdev = VFIO_PCI_DEVICE(pbdev->pdev);
     int id;
 
     assert(vpdev);
@@ -107,7 +108,7 @@ static void s390_pci_read_base(S390PCIBusDevice *pbdev,
 {
     struct vfio_info_cap_header *hdr;
     struct vfio_device_info_cap_zpci_base *cap;
-    VFIOPCIDevice *vpci =  container_of(pbdev->pdev, VFIOPCIDevice, pdev);
+    VFIOPCIDevice *vpci = VFIO_PCI_DEVICE(pbdev->pdev);
     uint64_t vfio_size;
 
     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_BASE);
@@ -132,12 +133,27 @@ static void s390_pci_read_base(S390PCIBusDevice *pbdev,
     pbdev->pft = cap->pft;
 
     /*
-     * If appropriate, reduce the size of the supported DMA aperture reported
-     * to the guest based upon the vfio DMA limit.
+     * If the device is a passthrough ISM device, disallow relaxed
+     * translation.
      */
-    vfio_size = pbdev->iommu->max_dma_limit << TARGET_PAGE_BITS;
-    if (vfio_size > 0 && vfio_size < cap->end_dma - cap->start_dma + 1) {
-        pbdev->zpci_fn.edma = cap->start_dma + vfio_size - 1;
+    if (pbdev->pft == ZPCI_PFT_ISM) {
+        pbdev->rtr_avail = false;
+    }
+
+    /*
+     * If appropriate, reduce the size of the supported DMA aperture reported
+     * to the guest based upon the vfio DMA limit.  This is applicable for
+     * devices that are guaranteed to not use relaxed translation.  If the
+     * device is capable of relaxed translation then we must advertise the
+     * full aperture.  In this case, if translation is used then we will
+     * rely on the vfio DMA limit counting and use RPCIT CC1 / status 16
+     * to request that the guest free DMA mappings as necessary.
+     */
+    if (!pbdev->rtr_avail) {
+        vfio_size = pbdev->iommu->max_dma_limit << TARGET_PAGE_BITS;
+        if (vfio_size > 0 && vfio_size < cap->end_dma - cap->start_dma + 1) {
+            pbdev->zpci_fn.edma = cap->start_dma + vfio_size - 1;
+        }
     }
 }
 
@@ -146,7 +162,7 @@ static bool get_host_fh(S390PCIBusDevice *pbdev, struct vfio_device_info *info,
 {
     struct vfio_info_cap_header *hdr;
     struct vfio_device_info_cap_zpci_base *cap;
-    VFIOPCIDevice *vpci = container_of(pbdev->pdev, VFIOPCIDevice, pdev);
+    VFIOPCIDevice *vpci = VFIO_PCI_DEVICE(pbdev->pdev);
 
     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_BASE);
 
@@ -169,7 +185,7 @@ static void s390_pci_read_group(S390PCIBusDevice *pbdev,
     struct vfio_device_info_cap_zpci_group *cap;
     S390pciState *s = s390_get_phb();
     ClpRspQueryPciGrp *resgrp;
-    VFIOPCIDevice *vpci =  container_of(pbdev->pdev, VFIOPCIDevice, pdev);
+    VFIOPCIDevice *vpci = VFIO_PCI_DEVICE(pbdev->pdev);
     uint8_t start_gid = pbdev->zpci_fn.pfgid;
 
     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_GROUP);
@@ -223,8 +239,11 @@ static void s390_pci_read_group(S390PCIBusDevice *pbdev,
         pbdev->pci_group = s390_group_create(pbdev->zpci_fn.pfgid, start_gid);
 
         resgrp = &pbdev->pci_group->zpci_group;
+        if (pbdev->rtr_avail) {
+            resgrp->fr |= CLP_RSP_QPCIG_MASK_RTR;
+        }
         if (cap->flags & VFIO_DEVICE_INFO_ZPCI_FLAG_REFRESH) {
-            resgrp->fr = 1;
+            resgrp->fr |= CLP_RSP_QPCIG_MASK_REFRESH;
         }
         resgrp->dasm = cap->dasm;
         resgrp->msia = cap->msi_addr;
@@ -245,7 +264,7 @@ static void s390_pci_read_util(S390PCIBusDevice *pbdev,
 {
     struct vfio_info_cap_header *hdr;
     struct vfio_device_info_cap_zpci_util *cap;
-    VFIOPCIDevice *vpci =  container_of(pbdev->pdev, VFIOPCIDevice, pdev);
+    VFIOPCIDevice *vpci = VFIO_PCI_DEVICE(pbdev->pdev);
 
     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_UTIL);
 
@@ -272,7 +291,7 @@ static void s390_pci_read_pfip(S390PCIBusDevice *pbdev,
 {
     struct vfio_info_cap_header *hdr;
     struct vfio_device_info_cap_zpci_pfip *cap;
-    VFIOPCIDevice *vpci =  container_of(pbdev->pdev, VFIOPCIDevice, pdev);
+    VFIOPCIDevice *vpci = VFIO_PCI_DEVICE(pbdev->pdev);
 
     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_PFIP);
 
@@ -295,7 +314,7 @@ static void s390_pci_read_pfip(S390PCIBusDevice *pbdev,
 
 static struct vfio_device_info *get_device_info(S390PCIBusDevice *pbdev)
 {
-    VFIOPCIDevice *vfio_pci = container_of(pbdev->pdev, VFIOPCIDevice, pdev);
+    VFIOPCIDevice *vfio_pci = VFIO_PCI_DEVICE(pbdev->pdev);
 
     return vfio_get_device_info(vfio_pci->vbasedev.fd);
 }
@@ -349,6 +368,4 @@ void s390_pci_get_clp_info(S390PCIBusDevice *pbdev)
     s390_pci_read_group(pbdev, info);
     s390_pci_read_util(pbdev, info);
     s390_pci_read_pfip(pbdev, info);
-
-    return;
 }

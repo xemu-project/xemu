@@ -29,6 +29,8 @@
 #include <assert.h>
 
 #ifdef CONFIG_RENDERDOC
+#include "trace/control.h"
+
 #pragma GCC diagnostic ignored "-Wstrict-prototypes"
 #include "thirdparty/renderdoc_app.h"
 #endif
@@ -154,7 +156,8 @@ void gl_debug_frame_terminator(void)
         RENDERDOC_API_1_6_0 *rdoc_api = nv2a_dbg_renderdoc_get_api();
 
         if (rdoc_api->IsTargetControlConnected()) {
-            if (rdoc_api->IsFrameCapturing()) {
+            bool capturing = rdoc_api->IsFrameCapturing();
+            if (capturing && renderdoc_capture_frames == 0) {
                 rdoc_api->EndFrameCapture(NULL, NULL);
                 GLenum error = glGetError();
                 if (error != GL_NO_ERROR) {
@@ -162,14 +165,23 @@ void gl_debug_frame_terminator(void)
                             "Renderdoc EndFrameCapture triggered GL error 0x%X - ignoring\n",
                             error);
                 }
+                if (renderdoc_trace_frames) {
+                    trace_enable_events("-nv2a_pgraph_*");
+                    renderdoc_trace_frames = false;
+                }
             }
             if (renderdoc_capture_frames > 0) {
-                rdoc_api->StartFrameCapture(NULL, NULL);
-                GLenum error = glGetError();
-                if (error != GL_NO_ERROR) {
-                    fprintf(stderr,
-                            "Renderdoc StartFrameCapture triggered GL error 0x%X - ignoring\n",
-                            error);
+                if (!capturing) {
+                    if (renderdoc_trace_frames) {
+                        trace_enable_events("nv2a_pgraph_*");
+                    }
+                    rdoc_api->StartFrameCapture(NULL, NULL);
+                    GLenum error = glGetError();
+                    if (error != GL_NO_ERROR) {
+                        fprintf(stderr,
+                                "Renderdoc StartFrameCapture triggered GL error 0x%X - ignoring\n",
+                                error);
+                    }
                 }
                 --renderdoc_capture_frames;
             }

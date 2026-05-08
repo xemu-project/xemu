@@ -25,28 +25,28 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
-#include "hw/audio/soundhw.h"
-#include "audio/audio.h"
+#include "hw/audio/model.h"
+#include "qemu/audio.h"
 #include "hw/isa/isa.h"
 #include "hw/qdev-properties.h"
+#include "qemu/error-report.h"
 #include "qom/object.h"
 
-//#define DEBUG
+#define DEBUG 0
 
 #define ADLIB_KILL_TIMERS 1
 
 #define ADLIB_DESC "Yamaha YM3812 (OPL2)"
 
-#ifdef DEBUG
+#if DEBUG
 #include "qemu/timer.h"
 #endif
 
-#define dolog(...) AUD_log ("adlib", __VA_ARGS__)
-#ifdef DEBUG
-#define ldebug(...) dolog (__VA_ARGS__)
-#else
-#define ldebug(...)
-#endif
+#define ldebug(fmt, ...) do { \
+        if (DEBUG) { \
+            error_report("adlib: " fmt, ##__VA_ARGS__); \
+        } \
+    } while (0)
 
 #include "fmopl.h"
 #define SHIFT 1
@@ -57,14 +57,14 @@ OBJECT_DECLARE_SIMPLE_TYPE(AdlibState, ADLIB)
 struct AdlibState {
     ISADevice parent_obj;
 
-    QEMUSoundCard card;
+    AudioBackend *audio_be;
     uint32_t freq;
     uint32_t port;
     int ticking[2];
     int enabled;
     int active;
     int bufpos;
-#ifdef DEBUG
+#if DEBUG
     int64_t exp[2];
 #endif
     int16_t *mixbuf;
@@ -92,7 +92,7 @@ static void adlib_kill_timers (AdlibState *s)
 
             delta = AUD_get_elapsed_usec_out (s->voice, &s->ats);
             ldebug (
-                "delta = %f dexp = %f expired => %d\n",
+                "delta = %f dexp = %f expired => %d",
                 delta / 1000000.0,
                 s->dexp[i] / 1000000.0,
                 delta >= s->dexp[i]
@@ -131,7 +131,7 @@ static void timer_handler (void *opaque, int c, double interval_Sec)
 {
     AdlibState *s = opaque;
     unsigned n = c & 1;
-#ifdef DEBUG
+#if DEBUG
     double interval;
     int64_t exp;
 #endif
@@ -142,7 +142,7 @@ static void timer_handler (void *opaque, int c, double interval_Sec)
     }
 
     s->ticking[n] = 1;
-#ifdef DEBUG
+#if DEBUG
     interval = NANOSECONDS_PER_SECOND * interval_Sec;
     exp = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + interval;
     s->exp[n] = exp;
@@ -240,7 +240,6 @@ static void Adlib_fini (AdlibState *s)
 
     s->active = 0;
     s->enabled = 0;
-    AUD_remove_card (&s->card);
 }
 
 static MemoryRegionPortio adlib_portio_list[] = {
@@ -255,7 +254,7 @@ static void adlib_realizefn (DeviceState *dev, Error **errp)
     AdlibState *s = ADLIB(dev);
     struct audsettings as;
 
-    if (!AUD_register_card ("adlib", &s->card, errp)) {
+    if (!AUD_backend_check(&s->audio_be, errp)) {
         return;
     }
 
@@ -272,10 +271,10 @@ static void adlib_realizefn (DeviceState *dev, Error **errp)
     as.freq = s->freq;
     as.nchannels = SHIFT;
     as.fmt = AUDIO_FORMAT_S16;
-    as.endianness = AUDIO_HOST_ENDIANNESS;
+    as.endianness = HOST_BIG_ENDIAN;
 
     s->voice = AUD_open_out (
-        &s->card,
+        s->audio_be,
         s->voice,
         "adlib",
         s,
@@ -297,14 +296,13 @@ static void adlib_realizefn (DeviceState *dev, Error **errp)
     portio_list_add (&s->port_list, isa_address_space_io(&s->parent_obj), 0);
 }
 
-static Property adlib_properties[] = {
-    DEFINE_AUDIO_PROPERTIES(AdlibState, card),
+static const Property adlib_properties[] = {
+    DEFINE_AUDIO_PROPERTIES(AdlibState, audio_be),
     DEFINE_PROP_UINT32 ("iobase",  AdlibState, port, 0x220),
     DEFINE_PROP_UINT32 ("freq",    AdlibState, freq,  44100),
-    DEFINE_PROP_END_OF_LIST (),
 };
 
-static void adlib_class_initfn (ObjectClass *klass, void *data)
+static void adlib_class_initfn(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS (klass);
 
@@ -324,7 +322,7 @@ static const TypeInfo adlib_info = {
 static void adlib_register_types (void)
 {
     type_register_static (&adlib_info);
-    deprecated_register_soundhw("adlib", ADLIB_DESC, 1, TYPE_ADLIB);
+    audio_register_model("adlib", ADLIB_DESC, TYPE_ADLIB);
 }
 
 type_init (adlib_register_types)

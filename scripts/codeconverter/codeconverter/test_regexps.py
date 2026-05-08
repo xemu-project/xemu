@@ -70,15 +70,15 @@ static const TypeInfo char_file_type_info = {
             .name = armsse_variants[i].name,
             .parent = TYPE_ARMSSE,
             .class_init = armsse_class_init,
-            .class_data = (void *)&armsse_variants[i],
+            .class_data = &armsse_variants[i],
         };''', re.MULTILINE)
 
     print(RE_ARRAY_ITEM)
     assert fullmatch(RE_ARRAY_ITEM, '{ TYPE_HOTPLUG_HANDLER },')
     assert fullmatch(RE_ARRAY_ITEM, '{ TYPE_ACPI_DEVICE_IF },')
     assert fullmatch(RE_ARRAY_ITEM, '{ }')
-    assert fullmatch(RE_ARRAY_CAST, '(InterfaceInfo[])')
-    assert fullmatch(RE_ARRAY, '''(InterfaceInfo[]) {
+    assert fullmatch(RE_ARRAY_CAST, '(const InterfaceInfo[])')
+    assert fullmatch(RE_ARRAY, '''(const InterfaceInfo[]) {
             { TYPE_HOTPLUG_HANDLER },
             { TYPE_ACPI_DEVICE_IF },
             { }
@@ -98,7 +98,7 @@ static const TypeInfo char_file_type_info = {
         .parent = TYPE_DEVICE,
         .instance_size = sizeof(CRBState),
         .class_init  = tpm_crb_class_init,
-        .interfaces = (InterfaceInfo[]) {
+        .interfaces = (const InterfaceInfo[]) {
             { TYPE_TPM_IF },
             { }
         }
@@ -134,7 +134,7 @@ static const TypeInfo char_file_type_info = {
         .instance_size = sizeof(AcpiGedState),
         .instance_init  = acpi_ged_initfn,
         .class_init    = acpi_ged_class_init,
-        .interfaces = (InterfaceInfo[]) {
+        .interfaces = (const InterfaceInfo[]) {
             { TYPE_HOTPLUG_HANDLER },
             { TYPE_ACPI_DEVICE_IF },
             { }
@@ -164,7 +164,7 @@ static const TypeInfo char_file_type_info = {
         .parent = TYPE_DEVICE,
         .instance_size = sizeof(CRBState),
         .class_init  = tpm_crb_class_init,
-        .interfaces = (InterfaceInfo[]) {
+        .interfaces = (const InterfaceInfo[]) {
             { TYPE_TPM_IF },
             { }
         }
@@ -264,12 +264,12 @@ def test_initial_includes():
 #define SILENT_ES1370
 
 #include "qemu/osdep.h"
-#include "hw/audio/soundhw.h"
-#include "audio/audio.h"
+#include "hw/audio/model.h"
+#include "qemu/audio.h"
 #include "hw/pci/pci.h"
 #include "migration/vmstate.h"
 #include "qemu/module.h"
-#include "sysemu/dma.h"
+#include "system/dma.h"
 
 /* Missing stuff:
    SCTRL_P[12](END|ST)INC
@@ -278,5 +278,5 @@ def test_initial_includes():
     m = InitialIncludes.domatch(c)
     assert m
     print(repr(m.group(0)))
-    assert m.group(0).endswith('#include "sysemu/dma.h"\n')
+    assert m.group(0).endswith('#include "system/dma.h"\n')
 

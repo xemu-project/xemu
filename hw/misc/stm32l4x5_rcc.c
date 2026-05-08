@@ -141,7 +141,7 @@ static const VMStateDescription clock_mux_vmstate = {
     }
 };
 
-static void clock_mux_class_init(ObjectClass *klass, void *data)
+static void clock_mux_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -150,6 +150,8 @@ static void clock_mux_class_init(ObjectClass *klass, void *data)
     rc->phases.hold = clock_mux_reset_hold;
     rc->phases.exit = clock_mux_reset_exit;
     dc->vmsd = &clock_mux_vmstate;
+    /* Reason: Part of Stm32l4x5RccState component */
+    dc->user_creatable = false;
 }
 
 static void clock_mux_set_enable(RccClockMuxState *mux, bool enabled)
@@ -293,7 +295,7 @@ static const VMStateDescription pll_vmstate = {
     }
 };
 
-static void pll_class_init(ObjectClass *klass, void *data)
+static void pll_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -302,6 +304,8 @@ static void pll_class_init(ObjectClass *klass, void *data)
     rc->phases.hold = pll_reset_hold;
     rc->phases.exit = pll_reset_exit;
     dc->vmsd = &pll_vmstate;
+    /* Reason: Part of Stm32l4x5RccState component */
+    dc->user_creatable = false;
 }
 
 static void pll_set_vco_multiplier(RccPllState *pll, uint32_t vco_multiplier)
@@ -1426,17 +1430,16 @@ static void stm32l4x5_rcc_realize(DeviceState *dev, Error **errp)
     clock_update(s->gnd, 0);
 }
 
-static Property stm32l4x5_rcc_properties[] = {
+static const Property stm32l4x5_rcc_properties[] = {
     DEFINE_PROP_UINT64("hse_frequency", Stm32l4x5RccState,
         hse_frequency, HSE_DEFAULT_FRQ),
     DEFINE_PROP_UINT64("sai1_extclk_frequency", Stm32l4x5RccState,
         sai1_extclk_frequency, 0),
     DEFINE_PROP_UINT64("sai2_extclk_frequency", Stm32l4x5RccState,
         sai2_extclk_frequency, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void stm32l4x5_rcc_class_init(ObjectClass *klass, void *data)
+static void stm32l4x5_rcc_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);

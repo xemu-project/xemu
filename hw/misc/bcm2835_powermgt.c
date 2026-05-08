@@ -13,7 +13,7 @@
 #include "qemu/module.h"
 #include "hw/misc/bcm2835_powermgt.h"
 #include "migration/vmstate.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 
 #define PASSWORD 0x5a000000
 #define PASSWORD_MASK 0xff000000
@@ -136,7 +136,7 @@ static void bcm2835_powermgt_reset(DeviceState *dev)
     s->wdog = 0x00000000;
 }
 
-static void bcm2835_powermgt_class_init(ObjectClass *klass, void *data)
+static void bcm2835_powermgt_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

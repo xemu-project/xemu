@@ -627,7 +627,6 @@ static void trng_finalize(Object *obj)
 {
     XlnxVersalTRng *s = XLNX_VERSAL_TRNG(obj);
 
-    register_finalize_block(s->reg_array);
     g_rand_free(s->prng);
     s->prng = NULL;
 }
@@ -641,7 +640,7 @@ static void trng_prop_fault_event_set(Object *obj, Visitor *v,
                                       const char *name, void *opaque,
                                       Error **errp)
 {
-    Property *prop = opaque;
+    const Property *prop = opaque;
     uint32_t *events = object_field_prop_ptr(obj, prop);
 
     if (!visit_type_uint32(v, name, events, errp)) {
@@ -652,7 +651,7 @@ static void trng_prop_fault_event_set(Object *obj, Visitor *v,
 }
 
 static const PropertyInfo trng_prop_fault_events = {
-    .name = "uint32:bits",
+    .type = "uint32",
     .description = "Set to trigger TRNG fault events",
     .set = trng_prop_fault_event_set,
     .realized_set_allowed = true,
@@ -660,13 +659,12 @@ static const PropertyInfo trng_prop_fault_events = {
 
 static PropertyInfo trng_prop_uint64; /* to extend qdev_prop_uint64 */
 
-static Property trng_props[] = {
-    DEFINE_PROP_UINT64("forced-prng", XlnxVersalTRng, forced_prng_seed, 0),
+static const Property trng_props[] = {
+    DEFINE_PROP_UNSIGNED("forced-prng", XlnxVersalTRng, forced_prng_seed,
+                         0, trng_prop_uint64, uint64_t),
     DEFINE_PROP_UINT32("hw-version", XlnxVersalTRng, hw_version, 0x0200),
     DEFINE_PROP("fips-fault-events", XlnxVersalTRng, forced_faults,
                 trng_prop_fault_events, uint32_t),
-
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const VMStateDescription vmstate_trng = {
@@ -683,7 +681,7 @@ static const VMStateDescription vmstate_trng = {
     }
 };
 
-static void trng_class_init(ObjectClass *klass, void *data)
+static void trng_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -694,7 +692,6 @@ static void trng_class_init(ObjectClass *klass, void *data)
     /* Clone uint64 property with set allowed after realized */
     trng_prop_uint64 = qdev_prop_uint64;
     trng_prop_uint64.realized_set_allowed = true;
-    trng_props[0].info = &trng_prop_uint64;
 
     device_class_set_props(dc, trng_props);
 }

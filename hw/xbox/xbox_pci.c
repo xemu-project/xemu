@@ -29,14 +29,14 @@
 #include "qemu/range.h"
 #include "hw/xen/xen.h"
 #include "hw/pci-host/pam.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "qapi/visitor.h"
 #include "qemu/error-report.h"
 #include "hw/loader.h"
 #include "qemu/config-file.h"
 #include "hw/pci/pci_bus.h"
 #include "hw/pci/pci_bridge.h"
-#include "exec/address-spaces.h"
+#include "system/address-spaces.h"
 #include "qemu/option.h"
 #include "hw/xbox/acpi_xbox.h"
 #include "hw/xbox/amd_smbus.h"
@@ -289,7 +289,7 @@ static const VMStateDescription vmstate_xbox_smbus = {
     },
 };
 
-static void xbox_smbus_class_init(ObjectClass *klass, void *data)
+static void xbox_smbus_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -431,7 +431,7 @@ static const VMStateDescription vmstate_xbox_lpc = {
     },
 };
 
-static void xbox_lpc_class_init(ObjectClass *klass, void *data)
+static void xbox_lpc_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -473,7 +473,7 @@ static void xbox_agp_realize(PCIDevice *d, Error **errp)
     pci_bridge_initfn(d, TYPE_PCI_BUS);
 }
 
-static void xbox_agp_class_init(ObjectClass *klass, void *data)
+static void xbox_agp_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -514,7 +514,7 @@ static const VMStateDescription pci_bridge_dev_vmstate = {
     }
 };
 
-static void xbox_pci_class_init(ObjectClass *klass, void *data)
+static void xbox_pci_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -563,7 +563,7 @@ static void xbox_pcihost_realize(DeviceState *dev, Error **errp)
     sysbus_init_ioports(&s->busdev, CONFIG_DATA, 4);
 }
 
-static void xbox_pcihost_class_init(ObjectClass *klass, void *data)
+static void xbox_pcihost_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -580,12 +580,12 @@ static const TypeInfo xbox_pcihost_info = {
 
 static void xboxpci_register_types(void)
 {
-    type_register(&xbox_pcihost_info);
-    type_register(&xbox_pci_info);
-    type_register(&xbox_agp_info);
+    type_register_static(&xbox_pcihost_info);
+    type_register_static(&xbox_pci_info);
+    type_register_static(&xbox_agp_info);
 
-    type_register(&xbox_lpc_info);
-    type_register(&xbox_smbus_info);
+    type_register_static(&xbox_lpc_info);
+    type_register_static(&xbox_smbus_info);
 }
 
 type_init(xboxpci_register_types)

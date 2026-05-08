@@ -15,7 +15,7 @@
 #include "boot-sector.h"
 #include "acpi-utils.h"
 #include "libqtest.h"
-#include "qapi/qmp/qdict.h"
+#include "qobject/qdict.h"
 
 #define VGID_GUID "324e6eaf-d1d1-4bf6-bf41-b9bb6c91fb87"
 #define VMGENID_GUID_OFFSET 40   /* allow space for
@@ -61,7 +61,7 @@ static uint32_t acpi_find_vgia(QTestState *qts)
 
             /* The GUID is written at a fixed offset into the fw_cfg file
              * in order to implement the "OVMF SDT Header probe suppressor"
-             * see docs/specs/vmgenid.txt for more details
+             * see docs/specs/vmgenid.rst for more details
              */
             guid_offset = le32_to_cpu(vgia_val) + VMGENID_GUID_OFFSET;
             g_free(table_aml);

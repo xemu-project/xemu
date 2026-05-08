@@ -137,6 +137,8 @@ BlockJob *block_job_get_locked(const char *id);
  * Add @bs to the list of BlockDriverState that are involved in
  * @job. This means that all operations will be blocked on @bs while
  * @job exists.
+ *
+ * All block nodes must be drained.
  */
 int GRAPH_WRLOCK
 block_job_add_bdrv(BlockJob *job, const char *name, BlockDriverState *bs,
@@ -149,7 +151,7 @@ block_job_add_bdrv(BlockJob *job, const char *name, BlockDriverState *bs,
  * Remove all BlockDriverStates from the list of nodes that are involved in the
  * job. This removes the blockers added with block_job_add_bdrv().
  */
-void block_job_remove_all_bdrv(BlockJob *job);
+void GRAPH_UNLOCKED block_job_remove_all_bdrv(BlockJob *job);
 
 /**
  * block_job_has_bdrv:

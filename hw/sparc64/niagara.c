@@ -32,10 +32,10 @@
 #include "hw/loader.h"
 #include "hw/sparc/sparc64.h"
 #include "hw/rtc/sun4v-rtc.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "qemu/error-report.h"
-#include "sysemu/qtest.h"
-#include "sysemu/sysemu.h"
+#include "system/qtest.h"
+#include "system/system.h"
 #include "qapi/error.h"
 
 typedef struct NiagaraBoardState {
@@ -157,7 +157,7 @@ static void niagara_init(MachineState *machine)
     sun4v_rtc_init(NIAGARA_RTC_BASE);
 }
 
-static void niagara_class_init(ObjectClass *oc, void *data)
+static void niagara_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
 

@@ -283,8 +283,8 @@ fail:
 }
 
 static int coroutine_fn GRAPH_RDLOCK
-raw_co_block_status(BlockDriverState *bs, bool want_zero, int64_t offset,
-                    int64_t bytes, int64_t *pnum, int64_t *map,
+raw_co_block_status(BlockDriverState *bs, unsigned int mode,
+                    int64_t offset, int64_t bytes, int64_t *pnum, int64_t *map,
                     BlockDriverState **file)
 {
     BDRVRawState *s = bs->opaque;
@@ -463,7 +463,7 @@ static int coroutine_fn GRAPH_UNLOCKED
 raw_co_create_opts(BlockDriver *drv, const char *filename,
                    QemuOpts *opts, Error **errp)
 {
-    return bdrv_co_create_file(filename, opts, errp);
+    return bdrv_co_create_file(filename, opts, true, errp);
 }
 
 static int raw_open(BlockDriverState *bs, QDict *options, int flags,

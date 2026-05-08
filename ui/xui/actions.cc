@@ -23,6 +23,7 @@
 #include "../xemu-snapshots.h"
 #include "../xemu-notifications.h"
 #include "snapshot-manager.hh"
+#include <filesystem>
 
 void ActionEjectDisc(void)
 {
@@ -36,21 +37,33 @@ void ActionEjectDisc(void)
 
 void ActionLoadDisc(void)
 {
-    Error *err = NULL;
-
-    const char *iso_file_filters = ".iso Files\0*.iso\0All Files\0*.*\0";
-    const char *new_disc_path =
-        PausedFileOpen(NOC_FILE_DIALOG_OPEN, iso_file_filters,
-                       g_config.sys.files.dvd_path, NULL);
-    if (new_disc_path == NULL) {
-        /* Cancelled */
-        return;
+    static const SDL_DialogFileFilter filters[] = {
+        { "Disc Image Files (*.iso, *.xiso)", "iso;xiso" },
+        { "All Files", "*" }
+    };
+    const char *default_path = g_config.sys.files.dvd_path;
+    if (!default_path || !default_path[0]) {
+        default_path = g_config.general.games_dir;
     }
+    ShowOpenFileDialog(filters, 2, default_path, [](const char *path) {
+        ActionLoadDiscFile(path);
+    });
+}
 
-    xemu_load_disc(new_disc_path, &err);
+void ActionLoadDiscFile(const char *file_path)
+{
+    Error *err = NULL;
+    xemu_load_disc(file_path, &err);
+
     if (err) {
         xemu_queue_error_message(error_get_pretty(err));
         error_free(err);
+    } else {
+        const char *games_dir = g_config.general.games_dir;
+        if (!games_dir || !games_dir[0]) {
+            std::string dir = std::filesystem::path(file_path).parent_path().string();
+            xemu_settings_set_string(&g_config.general.games_dir, dir.c_str());
+        }
     }
 }
 

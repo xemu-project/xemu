@@ -34,7 +34,7 @@
 #include "qapi/error.h"
 #include "qemu/log.h"
 #include "qemu/error-report.h"
-#include "exec/address-spaces.h" /* get_system_memory() */
+#include "system/address-spaces.h" /* get_system_memory() */
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
 #include "hw/ppc/ppc4xx.h"
@@ -425,14 +425,13 @@ static void ppc4xx_sdram_ddr_realize(DeviceState *dev, Error **errp)
                         s, &sdram_ddr_dcr_read, &sdram_ddr_dcr_write);
 }
 
-static Property ppc4xx_sdram_ddr_props[] = {
+static const Property ppc4xx_sdram_ddr_props[] = {
     DEFINE_PROP_LINK("dram", Ppc4xxSdramDdrState, dram_mr, TYPE_MEMORY_REGION,
                      MemoryRegion *),
     DEFINE_PROP_UINT32("nbanks", Ppc4xxSdramDdrState, nbanks, 4),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ppc4xx_sdram_ddr_class_init(ObjectClass *oc, void *data)
+static void ppc4xx_sdram_ddr_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
@@ -710,14 +709,13 @@ static void ppc4xx_sdram_ddr2_realize(DeviceState *dev, Error **errp)
                         s, &sdram_ddr2_dcr_read, &sdram_ddr2_dcr_write);
 }
 
-static Property ppc4xx_sdram_ddr2_props[] = {
+static const Property ppc4xx_sdram_ddr2_props[] = {
     DEFINE_PROP_LINK("dram", Ppc4xxSdramDdr2State, dram_mr, TYPE_MEMORY_REGION,
                      MemoryRegion *),
     DEFINE_PROP_UINT32("nbanks", Ppc4xxSdramDdr2State, nbanks, 4),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ppc4xx_sdram_ddr2_class_init(ObjectClass *oc, void *data)
+static void ppc4xx_sdram_ddr2_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 

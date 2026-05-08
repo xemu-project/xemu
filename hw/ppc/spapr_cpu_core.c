@@ -15,15 +15,15 @@
 #include "target/ppc/cpu.h"
 #include "hw/ppc/spapr.h"
 #include "qapi/error.h"
-#include "sysemu/cpus.h"
-#include "sysemu/kvm.h"
+#include "system/cpus.h"
+#include "system/kvm.h"
 #include "target/ppc/kvm_ppc.h"
 #include "hw/ppc/ppc.h"
 #include "target/ppc/mmu-hash64.h"
 #include "target/ppc/power8-pmu.h"
-#include "sysemu/numa.h"
-#include "sysemu/reset.h"
-#include "sysemu/hw_accel.h"
+#include "system/numa.h"
+#include "system/reset.h"
+#include "system/hw_accel.h"
 #include "qemu/error-report.h"
 
 static void spapr_reset_vcpu(PowerPCCPU *cpu)
@@ -36,6 +36,9 @@ static void spapr_reset_vcpu(PowerPCCPU *cpu)
     SpaprMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
 
     cpu_reset(cs);
+
+    env->quiesced = true; /* set "RTAS stopped" state. */
+    ppc_maybe_interrupt(env);
 
     /*
      * "PowerPC Processor binding to IEEE 1275" defines the initial MSR state
@@ -98,6 +101,9 @@ void spapr_cpu_set_entry_state(PowerPCCPU *cpu, target_ulong nip,
     CPU(cpu)->halted = 0;
     /* Enable Power-saving mode Exit Cause exceptions */
     ppc_store_lpcr(cpu, env->spr[SPR_LPCR] | pcc->lpcr_pm);
+
+    env->quiesced = false; /* clear "RTAS stopped" state. */
+    ppc_maybe_interrupt(env);
 }
 
 /*
@@ -273,6 +279,8 @@ static bool spapr_realize_vcpu(PowerPCCPU *cpu, SpaprMachineState *spapr,
     env->spr_cb[SPR_PIR].default_value = cs->cpu_index;
     env->spr_cb[SPR_TIR].default_value = thread_index;
 
+    env->spr_cb[SPR_HASHPKEYR].default_value = spapr->hashpkey_val;
+
     cpu_ppc_set_1lpar(cpu);
 
     /* Set time-base frequency to 512 MHz. vhyp must be set first. */
@@ -361,12 +369,11 @@ static void spapr_cpu_core_realize(DeviceState *dev, Error **errp)
     }
 }
 
-static Property spapr_cpu_core_properties[] = {
+static const Property spapr_cpu_core_properties[] = {
     DEFINE_PROP_INT32("node-id", SpaprCpuCore, node_id, CPU_UNSET_NUMA_NODE_ID),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void spapr_cpu_core_class_init(ObjectClass *oc, void *data)
+static void spapr_cpu_core_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     SpaprCpuCoreClass *scc = SPAPR_CPU_CORE_CLASS(oc);
@@ -381,7 +388,7 @@ static void spapr_cpu_core_class_init(ObjectClass *oc, void *data)
 #define DEFINE_SPAPR_CPU_CORE_TYPE(cpu_model) \
     {                                                   \
         .parent = TYPE_SPAPR_CPU_CORE,                  \
-        .class_data = (void *) POWERPC_CPU_TYPE_NAME(cpu_model), \
+        .class_data = POWERPC_CPU_TYPE_NAME(cpu_model), \
         .class_init = spapr_cpu_core_class_init,        \
         .name = SPAPR_CPU_CORE_TYPE_NAME(cpu_model),    \
     }

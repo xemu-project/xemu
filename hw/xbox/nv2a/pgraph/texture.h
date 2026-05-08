@@ -64,4 +64,13 @@ hwaddr pgraph_get_texture_palette_phys_addr_length(PGRAPHState *pg, int texture_
 TextureShape pgraph_get_texture_shape(PGRAPHState *pg, int texture_idx);
 size_t pgraph_get_texture_length(PGRAPHState *pg, TextureShape *shape);
 
+static inline float pgraph_convert_lod_bias_to_float(uint32_t lod_bias)
+{
+    int sign_extended_bias = lod_bias;
+    if (lod_bias & (1 << 12)) {
+        sign_extended_bias |= ~NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS;
+    }
+    return (float)sign_extended_bias / 256.f;
+}
+
 #endif

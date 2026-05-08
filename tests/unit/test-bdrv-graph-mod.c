@@ -22,7 +22,7 @@
 #include "qapi/error.h"
 #include "qemu/main-loop.h"
 #include "block/block_int.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 
 static BlockDriver bdrv_pass_through = {
     .format_name = "pass-through",
@@ -137,7 +137,7 @@ static void test_update_perm_tree(void)
 
     blk_insert_bs(root, bs, &error_abort);
 
-    bdrv_graph_wrlock();
+    bdrv_graph_wrlock_drained();
     bdrv_attach_child(filter, bs, "child", &child_of_bds,
                       BDRV_CHILD_DATA, &error_abort);
     bdrv_graph_wrunlock();
@@ -202,9 +202,9 @@ static void test_should_update_child(void)
 
     blk_insert_bs(root, bs, &error_abort);
 
+    bdrv_graph_wrlock_drained();
     bdrv_set_backing_hd(target, bs, &error_abort);
 
-    bdrv_graph_wrlock();
     g_assert(target->backing->bs == bs);
     bdrv_attach_child(filter, target, "target", &child_of_bds,
                       BDRV_CHILD_DATA, &error_abort);
@@ -244,7 +244,7 @@ static void test_parallel_exclusive_write(void)
     bdrv_ref(base);
     bdrv_ref(fl1);
 
-    bdrv_graph_wrlock();
+    bdrv_graph_wrlock_drained();
     bdrv_attach_child(top, fl1, "backing", &child_of_bds,
                       BDRV_CHILD_FILTERED | BDRV_CHILD_PRIMARY,
                       &error_abort);
@@ -363,7 +363,7 @@ static void test_parallel_perm_update(void)
      */
     bdrv_ref(base);
 
-    bdrv_graph_wrlock();
+    bdrv_graph_wrlock_drained();
     bdrv_attach_child(top, ws, "file", &child_of_bds, BDRV_CHILD_DATA,
                       &error_abort);
     c_fl1 = bdrv_attach_child(ws, fl1, "first", &child_of_bds,
@@ -430,7 +430,7 @@ static void test_append_greedy_filter(void)
     BlockDriverState *base = no_perm_node("base");
     BlockDriverState *fl = exclusive_writer_node("fl1");
 
-    bdrv_graph_wrlock();
+    bdrv_graph_wrlock_drained();
     bdrv_attach_child(top, base, "backing", &child_of_bds,
                       BDRV_CHILD_FILTERED | BDRV_CHILD_PRIMARY,
                       &error_abort);

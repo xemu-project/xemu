@@ -24,8 +24,9 @@
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
-#include "sysemu/hw_accel.h"
+#include "system/hw_accel.h"
 #include "cpu.h"
+#include "exec/target_page.h"
 
 static int virt_to_phys(vaddr vaddr, hwaddr *phys_addr)
 {

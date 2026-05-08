@@ -28,7 +28,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
-#include "sysemu/dma.h"
+#include "system/dma.h"
 #include "hw/dma/sifive_pdma.h"
 
 #define DMA_CONTROL         0x000
@@ -152,7 +152,6 @@ done:
 error:
     s->chan[ch].state = DMA_CHAN_STATE_ERROR;
     s->chan[ch].control |= CONTROL_ERR;
-    return;
 }
 
 static inline void sifive_pdma_update_irq(SiFivePDMAState *s, int ch)
@@ -465,7 +464,7 @@ static void sifive_pdma_realize(DeviceState *dev, Error **errp)
     }
 }
 
-static void sifive_pdma_class_init(ObjectClass *klass, void *data)
+static void sifive_pdma_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

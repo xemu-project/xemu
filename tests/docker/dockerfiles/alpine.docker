@@ -1,10 +1,10 @@
 # THIS FILE WAS AUTO-GENERATED
 #
-#  $ lcitool dockerfile --layers all alpine-319 qemu
+#  $ lcitool dockerfile --layers all alpine-321 qemu
 #
 # https://gitlab.com/libvirt/libvirt-ci
 
-FROM docker.io/library/alpine:3.19
+FROM docker.io/library/alpine:3.21
 
 RUN apk update && \
     apk upgrade && \
@@ -22,6 +22,7 @@ RUN apk update && \
         ceph-dev \
         clang \
         cmocka-dev \
+        coreutils \
         ctags \
         curl-dev \
         cyrus-sasl-dev \
@@ -78,7 +79,7 @@ RUN apk update && \
         nmap-ncat \
         numactl-dev \
         openssh-client \
-        pcre-dev \
+        pcre2-dev \
         pipewire-dev \
         pixman-dev \
         pkgconf \
@@ -111,6 +112,7 @@ RUN apk update && \
         vde2-dev \
         virglrenderer-dev \
         vte3-dev \
+        vulkan-tools \
         which \
         xen-dev \
         xorriso \
@@ -125,13 +127,17 @@ RUN apk update && \
     ln -s /usr/bin/ccache /usr/libexec/ccache-wrappers/clang && \
     ln -s /usr/bin/ccache /usr/libexec/ccache-wrappers/gcc
 
-ENV CCACHE_WRAPPERSDIR "/usr/libexec/ccache-wrappers"
-ENV LANG "en_US.UTF-8"
-ENV MAKE "/usr/bin/make"
-ENV NINJA "/usr/bin/ninja"
-ENV PYTHON "/usr/bin/python3"
+ENV CCACHE_WRAPPERSDIR="/usr/libexec/ccache-wrappers"
+ENV LANG="en_US.UTF-8"
+ENV MAKE="/usr/bin/make"
+ENV NINJA="/usr/bin/ninja"
+ENV PYTHON="/usr/bin/python3"
+# https://gitlab.alpinelinux.org/alpine/aports/-/issues/17463
+RUN apk add clang19-libclang
 # As a final step configure the user (if env is defined)
 ARG USER
 ARG UID
 RUN if [ "${USER}" ]; then \
   id ${USER} 2>/dev/null || useradd -u ${UID} -U ${USER}; fi
+
+ENV ENABLE_RUST 1

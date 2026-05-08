@@ -41,6 +41,7 @@ typedef struct VirtualGfxConsole {
     DisplaySurface *ds;
     pixman_image_t *convert;
     cairo_surface_t *surface;
+    double preferred_scale;
     double scale_x;
     double scale_y;
 #if defined(CONFIG_OPENGL)
@@ -140,6 +141,7 @@ struct GtkDisplayState {
     GdkCursor *null_cursor;
     Notifier mouse_mode_notifier;
     gboolean free_scale;
+    gboolean keep_aspect_ratio;
 
     bool external_pause_update;
 
@@ -223,5 +225,7 @@ int gd_gl_area_make_current(DisplayGLCtx *dgc,
 
 /* gtk-clipboard.c */
 void gd_clipboard_init(GtkDisplayState *gd);
+
+void gd_update_scale(VirtualConsole *vc, int ww, int wh, int fbw, int fbh);
 
 #endif /* UI_GTK_H */

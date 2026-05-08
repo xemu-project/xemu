@@ -19,7 +19,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/units.h"
-#include "exec/address-spaces.h"
+#include "system/address-spaces.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "hw/boards.h"
@@ -27,6 +27,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/arm/allwinner-r40.h"
 #include "hw/arm/boot.h"
+#include "hw/arm/machines-qom.h"
 
 static struct arm_boot_info bpim2u_binfo;
 
@@ -141,6 +142,7 @@ static void bpim2u_machine_init(MachineClass *mc)
     mc->valid_cpu_types = valid_cpu_types;
     mc->default_ram_size = 1 * GiB;
     mc->default_ram_id = "bpim2u.ram";
+    mc->auto_create_sdcard = true;
 }
 
-DEFINE_MACHINE("bpim2u", bpim2u_machine_init)
+DEFINE_MACHINE_ARM("bpim2u", bpim2u_machine_init)

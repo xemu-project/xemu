@@ -137,11 +137,7 @@ static void init_render_to_texture(PGRAPHState *pg)
         "layout(location = 0) out vec4 out_Color;\n"
         "void main()\n"
         "{\n"
-        "    vec2 texCoord;\n"
-        "    texCoord.x = gl_FragCoord.x;\n"
-        "    texCoord.y = (surface_size.y - gl_FragCoord.y)\n"
-        "                 + (textureSize(tex,0).y - surface_size.y);\n"
-        "    texCoord /= textureSize(tex,0).xy;\n"
+        "    vec2 texCoord = gl_FragCoord.xy / textureSize(tex, 0).xy;\n"
         "    out_Color.rgba = texture(tex, texCoord);\n"
         "}\n";
 
@@ -298,7 +294,7 @@ static void render_surface_to_texture_slow(NV2AState *d,
     size_t bufsize = width * height * surface->fmt.bytes_per_pixel;
 
     uint8_t *buf = g_malloc(bufsize);
-    surface_download_to_buffer(d, surface, false, true, false, buf);
+    surface_download_to_buffer(d, surface, false, false, false, buf);
 
     width = texture_shape->width;
     height = texture_shape->height;
@@ -417,16 +413,52 @@ bool pgraph_gl_check_surface_to_texture_compatibility(
     return false;
 }
 
-static void wait_for_surface_download(SurfaceBinding *e)
+static bool check_surface_overlaps_range(const SurfaceBinding *surface,
+                                         hwaddr range_start, hwaddr range_len)
 {
-    NV2AState *d = g_nv2a;
-    PGRAPHState *pg = &d->pgraph;
-    PGRAPHGLState *r = pg->gl_renderer_state;
+    hwaddr surface_end = surface->vram_addr + surface->size;
+    hwaddr range_end = range_start + range_len;
+    return !(surface->vram_addr >= range_end || range_start >= surface_end);
+}
 
-    if (qatomic_read(&e->draw_dirty)) {
+static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
+                                    hwaddr len, bool write)
+{
+    NV2AState *d = (NV2AState *)opaque;
+    qemu_mutex_lock(&d->pgraph.lock);
+
+    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
+    bool wait_for_downloads = false;
+
+    SurfaceBinding *surface;
+    QTAILQ_FOREACH(surface, &r->surfaces, entry) {
+        if (!check_surface_overlaps_range(surface, addr, len)) {
+            continue;
+        }
+
+        hwaddr offset = addr - surface->vram_addr;
+
+        if (write) {
+            trace_nv2a_pgraph_surface_cpu_write(surface->vram_addr, offset);
+        } else {
+            trace_nv2a_pgraph_surface_cpu_read(surface->vram_addr, offset);
+        }
+
+        if (surface->draw_dirty) {
+            surface->download_pending = true;
+            wait_for_downloads = true;
+        }
+
+        if (write) {
+            surface->upload_pending = true;
+        }
+    }
+
+    qemu_mutex_unlock(&d->pgraph.lock);
+
+    if (wait_for_downloads) {
         qemu_mutex_lock(&d->pfifo.lock);
         qemu_event_reset(&r->downloads_complete);
-        qatomic_set(&e->download_pending, true);
         qatomic_set(&r->downloads_pending, true);
         pfifo_kick(d);
         qemu_mutex_unlock(&d->pfifo.lock);
@@ -434,22 +466,48 @@ static void wait_for_surface_download(SurfaceBinding *e)
     }
 }
 
-static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
-                                    hwaddr len, bool write)
+static void register_cpu_access_callback(NV2AState *d, SurfaceBinding *surface)
 {
-    SurfaceBinding *e = opaque;
-    assert(addr >= e->vram_addr);
-    hwaddr offset = addr - e->vram_addr;
-    assert(offset < e->size);
-
-    if (qatomic_read(&e->draw_dirty)) {
-        trace_nv2a_pgraph_surface_cpu_access(e->vram_addr, offset);
-        wait_for_surface_download(e);
+    if (tcg_enabled()) {
+        if (surface->width && surface->height) {
+            surface->access_cb = mem_access_callback_insert(
+                qemu_get_cpu(0), d->vram, surface->vram_addr, surface->size,
+                &surface_access_callback, d);
+        } else {
+            surface->access_cb = NULL;
+        }
     }
+}
 
-    if (write && !qatomic_read(&e->upload_pending)) {
-        trace_nv2a_pgraph_surface_cpu_access(e->vram_addr, offset);
-        qatomic_set(&e->upload_pending, true);
+static void unregister_cpu_access_callback(NV2AState *d,
+                                           SurfaceBinding const *surface)
+{
+    if (tcg_enabled()) {
+        mem_access_callback_remove_by_ref(qemu_get_cpu(0), surface->access_cb);
+    }
+}
+
+static bool check_surfaces_overlap(const SurfaceBinding *surface,
+                                   const SurfaceBinding *other_surface)
+{
+    return check_surface_overlaps_range(surface, other_surface->vram_addr,
+                                        other_surface->size);
+}
+
+static void invalidate_overlapping_surfaces(NV2AState *d, SurfaceBinding *surface)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
+
+    SurfaceBinding *other_surface, *next_surface;
+    QTAILQ_FOREACH_SAFE(other_surface, &r->surfaces, entry, next_surface) {
+        if (check_surfaces_overlap(surface, other_surface)) {
+            trace_nv2a_pgraph_surface_evict_overlapping(
+                other_surface->vram_addr, other_surface->width, other_surface->height,
+                other_surface->pitch);
+            pgraph_gl_surface_download_if_dirty(d, other_surface);
+            pgraph_gl_surface_invalidate(d, other_surface);
+        }
     }
 }
 
@@ -461,35 +519,13 @@ static SurfaceBinding *surface_put(NV2AState *d, hwaddr addr,
 
     assert(pgraph_gl_surface_get(d, addr) == NULL);
 
-    SurfaceBinding *surface, *next;
-    uintptr_t e_end = surface_in->vram_addr + surface_in->size - 1;
-    QTAILQ_FOREACH_SAFE(surface, &r->surfaces, entry, next) {
-        uintptr_t s_end = surface->vram_addr + surface->size - 1;
-        bool overlapping = !(surface->vram_addr > e_end
-                             || surface_in->vram_addr > s_end);
-        if (overlapping) {
-            trace_nv2a_pgraph_surface_evict_overlapping(
-                surface->vram_addr, surface->width, surface->height,
-                surface->pitch);
-            pgraph_gl_surface_download_if_dirty(d, surface);
-            pgraph_gl_surface_invalidate(d, surface);
-        }
-    }
+    invalidate_overlapping_surfaces(d, surface_in);
 
     SurfaceBinding *surface_out = g_malloc(sizeof(SurfaceBinding));
     assert(surface_out != NULL);
     *surface_out = *surface_in;
 
-    if (tcg_enabled()) {
-        qemu_mutex_unlock(&d->pgraph.lock);
-        bql_lock();
-        mem_access_callback_insert(qemu_get_cpu(0),
-            d->vram, surface_out->vram_addr, surface_out->size,
-            &surface_out->access_cb, &surface_access_callback,
-            surface_out);
-        bql_unlock();
-        qemu_mutex_lock(&d->pgraph.lock);
-    }
+    register_cpu_access_callback(d, surface_out);
 
     QTAILQ_INSERT_TAIL(&r->surfaces, surface_out, entry);
 
@@ -543,13 +579,7 @@ void pgraph_gl_surface_invalidate(NV2AState *d, SurfaceBinding *surface)
         pgraph_gl_unbind_surface(d, false);
     }
 
-    if (tcg_enabled()) {
-        qemu_mutex_unlock(&d->pgraph.lock);
-        bql_lock();
-        mem_access_callback_remove_by_ref(qemu_get_cpu(0), surface->access_cb);
-        bql_unlock();
-        qemu_mutex_lock(&d->pgraph.lock);
-    }
+    unregister_cpu_access_callback(d, surface);
 
     glDeleteTextures(1, &surface->gl_buffer);
 
@@ -582,9 +612,7 @@ static bool check_surface_compatibility(SurfaceBinding *s1, SurfaceBinding *s2,
         (s1->color == s2->color) &&
         (s1->fmt.gl_attachment == s2->fmt.gl_attachment) &&
         (s1->fmt.gl_internal_format == s2->fmt.gl_internal_format) &&
-        (s1->pitch == s2->pitch) &&
-        (s1->shape.clip_x <= s2->shape.clip_x) &&
-        (s1->shape.clip_y <= s2->shape.clip_y);
+        (s1->pitch == s2->pitch);
     if (!format_compatible) {
         return false;
     }
@@ -660,6 +688,10 @@ static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
     swizzle &= surface->swizzle;
     downscale &= (pg->surface_scale_factor != 1);
 
+    if (!surface->width || !surface->height) {
+        return;
+    }
+
     trace_nv2a_pgraph_surface_download(
         surface->color ? "COLOR" : "ZETA",
         surface->swizzle ? "sz" : "lin", surface->vram_addr,
@@ -732,7 +764,8 @@ static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
 
 static void surface_download(NV2AState *d, SurfaceBinding *surface, bool force)
 {
-    if (!(surface->download_pending || force)) {
+    if (!(surface->download_pending || force) || !surface->width ||
+        !surface->height) {
         return;
     }
 
@@ -740,7 +773,7 @@ static void surface_download(NV2AState *d, SurfaceBinding *surface, bool force)
 
     nv2a_profile_inc_counter(NV2A_PROF_SURF_DOWNLOAD);
 
-    surface_download_to_buffer(d, surface, true, true, true,
+    surface_download_to_buffer(d, surface, true, false, true,
                                d->vram_ptr + surface->vram_addr);
 
     memory_region_set_client_dirty(d->vram, surface->vram_addr,
@@ -853,6 +886,10 @@ void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     surface->upload_pending = false;
     surface->draw_time = pg->draw_time;
 
+    if (!surface->width || !surface->height) {
+        return;
+    }
+
     // FIXME: Don't query GL for texture binding
     GLint last_texture_binding;
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture_binding);
@@ -877,20 +914,26 @@ void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                        surface->fmt.bytes_per_pixel);
     }
 
-    /* FIXME: Replace this flip/scaling */
+    /* FIXME: Replace this scaling */
 
     // This is VRAM so we can't do this inplace!
-    uint8_t *flipped_buf = (uint8_t *)g_malloc(
-        surface->height * surface->width * surface->fmt.bytes_per_pixel);
-    unsigned int irow;
-    for (irow = 0; irow < surface->height; irow++) {
-        memcpy(&flipped_buf[surface->width * (surface->height - irow - 1)
-                                 * surface->fmt.bytes_per_pixel],
-               &buf[surface->pitch * irow],
-               surface->width * surface->fmt.bytes_per_pixel);
+    uint8_t *optimal_buf = buf;
+    unsigned int optimal_pitch = surface->width * surface->fmt.bytes_per_pixel;
+
+    if (surface->pitch != optimal_pitch) {
+        optimal_buf = (uint8_t *)g_malloc(surface->height * optimal_pitch);
+
+        uint8_t *src = buf;
+        uint8_t *dst = optimal_buf;
+        unsigned int irow;
+        for (irow = 0; irow < surface->height; irow++) {
+            memcpy(dst, src, optimal_pitch);
+            src += surface->pitch;
+            dst += optimal_pitch;
+        }
     }
 
-    uint8_t *gl_read_buf = flipped_buf;
+    uint8_t *gl_read_buf = optimal_buf;
     unsigned int width = surface->width, height = surface->height;
 
     if (pg->surface_scale_factor > 1) {
@@ -898,7 +941,7 @@ void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         pg->scale_buf = (uint8_t *)g_realloc(
             pg->scale_buf, width * height * surface->fmt.bytes_per_pixel);
         gl_read_buf = pg->scale_buf;
-        uint8_t *out = gl_read_buf, *in = flipped_buf;
+        uint8_t *out = gl_read_buf, *in = optimal_buf;
         surface_copy_expand(out, in, surface->width, surface->height,
                             surface->fmt.bytes_per_pixel,
                             d->pgraph.surface_scale_factor);
@@ -917,7 +960,9 @@ void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                  height, 0, surface->fmt.gl_format, surface->fmt.gl_type,
                  gl_read_buf);
     glPixelStorei(GL_UNPACK_ALIGNMENT, prev_unpack_alignment);
-    g_free(flipped_buf);
+    if (optimal_buf != buf) {
+        g_free(optimal_buf);
+    }
     if (surface->swizzle) {
         g_free(buf);
     }
@@ -1177,7 +1222,8 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            unsigned int width = entry.width, height = entry.height;
+            unsigned int width = entry.width ? entry.width : 1;
+            unsigned int height = entry.height ? entry.height : 1;
             pgraph_apply_scaling_factor(pg, &width, &height);
             glTexImage2D(GL_TEXTURE_2D, 0, entry.fmt.gl_internal_format, width,
                          height, 0, entry.fmt.gl_format, entry.fmt.gl_type,

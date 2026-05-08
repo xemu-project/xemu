@@ -19,10 +19,10 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
-#include "exec/exec-all.h"
 #include "exec/page-protection.h"
 #include "qemu/error-report.h"
-#include "sysemu/kvm.h"
+#include "system/kvm.h"
+#include "system/memory.h"
 #include "kvm_ppc.h"
 #include "exec/log.h"
 #include "internal.h"
@@ -569,6 +569,20 @@ static int ppc_radix64_process_scoped_xlate(PowerPCCPU *cpu,
             return ret;
         }
         prtbe0 = ldq_phys(cs->as, h_raddr);
+    }
+
+    /*
+     * Some Linux uses a zero process table entry in PID!=0 for kernel context
+     * without userspace in order to fault on NULL dereference, because using
+     * PIDR=0 for the kernel causes the Q0 page table to be used to translate
+     * Q3 as well. Check for that case here to avoid the invalid configuration
+     * message.
+     */
+    if (unlikely(!prtbe0)) {
+        if (guest_visible) {
+            ppc_radix64_raise_si(cpu, access_type, eaddr, DSISR_R_BADCONFIG);
+        }
+        return 1;
     }
 
     /* Walk Radix Tree from Process Table Entry to Convert EA to RA */

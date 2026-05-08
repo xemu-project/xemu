@@ -26,10 +26,10 @@
 #include "cpu.h"
 #include "cpu-models.h"
 #include "qemu/timer.h"
-#include "sysemu/hw_accel.h"
+#include "system/hw_accel.h"
 #include "kvm_ppc.h"
-#include "sysemu/cpus.h"
-#include "sysemu/device_tree.h"
+#include "system/cpus.h"
+#include "system/device_tree.h"
 #include "mmu-hash64.h"
 
 #include "hw/ppc/spapr.h"
@@ -37,19 +37,19 @@
 #include "hw/hw.h"
 #include "hw/ppc/ppc.h"
 #include "migration/qemu-file-types.h"
-#include "sysemu/watchdog.h"
+#include "system/watchdog.h"
 #include "trace.h"
 #include "gdbstub/enums.h"
 #include "exec/memattrs.h"
-#include "exec/ram_addr.h"
-#include "sysemu/hostmem.h"
+#include "system/ram_addr.h"
+#include "system/hostmem.h"
 #include "qemu/cutils.h"
 #include "qemu/main-loop.h"
 #include "qemu/mmap-alloc.h"
 #include "elf.h"
-#include "sysemu/kvm_int.h"
-#include "sysemu/kvm.h"
-#include "hw/core/accel-cpu.h"
+#include "system/kvm_int.h"
+#include "system/kvm.h"
+#include "accel/accel-cpu-target.h"
 
 #include CONFIG_DEVICES
 
@@ -92,6 +92,7 @@ static int cap_large_decr;
 static int cap_fwnmi;
 static int cap_rpt_invalidate;
 static int cap_ail_mode_3;
+static int cap_dawr1;
 
 #ifdef CONFIG_PSERIES
 static int cap_papr;
@@ -152,6 +153,7 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
     cap_ppc_nested_kvm_hv = kvm_vm_check_extension(s, KVM_CAP_PPC_NESTED_HV);
     cap_large_decr = kvmppc_get_dec_bits();
     cap_fwnmi = kvm_vm_check_extension(s, KVM_CAP_PPC_FWNMI);
+    cap_dawr1 = kvm_vm_check_extension(s, KVM_CAP_PPC_DAWR1);
     /*
      * Note: setting it to false because there is not such capability
      * in KVM at this moment.
@@ -475,6 +477,11 @@ static void kvmppc_hw_debug_points_init(CPUPPCState *cenv)
         fprintf(stderr, "Error initializing h/w breakpoints\n");
         return;
     }
+}
+
+int kvm_arch_pre_create_vcpu(CPUState *cpu, Error **errp)
+{
+    return 0;
 }
 
 int kvm_arch_init_vcpu(CPUState *cs)
@@ -900,7 +907,7 @@ int kvmppc_put_books_sregs(PowerPCCPU *cpu)
     return kvm_vcpu_ioctl(CPU(cpu), KVM_SET_SREGS, &sregs);
 }
 
-int kvm_arch_put_registers(CPUState *cs, int level, Error **errp)
+int kvm_arch_put_registers(CPUState *cs, KvmPutState level, Error **errp)
 {
     PowerPCCPU *cpu = POWERPC_CPU(cs);
     CPUPPCState *env = &cpu->env;
@@ -1330,7 +1337,6 @@ int kvmppc_set_interrupt(PowerPCCPU *cpu, int irq, int level)
 
 void kvm_arch_pre_run(CPUState *cs, struct kvm_run *run)
 {
-    return;
 }
 
 MemTxAttrs kvm_arch_post_run(CPUState *cs, struct kvm_run *run)
@@ -1348,7 +1354,7 @@ static int kvmppc_handle_halt(PowerPCCPU *cpu)
     CPUState *cs = CPU(cpu);
     CPUPPCState *env = &cpu->env;
 
-    if (!(cs->interrupt_request & CPU_INTERRUPT_HARD) &&
+    if (!cpu_test_interrupt(cs, CPU_INTERRUPT_HARD) &&
         FIELD_EX64(env->msr, MSR, EE)) {
         cs->halted = 1;
         cs->exception_index = EXCP_HLT;
@@ -1858,17 +1864,6 @@ uint32_t kvmppc_get_tbfreq(void)
     return cached_tbfreq;
 }
 
-bool kvmppc_get_host_serial(char **value)
-{
-    return g_file_get_contents("/proc/device-tree/system-id", value, NULL,
-                               NULL);
-}
-
-bool kvmppc_get_host_model(char **value)
-{
-    return g_file_get_contents("/proc/device-tree/model", value, NULL, NULL);
-}
-
 /* Try to find a device tree node for a CPU with clock-frequency property */
 static int kvmppc_find_cpu_dt(char *buf, int buf_len)
 {
@@ -2112,6 +2107,16 @@ int kvmppc_set_fwnmi(PowerPCCPU *cpu)
     CPUState *cs = CPU(cpu);
 
     return kvm_vcpu_enable_cap(cs, KVM_CAP_PPC_FWNMI, 0);
+}
+
+bool kvmppc_has_cap_dawr1(void)
+{
+    return !!cap_dawr1;
+}
+
+int kvmppc_set_cap_dawr1(int enable)
+{
+    return kvm_vm_enable_cap(kvm_state, KVM_CAP_PPC_DAWR1, 0, enable);
 }
 
 int kvmppc_smt_threads(void)
@@ -2372,7 +2377,7 @@ static bool kvmppc_cpu_realize(CPUState *cs, Error **errp)
     return true;
 }
 
-static void kvmppc_host_cpu_class_init(ObjectClass *oc, void *data)
+static void kvmppc_host_cpu_class_init(ObjectClass *oc, const void *data)
 {
     PowerPCCPUClass *pcc = POWERPC_CPU_CLASS(oc);
     uint32_t dcache_size = kvmppc_read_int_cpu_dt("d-cache-size");
@@ -2633,7 +2638,7 @@ static int kvm_ppc_register_host_cpu_type(void)
         return -1;
     }
     type_info.parent = object_class_get_name(OBJECT_CLASS(pvr_pcc));
-    type_register(&type_info);
+    type_register_static(&type_info);
     /* override TCG default cpu type with 'host' cpu model */
     object_class_foreach(pseries_machine_class_fixup, TYPE_SPAPR_MACHINE,
                          false, NULL);
@@ -2744,11 +2749,11 @@ int kvmppc_save_htab(QEMUFile *f, int fd, size_t bufsize, int64_t max_ns)
 int kvmppc_load_htab_chunk(QEMUFile *f, int fd, uint32_t index,
                            uint16_t n_valid, uint16_t n_invalid, Error **errp)
 {
-    struct kvm_get_htab_header *buf;
-    size_t chunksize = sizeof(*buf) + n_valid * HASH_PTE_SIZE_64;
+    size_t chunksize = sizeof(struct kvm_get_htab_header)
+                       + n_valid * HASH_PTE_SIZE_64;
+    g_autofree struct kvm_get_htab_header *buf = g_malloc(chunksize);
     ssize_t rc;
 
-    buf = alloca(chunksize);
     buf->index = index;
     buf->n_valid = n_valid;
     buf->n_invalid = n_invalid;
@@ -2993,7 +2998,7 @@ void kvm_arch_accel_class_init(ObjectClass *oc)
 {
 }
 
-static void kvm_cpu_accel_class_init(ObjectClass *oc, void *data)
+static void kvm_cpu_accel_class_init(ObjectClass *oc, const void *data)
 {
     AccelCPUClass *acc = ACCEL_CPU_CLASS(oc);
 

@@ -139,6 +139,12 @@ struct DeviceClass {
     const Property *props_;
 
     /**
+     * @props_count_: number of elements in @props_; should only be
+     * assigned by using device_class_set_props().
+     */
+    uint16_t props_count_;
+
+    /**
      * @user_creatable: Can user instantiate with -device / device_add?
      *
      * All devices should support instantiation with device_add, and
@@ -242,10 +248,6 @@ struct DeviceState {
      * @pending_deleted_expires_ms: optional timeout for deletion events
      */
     int64_t pending_deleted_expires_ms;
-    /**
-     * @opts: QDict of options for the device
-     */
-    QDict *opts;
     /**
      * @hotplugged: was device added after PHASE_MACHINE_READY?
      */
@@ -538,7 +540,8 @@ void qdev_set_legacy_instance_id(DeviceState *dev, int alias_id,
                                  int required_for_version);
 HotplugHandler *qdev_get_bus_hotplug_handler(DeviceState *dev);
 HotplugHandler *qdev_get_machine_hotplug_handler(DeviceState *dev);
-bool qdev_hotplug_allowed(DeviceState *dev, Error **errp);
+bool qdev_hotplug_allowed(DeviceState *dev, BusState *bus, Error **errp);
+bool qdev_hotunplug_allowed(DeviceState *dev, Error **errp);
 
 /**
  * qdev_get_hotplug_handler() - Get handler responsible for device wiring
@@ -722,7 +725,8 @@ void qdev_connect_gpio_out_named(DeviceState *dev, const char *name, int n,
  *
  * Return: qemu_irq associated with GPIO or NULL if un-wired.
  */
-qemu_irq qdev_get_gpio_out_connector(DeviceState *dev, const char *name, int n);
+qemu_irq qdev_get_gpio_out_connector(const DeviceState *dev,
+                                     const char *name, int n);
 
 /**
  * qdev_intercept_gpio_out: Intercept an existing GPIO connection
@@ -935,13 +939,38 @@ char *qdev_get_own_fw_dev_path_from_handler(BusState *bus, DeviceState *dev);
 /**
  * device_class_set_props(): add a set of properties to an device
  * @dc: the parent DeviceClass all devices inherit
- * @props: an array of properties, terminate by DEFINE_PROP_END_OF_LIST()
+ * @props: an array of properties
+ *
+ * This will add a set of properties to the object. It will fault if
+ * you attempt to add an existing property defined by a parent class.
+ * To modify an inherited property you need to use????
+ *
+ * Validate that @props has at least one Property.
+ * Validate that @props is an array, not a pointer, via ARRAY_SIZE.
+ * Validate that the array does not have a legacy terminator at compile-time;
+ * requires -O2 and the array to be const.
+ */
+#define device_class_set_props(dc, props) \
+    do {                                                                \
+        QEMU_BUILD_BUG_ON(sizeof(props) == 0);                          \
+        size_t props_count_ = ARRAY_SIZE(props);                        \
+        if ((props)[props_count_ - 1].name == NULL) {                   \
+            qemu_build_not_reached();                                   \
+        }                                                               \
+        device_class_set_props_n((dc), (props), props_count_);          \
+    } while (0)
+
+/**
+ * device_class_set_props_n(): add a set of properties to an device
+ * @dc: the parent DeviceClass all devices inherit
+ * @props: an array of properties
+ * @n: ARRAY_SIZE(@props)
  *
  * This will add a set of properties to the object. It will fault if
  * you attempt to add an existing property defined by a parent class.
  * To modify an inherited property you need to use????
  */
-void device_class_set_props(DeviceClass *dc, const Property *props);
+void device_class_set_props_n(DeviceClass *dc, const Property *props, size_t n);
 
 /**
  * device_class_set_parent_realize() - set up for chaining realize fns
@@ -997,6 +1026,26 @@ void qdev_assert_realized_properly(void);
 Object *qdev_get_machine(void);
 
 /**
+ * qdev_create_fake_machine(): Create a fake machine container.
+ *
+ * .. note::
+ *    This function is a kludge for user emulation (USER_ONLY)
+ *    because when thread (TYPE_CPU) are realized, qdev_realize()
+ *    access a machine container.
+ */
+void qdev_create_fake_machine(void);
+
+/**
+ * machine_get_container:
+ * @name: The name of container to lookup
+ *
+ * Get a container of the machine (QOM path "/machine/NAME").
+ *
+ * Returns: the machine container object.
+ */
+Object *machine_get_container(const char *name);
+
+/**
  * qdev_get_human_name() - Return a human-readable name for a device
  * @dev: The device. Must be a valid and non-NULL pointer.
  *
@@ -1016,6 +1065,7 @@ bool qdev_set_parent_bus(DeviceState *dev, BusState *bus, Error **errp);
 extern bool qdev_hot_removed;
 
 char *qdev_get_dev_path(DeviceState *dev);
+const char *qdev_get_printable_name(DeviceState *dev);
 
 void qbus_set_hotplug_handler(BusState *bus, Object *handler);
 void qbus_set_bus_hotplug_handler(BusState *bus);

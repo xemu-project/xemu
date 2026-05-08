@@ -22,32 +22,79 @@
  * THE SOFTWARE.
  */
 
+#ifndef XBOX
+
 #include "qemu/osdep.h"
 #include "qemu-main.h"
-#include "sysemu/sysemu.h"
+#include "qemu/main-loop.h"
+#include "system/replay.h"
+#include "system/system.h"
 
-#ifndef XBOX
 #ifdef CONFIG_SDL
+/*
+ * SDL insists on wrapping the main() function with its own implementation on
+ * some platforms; it does so via a macro that renames our main function, so
+ * <SDL.h> must be #included here even with no SDL code called from this file.
+ */
 #include <SDL.h>
 #endif
+
+#ifdef CONFIG_DARWIN
+#include <CoreFoundation/CoreFoundation.h>
 #endif
 
-int qemu_default_main(void)
+static void *qemu_default_main(void *opaque)
 {
     int status;
 
+    replay_mutex_lock();
+    bql_lock();
     status = qemu_main_loop();
     qemu_cleanup(status);
+    bql_unlock();
+    replay_mutex_unlock();
 
-    return status;
+    exit(status);
 }
 
-int (*qemu_main)(void) = qemu_default_main;
+int (*qemu_main)(void);
 
-#ifndef XBOX
+#ifdef CONFIG_DARWIN
+static int os_darwin_cfrunloop_main(void)
+{
+    CFRunLoopRun();
+    g_assert_not_reached();
+}
+int (*qemu_main)(void) = os_darwin_cfrunloop_main;
+#endif
+
 int main(int argc, char **argv)
 {
     qemu_init(argc, argv);
-    return qemu_main();
+
+    /*
+     * qemu_init acquires the BQL and replay mutex lock. BQL is acquired when
+     * initializing cpus, to block associated threads until initialization is
+     * complete. Replay_mutex lock is acquired on initialization, because it
+     * must be held when configuring icount_mode.
+     *
+     * On MacOS, qemu main event loop runs in a background thread, as main
+     * thread must be reserved for UI. Thus, we need to transfer lock ownership,
+     * and the simplest way to do that is to release them, and reacquire them
+     * from qemu_default_main.
+     */
+    bql_unlock();
+    replay_mutex_unlock();
+
+    if (qemu_main) {
+        QemuThread main_loop_thread;
+        qemu_thread_create(&main_loop_thread, "qemu_main",
+                           qemu_default_main, NULL, QEMU_THREAD_DETACHED);
+        return qemu_main();
+    } else {
+        qemu_default_main(NULL);
+        g_assert_not_reached();
+    }
 }
+
 #endif

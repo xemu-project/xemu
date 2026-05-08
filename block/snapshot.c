@@ -27,10 +27,10 @@
 #include "block/block_int.h"
 #include "block/qdict.h"
 #include "qapi/error.h"
-#include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qstring.h"
+#include "qobject/qdict.h"
+#include "qobject/qstring.h"
 #include "qemu/option.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 
 QemuOptsList internal_snapshot_opts = {
     .name = "snapshot",
@@ -291,11 +291,12 @@ int bdrv_snapshot_goto(BlockDriverState *bs,
         }
 
         /* .bdrv_open() will re-attach it */
-        bdrv_graph_wrlock();
+        bdrv_graph_wrlock_drained();
         bdrv_unref_child(bs, fallback);
         bdrv_graph_wrunlock();
 
         ret = bdrv_snapshot_goto(fallback_bs, snapshot_id, errp);
+        memset(bs->opaque, 0, drv->instance_size);
         open_ret = drv->bdrv_open(bs, options, bs->open_flags, &local_err);
         qobject_unref(options);
         if (open_ret < 0) {
@@ -326,7 +327,7 @@ int bdrv_snapshot_goto(BlockDriverState *bs,
 
 /**
  * Delete an internal snapshot by @snapshot_id and @name.
- * @bs: block device used in the operation
+ * @bs: block device used in the operation, must be drained
  * @snapshot_id: unique snapshot ID, or NULL
  * @name: snapshot name, or NULL
  * @errp: location to store error
@@ -357,6 +358,8 @@ int bdrv_snapshot_delete(BlockDriverState *bs,
 
     GLOBAL_STATE_CODE();
 
+    assert(bs->quiesce_counter > 0);
+
     if (!drv) {
         error_setg(errp, "Device '%s' has no medium",
                    bdrv_get_device_name(bs));
@@ -366,9 +369,6 @@ int bdrv_snapshot_delete(BlockDriverState *bs,
         error_setg(errp, "snapshot_id and name are both NULL");
         return -EINVAL;
     }
-
-    /* drain all pending i/o before deleting snapshot */
-    bdrv_drained_begin(bs);
 
     if (drv->bdrv_snapshot_delete) {
         ret = drv->bdrv_snapshot_delete(bs, snapshot_id, name, errp);
@@ -381,7 +381,6 @@ int bdrv_snapshot_delete(BlockDriverState *bs,
         ret = -ENOTSUP;
     }
 
-    bdrv_drained_end(bs);
     return ret;
 }
 
@@ -570,19 +569,22 @@ int bdrv_all_delete_snapshot(const char *name,
     ERRP_GUARD();
     g_autoptr(GList) bdrvs = NULL;
     GList *iterbdrvs;
+    int ret = 0;
 
     GLOBAL_STATE_CODE();
-    GRAPH_RDLOCK_GUARD_MAINLOOP();
 
-    if (bdrv_all_get_snapshot_devices(has_devices, devices, &bdrvs, errp) < 0) {
-        return -1;
+    bdrv_drain_all_begin();
+    bdrv_graph_rdlock_main_loop();
+
+    ret = bdrv_all_get_snapshot_devices(has_devices, devices, &bdrvs, errp);
+    if (ret < 0) {
+        goto out;
     }
 
     iterbdrvs = bdrvs;
     while (iterbdrvs) {
         BlockDriverState *bs = iterbdrvs->data;
         QEMUSnapshotInfo sn1, *snapshot = &sn1;
-        int ret = 0;
 
         if ((devices || bdrv_all_snapshots_includes_bs(bs)) &&
             bdrv_snapshot_find(bs, snapshot, name) >= 0)
@@ -593,13 +595,16 @@ int bdrv_all_delete_snapshot(const char *name,
         if (ret < 0) {
             error_prepend(errp, "Could not delete snapshot '%s' on '%s': ",
                           name, bdrv_get_device_or_node_name(bs));
-            return -1;
+            goto out;
         }
 
         iterbdrvs = iterbdrvs->next;
     }
 
-    return 0;
+out:
+    bdrv_graph_rdunlock_main_loop();
+    bdrv_drain_all_end();
+    return ret;
 }
 
 

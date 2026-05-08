@@ -157,12 +157,11 @@ static void shakti_uart_instance_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &sus->mmio);
 }
 
-static Property shakti_uart_properties[] = {
+static const Property shakti_uart_properties[] = {
     DEFINE_PROP_CHR("chardev", ShaktiUartState, chr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void shakti_uart_class_init(ObjectClass *klass, void *data)
+static void shakti_uart_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     device_class_set_legacy_reset(dc, shakti_uart_reset);

@@ -62,8 +62,12 @@ config VMXNET3_PCI
 config SMC91C111
     bool
 
+config LAN9118_PHY
+    bool
+
 config LAN9118
     bool
+    select LAN9118_PHY
     select PTIMER
 
 config NE2000_ISA
@@ -78,9 +82,6 @@ config OPENCORES_ETH
 config XGMAC
     bool
 
-config MIPSNET
-    bool
-
 config ALLWINNER_EMAC
     bool
 
@@ -89,6 +90,7 @@ config ALLWINNER_SUN8I_EMAC
 
 config IMX_FEC
     bool
+    select LAN9118_PHY
 
 config CADENCE
     bool

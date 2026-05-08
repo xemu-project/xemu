@@ -20,13 +20,14 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "qemu/host-utils.h"
-#include "exec/exec-all.h"
 #include "exec/page-protection.h"
 #include "tcg/tcg-op.h"
 #include "tcg/tcg-op-gvec.h"
 #include "exec/helper-proto.h"
 #include "exec/helper-gen.h"
 #include "exec/translator.h"
+#include "exec/translation-block.h"
+#include "exec/target_page.h"
 #include "exec/log.h"
 
 #define HELPER_H "helper.h"
@@ -72,6 +73,7 @@ typedef struct DisasContext {
 
     /* IAOQ_Front at entry to TB. */
     uint64_t iaoq_first;
+    uint64_t gva_offset_mask;
 
     DisasCond null_cond;
     TCGLabel *null_lab;
@@ -101,6 +103,12 @@ typedef struct DisasContext {
 #define UNALIGN(C)       MO_ALIGN
 #define MMU_DISABLED(C)  MMU_IDX_MMU_DISABLED((C)->mmu_idx)
 #endif
+
+static inline MemOp mo_endian(DisasContext *ctx)
+{
+   /* The PSW_E bit sets the (little) endianness, but we don't implement it. */
+   return MO_BE;
+}
 
 /* Note that ssm/rsm instructions number PSW_W and PSW_E differently.  */
 static int expand_sm_imm(DisasContext *ctx, int val)
@@ -1206,10 +1214,10 @@ static void do_add(DisasContext *ctx, unsigned rt, TCGv_i64 orig_in1,
         cb_msb = tcg_temp_new_i64();
         cb = tcg_temp_new_i64();
 
-        tcg_gen_add2_i64(dest, cb_msb, in1, ctx->zero, in2, ctx->zero);
         if (is_c) {
-            tcg_gen_add2_i64(dest, cb_msb, dest, cb_msb,
-                             get_psw_carry(ctx, d), ctx->zero);
+            tcg_gen_addcio_i64(dest, cb_msb, in1, in2, get_psw_carry(ctx, d));
+        } else {
+            tcg_gen_add2_i64(dest, cb_msb, in1, ctx->zero, in2, ctx->zero);
         }
         tcg_gen_xor_i64(cb, in1, in2);
         tcg_gen_xor_i64(cb, cb, dest);
@@ -1305,9 +1313,7 @@ static void do_sub(DisasContext *ctx, unsigned rt, TCGv_i64 in1,
     if (is_b) {
         /* DEST,C = IN1 + ~IN2 + C.  */
         tcg_gen_not_i64(cb, in2);
-        tcg_gen_add2_i64(dest, cb_msb, in1, ctx->zero,
-                         get_psw_carry(ctx, d), ctx->zero);
-        tcg_gen_add2_i64(dest, cb_msb, dest, cb_msb, cb, ctx->zero);
+        tcg_gen_addcio_i64(dest, cb_msb, in1, cb, get_psw_carry(ctx, d));
         tcg_gen_xor_i64(cb, cb, in1);
         tcg_gen_xor_i64(cb, cb, dest);
     } else {
@@ -1576,7 +1582,7 @@ static void form_gva(DisasContext *ctx, TCGv_i64 *pgva, TCGv_i64 *pofs,
     *pofs = ofs;
     *pgva = addr = tcg_temp_new_i64();
     tcg_gen_andi_i64(addr, modify <= 0 ? ofs : base,
-                     gva_offset_mask(ctx->tb_flags));
+                     ctx->gva_offset_mask);
 #ifndef CONFIG_USER_ONLY
     if (!is_phys) {
         tcg_gen_or_i64(addr, addr, space_select(ctx, sp, base));
@@ -1599,6 +1605,7 @@ static void do_load_32(DisasContext *ctx, TCGv_i32 dest, unsigned rb,
     /* Caller uses nullify_over/nullify_end.  */
     assert(ctx->null_cond.c == TCG_COND_NEVER);
 
+    mop |= mo_endian(ctx);
     form_gva(ctx, &addr, &ofs, rb, rx, scale, disp, sp, modify,
              MMU_DISABLED(ctx));
     tcg_gen_qemu_ld_i32(dest, addr, ctx->mmu_idx, mop | UNALIGN(ctx));
@@ -1617,6 +1624,7 @@ static void do_load_64(DisasContext *ctx, TCGv_i64 dest, unsigned rb,
     /* Caller uses nullify_over/nullify_end.  */
     assert(ctx->null_cond.c == TCG_COND_NEVER);
 
+    mop |= mo_endian(ctx);
     form_gva(ctx, &addr, &ofs, rb, rx, scale, disp, sp, modify,
              MMU_DISABLED(ctx));
     tcg_gen_qemu_ld_i64(dest, addr, ctx->mmu_idx, mop | UNALIGN(ctx));
@@ -1635,6 +1643,7 @@ static void do_store_32(DisasContext *ctx, TCGv_i32 src, unsigned rb,
     /* Caller uses nullify_over/nullify_end.  */
     assert(ctx->null_cond.c == TCG_COND_NEVER);
 
+    mop |= mo_endian(ctx);
     form_gva(ctx, &addr, &ofs, rb, rx, scale, disp, sp, modify,
              MMU_DISABLED(ctx));
     tcg_gen_qemu_st_i32(src, addr, ctx->mmu_idx, mop | UNALIGN(ctx));
@@ -1653,6 +1662,7 @@ static void do_store_64(DisasContext *ctx, TCGv_i64 src, unsigned rb,
     /* Caller uses nullify_over/nullify_end.  */
     assert(ctx->null_cond.c == TCG_COND_NEVER);
 
+    mop |= mo_endian(ctx);
     form_gva(ctx, &addr, &ofs, rb, rx, scale, disp, sp, modify,
              MMU_DISABLED(ctx));
     tcg_gen_qemu_st_i64(src, addr, ctx->mmu_idx, mop | UNALIGN(ctx));
@@ -1691,7 +1701,7 @@ static bool do_floadw(DisasContext *ctx, unsigned rt, unsigned rb,
     nullify_over(ctx);
 
     tmp = tcg_temp_new_i32();
-    do_load_32(ctx, tmp, rb, rx, scale, disp, sp, modify, MO_TEUL);
+    do_load_32(ctx, tmp, rb, rx, scale, disp, sp, modify, MO_UL);
     save_frw_i32(rt, tmp);
 
     if (rt == 0) {
@@ -1716,7 +1726,7 @@ static bool do_floadd(DisasContext *ctx, unsigned rt, unsigned rb,
     nullify_over(ctx);
 
     tmp = tcg_temp_new_i64();
-    do_load_64(ctx, tmp, rb, rx, scale, disp, sp, modify, MO_TEUQ);
+    do_load_64(ctx, tmp, rb, rx, scale, disp, sp, modify, MO_UQ);
     save_frd(rt, tmp);
 
     if (rt == 0) {
@@ -1750,7 +1760,7 @@ static bool do_fstorew(DisasContext *ctx, unsigned rt, unsigned rb,
     nullify_over(ctx);
 
     tmp = load_frw_i32(rt);
-    do_store_32(ctx, tmp, rb, rx, scale, disp, sp, modify, MO_TEUL);
+    do_store_32(ctx, tmp, rb, rx, scale, disp, sp, modify, MO_UL);
 
     return nullify_end(ctx);
 }
@@ -1770,7 +1780,7 @@ static bool do_fstored(DisasContext *ctx, unsigned rt, unsigned rb,
     nullify_over(ctx);
 
     tmp = load_frd(rt);
-    do_store_64(ctx, tmp, rb, rx, scale, disp, sp, modify, MO_TEUQ);
+    do_store_64(ctx, tmp, rb, rx, scale, disp, sp, modify, MO_UQ);
 
     return nullify_end(ctx);
 }
@@ -3005,9 +3015,7 @@ static bool trans_ds(DisasContext *ctx, arg_rrr_cf *a)
     tcg_gen_xor_i64(add2, in2, addc);
     tcg_gen_andi_i64(addc, addc, 1);
 
-    tcg_gen_add2_i64(dest, cpu_psw_cb_msb, add1, ctx->zero, add2, ctx->zero);
-    tcg_gen_add2_i64(dest, cpu_psw_cb_msb, dest, cpu_psw_cb_msb,
-                     addc, ctx->zero);
+    tcg_gen_addcio_i64(dest, cpu_psw_cb_msb, add1, add2, addc);
 
     /* Write back the result register.  */
     save_gpr(ctx, a->t, dest);
@@ -3304,7 +3312,7 @@ static bool trans_ld(DisasContext *ctx, arg_ldst *a)
         return gen_illegal(ctx);
     }
     return do_load(ctx, a->t, a->b, a->x, a->scale ? a->size : 0,
-                   a->disp, a->sp, a->m, a->size | MO_TE);
+                   a->disp, a->sp, a->m, a->size);
 }
 
 static bool trans_st(DisasContext *ctx, arg_ldst *a)
@@ -3313,12 +3321,12 @@ static bool trans_st(DisasContext *ctx, arg_ldst *a)
     if (!ctx->is_pa20 && a->size > MO_32) {
         return gen_illegal(ctx);
     }
-    return do_store(ctx, a->t, a->b, a->disp, a->sp, a->m, a->size | MO_TE);
+    return do_store(ctx, a->t, a->b, a->disp, a->sp, a->m, a->size);
 }
 
 static bool trans_ldc(DisasContext *ctx, arg_ldst *a)
 {
-    MemOp mop = MO_TE | MO_ALIGN | a->size;
+    MemOp mop = mo_endian(ctx) | MO_ALIGN | a->size;
     TCGv_i64 dest, ofs;
     TCGv_i64 addr;
 
@@ -3550,8 +3558,7 @@ static bool do_addb(DisasContext *ctx, unsigned r, TCGv_i64 in1,
         TCGv_i64 cb = tcg_temp_new_i64();
         TCGv_i64 cb_msb = tcg_temp_new_i64();
 
-        tcg_gen_movi_i64(cb_msb, 0);
-        tcg_gen_add2_i64(dest, cb_msb, in1, cb_msb, in2, cb_msb);
+        tcg_gen_add2_i64(dest, cb_msb, in1, ctx->zero, in2, ctx->zero);
         tcg_gen_xor_i64(cb, in1, in2);
         tcg_gen_xor_i64(cb, cb, dest);
         cb_cond = get_carry(ctx, d, cb, cb_msb);
@@ -4592,19 +4599,37 @@ static bool trans_diag_getshadowregs_pa1(DisasContext *ctx, arg_empty *a)
     return !ctx->is_pa20 && do_getshadowregs(ctx);
 }
 
-static bool trans_diag_getshadowregs_pa2(DisasContext *ctx, arg_empty *a)
-{
-    return ctx->is_pa20 && do_getshadowregs(ctx);
-}
-
 static bool trans_diag_putshadowregs_pa1(DisasContext *ctx, arg_empty *a)
 {
     return !ctx->is_pa20 && do_putshadowregs(ctx);
 }
 
-static bool trans_diag_putshadowregs_pa2(DisasContext *ctx, arg_empty *a)
+static bool trans_diag_mfdiag(DisasContext *ctx, arg_diag_mfdiag *a)
 {
-    return ctx->is_pa20 && do_putshadowregs(ctx);
+    CHECK_MOST_PRIVILEGED(EXCP_PRIV_OPR);
+    nullify_over(ctx);
+    TCGv_i64 dest = dest_gpr(ctx, a->rt);
+    tcg_gen_ld_i64(dest, tcg_env,
+                       offsetof(CPUHPPAState, dr[a->dr]));
+    save_gpr(ctx, a->rt, dest);
+    return nullify_end(ctx);
+}
+
+static bool trans_diag_mtdiag(DisasContext *ctx, arg_diag_mtdiag *a)
+{
+    CHECK_MOST_PRIVILEGED(EXCP_PRIV_OPR);
+    nullify_over(ctx);
+    tcg_gen_st_i64(load_gpr(ctx, a->r1), tcg_env,
+                        offsetof(CPUHPPAState, dr[a->dr]));
+#ifndef CONFIG_USER_ONLY
+    if (ctx->is_pa20 && (a->dr == 2)) {
+        /* Update gva_offset_mask from the new value of %dr2 */
+        gen_helper_update_gva_offset_mask(tcg_env);
+        /* Exit to capture the new value for the next TB. */
+        ctx->base.is_jmp = DISAS_IAQ_N_STALE_EXIT;
+    }
+#endif
+    return nullify_end(ctx);
 }
 
 static bool trans_diag_unimp(DisasContext *ctx, arg_diag_unimp *a)
@@ -4624,6 +4649,7 @@ static void hppa_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cs)
     ctx->tb_flags = ctx->base.tb->flags;
     ctx->is_pa20 = hppa_is_pa20(cpu_env(cs));
     ctx->psw_xb = ctx->tb_flags & (PSW_X | PSW_B);
+    ctx->gva_offset_mask = cpu_env(cs)->gva_offset_mask;
 
 #ifdef CONFIG_USER_ONLY
     ctx->privilege = PRIV_USER;
@@ -4868,8 +4894,8 @@ static const TranslatorOps hppa_tr_ops = {
 #endif
 };
 
-void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int *max_insns,
-                           vaddr pc, void *host_pc)
+void hppa_translate_code(CPUState *cs, TranslationBlock *tb,
+                         int *max_insns, vaddr pc, void *host_pc)
 {
     DisasContext ctx = { };
     translator_loop(cs, tb, max_insns, pc, host_pc, &hppa_tr_ops, &ctx.base);

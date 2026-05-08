@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2015 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2020-2024 Matt Borgerson
+ * Copyright (c) 2020-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -23,9 +23,9 @@
 #define HW_XBOX_NV2A_PGRAPH_GLSL_VSH_FF_H
 
 #include "qemu/mstring.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
+#include "vsh.h"
 
-void pgraph_gen_vsh_ff_glsl(const ShaderState *state, MString *header,
-                            MString *body, MString *uniforms);
+void pgraph_glsl_gen_vsh_ff(const VshState *state, MString *header,
+                            MString *body);
 
 #endif

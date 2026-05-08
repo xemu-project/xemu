@@ -23,9 +23,14 @@
 #include "cpu.h"
 #include "tcg/tcg.h"
 #include "exec/helper-proto.h"
-#include "exec/exec-all.h"
+#include "exec/cputlb.h"
 #include "exec/page-protection.h"
-#include "exec/cpu_ldst.h"
+#include "exec/target_page.h"
+#include "accel/tcg/cpu-ldst.h"
+#include "system/memory.h"
+#ifdef CONFIG_USER_ONLY
+#include "user/page-protection.h"
+#endif
 #include "asi.h"
 
 //#define DEBUG_MMU
@@ -596,6 +601,9 @@ uint64_t helper_ld_asi(CPUSPARCState *env, target_ulong addr,
         case 0x0C:          /* Leon3 Date Cache config */
             if (env->def.features & CPU_FEATURE_CACHE_CTRL) {
                 ret = leon3_cache_control_ld(env, addr, size);
+            } else {
+                qemu_log_mask(LOG_UNIMP, "0x" TARGET_FMT_lx ": unimplemented"
+                                         " address, size: %d\n", addr, size);
             }
             break;
         case 0x01c00a00: /* MXCC control register */
@@ -812,6 +820,9 @@ void helper_st_asi(CPUSPARCState *env, target_ulong addr, uint64_t val,
         case 0x0C:          /* Leon3 Date Cache config */
             if (env->def.features & CPU_FEATURE_CACHE_CTRL) {
                 leon3_cache_control_st(env, addr, val, size);
+            } else {
+                qemu_log_mask(LOG_UNIMP, "0x" TARGET_FMT_lx ": unimplemented"
+                                         " address, size: %d\n", addr, size);
             }
             break;
 

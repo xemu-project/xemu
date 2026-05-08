@@ -13,8 +13,8 @@
 #include "qemu/osdep.h"
 #include "libqtest.h"
 #include "libqos/virtio.h"
-#include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qlist.h"
+#include "qobject/qdict.h"
+#include "qobject/qlist.h"
 
 static const char *qvirtio_get_dev_type(void);
 
@@ -154,15 +154,10 @@ static void device_add(QTestState *qts)
 
 static void device_del(QTestState *qts, bool and_reset)
 {
-    QDict *response;
-
     qtest_qmp_device_del_send(qts, "dev0");
 
     if (and_reset) {
-        response = qtest_qmp(qts, "{'execute': 'system_reset' }");
-        g_assert(response);
-        g_assert(qdict_haskey(response, "return"));
-        qobject_unref(response);
+        qtest_system_reset_nowait(qts);
     }
 
     qtest_qmp_eventwait(qts, "DEVICE_DELETED");

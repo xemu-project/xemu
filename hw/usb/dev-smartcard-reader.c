@@ -1069,7 +1069,6 @@ static void ccid_handle_bulk_out(USBCCIDState *s, USBPacket *p)
 err:
     p->status = USB_RET_STALL;
     s->bulk_out_pos = 0;
-    return;
 }
 
 static void ccid_bulk_in_copy_to_guest(USBCCIDState *s, USBPacket *p,
@@ -1171,9 +1170,8 @@ static Answer *ccid_peek_next_answer(USBCCIDState *s)
         : &s->pending_answers[s->pending_answers_start % PENDING_ANSWERS_NUM];
 }
 
-static Property ccid_props[] = {
+static const Property ccid_props[] = {
     DEFINE_PROP_UINT32("slot", struct CCIDCardState, slot, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const TypeInfo ccid_bus_info = {
@@ -1431,12 +1429,11 @@ static const VMStateDescription ccid_vmstate = {
     }
 };
 
-static Property ccid_properties[] = {
+static const Property ccid_properties[] = {
     DEFINE_PROP_UINT8("debug", USBCCIDState, debug, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ccid_class_initfn(ObjectClass *klass, void *data)
+static void ccid_class_initfn(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
@@ -1461,13 +1458,13 @@ static const TypeInfo ccid_info = {
     .parent        = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBCCIDState),
     .class_init    = ccid_class_initfn,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_HOTPLUG_HANDLER },
         { }
     }
 };
 
-static void ccid_card_class_init(ObjectClass *klass, void *data)
+static void ccid_card_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *k = DEVICE_CLASS(klass);
     k->bus_type = TYPE_CCID_BUS;

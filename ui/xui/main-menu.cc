@@ -47,7 +47,9 @@
 MainMenuScene g_main_menu;
 
 MainMenuTabView::~MainMenuTabView() {}
-void MainMenuTabView::Draw() {}
+void MainMenuTabView::Draw()
+{
+}
 
 void MainMenuGeneralView::Draw()
 {
@@ -69,10 +71,35 @@ void MainMenuGeneralView::Draw()
     SectionTitle("Miscellaneous");
     Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
            "Skip the full Xbox boot animation sequence");
-    FilePicker("Screenshot output directory", &g_config.general.screenshot_dir,
-               NULL, true);
+    FilePicker("Screenshot output directory", g_config.general.screenshot_dir,
+               nullptr, 0, true, [](const char *path) {
+                   xemu_settings_set_string(&g_config.general.screenshot_dir, path);
+               });
+    FilePicker("Games directory", g_config.general.games_dir, nullptr, 0, true,
+               [](const char *path) {
+                   xemu_settings_set_string(&g_config.general.games_dir, path);
+               });
     // toggle("Throttle DVD/HDD speeds", &g_config.general.throttle_io,
     //        "Limit DVD/HDD throughput to approximate Xbox load times");
+}
+
+bool MainMenuInputView::ConsumeRebindEvent(SDL_Event *event)
+{
+    if (!m_rebinding) {
+        return false;
+    }
+
+    RebindEventResult rebind_result = m_rebinding->ConsumeRebindEvent(event);
+    if (rebind_result == RebindEventResult::Complete) {
+        m_rebinding = nullptr;
+    }
+
+    return rebind_result == RebindEventResult::Ignore;
+}
+
+bool MainMenuInputView::IsInputRebinding()
+{
+    return m_rebinding != nullptr;
 }
 
 void MainMenuInputView::Draw()
@@ -143,6 +170,7 @@ void MainMenuInputView::Draw()
 
         if (activated) {
             active = i;
+            m_rebinding = nullptr;
         }
 
         uint32_t port_color = 0xafafafff;
@@ -172,15 +200,20 @@ void MainMenuInputView::Draw()
         driver = DRIVER_DUKE_DISPLAY_NAME;
     else if (strcmp(driver, DRIVER_S) == 0)
         driver = DRIVER_S_DISPLAY_NAME;
-    
+
+    ImGui::Columns(2, "", false);
+    ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.25);
+
+    ImGui::Text("Emulated Device");
+    ImGui::SameLine(0, 0);
+    ImGui::NextColumn();
+
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("###InputDrivers", driver,
                           ImGuiComboFlags_NoArrowButton)) {
         const char *available_drivers[] = { DRIVER_DUKE, DRIVER_S };
-        const char *driver_display_names[] = { 
-            DRIVER_DUKE_DISPLAY_NAME, 
-            DRIVER_S_DISPLAY_NAME 
-            };
+        const char *driver_display_names[] = { DRIVER_DUKE_DISPLAY_NAME,
+                                               DRIVER_S_DISPLAY_NAME };
         bool is_selected = false;
         int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);
         for (int i = 0; i < num_drivers; i++) {
@@ -204,9 +237,15 @@ void MainMenuInputView::Draw()
     }
     DrawComboChevron();
 
+    ImGui::NextColumn();
+
     //
     // Render input device combo
     //
+
+    ImGui::Text("Input Device");
+    ImGui::SameLine(0, 0);
+    ImGui::NextColumn();
 
     // List available input devices
     const char *not_connected = "Not Connected";
@@ -284,7 +323,7 @@ void MainMenuInputView::Draw()
         device_selected = true;
         RenderController(0, 0, 0x81dc8a00, 0x0f0f0f00, bound_state);
     } else {
-        static ControllerState state = { 0 };
+        static ControllerState state{};
         RenderController(0, 0, 0x1f1f1f00, 0x0f0f0f00, &state);
     }
 
@@ -324,6 +363,8 @@ void MainMenuInputView::Draw()
     ImGui::SetCursorPos(pos);
 
     if (bound_state) {
+        ImGui::PushID(active);
+
         SectionTitle("Expansion Slots");
         // Begin a 2-column layout to render the expansion slots
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
@@ -333,7 +374,10 @@ void MainMenuInputView::Draw()
         xmu_fbo->Target();
         id = (ImTextureID)(intptr_t)xmu_fbo->Texture();
 
-        const char *img_file_filters = ".img Files\0*.img\0All Files\0*.*\0";
+        static const SDL_DialogFileFilter img_file_filters[] = {
+            { ".img Files", "img" },
+            { "All Files", "*" }
+        };
         const char *comboLabels[2] = { "###ExpansionSlotA",
                                        "###ExpansionSlotB" };
         for (int i = 0; i < 2; i++) {
@@ -437,15 +481,12 @@ void MainMenuInputView::Draw()
                 // Button to generate a new XMU
                 ImGui::PushID(i);
                 if (ImGui::Button("New Image", ImVec2(250, 0))) {
-                    int flags = NOC_FILE_DIALOG_SAVE |
-                                NOC_FILE_DIALOG_OVERWRITE_CONFIRMATION;
-                    const char *new_path = PausedFileOpen(
-                        flags, img_file_filters, NULL, "xmu.img");
-
-                    if (new_path) {
+                    int port = active;
+                    int slot = i;
+                    ShowSaveFileDialog(img_file_filters, 2, nullptr, [port, slot](const char *new_path) {
                         if (create_fatx_image(new_path, DEFAULT_XMU_SIZE)) {
                             // XMU was created successfully. Bind it
-                            xemu_input_bind_xmu(active, i, new_path, false);
+                            xemu_input_bind_xmu(port, slot, new_path, false);
                         } else {
                             // Show alert message
                             char *msg = g_strdup_printf(
@@ -453,22 +494,19 @@ void MainMenuInputView::Draw()
                             xemu_queue_error_message(msg);
                             g_free(msg);
                         }
-                    }
+                    });
                 }
 
-                const char *xmu_port_path = NULL;
-                if (xmu->filename == NULL)
-                    xmu_port_path = g_strdup("");
-                else
-                    xmu_port_path = g_strdup(xmu->filename);
-                if (FilePicker("Image", &xmu_port_path, img_file_filters)) {
-                    if (strlen(xmu_port_path) == 0) {
-                        xemu_input_unbind_xmu(active, i);
-                    } else {
-                        xemu_input_bind_xmu(active, i, xmu_port_path, false);
-                    }
-                }
-                g_free((void *)xmu_port_path);
+                int port = active;
+                int slot = i;
+                FilePicker("Image", xmu->filename, img_file_filters, 2, false,
+                           [port, slot](const char *path) {
+                               if (strlen(path) > 0) {
+                                   xemu_input_bind_xmu(port, slot, path, false);
+                               } else {
+                                   xemu_input_unbind_xmu(port, slot);
+                               }
+                           });
 
                 ImGui::PopID();
             }
@@ -480,6 +518,52 @@ void MainMenuInputView::Draw()
 
         ImGui::PopStyleVar(); // ItemSpacing
         ImGui::Columns(1);
+
+        SectionTitle("Mapping");
+        ImVec4 tc = ImGui::GetStyle().Colors[ImGuiCol_Header];
+        tc.w = 0.0f;
+        ImGui::PushStyleColor(ImGuiCol_Header, tc);
+
+        if (ImGui::CollapsingHeader("Input Mapping")) {
+            float p = ImGui::GetFrameHeight() * 0.3;
+            ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(p, p));
+            if (ImGui::BeginTable("input_remap_tbl", 2,
+                                  ImGuiTableFlags_RowBg |
+                                      ImGuiTableFlags_Borders)) {
+                ImGui::TableSetupColumn("Emulated Input");
+                ImGui::TableSetupColumn("Host Input");
+                ImGui::TableHeadersRow();
+
+                PopulateTableController(bound_state);
+
+                ImGui::EndTable();
+            }
+            ImGui::PopStyleVar();
+        }
+
+        if (bound_state->type == INPUT_DEVICE_SDL_GAMEPAD) {
+            Toggle("Enable Rumble",
+                   &bound_state->controller_map->enable_rumble);
+            Toggle("Invert Left X Axis",
+                   &bound_state->controller_map->controller_mapping
+                        .invert_axis_left_x);
+            Toggle("Invert Left Y Axis",
+                   &bound_state->controller_map->controller_mapping
+                        .invert_axis_left_y);
+            Toggle("Invert Right X Axis",
+                   &bound_state->controller_map->controller_mapping
+                        .invert_axis_right_x);
+            Toggle("Invert Right Y Axis",
+                   &bound_state->controller_map->controller_mapping
+                        .invert_axis_right_y);
+        }
+
+        if (ImGui::Button("Reset to Default")) {
+            xemu_input_reset_input_mapping(bound_state);
+        }
+
+        ImGui::PopStyleColor();
+        ImGui::PopID();
     }
 
     SectionTitle("Options");
@@ -488,6 +572,169 @@ void MainMenuInputView::Draw()
     Toggle("Background controller input capture",
            &g_config.input.background_input_capture,
            "Capture even if window is unfocused (requires restart)");
+}
+
+void MainMenuInputView::Hide()
+{
+    m_rebinding = nullptr;
+}
+
+void MainMenuInputView::PopulateTableController(ControllerState *state)
+{
+    if (!state)
+        return;
+
+    // Must match g_keyboard_scancode_map and the controller
+    // button map below.
+    static constexpr const char *face_button_index_to_name_map[15] = {
+        "A",
+        "B",
+        "X",
+        "Y",
+        "Back",
+        "Guide",
+        "Start",
+        "Left Stick Button",
+        "Right Stick Button",
+        "White",
+        "Black",
+        "DPad Up",
+        "DPad Down",
+        "DPad Left",
+        "DPad Right",
+    };
+
+    // Must match g_keyboard_scancode_map[15:]. Each axis requires
+    // two keys for the positive and negative direction with the
+    // exception of the triggers, which only require one each.
+    static constexpr const char *keyboard_stick_index_to_name_map[10] = {
+        "Left Stick Up",
+        "Left Stick Left",
+        "Left Stick Right",
+        "Left Stick Down",
+        "Left Trigger",
+        "Right Stick Up",
+        "Right Stick Left",
+        "Right Stick Right",
+        "Right Stick Down",
+        "Right Trigger",
+    };
+
+    // Must match controller axis map below.
+    static constexpr const char *gamepad_axis_index_to_name_map[6] = {
+        "Left Stick Axis X",
+        "Left Stick Axis Y",
+        "Right Stick Axis X",
+        "Right Stick Axis Y",
+        "Left Trigger Axis",
+        "Right Trigger Axis",
+    };
+
+    bool is_keyboard = state->type == INPUT_DEVICE_SDL_KEYBOARD;
+
+    int num_axis_mappings;
+    const char *const *axis_index_to_name_map;
+    if (is_keyboard) {
+      num_axis_mappings = std::size(keyboard_stick_index_to_name_map);
+      axis_index_to_name_map = keyboard_stick_index_to_name_map;
+    } else {
+      num_axis_mappings = std::size(gamepad_axis_index_to_name_map);
+      axis_index_to_name_map = gamepad_axis_index_to_name_map;
+    }
+
+    constexpr int num_face_buttons = std::size(face_button_index_to_name_map);
+    const int table_rows = num_axis_mappings + num_face_buttons;
+    for (int i = 0; i < table_rows; ++i) {
+        ImGui::TableNextRow();
+
+        // Button/Axis Name Column
+        ImGui::TableSetColumnIndex(0);
+
+        if (i < num_face_buttons) {
+          ImGui::Text("%s", face_button_index_to_name_map[i]);
+        } else {
+          ImGui::Text("%s", axis_index_to_name_map[i - num_face_buttons]);
+        }
+
+        // Button Binding Column
+        ImGui::TableSetColumnIndex(1);
+
+        if (m_rebinding && m_rebinding->GetTableRow() == i) {
+            ImGui::Text("Press a key to rebind");
+            continue;
+        }
+
+        const char *remap_button_text = "Invalid";
+        if (is_keyboard) {
+          // g_keyboard_scancode_map includes both face buttons and axis buttons.
+            int keycode = *(g_keyboard_scancode_map[i]);
+            if (keycode != SDL_SCANCODE_UNKNOWN) {
+                remap_button_text =
+                    SDL_GetScancodeName(static_cast<SDL_Scancode>(keycode));
+            }
+        } else if (i < num_face_buttons) {
+                int *button_map[num_face_buttons] = {
+                    &state->controller_map->controller_mapping.a,
+                    &state->controller_map->controller_mapping.b,
+                    &state->controller_map->controller_mapping.x,
+                    &state->controller_map->controller_mapping.y,
+                    &state->controller_map->controller_mapping.back,
+                    &state->controller_map->controller_mapping.guide,
+                    &state->controller_map->controller_mapping.start,
+                    &state->controller_map->controller_mapping.lstick_btn,
+                    &state->controller_map->controller_mapping.rstick_btn,
+                    &state->controller_map->controller_mapping.lshoulder,
+                    &state->controller_map->controller_mapping.rshoulder,
+                    &state->controller_map->controller_mapping.dpad_up,
+                    &state->controller_map->controller_mapping.dpad_down,
+                    &state->controller_map->controller_mapping.dpad_left,
+                    &state->controller_map->controller_mapping.dpad_right,
+                };
+
+                int button = *(button_map[i]);
+                if (button != SDL_GAMEPAD_BUTTON_INVALID) {
+                    remap_button_text = SDL_GetGamepadStringForButton(
+                        static_cast<SDL_GamepadButton>(button));
+                }
+        } else {
+          int *axis_map[6] = {
+            &state->controller_map->controller_mapping.axis_left_x,
+            &state->controller_map->controller_mapping.axis_left_y,
+            &state->controller_map->controller_mapping.axis_right_x,
+            &state->controller_map->controller_mapping.axis_right_y,
+            &state->controller_map->controller_mapping
+              .axis_trigger_left,
+            &state->controller_map->controller_mapping
+              .axis_trigger_right,
+          };
+          int axis = *(axis_map[i - num_face_buttons]);
+          if (axis != SDL_GAMEPAD_AXIS_INVALID) {
+            remap_button_text = SDL_GetGamepadStringForAxis(
+                static_cast<SDL_GamepadAxis>(axis));
+          }
+        }
+
+        ImGui::PushID(i);
+        float tw = ImGui::CalcTextSize(remap_button_text).x;
+        auto &style = ImGui::GetStyle();
+        float max_button_width =
+          tw + g_viewport_mgr.m_scale * 2 * style.FramePadding.x;
+
+        float min_button_width = ImGui::GetColumnWidth(1) / 2;
+        float button_width = std::max(min_button_width, max_button_width);
+
+        if (ImGui::Button(remap_button_text, ImVec2(button_width, 0))) {
+          if (is_keyboard) {
+            m_rebinding =
+              std::make_unique<ControllerKeyboardRebindingMap>(i);
+          } else {
+            m_rebinding =
+              std::make_unique<ControllerGamepadRebindingMap>(i,
+                  state);
+          }
+        }
+        ImGui::PopID();
+    }
 }
 
 void MainMenuDisplayView::Draw()
@@ -525,6 +772,9 @@ void MainMenuDisplayView::Draw()
     Toggle("Fullscreen on startup",
            &g_config.display.window.fullscreen_on_startup,
            "Start xemu in fullscreen when opened");
+    Toggle("Exclusive fullscreen",
+           &g_config.display.window.fullscreen_exclusive,
+           "May improve responsiveness, but slows window switching");
     if (ChevronCombo("Window size", &g_config.display.window.startup_size,
                      "Last Used\0"
                      "640x480\0"
@@ -734,7 +984,7 @@ void MainMenuNetworkView::DrawPcapOptions(bool appearing)
         ImGui::Dummy(ImVec2(0,10*g_viewport_mgr.m_scale));
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_viewport_mgr.m_scale)/2);
         if (ImGui::Button("Install npcap", ImVec2(120*g_viewport_mgr.m_scale, 0))) {
-            xemu_open_web_browser("https://nmap.org/npcap/");
+            SDL_OpenURL("https://nmap.org/npcap/");
         }
 #endif
     } else {
@@ -1262,9 +1512,15 @@ MainMenuSystemView::MainMenuSystemView() : m_dirty(false)
 
 void MainMenuSystemView::Draw()
 {
-    const char *rom_file_filters =
-        ".bin Files\0*.bin\0.rom Files\0*.rom\0All Files\0*.*\0";
-    const char *qcow_file_filters = ".qcow2 Files\0*.qcow2\0All Files\0*.*\0";
+    static const SDL_DialogFileFilter rom_file_filters[] = {
+        { ".bin Files", "bin" },
+        { ".rom Files", "rom" },
+        { "All Files", "*" }
+    };
+    static const SDL_DialogFileFilter qcow_file_filters[] = {
+        { ".qcow2 Files", "qcow2" },
+        { "All Files", "*" }
+    };
 
     if (m_dirty) {
         ImGui::TextColored(ImVec4(1, 0, 0, 1),
@@ -1293,24 +1549,28 @@ void MainMenuSystemView::Draw()
     }
 
     SectionTitle("Files");
-    if (FilePicker("MCPX Boot ROM", &g_config.sys.files.bootrom_path,
-                   rom_file_filters)) {
-        m_dirty = true;
-        g_main_menu.UpdateAboutViewConfigInfo();
-    }
-    if (FilePicker("Flash ROM (BIOS)", &g_config.sys.files.flashrom_path,
-                   rom_file_filters)) {
-        m_dirty = true;
-        g_main_menu.UpdateAboutViewConfigInfo();
-    }
-    if (FilePicker("Hard Disk", &g_config.sys.files.hdd_path,
-                   qcow_file_filters)) {
-        m_dirty = true;
-    }
-    if (FilePicker("EEPROM", &g_config.sys.files.eeprom_path,
-                   rom_file_filters)) {
-        m_dirty = true;
-    }
+    FilePicker("MCPX Boot ROM", g_config.sys.files.bootrom_path,
+               rom_file_filters, 3, false, [this](const char *path) {
+                   xemu_settings_set_string(&g_config.sys.files.bootrom_path, path);
+                   m_dirty = true;
+                   g_main_menu.UpdateAboutViewConfigInfo();
+               });
+    FilePicker("Flash ROM (BIOS)", g_config.sys.files.flashrom_path,
+               rom_file_filters, 3, false, [this](const char *path) {
+                   xemu_settings_set_string(&g_config.sys.files.flashrom_path, path);
+                   m_dirty = true;
+                   g_main_menu.UpdateAboutViewConfigInfo();
+               });
+    FilePicker("Hard Disk", g_config.sys.files.hdd_path,
+               qcow_file_filters, 2, false, [this](const char *path) {
+                   xemu_settings_set_string(&g_config.sys.files.hdd_path, path);
+                   m_dirty = true;
+               });
+    FilePicker("EEPROM", g_config.sys.files.eeprom_path,
+               rom_file_filters, 3, false, [this](const char *path) {
+                   xemu_settings_set_string(&g_config.sys.files.eeprom_path, path);
+                   m_dirty = true;
+               });
 }
 
 MainMenuAboutView::MainMenuAboutView() : m_config_info_text{ NULL }
@@ -1347,9 +1607,10 @@ void MainMenuAboutView::Draw()
     static const char *build_info_text = NULL;
     if (build_info_text == NULL) {
         build_info_text =
-            g_strdup_printf("Version:      %s\nBranch:       %s\nCommit:       "
-                            "%s\nDate:         %s",
-                            xemu_version, xemu_branch, xemu_commit, xemu_date);
+            g_strdup_printf("Version:      %s\n"
+                            "Commit:       %s\n"
+                            "Date:         %s",
+                            xemu_version, xemu_commit, xemu_date);
     }
 
     static const char *sys_info_text = NULL;
@@ -1363,7 +1624,7 @@ void MainMenuAboutView::Draw()
             "CPU:          %s\nOS Platform:  %s\nOS Version:   "
             "%s\nManufacturer: %s\n"
             "GPU Model:    %s\nDriver:       %s\nShader:       %s",
-            xemu_get_cpu_info(), xemu_get_os_platform(), xemu_get_os_info(),
+            xemu_get_cpu_info(), SDL_GetPlatform(), xemu_get_os_info(),
             gl_vendor, gl_renderer, gl_version, gl_shader_version);
     }
 
@@ -1392,7 +1653,7 @@ void MainMenuAboutView::Draw()
     SectionTitle("Config Information");
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::InputTextMultiline("##config_info", (char *)m_config_info_text,
-                              strlen(build_info_text) + 1,
+                              strlen(m_config_info_text) + 1,
                               ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 3),
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
@@ -1402,7 +1663,7 @@ void MainMenuAboutView::Draw()
     ImGui::Text("Visit");
     ImGui::SameLine();
     if (ImGui::SmallButton("https://xemu.app")) {
-        xemu_open_web_browser("https://xemu.app");
+        SDL_OpenURL("https://xemu.app");
     }
     ImGui::SameLine();
     ImGui::Text("for more information");
@@ -1516,6 +1777,7 @@ void MainMenuScene::Show()
 
 void MainMenuScene::Hide()
 {
+    m_views[m_current_view_index]->Hide();
     m_background.Hide();
     m_nav_control_view.Hide();
     m_animation.EaseOut();
@@ -1528,6 +1790,7 @@ bool MainMenuScene::IsAnimating()
 
 void MainMenuScene::SetNextViewIndex(int i)
 {
+    m_views[m_current_view_index]->Hide();
     m_next_view_index = i % m_tabs.size();
     g_config.general.last_viewed_menu_index = i;
 }
@@ -1565,6 +1828,16 @@ void MainMenuScene::HandleInput()
 void MainMenuScene::UpdateAboutViewConfigInfo()
 {
     m_about_view.UpdateConfigInfoText();
+}
+
+bool MainMenuScene::ConsumeRebindEvent(SDL_Event *event)
+{
+    return m_input_view.ConsumeRebindEvent(event);
+}
+
+bool MainMenuScene::IsInputRebinding()
+{
+    return m_input_view.IsInputRebinding();
 }
 
 bool MainMenuScene::Draw()

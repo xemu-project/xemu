@@ -22,8 +22,8 @@
 
 #include "qapi/error.h"
 #include "qapi/qobject-input-visitor.h"
-#include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qobject.h"
+#include "qobject/qdict.h"
+#include "qobject/qobject.h"
 #include "qom/object.h"
 #include "qemu/module.h"
 #include "qemu/option.h"
@@ -135,7 +135,7 @@ static void dummy_init(Object *obj)
 }
 
 
-static void dummy_class_init(ObjectClass *cls, void *data)
+static void dummy_class_init(ObjectClass *cls, const void *data)
 {
     object_class_property_add_str(cls, "sv",
                                   dummy_get_sv,
@@ -164,7 +164,7 @@ static const TypeInfo dummy_info = {
     .instance_finalize = dummy_finalize,
     .class_size = sizeof(DummyObjectClass),
     .class_init = dummy_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_USER_CREATABLE },
         { }
     }
@@ -264,7 +264,7 @@ static void dummy_dev_unparent(Object *obj)
     object_unparent(OBJECT(dev->bus));
 }
 
-static void dummy_dev_class_init(ObjectClass *klass, void *opaque)
+static void dummy_dev_class_init(ObjectClass *klass, const void *opaque)
 {
     klass->unparent = dummy_dev_unparent;
 }
@@ -288,7 +288,7 @@ static void dummy_bus_unparent(Object *obj)
     object_unparent(OBJECT(bus->backend));
 }
 
-static void dummy_bus_class_init(ObjectClass *klass, void *opaque)
+static void dummy_bus_class_init(ObjectClass *klass, const void *opaque)
 {
     klass->unparent = dummy_bus_unparent;
 }
@@ -610,7 +610,7 @@ static void test_dummy_delchild(void)
 static void test_qom_partial_path(void)
 {
     Object *root  = object_get_objects_root();
-    Object *cont1 = container_get(root, "/cont1");
+    Object *cont1 = object_property_add_new_container(root, "cont1");
     Object *obj1  = object_new(TYPE_DUMMY);
     Object *obj2a = object_new(TYPE_DUMMY);
     Object *obj2b = object_new(TYPE_DUMMY);

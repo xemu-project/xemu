@@ -10,9 +10,9 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qapi/qmp/qdict.h"
+#include "qobject/qdict.h"
 #include "qemu-io.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "block/block.h"
 #include "block/block_int.h" /* for info_f() */
 #include "block/qapi.h"

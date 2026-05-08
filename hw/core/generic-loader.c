@@ -31,9 +31,8 @@
  */
 
 #include "qemu/osdep.h"
-#include "exec/tswap.h"
-#include "sysemu/dma.h"
-#include "sysemu/reset.h"
+#include "system/dma.h"
+#include "system/reset.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
 #include "hw/qdev-properties.h"
@@ -48,11 +47,8 @@ static void generic_loader_reset(void *opaque)
     GenericLoaderState *s = GENERIC_LOADER(opaque);
 
     if (s->set_pc) {
-        CPUClass *cc = CPU_GET_CLASS(s->cpu);
         cpu_reset(s->cpu);
-        if (cc) {
-            cc->set_pc(s->cpu, s->addr);
-        }
+        cpu_set_pc(s->cpu, s->addr);
     }
 
     if (s->data_len) {
@@ -66,7 +62,6 @@ static void generic_loader_realize(DeviceState *dev, Error **errp)
 {
     GenericLoaderState *s = GENERIC_LOADER(dev);
     hwaddr entry;
-    int big_endian;
     ssize_t size = 0;
 
     s->set_pc = false;
@@ -134,14 +129,12 @@ static void generic_loader_realize(DeviceState *dev, Error **errp)
         s->cpu = first_cpu;
     }
 
-    big_endian = target_words_bigendian();
-
     if (s->file) {
         AddressSpace *as = s->cpu ? s->cpu->as :  NULL;
 
         if (!s->force_raw) {
             size = load_elf_as(s->file, NULL, NULL, NULL, &entry, NULL, NULL,
-                               NULL, big_endian, 0, 0, 0, as);
+                               NULL, ELFDATANONE, 0, 0, 0, as);
 
             if (size < 0) {
                 size = load_uimage_as(s->file, &entry, NULL, NULL, NULL, NULL,
@@ -155,13 +148,14 @@ static void generic_loader_realize(DeviceState *dev, Error **errp)
 
         if (size < 0 || s->force_raw) {
             /* Default to the maximum size being the machine's ram size */
-            size = load_image_targphys_as(s->file, s->addr, current_machine->ram_size, as);
+            size = load_image_targphys_as(s->file, s->addr,
+                    current_machine->ram_size, as, errp);
         } else {
             s->addr = entry;
         }
 
         if (size < 0) {
-            error_setg(errp, "Cannot load specified image %s", s->file);
+            error_prepend(errp, "Cannot load specified image %s: ", s->file);
             return;
         }
     }
@@ -179,7 +173,7 @@ static void generic_loader_unrealize(DeviceState *dev)
     qemu_unregister_reset(generic_loader_reset, dev);
 }
 
-static Property generic_loader_props[] = {
+static const Property generic_loader_props[] = {
     DEFINE_PROP_UINT64("addr", GenericLoaderState, addr, 0),
     DEFINE_PROP_UINT64("data", GenericLoaderState, data, 0),
     DEFINE_PROP_UINT8("data-len", GenericLoaderState, data_len, 0),
@@ -187,10 +181,9 @@ static Property generic_loader_props[] = {
     DEFINE_PROP_UINT32("cpu-num", GenericLoaderState, cpu_num, CPU_NONE),
     DEFINE_PROP_BOOL("force-raw", GenericLoaderState, force_raw, false),
     DEFINE_PROP_STRING("file", GenericLoaderState, file),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void generic_loader_class_init(ObjectClass *klass, void *data)
+static void generic_loader_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

@@ -25,7 +25,7 @@
 #include "trace.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
-#include "sysemu/watchdog.h"
+#include "system/watchdog.h"
 #include "hw/sysbus.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
@@ -394,7 +394,7 @@ static const VMStateDescription cmsdk_apb_watchdog_vmstate = {
     }
 };
 
-static void cmsdk_apb_watchdog_class_init(ObjectClass *klass, void *data)
+static void cmsdk_apb_watchdog_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

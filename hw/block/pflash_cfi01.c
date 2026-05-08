@@ -41,7 +41,7 @@
 #include "hw/block/flash.h"
 #include "hw/qdev-properties.h"
 #include "hw/qdev-properties-system.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/bitops.h"
@@ -50,8 +50,8 @@
 #include "qemu/option.h"
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
-#include "sysemu/blockdev.h"
-#include "sysemu/runstate.h"
+#include "system/blockdev.h"
+#include "system/runstate.h"
 #include "trace.h"
 
 #define PFLASH_BE          0
@@ -895,7 +895,7 @@ static void pflash_cfi01_system_reset(DeviceState *dev)
     pfl->blk_offset = -1;
 }
 
-static Property pflash_cfi01_properties[] = {
+static const Property pflash_cfi01_properties[] = {
     DEFINE_PROP_DRIVE("drive", PFlashCFI01, blk),
     /* num-blocks is the number of blocks actually visible to the guest,
      * ie the total size of the device divided by the sector length.
@@ -932,10 +932,9 @@ static Property pflash_cfi01_properties[] = {
     DEFINE_PROP_STRING("name", PFlashCFI01, name),
     DEFINE_PROP_BOOL("old-multiple-chip-handling", PFlashCFI01,
                      old_multiple_chip_handling, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pflash_cfi01_class_init(ObjectClass *klass, void *data)
+static void pflash_cfi01_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

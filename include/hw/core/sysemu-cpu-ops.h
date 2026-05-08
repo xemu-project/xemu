@@ -7,8 +7,8 @@
  * See the COPYING file in the top-level directory.
  */
 
-#ifndef SYSEMU_CPU_OPS_H
-#define SYSEMU_CPU_OPS_H
+#ifndef SYSTEM_CPU_OPS_H
+#define SYSTEM_CPU_OPS_H
 
 #include "hw/core/cpu.h"
 
@@ -16,6 +16,10 @@
  * struct SysemuCPUOps: System operations specific to a CPU class
  */
 typedef struct SysemuCPUOps {
+    /**
+     * @has_work: Callback for checking if there is work to do.
+     */
+    bool (*has_work)(CPUState *cpu); /* MANDATORY NON-NULL */
     /**
      * @get_memory_mapping: Callback for obtaining the memory mappings.
      */
@@ -89,4 +93,4 @@ typedef struct SysemuCPUOps {
 
 } SysemuCPUOps;
 
-#endif /* SYSEMU_CPU_OPS_H */
+#endif /* SYSTEM_CPU_OPS_H */

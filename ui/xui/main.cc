@@ -17,7 +17,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <epoxy/gl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -60,7 +60,6 @@ const char *g_snapshot_pending_load_name;
 float g_main_menu_height;
 
 static ImGuiStyle g_base_style;
-static SDL_Window *g_sdl_window;
 static float g_last_scale;
 static int g_vsync;
 static GLuint g_tex;
@@ -145,9 +144,8 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     io.IniFilename = NULL;
 
     // Setup Platform/Renderer bindings
-    ImGui_ImplSDL2_InitForOpenGL(window, sdl_gl_context);
+    ImGui_ImplSDL3_InitForOpenGL(window, sdl_gl_context);
     ImGui_ImplOpenGL3_Init("#version 150");
-    g_sdl_window = window;
     ImPlot::CreateContext();
 
 #if defined(_WIN32)
@@ -164,13 +162,18 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
 void xemu_hud_cleanup(void)
 {
     ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplSDL2_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
 }
 
 void xemu_hud_process_sdl_events(SDL_Event *event)
 {
-    ImGui_ImplSDL2_ProcessEvent(event);
+    // Ignore inputs that are consumed by rebinding
+    if (g_main_menu.ConsumeRebindEvent(event)) {
+        return;
+    }
+
+    ImGui_ImplSDL3_ProcessEvent(event);
 }
 
 void xemu_hud_should_capture_kbd_mouse(int *kbd, int *mouse)
@@ -186,7 +189,7 @@ void xemu_hud_set_framebuffer_texture(GLuint tex, bool flip)
     g_flip_req = flip;
 }
 
-void xemu_hud_render(void)
+void xemu_hud_update(void)
 {
     ImGuiIO& io = ImGui::GetIO();
     uint32_t now = SDL_GetTicks();
@@ -202,13 +205,13 @@ void xemu_hud_render(void)
 
     if (!first_boot_window.is_open) {
         int ww, wh;
-        SDL_GL_GetDrawableSize(g_sdl_window, &ww, &wh);
+        SDL_GetWindowSizeInPixels(xemu_get_window(), &ww, &wh);
         RenderFramebuffer(g_tex, ww, wh, g_flip_req);
     }
 
     ImGui_ImplOpenGL3_NewFrame();
     io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
-    ImGui_ImplSDL2_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
     g_input_mgr.Update();
@@ -218,7 +221,7 @@ void xemu_hud_render(void)
 
 #if defined(CONFIG_RENDERDOC)
     if (g_capture_renderdoc_frame) {
-        nv2a_dbg_renderdoc_capture_frames(1);
+        nv2a_dbg_renderdoc_capture_frames(1, false);
         g_capture_renderdoc_frame = false;
     }
 #endif
@@ -290,8 +293,10 @@ void xemu_hud_render(void)
                    (ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
                     !ImGui::IsAnyItemFocused() && !ImGui::IsAnyItemHovered())) {
             g_scene_mgr.PushScene(g_popup_menu);
+        } else if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            xemu_toggle_fullscreen();
         }
-        
+
         bool mod_key_down = ImGui::IsKeyDown(ImGuiKey_ModShift);
         for (int f_key = 0; f_key < 4; ++f_key) {
             if (ImGui::IsKeyPressed((enum ImGuiKey)(ImGuiKey_F5 + f_key))) {
@@ -315,7 +320,10 @@ void xemu_hud_render(void)
 
     // static bool show_demo = true;
     // if (show_demo) ImGui::ShowDemoWindow(&show_demo);
+}
 
+void xemu_hud_render()
+{
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 

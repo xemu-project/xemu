@@ -19,12 +19,13 @@
 #include "qemu/qemu-print.h"
 #include "cpu.h"
 #include "internal.h"
-#include "exec/exec-all.h"
+#include "exec/translation-block.h"
 #include "qapi/error.h"
 #include "hw/qdev-properties.h"
 #include "fpu/softfloat-helpers.h"
 #include "tcg/tcg.h"
 #include "exec/gdbstub.h"
+#include "accel/tcg/cpu-ops.h"
 
 static void hexagon_v66_cpu_init(Object *obj) { }
 static void hexagon_v67_cpu_init(Object *obj) { }
@@ -48,12 +49,11 @@ static ObjectClass *hexagon_cpu_class_by_name(const char *cpu_model)
     return oc;
 }
 
-static Property hexagon_cpu_properties[] = {
+static const Property hexagon_cpu_properties[] = {
     DEFINE_PROP_BOOL("lldb-compat", HexagonCPU, lldb_compat, false),
     DEFINE_PROP_UNSIGNED("lldb-stack-adjust", HexagonCPU, lldb_stack_adjust, 0,
                          qdev_prop_uint32, target_ulong),
     DEFINE_PROP_BOOL("short-circuit", HexagonCPU, short_circuit, true),
-    DEFINE_PROP_END_OF_LIST()
 };
 
 const char * const hexagon_regnames[TOTAL_PER_THREAD_REGS] = {
@@ -255,16 +255,27 @@ static vaddr hexagon_cpu_get_pc(CPUState *cs)
     return cpu_env(cs)->gpr[HEX_REG_PC];
 }
 
+static TCGTBCPUState hexagon_get_tb_cpu_state(CPUState *cs)
+{
+    CPUHexagonState *env = cpu_env(cs);
+    vaddr pc = env->gpr[HEX_REG_PC];
+    uint32_t hex_flags = 0;
+
+    if (pc == env->gpr[HEX_REG_SA0]) {
+        hex_flags = FIELD_DP32(hex_flags, TB_FLAGS, IS_TIGHT_LOOP, 1);
+    }
+    if (pc & PCALIGN_MASK) {
+        hexagon_raise_exception_err(env, HEX_CAUSE_PC_NOT_ALIGNED, 0);
+    }
+
+    return (TCGTBCPUState){ .pc = pc, .flags = hex_flags };
+}
+
 static void hexagon_cpu_synchronize_from_tb(CPUState *cs,
                                             const TranslationBlock *tb)
 {
     tcg_debug_assert(!tcg_cflags_has(cs, CF_PCREL));
     cpu_env(cs)->gpr[HEX_REG_PC] = tb->pc;
-}
-
-static bool hexagon_cpu_has_work(CPUState *cs)
-{
-    return true;
 }
 
 static void hexagon_restore_state_to_opc(CPUState *cs,
@@ -286,11 +297,14 @@ static void hexagon_cpu_reset_hold(Object *obj, ResetType type)
 
     set_default_nan_mode(1, &env->fp_status);
     set_float_detect_tininess(float_tininess_before_rounding, &env->fp_status);
+    /* Default NaN value: sign bit set, all frac bits set */
+    set_float_default_nan_pattern(0b11111111, &env->fp_status);
 }
 
 static void hexagon_cpu_disas_set_info(CPUState *s, disassemble_info *info)
 {
     info->print_insn = print_insn_hexagon;
+    info->endian = BFD_ENDIAN_LITTLE;
 }
 
 static void hexagon_cpu_realize(DeviceState *dev, Error **errp)
@@ -315,19 +329,28 @@ static void hexagon_cpu_realize(DeviceState *dev, Error **errp)
     mcc->parent_realize(dev, errp);
 }
 
+static int hexagon_cpu_mmu_index(CPUState *cs, bool ifetch)
+{
+    return MMU_USER_IDX;
+}
+
 static void hexagon_cpu_init(Object *obj)
 {
 }
 
-#include "hw/core/tcg-cpu-ops.h"
-
 static const TCGCPUOps hexagon_tcg_ops = {
+    /* MTTCG not yet supported: require strict ordering */
+    .guest_default_memory_order = TCG_MO_ALL,
+    .mttcg_supported = false,
     .initialize = hexagon_translate_init,
+    .translate_code = hexagon_translate_code,
+    .get_tb_cpu_state = hexagon_get_tb_cpu_state,
     .synchronize_from_tb = hexagon_cpu_synchronize_from_tb,
     .restore_state_to_opc = hexagon_restore_state_to_opc,
+    .mmu_index = hexagon_cpu_mmu_index,
 };
 
-static void hexagon_cpu_class_init(ObjectClass *c, void *data)
+static void hexagon_cpu_class_init(ObjectClass *c, const void *data)
 {
     HexagonCPUClass *mcc = HEXAGON_CPU_CLASS(c);
     CPUClass *cc = CPU_CLASS(c);
@@ -342,7 +365,6 @@ static void hexagon_cpu_class_init(ObjectClass *c, void *data)
                                        &mcc->parent_phases);
 
     cc->class_by_name = hexagon_cpu_class_by_name;
-    cc->has_work = hexagon_cpu_has_work;
     cc->dump_state = hexagon_dump_state;
     cc->set_pc = hexagon_cpu_set_pc;
     cc->get_pc = hexagon_cpu_get_pc;

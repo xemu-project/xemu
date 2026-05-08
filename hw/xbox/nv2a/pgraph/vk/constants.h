@@ -21,7 +21,7 @@
 #define HW_XBOX_NV2A_PGRAPH_VK_CONSTANTS_H
 
 #include "hw/xbox/nv2a/nv2a_regs.h"
-#include "hw/xbox/nv2a/pgraph/shaders.h"
+#include "hw/xbox/nv2a/pgraph/vsh_regs.h"
 #include <vulkan/vulkan.h>
 
 static const VkFilter pgraph_texture_min_filter_vk_map[] = {

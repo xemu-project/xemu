@@ -1,6 +1,7 @@
-#include "common.hh"
+#include "ui/xui/main-menu.hh"
 #include "input-manager.hh"
 #include "../xemu-input.h"
+#include "common.hh"
 
 InputManager g_input_mgr;
 
@@ -18,14 +19,18 @@ void InputManager::Update()
     m_buttons = 0;
     int16_t axis[CONTROLLER_AXIS__COUNT] = {0};
 
-    ControllerState *iter;
-    QTAILQ_FOREACH(iter, &available_controllers, entry) {
-        if (iter->type != INPUT_DEVICE_SDL_GAMECONTROLLER) continue;
-        m_buttons |= iter->buttons;
-        // We simply take any axis that is >10 % activation
-        for (int i = 0; i < CONTROLLER_AXIS__COUNT; i++) {
-            if ((iter->axis[i] > 3276) || (iter->axis[i] < -3276)) {
-                axis[i] = iter->axis[i];
+    // If we are rebinding a controller, prevent navigation
+    if (!g_main_menu.IsInputRebinding()) {
+        ControllerState *iter;
+        QTAILQ_FOREACH (iter, &available_controllers, entry) {
+            if (iter->type != INPUT_DEVICE_SDL_GAMEPAD)
+                continue;
+            m_buttons |= iter->buttons;
+            // We simply take any axis that is >10 % activation
+            for (int i = 0; i < CONTROLLER_AXIS__COUNT; i++) {
+                if ((iter->axis[i] > 3276) || (iter->axis[i] < -3276)) {
+                    axis[i] = iter->axis[i];
+                }
             }
         }
     }
@@ -57,7 +62,7 @@ void InputManager::Update()
     #define IM_SATURATE(V)                      (V < 0.0f ? 0.0f : V > 1.0f ? 1.0f : V)
     #define MAP_BUTTON(KEY_NO, BUTTON_NO)       { io.AddKeyEvent(KEY_NO, !!(m_buttons & BUTTON_NO)); }
     #define MAP_ANALOG(KEY_NO, AXIS_NO, V0, V1) { float vn = (float)(axis[AXIS_NO] - V0) / (float)(V1 - V0); vn = IM_SATURATE(vn); io.AddKeyAnalogEvent(KEY_NO, vn > 0.1f, vn); }
-    const int thumb_dead_zone = 8000;           // SDL_gamecontroller.h suggests using this value.
+    const int thumb_dead_zone = 8000;           // SDL_gamepad.h suggests using this value.
     MAP_BUTTON(ImGuiKey_GamepadStart,           CONTROLLER_BUTTON_START);
     MAP_BUTTON(ImGuiKey_GamepadBack,            CONTROLLER_BUTTON_BACK);
     MAP_BUTTON(ImGuiKey_GamepadFaceDown,        CONTROLLER_BUTTON_A);              // Xbox A, PS Cross

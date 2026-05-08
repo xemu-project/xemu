@@ -13,7 +13,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/nvram/eeprom93xx.h"
 #include "migration/vmstate.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "tulip.h"
 #include "trace.h"
 #include "net/eth.h"
@@ -629,7 +629,7 @@ static void tulip_setup_filter_addr(TULIPState *s, uint8_t *buf, int n)
 static void tulip_setup_frame(TULIPState *s,
         struct tulip_descriptor *desc)
 {
-    uint8_t buf[4096];
+    QEMU_UNINITIALIZED uint8_t buf[4096];
     int len = (desc->control >> TDES1_BUF1_SIZE_SHIFT) & TDES1_BUF1_SIZE_MASK;
     int i;
 
@@ -1007,12 +1007,11 @@ static void tulip_instance_init(Object *obj)
                                   &pci_dev->qdev);
 }
 
-static Property tulip_properties[] = {
+static const Property tulip_properties[] = {
     DEFINE_NIC_PROPERTIES(TULIPState, c),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void tulip_class_init(ObjectClass *klass, void *data)
+static void tulip_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -1036,7 +1035,7 @@ static const TypeInfo tulip_info = {
     .instance_size = sizeof(TULIPState),
     .class_init    = tulip_class_init,
     .instance_init = tulip_instance_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },

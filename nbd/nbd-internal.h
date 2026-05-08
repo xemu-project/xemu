@@ -10,7 +10,7 @@
 #ifndef NBD_INTERNAL_H
 #define NBD_INTERNAL_H
 #include "block/nbd.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "io/channel-tls.h"
 
 #include "qemu/iov.h"
@@ -73,5 +73,10 @@ static inline int nbd_write(QIOChannel *ioc, const void *buffer, size_t size,
 }
 
 int nbd_drop(QIOChannel *ioc, size_t size, Error **errp);
+
+/* nbd_set_socket_send_buffer
+ * Set the socket send buffer size for optimal performance.
+ */
+void nbd_set_socket_send_buffer(QIOChannelSocket *sioc);
 
 #endif

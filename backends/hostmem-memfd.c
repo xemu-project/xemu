@@ -11,12 +11,13 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/hostmem.h"
+#include "system/hostmem.h"
 #include "qom/object_interfaces.h"
 #include "qemu/memfd.h"
 #include "qemu/module.h"
 #include "qapi/error.h"
 #include "qom/object.h"
+#include "migration/cpr.h"
 
 OBJECT_DECLARE_SIMPLE_TYPE(HostMemoryBackendMemfd, MEMORY_BACKEND_MEMFD)
 
@@ -33,13 +34,17 @@ static bool
 memfd_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
 {
     HostMemoryBackendMemfd *m = MEMORY_BACKEND_MEMFD(backend);
-    g_autofree char *name = NULL;
+    g_autofree char *name = host_memory_backend_get_name(backend);
+    int fd = cpr_find_fd(name, 0);
     uint32_t ram_flags;
-    int fd;
 
     if (!backend->size) {
         error_setg(errp, "can't create backend with size 0");
         return false;
+    }
+
+    if (fd >= 0) {
+        goto have_fd;
     }
 
     fd = qemu_memfd_create(TYPE_MEMORY_BACKEND_MEMFD, backend->size,
@@ -49,10 +54,11 @@ memfd_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
     if (fd == -1) {
         return false;
     }
+    cpr_save_fd(name, 0, fd);
 
+have_fd:
     backend->aligned = true;
-    name = host_memory_backend_get_name(backend);
-    ram_flags = backend->share ? RAM_SHARED : 0;
+    ram_flags = backend->share ? RAM_SHARED : RAM_PRIVATE;
     ram_flags |= backend->reserve ? 0 : RAM_NORESERVE;
     ram_flags |= backend->guest_memfd ? RAM_GUEST_MEMFD : 0;
     return memory_region_init_ram_from_fd(&backend->mr, OBJECT(backend), name,
@@ -127,7 +133,7 @@ memfd_backend_instance_init(Object *obj)
 }
 
 static void
-memfd_backend_class_init(ObjectClass *oc, void *data)
+memfd_backend_class_init(ObjectClass *oc, const void *data)
 {
     HostMemoryBackendClass *bc = MEMORY_BACKEND_CLASS(oc);
 

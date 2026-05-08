@@ -17,14 +17,14 @@
 #include "standard-headers/linux/virtio_blk.h"
 #include "hw/virtio/virtio.h"
 #include "hw/block/block.h"
-#include "sysemu/iothread.h"
-#include "sysemu/block-backend.h"
-#include "sysemu/block-ram-registrar.h"
+#include "system/iothread.h"
+#include "system/block-backend.h"
+#include "system/block-ram-registrar.h"
 #include "qom/object.h"
 #include "qapi/qapi-types-virtio.h"
 
 #define TYPE_VIRTIO_BLK "virtio-blk-device"
-OBJECT_DECLARE_SIMPLE_TYPE(VirtIOBlock, VIRTIO_BLK)
+OBJECT_DECLARE_TYPE(VirtIOBlock, VirtIOBlkClass, VIRTIO_BLK)
 
 /* This is the last element of the write scatter-gather list */
 struct virtio_blk_inhdr
@@ -100,6 +100,15 @@ typedef struct MultiReqBuffer {
     bool is_write;
 } MultiReqBuffer;
 
+typedef struct VirtIOBlkClass {
+    /*< private >*/
+    VirtioDeviceClass parent;
+    /*< public >*/
+    bool (*handle_unknown_request)(VirtIOBlockReq *req, MultiReqBuffer *mrb,
+                                   uint32_t type);
+} VirtIOBlkClass;
+
 void virtio_blk_handle_vq(VirtIOBlock *s, VirtQueue *vq);
+void virtio_blk_req_complete(VirtIOBlockReq *req, unsigned char status);
 
 #endif

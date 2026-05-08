@@ -12,9 +12,10 @@
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/arm/boot.h"
+#include "hw/arm/machines-qom.h"
 #include "hw/net/smc91c111.h"
 #include "net/net.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 #include "hw/pci/pci.h"
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/arm_sbcon_i2c.h"
@@ -25,8 +26,9 @@
 #include "hw/char/pl011.h"
 #include "hw/sd/sd.h"
 #include "qom/object.h"
-#include "audio/audio.h"
+#include "qemu/audio.h"
 #include "target/arm/cpu-qom.h"
+#include "qemu/log.h"
 
 #define VERSATILE_FLASH_ADDR 0x34000000
 #define VERSATILE_FLASH_SIZE (64 * 1024 * 1024)
@@ -110,7 +112,8 @@ static uint64_t vpb_sic_read(void *opaque, hwaddr offset,
     case 8: /* PICENABLE */
         return s->pic_enable;
     default:
-        printf ("vpb_sic_read: Bad register offset 0x%x\n", (int)offset);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "vpb_sic_read: Bad register offset 0x%x\n", (int)offset);
         return 0;
     }
 }
@@ -144,7 +147,8 @@ static void vpb_sic_write(void *opaque, hwaddr offset,
         vpb_sic_update_pic(s);
         break;
     default:
-        printf ("vpb_sic_write: Bad register offset 0x%x\n", (int)offset);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "vpb_sic_write: Bad register offset 0x%x\n", (int)offset);
         return;
     }
     vpb_sic_update(s);
@@ -409,7 +413,7 @@ static void vab_init(MachineState *machine)
     versatile_init(machine, 0x25e);
 }
 
-static void versatilepb_class_init(ObjectClass *oc, void *data)
+static void versatilepb_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
 
@@ -419,6 +423,7 @@ static void versatilepb_class_init(ObjectClass *oc, void *data)
     mc->ignore_memory_transaction_failures = true;
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("arm926");
     mc->default_ram_id = "versatile.ram";
+    mc->auto_create_sdcard = true;
 
     machine_add_audiodev_property(mc);
 }
@@ -427,9 +432,10 @@ static const TypeInfo versatilepb_type = {
     .name = MACHINE_TYPE_NAME("versatilepb"),
     .parent = TYPE_MACHINE,
     .class_init = versatilepb_class_init,
+    .interfaces = arm_machine_interfaces,
 };
 
-static void versatileab_class_init(ObjectClass *oc, void *data)
+static void versatileab_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
 
@@ -439,6 +445,7 @@ static void versatileab_class_init(ObjectClass *oc, void *data)
     mc->ignore_memory_transaction_failures = true;
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("arm926");
     mc->default_ram_id = "versatile.ram";
+    mc->auto_create_sdcard = true;
 
     machine_add_audiodev_property(mc);
 }
@@ -447,6 +454,7 @@ static const TypeInfo versatileab_type = {
     .name = MACHINE_TYPE_NAME("versatileab"),
     .parent = TYPE_MACHINE,
     .class_init = versatileab_class_init,
+    .interfaces = arm_machine_interfaces,
 };
 
 static void versatile_machine_init(void)
@@ -457,7 +465,7 @@ static void versatile_machine_init(void)
 
 type_init(versatile_machine_init)
 
-static void vpb_sic_class_init(ObjectClass *klass, void *data)
+static void vpb_sic_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

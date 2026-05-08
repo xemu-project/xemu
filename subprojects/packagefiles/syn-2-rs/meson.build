@@ -1,6 +1,6 @@
 project('syn-2-rs', 'rust',
   meson_version: '>=1.5.0',
-  version: '2.0.66',
+  version: '2.0.104',
   license: 'MIT OR Apache-2.0',
   default_options: [])
 
@@ -19,6 +19,7 @@ _syn_rs = static_library(
   override_options: ['rust_std=2021', 'build.rust_std=2021'],
   rust_abi: 'rust',
   rust_args: [
+    '--cap-lints', 'allow',
     '--cfg', 'feature="full"',
     '--cfg', 'feature="derive"',
     '--cfg', 'feature="parsing"',

@@ -92,7 +92,6 @@ void pgraph_gl_clear_surface(NV2AState *d, uint32_t parameter)
                  scissor_height = ymax - ymin + 1;
     pgraph_apply_anti_aliasing_factor(pg, &xmin, &ymin);
     pgraph_apply_anti_aliasing_factor(pg, &scissor_width, &scissor_height);
-    ymin = pg->surface_binding_dim.height - (ymin + scissor_height);
 
     NV2A_DPRINTF("Translated clear rect to %d,%d - %d,%d\n", xmin, ymin,
                  xmin + scissor_width - 1, ymin + scissor_height - 1);
@@ -204,42 +203,15 @@ void pgraph_gl_draw_begin(NV2AState *d)
     }
 
     /* Front-face select */
+    /* Winding is reverse here because clip-space y-coordinates are inverted */
     glFrontFace(pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER)
                     & NV_PGRAPH_SETUPRASTER_FRONTFACE
-                        ? GL_CCW : GL_CW);
+                        ? GL_CW : GL_CCW);
 
-    /* Polygon offset */
-    /* FIXME: GL implementation-specific, maybe do this in VS? */
-    if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-            NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE) {
-        glEnable(GL_POLYGON_OFFSET_FILL);
-    } else {
-        glDisable(GL_POLYGON_OFFSET_FILL);
-    }
-    if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-            NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE) {
-        glEnable(GL_POLYGON_OFFSET_LINE);
-    } else {
-        glDisable(GL_POLYGON_OFFSET_LINE);
-    }
-    if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-            NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE) {
-        glEnable(GL_POLYGON_OFFSET_POINT);
-    } else {
-        glDisable(GL_POLYGON_OFFSET_POINT);
-    }
-    if (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-            (NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
-             NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE)) {
-        uint32_t zfactor_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETFACTOR);
-        GLfloat zfactor = *(float*)&zfactor_u32;
-        uint32_t zbias_u32 = pgraph_reg_r(pg, NV_PGRAPH_ZOFFSETBIAS);
-        GLfloat zbias = *(float*)&zbias_u32;
-        // FIXME: with Linux and Mesa, zbias must be multiplied by 0.5 in
-        // order to have the same depth value offset as Xbox.
-        glPolygonOffset(zfactor, zbias);
-    }
+    /* Polygon offset is handled in geometry and fragment shaders explicitly */
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glDisable(GL_POLYGON_OFFSET_LINE);
+    glDisable(GL_POLYGON_OFFSET_POINT);
 
     /* Depth testing */
     if (depth_test) {
@@ -255,11 +227,8 @@ void pgraph_gl_draw_begin(NV2AState *d)
 
     glEnable(GL_DEPTH_CLAMP);
 
-    if (GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
-                 NV_PGRAPH_CONTROL_3_SHADEMODE) ==
-        NV_PGRAPH_CONTROL_3_SHADEMODE_FLAT) {
-        glProvokingVertex(GL_FIRST_VERTEX_CONVENTION);
-    }
+    /* Set first vertex convention to match Vulkan default */
+    glProvokingVertex(GL_FIRST_VERTEX_CONVENTION);
 
     if (stencil_test) {
         glEnable(GL_STENCIL_TEST);
@@ -332,16 +301,14 @@ void pgraph_gl_draw_begin(NV2AState *d)
 
     /* Surface clip */
     /* FIXME: Consider moving to PSH w/ window clip */
-    unsigned int xmin = pg->surface_shape.clip_x - pg->surface_binding_dim.clip_x,
-                 ymin = pg->surface_shape.clip_y - pg->surface_binding_dim.clip_y;
-    unsigned int xmax = xmin + pg->surface_shape.clip_width - 1,
-                 ymax = ymin + pg->surface_shape.clip_height - 1;
+    unsigned int xmin = pg->surface_shape.clip_x,
+                 ymin = pg->surface_shape.clip_y;
 
-    unsigned int scissor_width = xmax - xmin + 1,
-                 scissor_height = ymax - ymin + 1;
+    unsigned int scissor_width = pg->surface_shape.clip_width,
+                 scissor_height = pg->surface_shape.clip_height;
+
     pgraph_apply_anti_aliasing_factor(pg, &xmin, &ymin);
     pgraph_apply_anti_aliasing_factor(pg, &scissor_width, &scissor_height);
-    ymin = pg->surface_binding_dim.height - (ymin + scissor_height);
     pgraph_apply_scaling_factor(pg, &xmin, &ymin);
     pgraph_apply_scaling_factor(pg, &scissor_width, &scissor_height);
 
@@ -387,6 +354,7 @@ void pgraph_gl_draw_end(NV2AState *d)
         // off. This check only seems to trigger during the fragment
         // processing, it is legal to attempt a draw that is entirely
         // clipped regardless of 0x880. See xemu#635 for context.
+        NV2A_GL_DGROUP_END();
         return;
     }
 

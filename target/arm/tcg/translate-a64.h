@@ -28,7 +28,7 @@ bool logic_imm_decode_wmask(uint64_t *result, unsigned int immn,
 bool sve_access_check(DisasContext *s);
 bool sme_enabled_check(DisasContext *s);
 bool sme_enabled_check_with_svcr(DisasContext *s, unsigned);
-uint32_t make_svemte_desc(DisasContext *s, unsigned vsz, uint32_t nregs,
+uint64_t make_svemte_desc(DisasContext *s, unsigned vsz, uint32_t nregs,
                           uint32_t msz, bool is_write, uint32_t data);
 
 /* This function corresponds to CheckStreamingSVEEnabled. */
@@ -65,7 +65,7 @@ TCGv_i64 gen_mte_checkN(DisasContext *s, TCGv_i64 addr, bool is_write,
 static inline void assert_fp_access_checked(DisasContext *s)
 {
 #ifdef CONFIG_DEBUG_TCG
-    if (unlikely(!s->fp_access_checked || s->fp_excp_el)) {
+    if (unlikely(s->fp_access_checked <= 0)) {
         fprintf(stderr, "target-arm: FP access check missing for "
                 "instruction 0x%08x\n", s->insn);
         abort();
@@ -185,6 +185,19 @@ static inline TCGv_ptr pred_full_reg_ptr(DisasContext *s, int regno)
     return ret;
 }
 
+/*
+ * Return the ARMFPStatusFlavour to use based on element size and
+ * whether FPCR.AH is set.
+ */
+static inline ARMFPStatusFlavour select_ah_fpst(DisasContext *s, MemOp esz)
+{
+    if (s->fpcr_ah) {
+        return esz == MO_16 ? FPST_AH_F16 : FPST_AH;
+    } else {
+        return esz == MO_16 ? FPST_A64_F16 : FPST_A64;
+    }
+}
+
 bool disas_sve(DisasContext *, uint32_t);
 bool disas_sme(DisasContext *, uint32_t);
 
@@ -212,7 +225,13 @@ void gen_gvec_usqadd_qc(unsigned vece, uint32_t rd_ofs,
                         uint32_t rn_ofs, uint32_t rm_ofs,
                         uint32_t opr_sz, uint32_t max_sz);
 
-void gen_sve_ldr(DisasContext *s, TCGv_ptr, int vofs, int len, int rn, int imm);
-void gen_sve_str(DisasContext *s, TCGv_ptr, int vofs, int len, int rn, int imm);
+void gen_gvec_sve2_sqdmulh(unsigned vece, uint32_t rd_ofs,
+                           uint32_t rn_ofs, uint32_t rm_ofs,
+                           uint32_t opr_sz, uint32_t max_sz);
+
+void gen_sve_ldr(DisasContext *s, TCGv_ptr, int vofs,
+                 int len, int rn, int imm, MemOp align);
+void gen_sve_str(DisasContext *s, TCGv_ptr, int vofs,
+                 int len, int rn, int imm, MemOp align);
 
 #endif /* TARGET_ARM_TRANSLATE_A64_H */

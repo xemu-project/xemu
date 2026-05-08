@@ -996,7 +996,7 @@ static void xilinx_enet_init(Object *obj)
     sysbus_init_mmio(sbd, &s->iomem);
 }
 
-static Property xilinx_enet_properties[] = {
+static const Property xilinx_enet_properties[] = {
     DEFINE_PROP_UINT32("phyaddr", XilinxAXIEnet, c_phyaddr, 7),
     DEFINE_PROP_UINT32("rxmem", XilinxAXIEnet, c_rxmem, 0x1000),
     DEFINE_PROP_UINT32("txmem", XilinxAXIEnet, c_txmem, 0x1000),
@@ -1005,10 +1005,9 @@ static Property xilinx_enet_properties[] = {
                      tx_data_dev, TYPE_STREAM_SINK, StreamSink *),
     DEFINE_PROP_LINK("axistream-control-connected", XilinxAXIEnet,
                      tx_control_dev, TYPE_STREAM_SINK, StreamSink *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void xilinx_enet_class_init(ObjectClass *klass, void *data)
+static void xilinx_enet_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -1018,14 +1017,15 @@ static void xilinx_enet_class_init(ObjectClass *klass, void *data)
 }
 
 static void xilinx_enet_control_stream_class_init(ObjectClass *klass,
-                                                  void *data)
+                                                  const void *data)
 {
     StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
 
     ssc->push = xilinx_axienet_control_stream_push;
 }
 
-static void xilinx_enet_data_stream_class_init(ObjectClass *klass, void *data)
+static void xilinx_enet_data_stream_class_init(ObjectClass *klass,
+                                               const void *data)
 {
     StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
 
@@ -1045,7 +1045,7 @@ static const TypeInfo xilinx_enet_data_stream_info = {
     .parent        = TYPE_OBJECT,
     .instance_size = sizeof(XilinxAXIEnetStreamSink),
     .class_init    = xilinx_enet_data_stream_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
             { TYPE_STREAM_SINK },
             { }
     }
@@ -1056,7 +1056,7 @@ static const TypeInfo xilinx_enet_control_stream_info = {
     .parent        = TYPE_OBJECT,
     .instance_size = sizeof(XilinxAXIEnetStreamSink),
     .class_init    = xilinx_enet_control_stream_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
             { TYPE_STREAM_SINK },
             { }
     }

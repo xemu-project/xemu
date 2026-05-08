@@ -19,6 +19,8 @@
 #include "ui/xemu-notifications.h"
 #include <string>
 #include <vector>
+#include <filesystem>
+#include <map>
 #include "misc.hh"
 #include "actions.hh"
 #include "font-manager.hh"
@@ -40,7 +42,7 @@ void PopupMenuItemDelegate::PushFocus() {}
 void PopupMenuItemDelegate::PopFocus() {}
 bool PopupMenuItemDelegate::DidPop() { return false; }
 
-bool PopupMenuButton(std::string text, std::string icon = "")
+static bool PopupMenuButton(std::string text, std::string icon = "")
 {
     ImGui::PushFont(g_font_mgr.m_menu_font);
     auto button_text = string_format("%s %s", icon.c_str(), text.c_str());
@@ -49,7 +51,7 @@ bool PopupMenuButton(std::string text, std::string icon = "")
     return status;
 }
 
-bool PopupMenuCheck(std::string text, std::string icon = "", bool v = false)
+static bool PopupMenuCheck(std::string text, std::string icon = "", bool v = false)
 {
     bool status = PopupMenuButton(text, icon);
     if (v) {
@@ -68,7 +70,7 @@ bool PopupMenuCheck(std::string text, std::string icon = "", bool v = false)
     return status;
 }
 
-bool PopupMenuSubmenuButton(std::string text, std::string icon = "")
+static bool PopupMenuSubmenuButton(std::string text, std::string icon = "")
 {
     bool status = PopupMenuButton(text, icon);
 
@@ -86,7 +88,7 @@ bool PopupMenuSubmenuButton(std::string text, std::string icon = "")
     return status;
 }
 
-bool PopupMenuToggle(std::string text, std::string icon = "", bool *v = nullptr)
+static bool PopupMenuToggle(std::string text, std::string icon = "", bool *v = nullptr)
 {
     bool l_v = false;
     if (v == NULL) v = &l_v;
@@ -110,7 +112,7 @@ bool PopupMenuToggle(std::string text, std::string icon = "", bool *v = nullptr)
     return status;
 }
 
-bool PopupMenuSlider(std::string text, std::string icon = "", float *v = NULL)
+static bool PopupMenuSlider(std::string text, std::string icon = "", float *v = NULL)
 {
     bool status = PopupMenuButton(text, icon);
     ImVec2 p_min = ImGui::GetItemRectMin();
@@ -338,9 +340,69 @@ public:
     }
 };
 
+class GamesPopupMenu : public virtual PopupMenu {
+protected:
+    std::multimap<std::string, std::string> sorted_file_names;
+
+public:
+    void Show(const ImVec2 &direction) override
+    {
+        PopupMenu::Show(direction);
+        PopulateGameList();
+    }
+
+    bool DrawItems(PopupMenuItemDelegate &nav) override
+    {
+        bool pop = false;
+
+        if (m_focus && !m_pop_focus) {
+            ImGui::SetKeyboardFocusHere();
+        }
+
+        for (const auto &[label, file_path] : sorted_file_names) {
+            if (PopupMenuButton(label, ICON_FA_COMPACT_DISC)) {
+                ActionLoadDiscFile(file_path.c_str());
+                nav.ClearMenuStack();
+                pop = true;
+            }
+        }
+
+        if (sorted_file_names.size() == 0) {
+            if (PopupMenuButton("No games found", ICON_FA_SLIDERS)) {
+                nav.ClearMenuStack();
+                g_scene_mgr.PushScene(g_main_menu);
+            }
+        }
+
+        if (m_pop_focus) {
+            nav.PopFocus();
+        }
+        return pop;
+    }
+
+    void PopulateGameList() {
+        sorted_file_names.clear();
+        std::filesystem::path directory(g_config.general.games_dir);
+        std::error_code ec;
+        if (std::filesystem::is_directory(directory, ec)) {
+            for (const auto &file :
+                 std::filesystem::directory_iterator(directory)) {
+                const auto &file_path = file.path();
+                if (std::filesystem::is_regular_file(file_path) &&
+                    (file_path.extension() == ".iso" ||
+                     file_path.extension() == ".xiso")) {
+                    sorted_file_names.insert(
+                        { file_path.stem().string(), file_path.string() });
+                }
+            }
+        }
+    }
+};
+
 class RootPopupMenu : public virtual PopupMenu {
 protected:
     SettingsPopupMenu settings;
+    GamesPopupMenu games;
     bool refocus_first_item;
 
 public:
@@ -377,6 +439,10 @@ public:
             xemu_snapshots_save(NULL, NULL);
             xemu_queue_notification("Created new snapshot");
             pop = true;
+        }
+        if (PopupMenuSubmenuButton("Games", ICON_FA_GAMEPAD)) {
+            nav.PushFocus();
+            nav.PushMenu(games);
         }
         if (PopupMenuButton("Eject Disc", ICON_FA_EJECT)) {
             ActionEjectDisc();

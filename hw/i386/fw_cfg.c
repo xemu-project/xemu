@@ -13,7 +13,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/numa.h"
+#include "system/numa.h"
 #include "hw/acpi/acpi.h"
 #include "hw/acpi/aml-build.h"
 #include "hw/firmware/smbios.h"
@@ -26,7 +26,9 @@
 #include CONFIG_DEVICES
 #include "target/i386/cpu.h"
 
-struct hpet_fw_config hpet_cfg = {.count = UINT8_MAX};
+#if !defined(CONFIG_HPET)
+struct hpet_fw_config hpet_fw_cfg = {.count = UINT8_MAX};
+#endif
 
 const char *fw_cfg_arch_key_name(uint16_t key)
 {
@@ -143,13 +145,13 @@ FWCfgState *fw_cfg_arch_create(MachineState *ms,
      */
     fw_cfg_add_i16(fw_cfg, FW_CFG_MAX_CPUS, apic_id_limit);
     fw_cfg_add_i64(fw_cfg, FW_CFG_RAM_SIZE, ms->ram_size);
-#ifdef CONFIG_ACPI
-    fw_cfg_add_bytes(fw_cfg, FW_CFG_ACPI_TABLES,
-                     acpi_tables, acpi_tables_len);
-#endif
+    if (acpi_builtin()) {
+        fw_cfg_add_bytes(fw_cfg, FW_CFG_ACPI_TABLES,
+                         acpi_tables, acpi_tables_len);
+    }
     fw_cfg_add_i32(fw_cfg, FW_CFG_IRQ0_OVERRIDE, 1);
 
-    fw_cfg_add_bytes(fw_cfg, FW_CFG_HPET, &hpet_cfg, sizeof(hpet_cfg));
+    fw_cfg_add_bytes(fw_cfg, FW_CFG_HPET, &hpet_fw_cfg, sizeof(hpet_fw_cfg));
     /* allocate memory for the NUMA channel: one (64bit) word for the number
      * of nodes, one word for each VCPU->node and one word for each node to
      * hold the amount of memory.

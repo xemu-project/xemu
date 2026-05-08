@@ -29,9 +29,10 @@
 #include "qemu/thread.h"
 #include "cpu.h"
 
-#include "shaders.h"
 #include "surface.h"
+#include "texture.h"
 #include "util.h"
+#include "vsh_regs.h"
 
 typedef struct NV2AState NV2AState;
 typedef struct PGRAPHNullState PGRAPHNullState;
@@ -95,6 +96,15 @@ typedef struct BetaState {
   uint32_t beta;
 } BetaState;
 
+typedef struct GPUProperties {
+    struct {
+        short tri;
+        short tri_strip0;
+        short tri_strip1;
+        short tri_fan;
+    } geom_shader_winding;
+} GPUProperties;
+
 typedef struct PGRAPHRenderer {
     CONFIG_DISPLAY_RENDERER type;
     const char *name;
@@ -121,6 +131,7 @@ typedef struct PGRAPHRenderer {
         void (*set_surface_scale_factor)(NV2AState *d, unsigned int scale);
         unsigned int (*get_surface_scale_factor)(NV2AState *d);
         int (*get_framebuffer_surface)(NV2AState *d);
+        GPUProperties *(*get_gpu_properties)(void);
     } ops;
 } PGRAPHRenderer;
 
@@ -197,6 +208,11 @@ typedef struct PGRAPHState {
     float light_local_position[NV2A_MAX_LIGHTS][3];
     float light_local_attenuation[NV2A_MAX_LIGHTS][3];
 
+    float specular_params[6];
+    float specular_power;
+    float specular_params_back[6];
+    float specular_power_back;
+
     float point_params[8];
 
     VertexAttribute vertex_attributes[NV2A_VERTEXSHADER_ATTRIBUTES];
@@ -237,6 +253,13 @@ typedef struct PGRAPHState {
 
     bool framebuffer_in_use;
     QemuCond framebuffer_released;
+
+    enum {
+        PGRAPH_RENDERER_SWITCH_PHASE_IDLE,
+        PGRAPH_RENDERER_SWITCH_PHASE_STARTED,
+        PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING,
+    } renderer_switch_phase;
+    QemuEvent renderer_switch_complete;
 
     unsigned int surface_scale_factor;
     uint8_t *scale_buf;

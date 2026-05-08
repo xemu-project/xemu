@@ -21,7 +21,7 @@
 #include "monitor/monitor-internal.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-ui.h"
-#include "qapi/qmp/qdict.h"
+#include "qobject/qdict.h"
 #include "qemu/cutils.h"
 #include "ui/console.h"
 #include "ui/input.h"
@@ -418,7 +418,7 @@ err_out:
 void sendkey_completion(ReadLineState *rs, int nb_args, const char *str)
 {
     int i;
-    char *sep;
+    const char *sep;
     size_t len;
 
     if (nb_args != 2) {

@@ -14,7 +14,7 @@
 #include "qemu/memalign.h"
 #include "hw/scsi/scsi.h"
 #include "scsi/constants.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "qemu/cutils.h"
 #include "trace.h"
 #include "ufs.h"
@@ -194,7 +194,7 @@ static int ufs_emulate_wlun_inquiry(UfsRequest *req, uint8_t *outbuf,
 static UfsReqResult ufs_emulate_scsi_cmd(UfsLu *lu, UfsRequest *req)
 {
     uint8_t lun = lu->lun;
-    uint8_t outbuf[4096];
+    QEMU_UNINITIALIZED uint8_t outbuf[4096];
     uint8_t sense_buf[UFS_SENSE_SIZE];
     uint8_t scsi_status;
     int len = 0;
@@ -274,10 +274,9 @@ static UfsReqResult ufs_process_scsi_cmd(UfsLu *lu, UfsRequest *req)
     return UFS_REQUEST_NO_COMPLETE;
 }
 
-static Property ufs_lu_props[] = {
+static const Property ufs_lu_props[] = {
     DEFINE_PROP_DRIVE("drive", UfsLu, conf.blk),
     DEFINE_PROP_UINT8("lun", UfsLu, lun, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static bool ufs_add_lu(UfsHc *u, UfsLu *lu, Error **errp)
@@ -420,7 +419,7 @@ static void ufs_lu_unrealize(DeviceState *dev)
     }
 }
 
-static void ufs_lu_class_init(ObjectClass *oc, void *data)
+static void ufs_lu_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 

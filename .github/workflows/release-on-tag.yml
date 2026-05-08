@@ -1,0 +1,18 @@
+name: Release (Tag Pushed)
+
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    if: github.repository_owner == 'xemu-project'
+    uses: ./.github/workflows/release.yml
+    with:
+      ref: ${{ github.ref_name }}
+      tag: ${{ github.ref_name }}

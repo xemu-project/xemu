@@ -65,7 +65,8 @@ int co_wrapper bdrv_create(BlockDriver *drv, const char *filename,
                            QemuOpts *opts, Error **errp);
 
 int coroutine_fn GRAPH_UNLOCKED
-bdrv_co_create_file(const char *filename, QemuOpts *opts, Error **errp);
+bdrv_co_create_file(const char *filename, QemuOpts *opts,
+                    bool allow_protocol_prefix, Error **errp);
 
 BlockDriverState *bdrv_new(void);
 int bdrv_append(BlockDriverState *bs_new, BlockDriverState *bs_top,
@@ -74,13 +75,14 @@ int bdrv_append(BlockDriverState *bs_new, BlockDriverState *bs_top,
 int GRAPH_WRLOCK
 bdrv_replace_node(BlockDriverState *from, BlockDriverState *to, Error **errp);
 
-int bdrv_replace_child_bs(BdrvChild *child, BlockDriverState *new_bs,
-                          Error **errp);
-BlockDriverState *bdrv_insert_node(BlockDriverState *bs, QDict *node_options,
-                                   int flags, Error **errp);
+int GRAPH_UNLOCKED
+bdrv_replace_child_bs(BdrvChild *child, BlockDriverState *new_bs, Error **errp);
+BlockDriverState * GRAPH_UNLOCKED
+bdrv_insert_node(BlockDriverState *bs, QDict *node_options, int flags,
+                 Error **errp);
 int bdrv_drop_filter(BlockDriverState *bs, Error **errp);
 
-BdrvChild * no_coroutine_fn
+BdrvChild * no_coroutine_fn GRAPH_UNLOCKED
 bdrv_open_child(const char *filename, QDict *options, const char *bdref_key,
                 BlockDriverState *parent, const BdrvChildClass *child_class,
                 BdrvChildRole child_role, bool allow_none, Error **errp);
@@ -90,9 +92,10 @@ bdrv_co_open_child(const char *filename, QDict *options, const char *bdref_key,
                 BlockDriverState *parent, const BdrvChildClass *child_class,
                 BdrvChildRole child_role, bool allow_none, Error **errp);
 
-int bdrv_open_file_child(const char *filename,
-                         QDict *options, const char *bdref_key,
-                         BlockDriverState *parent, Error **errp);
+int GRAPH_UNLOCKED
+bdrv_open_file_child(const char *filename, QDict *options,
+                     const char *bdref_key, BlockDriverState *parent,
+                     Error **errp);
 
 BlockDriverState * no_coroutine_fn
 bdrv_open_blockdev_ref(BlockdevRef *ref, Error **errp);
@@ -100,11 +103,9 @@ bdrv_open_blockdev_ref(BlockdevRef *ref, Error **errp);
 BlockDriverState * coroutine_fn no_co_wrapper
 bdrv_co_open_blockdev_ref(BlockdevRef *ref, Error **errp);
 
-int bdrv_set_backing_hd(BlockDriverState *bs, BlockDriverState *backing_hd,
-                        Error **errp);
 int GRAPH_WRLOCK
-bdrv_set_backing_hd_drained(BlockDriverState *bs, BlockDriverState *backing_hd,
-                            Error **errp);
+bdrv_set_backing_hd(BlockDriverState *bs, BlockDriverState *backing_hd,
+                    Error **errp);
 
 int bdrv_open_backing_file(BlockDriverState *bs, QDict *parent_options,
                            const char *bdref_key, Error **errp);
@@ -123,11 +124,12 @@ BlockDriverState *bdrv_new_open_driver_opts(BlockDriver *drv,
                                             Error **errp);
 BlockDriverState *bdrv_new_open_driver(BlockDriver *drv, const char *node_name,
                                        int flags, Error **errp);
-BlockReopenQueue *bdrv_reopen_queue(BlockReopenQueue *bs_queue,
-                                    BlockDriverState *bs, QDict *options,
-                                    bool keep_old_opts);
+BlockReopenQueue * GRAPH_UNLOCKED
+bdrv_reopen_queue(BlockReopenQueue *bs_queue, BlockDriverState *bs,
+                  QDict *options, bool keep_old_opts);
 void bdrv_reopen_queue_free(BlockReopenQueue *bs_queue);
-int bdrv_reopen_multiple(BlockReopenQueue *bs_queue, Error **errp);
+int GRAPH_UNLOCKED
+bdrv_reopen_multiple(BlockReopenQueue *bs_queue, Error **errp);
 int bdrv_reopen(BlockDriverState *bs, QDict *opts, bool keep_old_opts,
                 Error **errp);
 int bdrv_reopen_set_read_only(BlockDriverState *bs, bool read_only,
@@ -143,9 +145,10 @@ int bdrv_commit(BlockDriverState *bs);
 int GRAPH_RDLOCK bdrv_make_empty(BdrvChild *c, Error **errp);
 
 void bdrv_register(BlockDriver *bdrv);
-int bdrv_drop_intermediate(BlockDriverState *top, BlockDriverState *base,
-                           const char *backing_file_str,
-                           bool backing_mask_protocol);
+int GRAPH_UNLOCKED
+bdrv_drop_intermediate(BlockDriverState *top, BlockDriverState *base,
+                       const char *backing_file_str,
+                       bool backing_mask_protocol);
 
 BlockDriverState * GRAPH_RDLOCK
 bdrv_find_overlay(BlockDriverState *active, BlockDriverState *bs);
@@ -175,21 +178,27 @@ BlockDriverState * GRAPH_RDLOCK
 check_to_replace_node(BlockDriverState *parent_bs, const char *node_name,
                       Error **errp);
 
+
+bool GRAPH_RDLOCK bdrv_is_inactive(BlockDriverState *bs);
+
 int no_coroutine_fn GRAPH_RDLOCK
 bdrv_activate(BlockDriverState *bs, Error **errp);
 
 int coroutine_fn no_co_wrapper_bdrv_rdlock
 bdrv_co_activate(BlockDriverState *bs, Error **errp);
 
+int no_coroutine_fn GRAPH_RDLOCK
+bdrv_inactivate(BlockDriverState *bs, Error **errp);
+
 void bdrv_activate_all(Error **errp);
-int bdrv_inactivate_all(void);
+int GRAPH_UNLOCKED bdrv_inactivate_all(void);
 
 int bdrv_flush_all(void);
-void bdrv_close_all(void);
-void bdrv_drain_all_begin(void);
+void GRAPH_UNLOCKED bdrv_close_all(void);
+void GRAPH_UNLOCKED bdrv_drain_all_begin(void);
 void bdrv_drain_all_begin_nopoll(void);
 void bdrv_drain_all_end(void);
-void bdrv_drain_all(void);
+void GRAPH_UNLOCKED bdrv_drain_all(void);
 
 void bdrv_aio_cancel(BlockAIOCB *acb);
 
@@ -268,11 +277,16 @@ int bdrv_debug_remove_breakpoint(BlockDriverState *bs, const char *tag);
 int bdrv_debug_resume(BlockDriverState *bs, const char *tag);
 bool bdrv_debug_is_suspended(BlockDriverState *bs, const char *tag);
 
-bool bdrv_child_change_aio_context(BdrvChild *c, AioContext *ctx,
-                                   GHashTable *visited, Transaction *tran,
-                                   Error **errp);
-int bdrv_try_change_aio_context(BlockDriverState *bs, AioContext *ctx,
-                                BdrvChild *ignore_child, Error **errp);
+bool GRAPH_RDLOCK
+bdrv_child_change_aio_context(BdrvChild *c, AioContext *ctx,
+                              GHashTable *visited, Transaction *tran,
+                              Error **errp);
+int GRAPH_UNLOCKED
+bdrv_try_change_aio_context(BlockDriverState *bs, AioContext *ctx,
+                            BdrvChild *ignore_child, Error **errp);
+int GRAPH_RDLOCK
+bdrv_try_change_aio_context_locked(BlockDriverState *bs, AioContext *ctx,
+                                   BdrvChild *ignore_child, Error **errp);
 
 int GRAPH_RDLOCK bdrv_probe_blocksizes(BlockDriverState *bs, BlockSizes *bsz);
 int bdrv_probe_geometry(BlockDriverState *bs, HDGeometry *geo);

@@ -7,30 +7,29 @@
 
 #ifndef MIPS64_TARGET_ELF_H
 #define MIPS64_TARGET_ELF_H
-static inline const char *cpu_get_model(uint32_t eflags)
-{
-    switch (eflags & EF_MIPS_MACH) {
-    case EF_MIPS_MACH_OCTEON:
-    case EF_MIPS_MACH_OCTEON2:
-    case EF_MIPS_MACH_OCTEON3:
-        return "Octeon68XX";
-    case EF_MIPS_MACH_LS2E:
-        return "Loongson-2E";
-    case EF_MIPS_MACH_LS2F:
-        return "Loongson-2F";
-    case EF_MIPS_MACH_LS3A:
-        return "Loongson-3A1000";
-    default:
-        break;
-    }
-    switch (eflags & EF_MIPS_ARCH) {
-    case EF_MIPS_ARCH_64R6:
-        return "I6400";
-    case EF_MIPS_ARCH_64R2:
-        return "MIPS64R2-generic";
-    default:
-        break;
-    }
-    return "5KEf";
-}
+
+#include "target_ptrace.h"
+
+#define ELF_CLASS               ELFCLASS64
+#define ELF_MACHINE             EM_MIPS
+#define EXSTACK_DEFAULT         true
+
+#ifdef TARGET_ABI_MIPSN32
+#define elf_check_abi(x)        ((x) & EF_MIPS_ABI2)
+#else
+#define elf_check_abi(x)        (!((x) & EF_MIPS_ABI2))
+#endif
+
+#define HAVE_ELF_HWCAP          1
+#define HAVE_ELF_BASE_PLATFORM  1
+#define HAVE_ELF_CORE_DUMP      1
+
+/* See linux kernel: arch/mips/include/asm/elf.h.  */
+typedef struct target_elf_gregset_t {
+    union {
+        target_ulong reserved[45];
+        struct target_pt_regs pt;
+    };
+} target_elf_gregset_t;
+
 #endif

@@ -601,11 +601,21 @@ def filter_chown(msg):
     return chown_re.sub("chown UID:GID", msg)
 
 def filter_qmp_event(event):
-    '''Filter a QMP event dict'''
+    '''Filter the timestamp of a QMP event dict'''
     event = dict(event)
     if 'timestamp' in event:
         event['timestamp']['seconds'] = 'SECS'
         event['timestamp']['microseconds'] = 'USECS'
+    return event
+
+def filter_block_job(event):
+    '''Filter the offset and length of a QMP block job event dict'''
+    event = dict(event)
+    if 'data' in event:
+        if 'offset' in event['data']:
+            event['data']['offset'] = 'OFFSET'
+        if 'len' in event['data']:
+            event['data']['len'] = 'LEN'
     return event
 
 def filter_qmp(qmsg, filter_fn):
@@ -701,6 +711,10 @@ def filter_qmp_imgfmt(qmsg):
 def filter_nbd_exports(output: str) -> str:
     return re.sub(r'((min|opt|max) block): [0-9]+', r'\1: XXX', output)
 
+def filter_qtest(output: str) -> str:
+    output = re.sub(r'^\[I \d+\.\d+\] OPENED\n', '', output)
+    output = re.sub(r'\n?\[I \+\d+\.\d+\] CLOSED\n?$', '', output)
+    return output
 
 Msg = TypeVar('Msg', Dict[str, Any], List[Any], str)
 
@@ -907,6 +921,10 @@ class VM(qtest.QEMUQtestMachine):
     def add_incoming(self, addr):
         self._args.append('-incoming')
         self._args.append(addr)
+        return self
+
+    def add_paused(self):
+        self._args.append('-S')
         return self
 
     def hmp(self, command_line: str, use_log: bool = False) -> QMPMessage:

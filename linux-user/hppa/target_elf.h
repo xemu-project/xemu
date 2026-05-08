@@ -7,8 +7,15 @@
 
 #ifndef HPPA_TARGET_ELF_H
 #define HPPA_TARGET_ELF_H
-static inline const char *cpu_get_model(uint32_t eflags)
-{
-    return "hppa";
-}
+
+#define ELF_CLASS               ELFCLASS32
+#define ELF_MACHINE             EM_PARISC
+
+#define HAVE_ELF_PLATFORM       1
+
+#define LO_COMMPAGE             0
+#define STACK_GROWS_DOWN        0
+#define STACK_ALIGNMENT         64
+#define VDSO_HEADER             "vdso.c.inc"
+
 #endif

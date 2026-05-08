@@ -365,10 +365,10 @@ fstd            011100 ..... ..... .. ............1.    @ldstim11
 &mpyadd         rm1 rm2 ta ra tm
 @mpyadd         ...... rm1:5 rm2:5 ta:5 ra:5 . tm:5     &mpyadd
 
-fmpyadd_f       000110 ..... ..... ..... ..... 0 .....  @mpyadd
-fmpyadd_d       000110 ..... ..... ..... ..... 1 .....  @mpyadd
-fmpysub_f       100110 ..... ..... ..... ..... 0 .....  @mpyadd
-fmpysub_d       100110 ..... ..... ..... ..... 1 .....  @mpyadd
+fmpyadd_f       000110 ..... ..... ..... ..... 1 .....  @mpyadd
+fmpyadd_d       000110 ..... ..... ..... ..... 0 .....  @mpyadd
+fmpysub_f       100110 ..... ..... ..... ..... 1 .....  @mpyadd
+fmpysub_d       100110 ..... ..... ..... ..... 0 .....  @mpyadd
 
 ####
 # Conditional Branches
@@ -644,10 +644,12 @@ xmpyu           001110 ..... ..... 010 .0111 .00 t:5    r1=%ra64 r2=%rb64
     # For 32-bit PA-7300LC (PCX-L2)
     diag_getshadowregs_pa1  000101 00 0000 0000 0001 1010 0000 0000
     diag_putshadowregs_pa1  000101 00 0000 0000 0001 1010 0100 0000
+    diag_mfdiag             000101 dr:5  rt:5   0000 0110 0000 0000
+    diag_mtdiag             000101 dr:5  r1:5   0001 0110 0000 0000
 
     # For 64-bit PA8700 (PCX-W2)
-    diag_getshadowregs_pa2  000101 00 0111 1000 0001 1000 0100 0000
-    diag_putshadowregs_pa2  000101 00 0111 0000 0001 1000 0100 0000
+    diag_mfdiag             000101 dr:5  0 0000 0000 1000 101  rt:5
+    diag_mtdiag             000101 dr:5  r1:5   0001 1000 0100 0000
   ]
   diag_unimp                000101 i:26
 }

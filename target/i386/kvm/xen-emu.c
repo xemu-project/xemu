@@ -13,14 +13,16 @@
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
 #include "qemu/error-report.h"
+#include "exec/target_page.h"
 #include "hw/xen/xen.h"
-#include "sysemu/kvm_int.h"
-#include "sysemu/kvm_xen.h"
+#include "system/kvm_int.h"
+#include "system/kvm_xen.h"
 #include "kvm/kvm_i386.h"
-#include "exec/address-spaces.h"
+#include "system/address-spaces.h"
 #include "xen-emu.h"
 #include "trace.h"
-#include "sysemu/runstate.h"
+#include "system/memory.h"
+#include "system/runstate.h"
 
 #include "hw/pci/msi.h"
 #include "hw/i386/apic-msidef.h"
@@ -74,6 +76,7 @@ static bool kvm_gva_to_gpa(CPUState *cs, uint64_t gva, uint64_t *gpa,
 static int kvm_gva_rw(CPUState *cs, uint64_t gva, void *_buf, size_t sz,
                       bool is_write)
 {
+    AddressSpace *as = cpu_addressspace(cs, MEMTXATTRS_UNSPECIFIED);
     uint8_t *buf = (uint8_t *)_buf;
     uint64_t gpa;
     size_t len;
@@ -86,7 +89,7 @@ static int kvm_gva_rw(CPUState *cs, uint64_t gva, void *_buf, size_t sz,
             len = sz;
         }
 
-        cpu_physical_memory_rw(gpa, buf, len, is_write);
+        address_space_rw(as, gpa, MEMTXATTRS_UNSPECIFIED, buf, len, is_write);
 
         buf += len;
         sz -= len;

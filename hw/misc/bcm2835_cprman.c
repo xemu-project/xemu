@@ -131,12 +131,14 @@ static const VMStateDescription pll_vmstate = {
     }
 };
 
-static void pll_class_init(ObjectClass *klass, void *data)
+static void pll_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     device_class_set_legacy_reset(dc, pll_reset);
     dc->vmsd = &pll_vmstate;
+    /* Reason: Part of BCM2835CprmanState component */
+    dc->user_creatable = false;
 }
 
 static const TypeInfo cprman_pll_info = {
@@ -235,12 +237,14 @@ static const VMStateDescription pll_channel_vmstate = {
     }
 };
 
-static void pll_channel_class_init(ObjectClass *klass, void *data)
+static void pll_channel_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     device_class_set_legacy_reset(dc, pll_channel_reset);
     dc->vmsd = &pll_channel_vmstate;
+    /* Reason: Part of BCM2835CprmanState component */
+    dc->user_creatable = false;
 }
 
 static const TypeInfo cprman_pll_channel_info = {
@@ -356,12 +360,14 @@ static const VMStateDescription clock_mux_vmstate = {
     }
 };
 
-static void clock_mux_class_init(ObjectClass *klass, void *data)
+static void clock_mux_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     device_class_set_legacy_reset(dc, clock_mux_reset);
     dc->vmsd = &clock_mux_vmstate;
+    /* Reason: Part of BCM2835CprmanState component */
+    dc->user_creatable = false;
 }
 
 static const TypeInfo cprman_clock_mux_info = {
@@ -411,11 +417,13 @@ static const VMStateDescription dsi0hsck_mux_vmstate = {
     }
 };
 
-static void dsi0hsck_mux_class_init(ObjectClass *klass, void *data)
+static void dsi0hsck_mux_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->vmsd = &dsi0hsck_mux_vmstate;
+    /* Reason: Part of BCM2835CprmanState component */
+    dc->user_creatable = false;
 }
 
 static const TypeInfo cprman_dsi0hsck_mux_info = {
@@ -778,12 +786,11 @@ static const VMStateDescription cprman_vmstate = {
     }
 };
 
-static Property cprman_properties[] = {
+static const Property cprman_properties[] = {
     DEFINE_PROP_UINT32("xosc-freq-hz", BCM2835CprmanState, xosc_freq, 19200000),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void cprman_class_init(ObjectClass *klass, void *data)
+static void cprman_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

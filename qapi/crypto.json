@@ -3,7 +3,9 @@
 #
 
 ##
-# = Cryptography
+# ************
+# Cryptography
+# ************
 ##
 
 ##
@@ -44,7 +46,8 @@
 #
 # @md5: MD5.  Should not be used in any new code, legacy compat only
 #
-# @sha1: SHA-1.  Should not be used in any new code, legacy compat only
+# @sha1: SHA-1.  Should not be used in any new code, legacy compat
+#     only
 #
 # @sha224: SHA-224.  (since 2.7)
 #
@@ -55,7 +58,8 @@
 # @sha512: SHA-512.  (since 2.7)
 #
 # @ripemd160: RIPEMD-160.  (since 2.7)
-# @sm3: SM3. (since 9.2.0)
+#
+# @sm3: SM3.  (since 9.2.0)
 #
 # Since: 2.6
 ##
@@ -202,19 +206,19 @@
 #
 # The options that apply to LUKS encryption format initialization
 #
-# @cipher-alg: the cipher algorithm for data encryption Currently
+# @cipher-alg: the cipher algorithm for data encryption.  Currently
 #     defaults to 'aes-256'.
 #
-# @cipher-mode: the cipher mode for data encryption Currently defaults
-#     to 'xts'
+# @cipher-mode: the cipher mode for data encryption.  Currently
+#     defaults to 'xts'
 #
-# @ivgen-alg: the initialization vector generator Currently defaults
+# @ivgen-alg: the initialization vector generator.  Currently defaults
 #     to 'plain64'
 #
-# @ivgen-hash-alg: the initialization vector generator hash Currently
-#     defaults to 'sha256'
+# @ivgen-hash-alg: the initialization vector generator hash.
+#     Currently defaults to 'sha256'
 #
-# @hash-alg: the master key hash algorithm Currently defaults to
+# @hash-alg: the master key hash algorithm.  Currently defaults to
 #     'sha256'
 #
 # @iter-time: number of milliseconds to spend in PBKDF passphrase
@@ -370,12 +374,12 @@
 # @new-secret: The ID of a QCryptoSecret object providing the password
 #     to be written into added active keyslots
 #
-# @old-secret: Optional (for deactivation only) If given will
+# @old-secret: Optional (for deactivation only).  If given will
 #     deactivate all keyslots that match password located in
 #     QCryptoSecret with this ID
 #
-# @iter-time: Optional (for activation only) Number of milliseconds to
-#     spend in PBKDF passphrase processing for the newly activated
+# @iter-time: Optional (for activation only).  Number of milliseconds
+#     to spend in PBKDF passphrase processing for the newly activated
 #     keyslot.  Currently defaults to 2000.
 #
 # @keyslot: Optional.  ID of the keyslot to activate/deactivate.  For
@@ -543,6 +547,7 @@
   'base': 'TlsCredsProperties',
   'data': { '*sanity-check': 'bool',
             '*passwordid': 'str' } }
+
 ##
 # @QCryptoAkCipherAlgo:
 #
@@ -588,9 +593,9 @@
 #
 # Specific parameters for RSA algorithm.
 #
-# @hash-alg: QCryptoHashAlgo
+# @hash-alg: `QCryptoHashAlgo`
 #
-# @padding-alg: QCryptoRSAPaddingAlgo
+# @padding-alg: `QCryptoRSAPaddingAlgo`
 #
 # Since: 7.1
 ##

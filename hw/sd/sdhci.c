@@ -30,7 +30,7 @@
 #include "qapi/error.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
-#include "sysemu/dma.h"
+#include "system/dma.h"
 #include "qemu/timer.h"
 #include "qemu/bitops.h"
 #include "hw/sd/sdhci.h"
@@ -274,6 +274,10 @@ static void sdhci_set_readonly(DeviceState *dev, bool level)
 {
     SDHCIState *s = (SDHCIState *)dev;
 
+    if (s->wp_inverted) {
+        level = !level;
+    }
+
     if (level) {
         s->prnsts &= ~SDHC_WRITE_PROTECT;
     } else {
@@ -303,6 +307,10 @@ static void sdhci_reset(SDHCIState *s)
     s->data_count = 0;
     s->stopped_state = sdhc_not_stopped;
     s->pending_insert_state = false;
+    if (s->vendor == SDHCI_VENDOR_FSL) {
+        s->norintstsen = 0x013f;
+        s->errintstsen = 0x117f;
+    }
 }
 
 static void sdhci_poweron_reset(DeviceState *dev)
@@ -329,7 +337,7 @@ static void sdhci_send_command(SDHCIState *s)
 {
     SDRequest request;
     uint8_t response[16];
-    int rlen;
+    size_t rlen;
     bool timeout = false;
 
     s->errintsts = 0;
@@ -338,7 +346,7 @@ static void sdhci_send_command(SDHCIState *s)
     request.arg = s->argument;
 
     trace_sdhci_send_command(request.cmd, request.arg);
-    rlen = sdbus_do_command(&s->sdbus, &request, response);
+    rlen = sdbus_do_command(&s->sdbus, &request, response, sizeof(response));
 
     if (s->cmdreg & SDHC_CMD_RESPONSE) {
         if (rlen == 4) {
@@ -392,7 +400,7 @@ static void sdhci_end_transfer(SDHCIState *s)
         request.cmd = 0x0C;
         request.arg = 0;
         trace_sdhci_end_transfer(request.cmd, request.arg);
-        sdbus_do_command(&s->sdbus, &request, response);
+        sdbus_do_command(&s->sdbus, &request, response, sizeof(response));
         /* Auto CMD12 response goes to the upper Response register */
         s->rspreg[3] = ldl_be_p(response);
     }
@@ -665,12 +673,13 @@ static void sdhci_sdma_transfer_multi_blocks(SDHCIState *s)
         }
     }
 
+    if (s->norintstsen & SDHC_NISEN_DMA) {
+        s->norintsts |= SDHC_NIS_DMA;
+    }
+
     if (s->blkcnt == 0) {
         sdhci_end_transfer(s);
     } else {
-        if (s->norintstsen & SDHC_NISEN_DMA) {
-            s->norintsts |= SDHC_NIS_DMA;
-        }
         sdhci_update_irq(s);
     }
 }
@@ -691,7 +700,20 @@ static void sdhci_sdma_transfer_single_block(SDHCIState *s)
     }
     s->blkcnt--;
 
+    if (s->norintstsen & SDHC_NISEN_DMA) {
+        s->norintsts |= SDHC_NIS_DMA;
+    }
+
     sdhci_end_transfer(s);
+}
+
+static void sdhci_sdma_transfer(SDHCIState *s)
+{
+    if ((s->blkcnt == 1) || !(s->trnmod & SDHC_TRNS_MULTI)) {
+        sdhci_sdma_transfer_single_block(s);
+    } else {
+        sdhci_sdma_transfer_multi_blocks(s);
+    }
 }
 
 typedef struct ADMADescr {
@@ -925,12 +947,7 @@ static void sdhci_data_transfer(void *opaque)
     if (s->trnmod & SDHC_TRNS_DMA) {
         switch (SDHC_DMA_TYPE(s->hostctl1)) {
         case SDHC_CTRL_SDMA:
-            if ((s->blkcnt == 1) || !(s->trnmod & SDHC_TRNS_MULTI)) {
-                sdhci_sdma_transfer_single_block(s);
-            } else {
-                sdhci_sdma_transfer_multi_blocks(s);
-            }
-
+            sdhci_sdma_transfer(s);
             break;
         case SDHC_CTRL_ADMA1_32:
             if (!(s->capareg & R_SDHC_CAPAB_ADMA1_MASK)) {
@@ -1174,11 +1191,7 @@ sdhci_write(void *opaque, hwaddr offset, uint64_t val, unsigned size)
             if (!(mask & 0xFF000000) && s->blkcnt &&
                 (s->blksize & BLOCK_SIZE_MASK) &&
                 SDHC_DMA_TYPE(s->hostctl1) == SDHC_CTRL_SDMA) {
-                if (s->trnmod & SDHC_TRNS_MULTI) {
-                    sdhci_sdma_transfer_multi_blocks(s);
-                } else {
-                    sdhci_sdma_transfer_single_block(s);
-                }
+                sdhci_sdma_transfer(s);
             }
         }
         break;
@@ -1533,7 +1546,7 @@ const VMStateDescription sdhci_vmstate = {
     },
 };
 
-void sdhci_common_class_init(ObjectClass *klass, void *data)
+void sdhci_common_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -1544,13 +1557,14 @@ void sdhci_common_class_init(ObjectClass *klass, void *data)
 
 /* --- qdev SysBus --- */
 
-static Property sdhci_sysbus_properties[] = {
+static const Property sdhci_sysbus_properties[] = {
     DEFINE_SDHCI_COMMON_PROPERTIES(SDHCIState),
     DEFINE_PROP_BOOL("pending-insert-quirk", SDHCIState, pending_insert_quirk,
                      false),
     DEFINE_PROP_LINK("dma", SDHCIState,
                      dma_mr, TYPE_MEMORY_REGION, MemoryRegion *),
-    DEFINE_PROP_END_OF_LIST(),
+    DEFINE_PROP_BOOL("wp-inverted", SDHCIState,
+                     wp_inverted, false),
 };
 
 static void sdhci_sysbus_init(Object *obj)
@@ -1563,10 +1577,6 @@ static void sdhci_sysbus_init(Object *obj)
 static void sdhci_sysbus_finalize(Object *obj)
 {
     SDHCIState *s = SYSBUS_SDHCI(obj);
-
-    if (s->dma_mr) {
-        object_unparent(OBJECT(s->dma_mr));
-    }
 
     sdhci_uninitfn(s);
 }
@@ -1606,7 +1616,7 @@ static void sdhci_sysbus_unrealize(DeviceState *dev)
     }
 }
 
-static void sdhci_sysbus_class_init(ObjectClass *klass, void *data)
+static void sdhci_sysbus_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -1619,7 +1629,7 @@ static void sdhci_sysbus_class_init(ObjectClass *klass, void *data)
 
 /* --- qdev bus master --- */
 
-static void sdhci_bus_class_init(ObjectClass *klass, void *data)
+static void sdhci_bus_class_init(ObjectClass *klass, const void *data)
 {
     SDBusClass *sbc = SD_BUS_CLASS(klass);
 
@@ -1721,16 +1731,10 @@ usdhc_write(void *opaque, hwaddr offset, uint64_t val, unsigned size)
 
     case USDHC_VENDOR_SPEC:
         s->vendor_spec = value;
-        switch (s->vendor) {
-        case SDHCI_VENDOR_IMX:
-            if (value & USDHC_IMX_FRC_SDCLK_ON) {
-                s->prnsts &= ~SDHC_IMX_CLOCK_GATE_OFF;
-            } else {
-                s->prnsts |= SDHC_IMX_CLOCK_GATE_OFF;
-            }
-            break;
-        default:
-            break;
+        if (value & USDHC_IMX_FRC_SDCLK_ON) {
+            s->prnsts &= ~SDHC_IMX_CLOCK_GATE_OFF;
+        } else {
+            s->prnsts |= SDHC_IMX_CLOCK_GATE_OFF;
         }
         break;
 

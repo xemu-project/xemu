@@ -29,6 +29,9 @@ The `Repology`_ site is a useful resource to identify
 currently shipped versions of software in various operating systems,
 though it does not cover all distros listed below.
 
+You can find how to install build dependencies for different systems on the
+:ref:`setup-build-env` page.
+
 Supported host architectures
 ----------------------------
 
@@ -41,8 +44,6 @@ Those hosts are officially supported, with various accelerators:
      - Accelerators
    * - Arm
      - hvf (64 bit only), kvm (64 bit only), tcg, xen
-   * - MIPS (64 bit little endian only)
-     - kvm, tcg
    * - PPC
      - kvm, tcg
    * - RISC-V
@@ -52,7 +53,7 @@ Those hosts are officially supported, with various accelerators:
    * - SPARC
      - tcg
    * - x86
-     - hvf (64 bit only), kvm, nvmm, tcg, whpx (64 bit only), xen
+     - hvf (64 bit only), mshv (64 bit only), kvm, nvmm, tcg, whpx (64 bit only), xen
 
 Other host architectures are not supported. It is possible to build QEMU system
 emulation on an unsupported host architecture using the configure
@@ -98,7 +99,7 @@ Python runtime
   option of the ``configure`` script to point QEMU to a supported
   version of the Python runtime.
 
-  As of QEMU |version|, the minimum supported version of Python is 3.7.
+  As of QEMU |version|, the minimum supported version of Python is 3.9.
 
 Python build dependencies
   Some of QEMU's build dependencies are written in Python.  Usually these
@@ -115,21 +116,34 @@ Rust build dependencies
   include bindgen or have an older version, it is recommended to install
   a newer version using ``cargo install bindgen-cli``.
 
-  Developers may want to use Cargo-based tools in the QEMU source tree;
-  this requires Cargo 1.74.0.  Note that Cargo is not required in order
-  to build QEMU.
+  QEMU requires Rust 1.83.0.  This is available on all supported platforms
+  except for the ``mips64el`` architecture on Debian bookworm.  For all other
+  architectures, Debian bookworm provides a new-enough Rust compiler
+  in the ``rustc-web`` package.
+
+  For Ubuntu 22.04 ("Jammy") and 24.04 ("Noble") updated versions of
+  Rust are available through packages such as ``rustc-1.83`` package;
+  the path to ``rustc`` and ``rustdoc`` has to be provided manually to
+  the configure script.
+
+  Some distros prefer to avoid vendored crate sources, and instead use
+  local sources from e.g. ``/usr/share/cargo/registry``.  QEMU includes a
+  script, ``scripts/get-wraps-from-cargo-registry.py``, that automatically
+  performs this task.  The script is meant to be invoked after unpacking
+  the QEMU tarball.  QEMU also includes ``rust/Cargo.toml`` and
+  ``rust/Cargo.lock`` files that can be used to compute QEMU's build
+  dependencies, e.g. using ``cargo2rpm -p rust/Cargo.toml buildrequires``.
 
 Optional build dependencies
-  Build components whose absence does not affect the ability to build
-  QEMU may not be available in distros, or may be too old for QEMU's
-  requirements.  Many of these, such as the Avocado testing framework
-  or various linters, are written in Python and therefore can also
-  be installed using ``pip``.  Cross compilers are another example
+  Build components whose absence does not affect the ability to build QEMU
+  may not be available in distros, or may be too old for our requirements.
+  Many of these, such as additional modules for the functional testing
+  framework or various linters, are written in Python and therefore can
+  also be installed using ``pip``.  Cross compilers are another example
   of optional build-time dependency; in this case it is possible to
   download them from repositories such as EPEL, to use container-based
   cross compilation using ``docker`` or ``podman``, or to use pre-built
   binaries distributed with QEMU.
-
 
 Windows
 -------

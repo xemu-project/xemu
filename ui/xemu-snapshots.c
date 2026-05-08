@@ -21,7 +21,7 @@
 #include "xemu-settings.h"
 #include "xemu-xbe.h"
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <epoxy/gl.h>
 
 #include "block/aio.h"
@@ -33,7 +33,7 @@
 #include "migration/snapshot.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-block.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 
 #include "ui/console.h"
 #include "ui/input.h"
@@ -169,8 +169,8 @@ static void xemu_snapshots_all_load_data(QEMUSnapshotInfo **info,
 
     bdrv_flush(bs_ro);
     bdrv_drain(bs_ro);
+    assert(bs_ro->refcnt == 1);
     bdrv_unref(bs_ro);
-    assert(bs_ro->refcnt == 0);
     if (!(*err))
         xemu_snapshots_dirty = false;
 }

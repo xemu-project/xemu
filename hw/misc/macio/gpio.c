@@ -34,6 +34,11 @@
 #include "qemu/module.h"
 #include "trace.h"
 
+enum MacioGPIORegisterBits {
+    OUT_DATA   = 1,
+    IN_DATA    = 2,
+    OUT_ENABLE = 4,
+};
 
 void macio_set_gpio(MacIOGPIOState *s, uint32_t gpio, bool state)
 {
@@ -41,14 +46,14 @@ void macio_set_gpio(MacIOGPIOState *s, uint32_t gpio, bool state)
 
     trace_macio_set_gpio(gpio, state);
 
-    if (s->gpio_regs[gpio] & 4) {
+    if (s->gpio_regs[gpio] & OUT_ENABLE) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "GPIO: Setting GPIO %d while it's an output\n", gpio);
     }
 
-    new_reg = s->gpio_regs[gpio] & ~2;
+    new_reg = s->gpio_regs[gpio] & ~IN_DATA;
     if (state) {
-        new_reg |= 2;
+        new_reg |= IN_DATA;
     }
 
     if (new_reg == s->gpio_regs[gpio]) {
@@ -107,12 +112,12 @@ static void macio_gpio_write(void *opaque, hwaddr addr, uint64_t value,
 
     addr -= 8;
     if (addr < 36) {
-        value &= ~2;
+        value &= ~IN_DATA;
 
-        if (value & 4) {
-            ibit = (value & 1) << 1;
+        if (value & OUT_ENABLE) {
+            ibit = (value & OUT_DATA) << 1;
         } else {
-            ibit = s->gpio_regs[addr] & 2;
+            ibit = s->gpio_regs[addr] & IN_DATA;
         }
 
         s->gpio_regs[addr] = value | ibit;
@@ -135,7 +140,7 @@ static uint64_t macio_gpio_read(void *opaque, hwaddr addr, unsigned size)
         }
     }
 
-    trace_macio_gpio_write(addr, val);
+    trace_macio_gpio_read(addr, val);
     return val;
 }
 
@@ -189,7 +194,7 @@ static void macio_gpio_nmi(NMIState *n, int cpu_index, Error **errp)
     macio_set_gpio(MACIO_GPIO(n), 9, false);
 }
 
-static void macio_gpio_class_init(ObjectClass *oc, void *data)
+static void macio_gpio_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     NMIClass *nc = NMI_CLASS(oc);
@@ -205,7 +210,7 @@ static const TypeInfo macio_gpio_init_info = {
     .instance_size = sizeof(MacIOGPIOState),
     .instance_init = macio_gpio_init,
     .class_init    = macio_gpio_class_init,
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { TYPE_NMI },
         { }
     },

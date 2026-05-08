@@ -18,6 +18,7 @@ body:
 
         If you have questions about how to provide the information below, join the Discord server to get help from the community.
   - type: textarea
+    id: game-title
     attributes:
       label: Title
       description: Affected title URL and version information. You can find the title URL by searching for the title by name on [the compatibility tracking system](https://xemu.app/#compatibility).
@@ -28,6 +29,7 @@ body:
     validations:
       required: true
   - type: textarea
+    id: bug-description
     attributes:
       label: Bug Description
       description: |
@@ -46,6 +48,7 @@ body:
     validations:
       required: true
   - type: textarea
+    id: expected-behavior
     attributes:
       label: Expected Behavior
       description: A brief description of the expected behavior.
@@ -56,6 +59,7 @@ body:
     validations:
       required: true
   - type: textarea
+    id: xemu-version
     attributes:
       label: xemu Version
       description: Affected xemu version. You can find the xemu version within xemu by navigating to <kbd>Help</kbd>&rarr;<kbd>About</kbd>. If known, include the last known-working version of xemu.
@@ -66,6 +70,7 @@ body:
     validations:
       required: true
   - type: textarea
+    id: system-information
     attributes:
       label: System Information
       description: Basic information about your system.
@@ -75,6 +80,7 @@ body:
         GPU: NVIDIA Quadro P2000
         GPU Driver: 3.3.0 NVIDIA 450.119.03
   - type: textarea
+    id: additional-context
     attributes:
       label: Additional Context
       description: Any additional information or log output.

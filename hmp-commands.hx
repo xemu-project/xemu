@@ -764,11 +764,12 @@ SRST
 
 ERST
 
+/* BEGIN deprecated */
     {
         .name       = "wavcapture",
         .args_type  = "path:F,audiodev:s,freq:i?,bits:i?,nchannels:i?",
         .params     = "path audiodev [frequency [bits [channels]]]",
-        .help       = "capture audio to a wave file (default frequency=44100 bits=16 channels=2)",
+        .help       = "capture audio to a wave file (deprecated, default frequency=44100 bits=16 channels=2)",
         .cmd        = hmp_wavcapture,
     },
 SRST
@@ -782,13 +783,15 @@ SRST
   - Sample rate = 44100 Hz - CD quality
   - Bits = 16
   - Number of channels = 2 - Stereo
+
+  Deprecated.
 ERST
 
     {
         .name       = "stopcapture",
         .args_type  = "n:i",
         .params     = "capture index",
-        .help       = "stop capture",
+        .help       = "stop capture (deprecated)",
         .cmd        = hmp_stopcapture,
     },
 SRST
@@ -797,7 +800,9 @@ SRST
 
     info capture
 
+  Deprecated.
 ERST
+/* END deprecated */
 
     {
         .name       = "memsave",
@@ -1009,7 +1014,7 @@ ERST
 
     {
         .name       = "migrate_set_parameter",
-        .args_type  = "parameter:s,value:s",
+        .args_type  = "parameter:s,value:S",
         .params     = "parameter value",
         .help       = "Set the parameter for migration",
         .cmd        = hmp_migrate_set_parameter,
@@ -1287,6 +1292,9 @@ ERST
         .name       = "netdev_add",
         .args_type  = "netdev:O",
         .params     = "[user|tap|socket|stream|dgram|vde|bridge|hubport|netmap|vhost-user"
+#ifdef CONFIG_PASST
+                      "|passt"
+#endif
 #ifdef CONFIG_AF_XDP
                       "|af-xdp"
 #endif
@@ -1354,8 +1362,8 @@ ERST
     {
         .name       = "hostfwd_add",
         .args_type  = "arg1:s,arg2:s?",
-        .params     = "[netdev_id] [tcp|udp]:[hostaddr]:hostport-[guestaddr]:guestport",
-        .help       = "redirect TCP or UDP connections from host to guest (requires -net user)",
+        .params     = "[netdev_id] [tcp|udp|unix]:[[hostaddr]:hostport|hostpath]-[guestaddr]:guestport",
+        .help       = "redirect TCP, UDP or UNIX connections from host to guest (requires -net user)",
         .cmd        = hmp_hostfwd_add,
     },
 #endif

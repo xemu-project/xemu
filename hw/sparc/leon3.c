@@ -34,9 +34,9 @@
 #include "qemu/timer.h"
 #include "hw/ptimer.h"
 #include "hw/qdev-properties.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/qtest.h"
-#include "sysemu/reset.h"
+#include "system/system.h"
+#include "system/qtest.h"
+#include "system/reset.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
 #include "elf.h"
@@ -192,7 +192,7 @@ static void leon3_cache_control_int(CPUSPARCState *env)
 
 static void leon3_irq_ack(CPUSPARCState *env, int intno)
 {
-    CPUState *cpu = CPU(env_cpu(env));
+    CPUState *cpu = env_cpu(env);
     grlib_irqmp_ack(env->irq_manager, cpu->cpu_index, intno);
 }
 
@@ -349,7 +349,7 @@ static void leon3_generic_hw_init(MachineState *machine)
     filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
 
     if (filename) {
-        bios_size = get_image_size(filename);
+        bios_size = get_image_size(filename, NULL);
     } else {
         bios_size = -1;
     }
@@ -360,7 +360,7 @@ static void leon3_generic_hw_init(MachineState *machine)
     }
 
     if (bios_size > 0) {
-        ret = load_image_targphys(filename, LEON3_PROM_OFFSET, bios_size);
+        ret = load_image_targphys(filename, LEON3_PROM_OFFSET, bios_size, NULL);
         if (ret < 0 || ret > prom_size) {
             error_report("could not load prom '%s'", filename);
             exit(1);
@@ -380,7 +380,7 @@ static void leon3_generic_hw_init(MachineState *machine)
 
         kernel_size = load_elf(kernel_filename, NULL, NULL, NULL,
                                &entry, NULL, NULL, NULL,
-                               1 /* big endian */, EM_SPARC, 0, 0);
+                               ELFDATA2MSB, EM_SPARC, 0, 0);
         if (kernel_size < 0) {
             kernel_size = load_uimage(kernel_filename, NULL, &entry,
                                       NULL, NULL, NULL);

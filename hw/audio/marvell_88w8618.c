@@ -16,7 +16,7 @@
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
 #include "hw/audio/wm8750.h"
-#include "audio/audio.h"
+#include "qemu/audio.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
 #include "qom/object.h"
@@ -66,7 +66,7 @@ static void mv88w8618_audio_callback(void *opaque, int free_out, int free_in)
 {
     mv88w8618_audio_state *s = opaque;
     int16_t *codec_buffer;
-    int8_t buf[4096];
+    QEMU_UNINITIALIZED int8_t buf[4096];
     int8_t *mem_buffer;
     int pos, block_size;
 
@@ -287,7 +287,7 @@ static const VMStateDescription mv88w8618_audio_vmsd = {
     }
 };
 
-static void mv88w8618_audio_class_init(ObjectClass *klass, void *data)
+static void mv88w8618_audio_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

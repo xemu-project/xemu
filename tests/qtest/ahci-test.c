@@ -30,7 +30,7 @@
 #include "libqos/ahci.h"
 #include "libqos/pci-pc.h"
 
-#include "qapi/qmp/qdict.h"
+#include "qobject/qdict.h"
 #include "qemu/host-utils.h"
 
 #include "hw/pci/pci_ids.h"
@@ -1881,7 +1881,6 @@ static void test_io_interface(gconstpointer opaque)
     sector = offset_sector(opts->offset, opts->address_type, bufsize);
     test_io_rw_interface(opts->address_type, opts->io_type, bufsize, sector);
     g_free(opts);
-    return;
 }
 
 static void create_ahci_io_test(enum IOMode type, enum AddrMode addr,

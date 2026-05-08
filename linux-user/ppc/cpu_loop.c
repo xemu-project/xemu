@@ -21,7 +21,7 @@
 #include "qemu.h"
 #include "qemu/timer.h"
 #include "user-internals.h"
-#include "cpu_loop-common.h"
+#include "user/cpu_loop.h"
 #include "signal-common.h"
 
 static inline uint64_t cpu_ppc_get_tb(CPUPPCState *env)
@@ -77,7 +77,7 @@ void cpu_loop(CPUPPCState *env)
         cpu_exec_start(cs);
         trapnr = cpu_exec(cs);
         cpu_exec_end(cs);
-        process_queued_cpu_work(cs);
+        qemu_process_cpu_events(cs);
 
         arch_interrupt = true;
         switch (trapnr) {
@@ -378,21 +378,31 @@ void cpu_loop(CPUPPCState *env)
     }
 }
 
-void target_cpu_copy_regs(CPUArchState *env, struct target_pt_regs *regs)
+void init_main_thread(CPUState *cs, struct image_info *info)
 {
-    int i;
+    CPUArchState *env = cpu_env(cs);
+    abi_ptr entry = info->entry;
 
-#if defined(TARGET_PPC64)
+    env->gpr[1] = info->start_stack;
+
+#ifdef TARGET_PPC64
+    if (get_ppc64_abi(info) < 2) {
+        uint64_t val;
+        get_user_u64(val, entry + 8);
+        env->gpr[2] = val + info->load_bias;
+        get_user_u64(val, entry);
+        entry = val + info->load_bias;
+    } else {
+        env->gpr[12] = entry;  /* r12 set to global entry address */
+    }
+
     int flag = (env->insns_flags2 & PPC2_BOOKE206) ? MSR_CM : MSR_SF;
 #if defined(TARGET_ABI32)
     ppc_store_msr(env, env->msr & ~((target_ulong)1 << flag));
 #else
     ppc_store_msr(env, env->msr | (target_ulong)1 << flag);
 #endif
-#endif
+#endif /* TARGET_PPC64 */
 
-    env->nip = regs->nip;
-    for(i = 0; i < 32; i++) {
-        env->gpr[i] = regs->gpr[i];
-    }
+    env->nip = entry;
 }

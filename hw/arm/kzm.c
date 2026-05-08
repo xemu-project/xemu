@@ -17,14 +17,15 @@
 #include "qapi/error.h"
 #include "hw/arm/fsl-imx31.h"
 #include "hw/arm/boot.h"
+#include "hw/arm/machines-qom.h"
 #include "hw/boards.h"
 #include "qemu/error-report.h"
-#include "exec/address-spaces.h"
+#include "system/address-spaces.h"
 #include "net/net.h"
 #include "hw/net/lan9118.h"
 #include "hw/char/serial-mm.h"
-#include "sysemu/qtest.h"
-#include "sysemu/sysemu.h"
+#include "system/qtest.h"
+#include "system/system.h"
 #include "qemu/cutils.h"
 
 /* Memory map for Kzm Emulation Baseboard:
@@ -139,4 +140,4 @@ static void kzm_machine_init(MachineClass *mc)
     mc->default_ram_id = "kzm.ram";
 }
 
-DEFINE_MACHINE("kzm", kzm_machine_init)
+DEFINE_MACHINE_ARM("kzm", kzm_machine_init)

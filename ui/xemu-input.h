@@ -2,7 +2,7 @@
  * xemu Input Management
  *
  * This is the main input abstraction layer for xemu, which is basically just a
- * wrapper around SDL2 GameController/Keyboard API to map specifically to an
+ * wrapper around SDL3 Gamepad/Keyboard API to map specifically to an
  * Xbox gamepad and support automatic binding, hotplugging, and removal at
  * runtime.
  *
@@ -25,10 +25,12 @@
 #ifndef XEMU_INPUT_H
 #define XEMU_INPUT_H
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <stdbool.h>
 
 #include "qemu/queue.h"
+#include "xemu-settings.h"
+#include <SDL3/SDL.h>
 
 #define DRIVER_DUKE "usb-xbox-gamepad"
 #define DRIVER_S "usb-xbox-gamepad-s"
@@ -68,7 +70,7 @@ enum controller_state_axis_index {
 
 enum controller_input_device_type {
     INPUT_DEVICE_SDL_KEYBOARD,
-    INPUT_DEVICE_SDL_GAMECONTROLLER,
+    INPUT_DEVICE_SDL_GAMEPAD,
 };
 
 enum peripheral_type { PERIPHERAL_NONE, PERIPHERAL_XMU, PERIPHERAL_TYPE_COUNT };
@@ -93,18 +95,19 @@ typedef struct ControllerState {
     uint32_t animate_trigger_end;
 
     // Rumble state
-    bool rumble_enabled;
     uint16_t rumble_l, rumble_r;
 
     enum controller_input_device_type type;
     const char         *name;
-    SDL_GameController *sdl_gamecontroller; // if type == INPUT_DEVICE_SDL_GAMECONTROLLER
+    SDL_Gamepad        *sdl_gamepad; // if type == INPUT_DEVICE_SDL_GAMEPAD
     SDL_Joystick       *sdl_joystick;
     SDL_JoystickID      sdl_joystick_id;
-    SDL_JoystickGUID    sdl_joystick_guid;
+    SDL_GUID            sdl_joystick_guid;
 
     enum peripheral_type peripheral_types[2];
     void *peripherals[2];
+
+    GamepadMappings *controller_map;
 
     int   bound;  // Which port this input device is bound to
     void *device; // DeviceState opaque
@@ -119,8 +122,10 @@ extern const char *bound_drivers[4];
 extern "C" {
 #endif
 
+extern int *g_keyboard_scancode_map[25];
+
 void xemu_input_init(void);
-void xemu_input_process_sdl_events(const SDL_Event *event); // SDL_CONTROLLERDEVICEADDED, SDL_CONTROLLERDEVICEREMOVED
+void xemu_input_process_sdl_events(const SDL_Event *event); // SDL_EVENT_GAMEPAD_ADDED, SDL_EVENT_GAMEPAD_REMOVED
 void xemu_input_update_controllers(void);
 void xemu_input_update_controller(ControllerState *state);
 void xemu_input_update_sdl_kbd_controller_state(ControllerState *state);
@@ -139,6 +144,7 @@ void xemu_save_peripheral_settings(int player_index, int peripheral_index,
 
 void xemu_input_set_test_mode(int enabled);
 int xemu_input_get_test_mode(void);
+void xemu_input_reset_input_mapping(ControllerState *state);
 
 #ifdef __cplusplus
 }

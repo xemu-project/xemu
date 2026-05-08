@@ -23,12 +23,6 @@
  * different semantics.
  */
 typedef struct MemTxAttrs {
-    /* Bus masters which don't specify any attributes will get this
-     * (via the MEMTXATTRS_UNSPECIFIED constant), so that we can
-     * distinguish "all attributes deliberately clear" from
-     * "didn't specify" if necessary.
-     */
-    unsigned int unspecified:1;
     /*
      * ARM/AMBA: TrustZone Secure access
      * x86: System Management Mode access
@@ -50,6 +44,8 @@ typedef struct MemTxAttrs {
      * (see MEMTX_ACCESS_ERROR).
      */
     unsigned int memory:1;
+    /* Debug access that can even write to ROM. */
+    unsigned int debug:1;
     /* Requester ID (for MSI for example) */
     unsigned int requester_id:16;
 
@@ -57,14 +53,31 @@ typedef struct MemTxAttrs {
      * PID (PCI PASID) support: Limited to 8 bits process identifier.
      */
     unsigned int pid:8;
+
+    /* PCI - IOMMU operations, see PCIAddressType */
+    unsigned int address_type:1;
+
+    /*
+     * Bus masters which don't specify any attributes will get this
+     * (via the MEMTXATTRS_UNSPECIFIED constant), so that we can
+     * distinguish "all attributes deliberately clear" from
+     * "didn't specify" if necessary. "debug" can be set alongside
+     * "unspecified".
+     */
+    bool unspecified;
+
+    uint8_t _reserved1;
+    uint16_t _reserved2;
 } MemTxAttrs;
+
+QEMU_BUILD_BUG_ON(sizeof(MemTxAttrs) > 8);
 
 /* Bus masters which don't specify any attributes will get this,
  * which has all attribute bits clear except the topmost one
  * (so that we can distinguish "all attributes deliberately clear"
  * from "didn't specify" if necessary).
  */
-#define MEMTXATTRS_UNSPECIFIED ((MemTxAttrs) { .unspecified = 1 })
+#define MEMTXATTRS_UNSPECIFIED ((MemTxAttrs) { .unspecified = true })
 
 /* New-style MMIO accessors can indicate that the transaction failed.
  * A zero (MEMTX_OK) response means success; anything else is a failure

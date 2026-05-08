@@ -22,7 +22,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/cryptodev.h"
+#include "system/cryptodev.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "standard-headers/linux/virtio_crypto.h"
@@ -608,7 +608,7 @@ static void cryptodev_builtin_cleanup(
 }
 
 static void
-cryptodev_builtin_class_init(ObjectClass *oc, void *data)
+cryptodev_builtin_class_init(ObjectClass *oc, const void *data)
 {
     CryptoDevBackendClass *bc = CRYPTODEV_BACKEND_CLASS(oc);
 

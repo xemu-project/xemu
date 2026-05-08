@@ -11,7 +11,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
-#include "sysemu/replay.h"
+#include "system/replay.h"
 #include "replay-internal.h"
 #include "chardev/char.h"
 
@@ -126,8 +126,8 @@ int replay_char_read_all_load(uint8_t *buf)
         int res;
         replay_get_array(buf, &size);
         replay_finish_event();
+        assert(size <= INT_MAX);
         res = (int)size;
-        assert(res >= 0);
         return res;
     } else if (replay_next_event_is(EVENT_CHAR_READ_ALL_ERROR)) {
         int res = replay_get_dword();

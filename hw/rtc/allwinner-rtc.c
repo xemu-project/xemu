@@ -25,7 +25,7 @@
 #include "qemu/module.h"
 #include "hw/qdev-properties.h"
 #include "hw/rtc/allwinner-rtc.h"
-#include "sysemu/rtc.h"
+#include "system/rtc.h"
 #include "trace.h"
 
 /* RTC registers */
@@ -259,7 +259,7 @@ static void allwinner_rtc_write(void *opaque, hwaddr offset,
 static const MemoryRegionOps allwinner_rtc_ops = {
     .read = allwinner_rtc_read,
     .write = allwinner_rtc_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
         .max_access_size = 4,
@@ -311,12 +311,11 @@ static const VMStateDescription allwinner_rtc_vmstate = {
     }
 };
 
-static Property allwinner_rtc_properties[] = {
+static const Property allwinner_rtc_properties[] = {
     DEFINE_PROP_INT32("base-year", AwRtcState, base_year, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void allwinner_rtc_class_init(ObjectClass *klass, void *data)
+static void allwinner_rtc_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -331,7 +330,7 @@ static void allwinner_rtc_sun4i_init(Object *obj)
     s->base_year = 2010;
 }
 
-static void allwinner_rtc_sun4i_class_init(ObjectClass *klass, void *data)
+static void allwinner_rtc_sun4i_class_init(ObjectClass *klass, const void *data)
 {
     AwRtcClass *arc = AW_RTC_CLASS(klass);
 
@@ -347,7 +346,7 @@ static void allwinner_rtc_sun6i_init(Object *obj)
     s->base_year = 1970;
 }
 
-static void allwinner_rtc_sun6i_class_init(ObjectClass *klass, void *data)
+static void allwinner_rtc_sun6i_class_init(ObjectClass *klass, const void *data)
 {
     AwRtcClass *arc = AW_RTC_CLASS(klass);
 
@@ -363,7 +362,7 @@ static void allwinner_rtc_sun7i_init(Object *obj)
     s->base_year = 1970;
 }
 
-static void allwinner_rtc_sun7i_class_init(ObjectClass *klass, void *data)
+static void allwinner_rtc_sun7i_class_init(ObjectClass *klass, const void *data)
 {
     AwRtcClass *arc = AW_RTC_CLASS(klass);
     allwinner_rtc_sun4i_class_init(klass, arc);

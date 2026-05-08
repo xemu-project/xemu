@@ -11,6 +11,12 @@ config PARALLEL
 
 config PL011
     bool
+    # The PL011 has both a Rust and a C implementation
+    select PL011_C if !HAVE_RUST
+    select X_PL011_RUST if HAVE_RUST
+
+config PL011_C
+    bool
 
 config SERIAL
     bool
@@ -42,6 +48,9 @@ config VIRTIO_SERIAL
     default y
     depends on VIRTIO
 
+config MAX78000_UART
+    bool
+
 config STM32F2XX_USART
     bool
 
@@ -66,6 +75,9 @@ config RENESAS_SCI
 config AVR_USART
     bool
 
+config DIVA_GSP
+    bool
+
 config MCHP_PFSOC_MMUART
     bool
     select SERIAL
@@ -78,3 +90,8 @@ config GOLDFISH_TTY
 
 config SHAKTI_UART
     bool
+
+config IP_OCTAL_232
+    bool
+    default y
+    depends on IPACK

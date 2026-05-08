@@ -44,7 +44,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(QemuFixedTextConsole, QEMU_FIXED_TEXT_CONSOLE)
 #define QEMU_CAPS_LOCK_LED   (1 << 2)
 
 /* in ms */
-#define GUI_REFRESH_INTERVAL_DEFAULT    16
+#define GUI_REFRESH_INTERVAL_DEFAULT  16
 #define GUI_REFRESH_INTERVAL_IDLE     16
 
 /* Color number is match to standard vga palette */
@@ -422,6 +422,9 @@ bool console_gl_check_format(DisplayChangeListener *dcl,
                              pixman_format_code_t format);
 void surface_gl_create_texture(QemuGLShader *gls,
                                DisplaySurface *surface);
+bool surface_gl_create_texture_from_fd(DisplaySurface *surface,
+                                       int fd, GLuint *texture,
+                                       GLuint *mem_obj);
 void surface_gl_update_texture(QemuGLShader *gls,
                                DisplaySurface *surface,
                                int x, int y, int w, int h);

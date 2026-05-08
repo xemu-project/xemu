@@ -28,8 +28,8 @@
 #include "hw/loader.h"
 #include "hw/sysbus.h"
 #include "hw/qdev-properties.h"
-#include "sysemu/sysemu.h"
-#include "qapi/qmp/qlist.h"
+#include "system/system.h"
+#include "qobject/qlist.h"
 #include "qom/object.h"
 
 /*
@@ -257,15 +257,14 @@ static void rx62n_realize(DeviceState *dev, Error **errp)
     register_sci(s, 0);
 }
 
-static Property rx62n_properties[] = {
+static const Property rx62n_properties[] = {
     DEFINE_PROP_LINK("main-bus", RX62NState, sysmem, TYPE_MEMORY_REGION,
                      MemoryRegion *),
     DEFINE_PROP_BOOL("load-kernel", RX62NState, kernel, false),
     DEFINE_PROP_UINT32("xtal-frequency-hz", RX62NState, xtal_freq_hz, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void rx62n_class_init(ObjectClass *klass, void *data)
+static void rx62n_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
@@ -273,7 +272,7 @@ static void rx62n_class_init(ObjectClass *klass, void *data)
     device_class_set_props(dc, rx62n_properties);
 }
 
-static void r5f562n7_class_init(ObjectClass *oc, void *data)
+static void r5f562n7_class_init(ObjectClass *oc, const void *data)
 {
     RX62NClass *rxc = RX62N_MCU_CLASS(oc);
 
@@ -282,7 +281,7 @@ static void r5f562n7_class_init(ObjectClass *oc, void *data)
     rxc->data_flash_size = 32 * KiB;
 };
 
-static void r5f562n8_class_init(ObjectClass *oc, void *data)
+static void r5f562n8_class_init(ObjectClass *oc, const void *data)
 {
     RX62NClass *rxc = RX62N_MCU_CLASS(oc);
 

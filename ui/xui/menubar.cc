@@ -71,9 +71,15 @@ void ProcessKeyboardShortcuts(void)
         ActionScreenshot();
     }
 
+    if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
+        xemu_toggle_fullscreen();
+    }
+
 #ifdef CONFIG_RENDERDOC
     if (ImGui::IsKeyPressed(ImGuiKey_F10) && nv2a_dbg_renderdoc_available()) {
-        nv2a_dbg_renderdoc_capture_frames(1);
+        ImGuiIO& io = ImGui::GetIO();
+        int num_frames = io.KeyShift ? 5 : 1;
+        nv2a_dbg_renderdoc_capture_frames(num_frames, io.KeyCtrl);
     }
 #endif
 }
@@ -197,9 +203,11 @@ void ShowMainMenu()
             ImGui::SameLine();
             HelpMarker("Controls how the rendered content should be scaled "
                        "into the window");
+            ImGui::Combo("Filter Method", &g_config.display.filtering,
+                         "Linear\0Nearest\0");
             ImGui::Combo("Aspect Ratio", &g_config.display.ui.aspect_ratio,
                          "Native\0Auto\0""4:3\0""16:9\0");
-            if (ImGui::MenuItem("Fullscreen", SHORTCUT_MENU_TEXT(Alt + F),
+            if (ImGui::MenuItem("Fullscreen", "F11",
                                 xemu_is_fullscreen(), true)) {
                 xemu_toggle_fullscreen();
             }
@@ -223,7 +231,7 @@ void ShowMainMenu()
         if (ImGui::BeginMenu("Help"))
         {
             if (ImGui::MenuItem("Help", NULL)) {
-                xemu_open_web_browser("https://xemu.app/docs/getting-started/");
+                SDL_OpenURL("https://xemu.app/docs/getting-started/");
             }
 
             ImGui::MenuItem("Report Compatibility...", NULL,

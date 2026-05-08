@@ -27,15 +27,15 @@
 #include "qemu/error-report.h"
 #include "block/block_int.h"
 #include "block/qdict.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "qemu/module.h"
 #include "qemu/option.h"
 #include "qemu/bswap.h"
 #include "qemu/cutils.h"
 #include "qemu/memalign.h"
 #include <zlib.h>
-#include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qstring.h"
+#include "qobject/qdict.h"
+#include "qobject/qstring.h"
 #include "qapi/qobject-input-visitor.h"
 #include "qapi/qapi-visit-block-core.h"
 #include "crypto/block.h"
@@ -530,7 +530,7 @@ get_cluster_offset(BlockDriverState *bs, uint64_t offset, int allocate,
 }
 
 static int coroutine_fn GRAPH_RDLOCK
-qcow_co_block_status(BlockDriverState *bs, bool want_zero,
+qcow_co_block_status(BlockDriverState *bs, unsigned int mode,
                      int64_t offset, int64_t bytes, int64_t *pnum,
                      int64_t *map, BlockDriverState **file)
 {
@@ -978,7 +978,7 @@ qcow_co_create_opts(BlockDriver *drv, const char *filename,
     }
 
     /* Create and open the file (protocol layer) */
-    ret = bdrv_co_create_file(filename, opts, errp);
+    ret = bdrv_co_create_file(filename, opts, true, errp);
     if (ret < 0) {
         goto fail;
     }
@@ -1184,11 +1184,11 @@ static const char *const qcow_strong_runtime_opts[] = {
 };
 
 static BlockDriver bdrv_qcow = {
-    .format_name	= "qcow",
-    .instance_size	= sizeof(BDRVQcowState),
-    .bdrv_probe		= qcow_probe,
-    .bdrv_open		= qcow_open,
-    .bdrv_close		= qcow_close,
+    .format_name            = "qcow",
+    .instance_size          = sizeof(BDRVQcowState),
+    .bdrv_probe             = qcow_probe,
+    .bdrv_open              = qcow_open,
+    .bdrv_close             = qcow_close,
     .bdrv_child_perm        = bdrv_default_perms,
     .bdrv_reopen_prepare    = qcow_reopen_prepare,
     .bdrv_co_create         = qcow_co_create,

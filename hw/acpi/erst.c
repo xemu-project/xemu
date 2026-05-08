@@ -12,7 +12,7 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "hw/qdev-core.h"
-#include "exec/memory.h"
+#include "system/memory.h"
 #include "qom/object.h"
 #include "hw/pci/pci_device.h"
 #include "qom/object_interfaces.h"
@@ -23,8 +23,8 @@
 #include "hw/acpi/acpi-defs.h"
 #include "hw/acpi/aml-build.h"
 #include "hw/acpi/bios-linker-loader.h"
-#include "exec/address-spaces.h"
-#include "sysemu/hostmem.h"
+#include "system/address-spaces.h"
+#include "system/hostmem.h"
 #include "hw/acpi/erst.h"
 #include "trace.h"
 
@@ -1011,15 +1011,14 @@ static void erst_reset(DeviceState *dev)
     trace_acpi_erst_reset_out(le32_to_cpu(s->header->record_count));
 }
 
-static Property erst_properties[] = {
+static const Property erst_properties[] = {
     DEFINE_PROP_LINK(ACPI_ERST_MEMDEV_PROP, ERSTDeviceState, hostmem,
                      TYPE_MEMORY_BACKEND, HostMemoryBackend *),
     DEFINE_PROP_UINT32(ACPI_ERST_RECORD_SIZE_PROP, ERSTDeviceState,
                      default_record_size, ERST_RECORD_SIZE),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void erst_class_init(ObjectClass *klass, void *data)
+static void erst_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -1045,7 +1044,7 @@ static const TypeInfo erst_type_info = {
     .parent        = TYPE_PCI_DEVICE,
     .class_init    = erst_class_init,
     .instance_size = sizeof(ERSTDeviceState),
-    .interfaces = (InterfaceInfo[]) {
+    .interfaces = (const InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { }
     }

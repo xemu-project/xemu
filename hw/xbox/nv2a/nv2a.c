@@ -85,6 +85,27 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
     return d->vram_ptr + dma.address;
 }
 
+hwaddr nv_clip_gpu_tile_blit(NV2AState *d, hwaddr blit_base_address, hwaddr len)
+{
+    const uint32_t *regs = d->pfb.regs;
+    hwaddr blit_end = blit_base_address + len;
+    for (int i = 0; i < NV_NUM_GPU_TILES; ++i) {
+        uint32_t base_and_flags = regs[NV_PFB_TILE_BASE_ADDRESS_AND_FLAGS(i)];
+        if (!(base_and_flags & NV_PFB_TILE_FLAGS_VALID)) {
+            continue;
+        }
+
+        uint32_t limit = regs[NV_PFB_TILE_LIMIT(i)];
+
+        if (blit_base_address < limit && blit_end > limit) {
+            // TODO: Determine HW behavior if tiles are consecutive.
+            return limit + 1 - blit_base_address;
+        }
+    }
+
+    return len;
+}
+
 const NV2ABlockInfo blocktable[NV_NUM_BLOCKS] = {
     #define ENTRY(NAME, LNAME, OFFSET, SIZE) [NV_##NAME] = {            \
         .name   = #NAME,                                                \
@@ -423,7 +444,7 @@ const VMStateDescription vmstate_nv2a_pgraph_vertex_attributes = {
 
 static const VMStateDescription vmstate_nv2a = {
     .name = "nv2a",
-    .version_id = 2,
+    .version_id = 3,
     .minimum_version_id = 1,
     .post_save = nv2a_post_save,
     .post_load = nv2a_post_load,
@@ -507,9 +528,11 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_BOOL_ARRAY(pgraph.ltc1_dirty, NV2AState, NV2A_LTC1_COUNT),
         VMSTATE_STRUCT_ARRAY(pgraph.vertex_attributes, NV2AState, NV2A_VERTEXSHADER_ATTRIBUTES, 1, vmstate_nv2a_pgraph_vertex_attributes, VertexAttribute),
         VMSTATE_UINT32(pgraph.inline_array_length, NV2AState),
-        VMSTATE_UINT32_ARRAY(pgraph.inline_array, NV2AState, NV2A_MAX_BATCH_LENGTH),
+        VMSTATE_UINT32_SUB_ARRAY(pgraph.inline_array, NV2AState, 0, NV2A_MAX_BATCH_LENGTH_V2),
+        VMSTATE_UINT32_SUB_ARRAY_V(pgraph.inline_array, NV2AState, NV2A_MAX_BATCH_LENGTH_V2, NV2A_MAX_BATCH_LENGTH - NV2A_MAX_BATCH_LENGTH_V2, 3),
         VMSTATE_UINT32(pgraph.inline_elements_length, NV2AState), // fixme
-        VMSTATE_UINT32_ARRAY(pgraph.inline_elements, NV2AState, NV2A_MAX_BATCH_LENGTH),
+        VMSTATE_UINT32_SUB_ARRAY(pgraph.inline_elements, NV2AState, 0, NV2A_MAX_BATCH_LENGTH_V2),
+        VMSTATE_UINT32_SUB_ARRAY_V(pgraph.inline_elements, NV2AState, NV2A_MAX_BATCH_LENGTH_V2, NV2A_MAX_BATCH_LENGTH - NV2A_MAX_BATCH_LENGTH_V2, 3),
         VMSTATE_UINT32(pgraph.inline_buffer_length, NV2AState), // fixme
         VMSTATE_UINT32(pgraph.draw_arrays_length, NV2AState),
         VMSTATE_UINT32(pgraph.draw_arrays_max_count, NV2AState),
@@ -545,7 +568,7 @@ static const VMStateDescription vmstate_nv2a = {
     },
 };
 
-static void nv2a_class_init(ObjectClass *klass, void *data)
+static void nv2a_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);

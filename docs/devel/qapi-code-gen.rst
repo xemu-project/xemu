@@ -9,6 +9,7 @@ How to use the QAPI code generator
    This work is licensed under the terms of the GNU GPL, version 2 or
    later.  See the COPYING file in the top-level directory.
 
+.. _qapi:
 
 Introduction
 ============
@@ -228,7 +229,8 @@ These are of the form PREFIX_NAME, where PREFIX is derived from the
 enumeration type's name, and NAME from the value's name.  For the
 example above, the generator maps 'MyEnum' to MY_ENUM and 'value1' to
 VALUE1, resulting in the enumeration constant MY_ENUM_VALUE1.  The
-optional 'prefix' member overrides PREFIX.
+optional 'prefix' member overrides PREFIX.  This is rarely necessary,
+and should be used with restraint.
 
 The generated C enumeration constants have values 0, 1, ..., N-1 (in
 QAPI schema order), where N is the number of values.  There is an
@@ -644,9 +646,9 @@ Member 'event' names the event.  This is the event name used in the
 Client JSON Protocol.
 
 Member 'data' defines the event-specific data.  It defaults to an
-empty MEMBERS object.
+empty MEMBERS_ object.
 
-If 'data' is a MEMBERS object, then MEMBERS defines event-specific
+If 'data' is a MEMBERS_ object, then MEMBERS defines event-specific
 data just like a struct type's 'data' defines struct type members.
 
 If 'data' is a STRING, then STRING names a complex type whose members
@@ -761,8 +763,8 @@ Names beginning with ``x-`` used to signify "experimental".  This
 convention has been replaced by special feature "unstable".
 
 Pragmas ``command-name-exceptions`` and ``member-name-exceptions`` let
-you violate naming rules.  Use for new code is strongly discouraged. See
-`Pragma directives`_ for details.
+you violate naming rules.  Use for new code is strongly discouraged.
+See `Pragma directives`_ for details.
 
 
 Downstream extensions
@@ -784,8 +786,8 @@ Configuring the schema
 Syntax::
 
     COND = STRING
-         | { 'all: [ COND, ... ] }
-         | { 'any: [ COND, ... ] }
+         | { 'all': [ COND, ... ] }
+         | { 'any': [ COND, ... ] }
          | { 'not': COND }
 
 All definitions take an optional 'if' member.  Its value must be a
@@ -874,25 +876,35 @@ structuring content.
 Headings and subheadings
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-A free-form documentation comment containing a line which starts with
-some ``=`` symbols and then a space defines a section heading::
+Free-form documentation does not start with ``@SYMBOL`` and can contain
+arbitrary rST markup. Headings can be marked up using the standard rST
+syntax::
 
     ##
-    # = This is a top level heading
+    # *************************
+    # This is a level 2 heading
+    # *************************
     #
     # This is a free-form comment which will go under the
     # top level heading.
     ##
 
     ##
-    # == This is a second level heading
+    # This is a third level heading
+    # ==============================
+    #
+    # Level 4
+    # _______
+    #
+    # Level 5
+    # ^^^^^^^
+    #
+    # Level 6
+    # """""""
     ##
 
-A heading line must be the first line of the documentation
-comment block.
-
-Section headings must always be correctly nested, so you can only
-define a third-level heading inside a second-level heading, and so on.
+Level 1 headings are reserved for use by the generated documentation
+page itself, leaving level 2 as the highest level that should be used.
 
 
 Documentation markup
@@ -931,9 +943,14 @@ The usual ****strong****, *\*emphasized\** and ````literal```` markup
 should be used.  If you need a single literal ``*``, you will need to
 backslash-escape it.
 
-Use ``@foo`` to reference a name in the schema.  This is an rST
-extension.  It is rendered the same way as ````foo````, but carries
-additional meaning.
+Use ```foo``` to reference a definition in the schema.  This generates
+a link to the definition.  In the event that such a cross-reference is
+ambiguous, you can use `QAPI cross-reference roles
+<QAPI-domain-cross-references>` to disambiguate.
+
+Use @foo to reference a member description within the current
+definition.  This is an rST extension.  It is currently rendered the
+same way as ````foo````, but carries additional meaning.
 
 Example::
 
@@ -1011,7 +1028,7 @@ like this::
 document the success and the error response, respectively.
 
 "Errors" sections should be formatted as an rST list, each entry
-detailing a relevant error condition. For example::
+detailing a relevant error condition.  For example::
 
  # Errors:
  #     - If @device does not exist, DeviceNotFound
@@ -1024,31 +1041,28 @@ definition.
 QMP).  In other sections, the text is formatted, and rST markup can be
 used.
 
-QMP Examples can be added by using the ``.. qmp-example::``
-directive. In its simplest form, this can be used to contain a single
-QMP code block which accepts standard JSON syntax with additional server
-directionality indicators (``->`` and ``<-``), and elisions (``...``).
+QMP Examples can be added by using the ``.. qmp-example::`` directive.
+In its simplest form, this can be used to contain a single QMP code
+block which accepts standard JSON syntax with additional server
+directionality indicators (``->`` and ``<-``), and elisions.  An
+elision is commonly ``...``, but it can also be or a pair of ``...``
+with text in between.
 
 Optionally, a plaintext title may be provided by using the ``:title:``
-directive option. If the title is omitted, the example title will
+directive option.  If the title is omitted, the example title will
 default to "Example:".
 
 A simple QMP example::
 
   # .. qmp-example::
-  #    :title: Using query-block
   #
-  #    -> { "execute": "query-block" }
-  #    <- { ... }
+  #     -> { "execute": "query-name" }
+  #     <- { "return": { "name": "Fred" } }
 
-More complex or multi-step examples where exposition is needed before or
-between QMP code blocks can be created by using the ``:annotated:``
-directive option. When using this option, nested QMP code blocks must be
-entered explicitly with rST's ``::`` syntax.
-
-Highlighting in non-QMP languages can be accomplished by using the
-``.. code-block:: lang`` directive, and non-highlighted text can be
-achieved by omitting the language argument.
+More complex or multi-step examples where exposition is needed before
+or between QMP code blocks can be created by using the ``:annotated:``
+directive option.  When using this option, nested QMP code blocks must
+be entered explicitly with rST's ``::`` syntax.
 
 For example::
 
@@ -1059,10 +1073,20 @@ For example::
   #    This is a more complex example that can use
   #    ``arbitrary rST syntax`` in its exposition::
   #
-  #      -> { "execute": "query-block" }
-  #      <- { ... }
+  #     -> { "execute": "query-block" }
+  #     <- { "return": [
+  #             {
+  #               "device": "ide0-hd0",
+  #               ...
+  #             }
+  #             ... more ...
+  #          ] }
   #
   #    Above, lengthy output has been omitted for brevity.
+
+Highlighting in non-QMP languages can be accomplished by using the
+``.. code-block:: lang`` directive, and non-highlighted text can be
+achieved by omitting the language argument.
 
 
 Examples of complete definition documentation::
@@ -1464,7 +1488,9 @@ As an example, we'll use the following schema, which describes a
 single complex user-defined type, along with command which takes a
 list of that type as a parameter, and returns a single element of that
 type.  The user is responsible for writing the implementation of
-qmp_my_command(); everything else is produced by the generator. ::
+qmp_my_command(); everything else is produced by the generator.
+
+::
 
     $ cat example-schema.json
     { 'struct': 'UserDefOne',
@@ -1783,27 +1809,13 @@ Example::
     $ cat qapi-generated/example-qapi-commands.c
     [Uninteresting stuff omitted...]
 
-    static void qmp_marshal_output_UserDefOne(UserDefOne *ret_in,
-                                    QObject **ret_out, Error **errp)
-    {
-        Visitor *v;
-
-        v = qobject_output_visitor_new_qmp(ret_out);
-        if (visit_type_UserDefOne(v, "unused", &ret_in, errp)) {
-            visit_complete(v, ret_out);
-        }
-        visit_free(v);
-        v = qapi_dealloc_visitor_new();
-        visit_type_UserDefOne(v, "unused", &ret_in, NULL);
-        visit_free(v);
-    }
-
     void qmp_marshal_my_command(QDict *args, QObject **ret, Error **errp)
     {
         Error *err = NULL;
         bool ok = false;
         Visitor *v;
         UserDefOne *retval;
+        Visitor *ov;
         q_obj_my_command_arg arg = {0};
 
         v = qobject_input_visitor_new_qmp(QOBJECT(args));
@@ -1831,7 +1843,14 @@ Example::
             goto out;
         }
 
-        qmp_marshal_output_UserDefOne(retval, ret, errp);
+        ov = qobject_output_visitor_new_qmp(ret);
+        if (visit_type_UserDefOne(ov, "unused", &retval, errp)) {
+            visit_complete(ov, ret);
+        }
+        visit_free(ov);
+        ov = qapi_dealloc_visitor_new();
+        visit_type_UserDefOne(ov, "unused", &retval, NULL);
+        visit_free(ov);
 
         if (trace_event_get_state_backends(TRACE_QMP_EXIT_MY_COMMAND)) {
             g_autoptr(GString) ret_json = qobject_to_json(*ret);
@@ -1854,7 +1873,7 @@ Example::
     #ifndef EXAMPLE_QAPI_INIT_COMMANDS_H
     #define EXAMPLE_QAPI_INIT_COMMANDS_H
 
-    #include "qapi/qmp/dispatch.h"
+    #include "qapi/qmp-registry.h"
 
     void example_qmp_init_marshal(QmpCommandList *cmds);
 
@@ -1985,7 +2004,7 @@ Example::
     #ifndef EXAMPLE_QAPI_INTROSPECT_H
     #define EXAMPLE_QAPI_INTROSPECT_H
 
-    #include "qapi/qmp/qlit.h"
+    #include "qobject/qlit.h"
 
     extern const QLitObject example_qmp_schema_qlit;
 

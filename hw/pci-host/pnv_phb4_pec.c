@@ -19,7 +19,7 @@
 #include "hw/ppc/pnv.h"
 #include "hw/ppc/pnv_chip.h"
 #include "hw/qdev-properties.h"
-#include "sysemu/sysemu.h"
+#include "system/system.h"
 
 #include <libfdt.h>
 
@@ -197,6 +197,9 @@ static PnvPHB *pnv_pec_default_phb_realize(PnvPhb4PecState *pec,
     return phb;
 }
 
+#define   XPEC_P9_PCI_LANE_CFG                  PPC_BITMASK(10, 11)
+#define   XPEC_P10_PCI_LANE_CFG                 PPC_BITMASK(0, 1)
+
 static void pnv_pec_realize(DeviceState *dev, Error **errp)
 {
     PnvPhb4PecState *pec = PNV_PHB4_PEC(dev);
@@ -210,6 +213,43 @@ static void pnv_pec_realize(DeviceState *dev, Error **errp)
     }
 
     pec->num_phbs = pecc->num_phbs[pec->index];
+
+    /* Pervasive chiplet */
+    object_initialize_child(OBJECT(pec), "nest-pervasive-common",
+                            &pec->nest_pervasive,
+                            TYPE_PNV_NEST_CHIPLET_PERVASIVE);
+    if (!qdev_realize(DEVICE(&pec->nest_pervasive), NULL, errp)) {
+        return;
+    }
+
+    /* Set up pervasive chiplet registers */
+    /*
+     * Most registers are not set up, this just sets the PCI CONF1 link-width
+     * field because skiboot probes it.
+     */
+    if (pecc->version == PNV_PHB4_VERSION) {
+        /*
+         * On P9, PEC2 has configurable 1/2/3-furcation).
+         * Make it trifurcated (x8, x4, x4) to match pnv_pec_num_phbs.
+         */
+        if (pec->index == 2) {
+            pec->nest_pervasive.control_regs.cplt_cfg1 =
+                    SETFIELD(XPEC_P9_PCI_LANE_CFG,
+                             pec->nest_pervasive.control_regs.cplt_cfg1,
+                             0b10);
+        }
+    } else if (pecc->version == PNV_PHB5_VERSION) {
+        /*
+         * On P10, both PECs are configurable 1/2/3-furcation).
+         * Both are trifurcated to match pnv_phb5_pec_num_stacks.
+         */
+        pec->nest_pervasive.control_regs.cplt_cfg1 =
+                SETFIELD(XPEC_P10_PCI_LANE_CFG,
+                         pec->nest_pervasive.control_regs.cplt_cfg1,
+                         0b10);
+    } else {
+        g_assert_not_reached();
+    }
 
     /* Create PHBs if running with defaults */
     if (defaults_enabled()) {
@@ -283,17 +323,23 @@ static int pnv_pec_dt_xscom(PnvXScomInterface *dev, void *fdt,
     return 0;
 }
 
-static Property pnv_pec_properties[] = {
+static const Property pnv_pec_properties[] = {
     DEFINE_PROP_UINT32("index", PnvPhb4PecState, index, 0),
     DEFINE_PROP_UINT32("chip-id", PnvPhb4PecState, chip_id, 0),
     DEFINE_PROP_LINK("chip", PnvPhb4PecState, chip, TYPE_PNV_CHIP,
                      PnvChip *),
-    DEFINE_PROP_END_OF_LIST(),
 };
+
+#define XPEC_PCI_CPLT_OFFSET                        0x1000000ULL
+
+static uint32_t pnv_pec_xscom_cplt_base(PnvPhb4PecState *pec)
+{
+    return PNV9_XSCOM_PEC_NEST_CPLT_BASE + XPEC_PCI_CPLT_OFFSET * pec->index;
+}
 
 static uint32_t pnv_pec_xscom_pci_base(PnvPhb4PecState *pec)
 {
-    return PNV9_XSCOM_PEC_PCI_BASE + 0x1000000 * pec->index;
+    return PNV9_XSCOM_PEC_PCI_BASE + XPEC_PCI_CPLT_OFFSET * pec->index;
 }
 
 static uint32_t pnv_pec_xscom_nest_base(PnvPhb4PecState *pec)
@@ -308,7 +354,7 @@ static uint32_t pnv_pec_xscom_nest_base(PnvPhb4PecState *pec)
  */
 static const uint32_t pnv_pec_num_phbs[] = { 1, 2, 3 };
 
-static void pnv_pec_class_init(ObjectClass *klass, void *data)
+static void pnv_pec_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PnvXScomInterfaceClass *xdc = PNV_XSCOM_INTERFACE_CLASS(klass);
@@ -322,6 +368,7 @@ static void pnv_pec_class_init(ObjectClass *klass, void *data)
     device_class_set_props(dc, pnv_pec_properties);
     dc->user_creatable = false;
 
+    pecc->xscom_cplt_base = pnv_pec_xscom_cplt_base;
     pecc->xscom_nest_base = pnv_pec_xscom_nest_base;
     pecc->xscom_pci_base  = pnv_pec_xscom_pci_base;
     pecc->xscom_nest_size = PNV9_XSCOM_PEC_NEST_SIZE;
@@ -341,7 +388,7 @@ static const TypeInfo pnv_pec_type_info = {
     .instance_size = sizeof(PnvPhb4PecState),
     .class_init    = pnv_pec_class_init,
     .class_size    = sizeof(PnvPhb4PecClass),
-    .interfaces    = (InterfaceInfo[]) {
+    .interfaces    = (const InterfaceInfo[]) {
         { TYPE_PNV_XSCOM_INTERFACE },
         { }
     }
@@ -350,6 +397,10 @@ static const TypeInfo pnv_pec_type_info = {
 /*
  * POWER10 definitions
  */
+static uint32_t pnv_phb5_pec_xscom_cplt_base(PnvPhb4PecState *pec)
+{
+    return PNV10_XSCOM_PEC_NEST_CPLT_BASE + XPEC_PCI_CPLT_OFFSET * pec->index;
+}
 
 static uint32_t pnv_phb5_pec_xscom_pci_base(PnvPhb4PecState *pec)
 {
@@ -368,12 +419,13 @@ static uint32_t pnv_phb5_pec_xscom_nest_base(PnvPhb4PecState *pec)
  */
 static const uint32_t pnv_phb5_pec_num_stacks[] = { 3, 3 };
 
-static void pnv_phb5_pec_class_init(ObjectClass *klass, void *data)
+static void pnv_phb5_pec_class_init(ObjectClass *klass, const void *data)
 {
     PnvPhb4PecClass *pecc = PNV_PHB4_PEC_CLASS(klass);
     static const char compat[] = "ibm,power10-pbcq";
     static const char stk_compat[] = "ibm,power10-phb-stack";
 
+    pecc->xscom_cplt_base = pnv_phb5_pec_xscom_cplt_base;
     pecc->xscom_nest_base = pnv_phb5_pec_xscom_nest_base;
     pecc->xscom_pci_base  = pnv_phb5_pec_xscom_pci_base;
     pecc->xscom_nest_size = PNV10_XSCOM_PEC_NEST_SIZE;
@@ -393,7 +445,7 @@ static const TypeInfo pnv_phb5_pec_type_info = {
     .instance_size = sizeof(PnvPhb4PecState),
     .class_init    = pnv_phb5_pec_class_init,
     .class_size    = sizeof(PnvPhb4PecClass),
-    .interfaces    = (InterfaceInfo[]) {
+    .interfaces    = (const InterfaceInfo[]) {
         { TYPE_PNV_XSCOM_INTERFACE },
         { }
     }

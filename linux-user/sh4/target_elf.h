@@ -7,8 +7,21 @@
 
 #ifndef SH4_TARGET_ELF_H
 #define SH4_TARGET_ELF_H
-static inline const char *cpu_get_model(uint32_t eflags)
-{
-    return "sh7785";
-}
+
+#include "target_ptrace.h"
+
+#define ELF_CLASS               ELFCLASS32
+#define ELF_MACHINE             EM_SH
+
+#define HAVE_ELF_HWCAP          1
+#define HAVE_ELF_CORE_DUMP      1
+
+/*
+ * See linux kernel: arch/sh/include/asm/elf.h, where
+ * elf_gregset_t is mapped to struct pt_regs via sizeof.
+ */
+typedef struct target_elf_gregset_t {
+    struct target_pt_regs pt;
+} target_elf_gregset_t;
+
 #endif

@@ -11,9 +11,9 @@
 
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
-#include "sysemu/replay.h"
+#include "system/replay.h"
 #include "replay-internal.h"
-#include "audio/audio.h"
+#include "qemu/audio.h"
 
 void replay_audio_out(size_t *played)
 {
@@ -35,7 +35,7 @@ void replay_audio_out(size_t *played)
     }
 }
 
-void replay_audio_in(size_t *recorded, void *samples, size_t *wpos, size_t size)
+void replay_audio_in(size_t *recorded, st_sample *samples, size_t *wpos, size_t size)
 {
     int pos;
     uint64_t left, right;
