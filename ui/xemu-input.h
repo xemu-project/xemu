@@ -29,14 +29,17 @@
 #include <stdbool.h>
 
 #include "qemu/queue.h"
+#include "hw/usb-passthrough.h"
 #include "xemu-settings.h"
 #include <SDL3/SDL.h>
 
 #define DRIVER_DUKE "usb-xbox-gamepad"
 #define DRIVER_S "usb-xbox-gamepad-s"
+#define DRIVER_USB_PASSTHROUGH "usb-passthrough" // Not a real driver
 
 #define DRIVER_DUKE_DISPLAY_NAME "Xbox Controller"
 #define DRIVER_S_DISPLAY_NAME "Xbox Controller S"
+#define DRIVER_USB_PASSTHROUGH_DISPLAY_NAME "USB Passthrough"
 
 enum controller_state_buttons_mask {
     CONTROLLER_BUTTON_A          = (1 << 0),
@@ -132,7 +135,9 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state);
 void xemu_input_update_sdl_controller_state(ControllerState *state);
 void xemu_input_update_rumble(ControllerState *state);
 ControllerState *xemu_input_get_bound(int index);
+LibusbDevice *xemu_input_get_bound_device(int index);
 void xemu_input_bind(int index, ControllerState *state, int save);
+void xemu_input_bind_passthrough(int index, LibusbDevice *device, int save);
 bool xemu_input_bind_xmu(int player_index, int peripheral_port_index,
                          const char *filename, bool is_rebind);
 void xemu_input_rebind_xmu(int port);
@@ -141,6 +146,7 @@ int xemu_input_get_controller_default_bind_port(ControllerState *state, int star
 void xemu_save_peripheral_settings(int player_index, int peripheral_index,
                                    int peripheral_type,
                                    const char *peripheral_parameter);
+int xemu_input_get_libusb_device_default_bind_port(LibusbDevice *device, int start);
 
 void xemu_input_set_test_mode(int enabled);
 int xemu_input_get_test_mode(void);

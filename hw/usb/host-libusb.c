@@ -38,7 +38,7 @@
 #ifndef CONFIG_WIN32
 #include <poll.h>
 #endif
-#include <libusb.h>
+#include "host-libusb.h"
 
 #ifdef CONFIG_LINUX
 #include <sys/ioctl.h>
@@ -57,6 +57,7 @@
 
 #include "hw/qdev-properties.h"
 #include "hw/usb.h"
+#include "hw/usb-passthrough.h"
 
 /* ------------------------------------------------------------------------ */
 
@@ -230,7 +231,7 @@ static const char *err_names[] = {
     [-LIBUSB_ERROR_OTHER]            = "OTHER",
 };
 
-static libusb_context *ctx;
+libusb_context *ctx;
 static uint32_t loglevel;
 
 #ifndef CONFIG_WIN32
@@ -279,7 +280,7 @@ static void usb_host_timer(void *opaque)
 
 #endif /* !CONFIG_WIN32 */
 
-static int usb_host_init(void)
+int usb_host_init(void)
 {
 #ifndef CONFIG_WIN32
     const struct libusb_pollfd **poll;
@@ -317,7 +318,7 @@ static int usb_host_init(void)
     return 0;
 }
 
-static int usb_host_get_port(libusb_device *dev, char *port, size_t len)
+int usb_host_get_port(libusb_device *dev, char *port, size_t len)
 {
     uint8_t path[7];
     size_t off;
