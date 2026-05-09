@@ -782,7 +782,7 @@ void MainMenuDisplayView::Draw()
            "May improve responsiveness, but slows window switching");
     if (g_config.display.window.fullscreen_exclusive) {
         // Get available fullscreen display modes
-        SDL_DisplayID display = SDL_GetPrimaryDisplay();
+        SDL_DisplayID display = SDL_GetDisplayForWindow(xemu_get_window());
         int num_modes = 0;
         SDL_DisplayMode **modes = SDL_GetFullscreenDisplayModes(display, &num_modes);
         
