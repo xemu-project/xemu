@@ -244,6 +244,9 @@ display:
   window:
     fullscreen_on_startup: bool
     fullscreen_exclusive: bool
+    fullscreen_resolution:
+      type: integer
+      default: 0
     startup_size:
       type: enum
       values: [last_used, 640x480, 720x480, 1280x720, 1280x800, 1280x960, 1920x1080, 2560x1440, 2560x1600, 2560x1920, 3840x2160]
