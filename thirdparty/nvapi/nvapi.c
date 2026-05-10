@@ -152,6 +152,18 @@ bool nvapi_setup_profile(NvApiProfileOpts opts)
         goto cleanup;
     }
 
+    NVDRS_SETTING setting_dxpresent = {
+        .version = NVDRS_SETTING_VER,
+        .settingId = OGL_CPL_PREFER_DXPRESENT_ID,
+        .settingType = NVDRS_DWORD_TYPE,
+        .u32CurrentValue = opts.present_method,
+    };
+    if (NvAPI_DRS_SetSetting(session, profile, &setting_dxpresent)) {
+        LOG("NvAPI_DRS_SetSetting for settingId %x failed",
+            setting_dxpresent.settingId);
+        goto cleanup;
+    }
+
     if (NvAPI_DRS_SaveSettings(session)) {
         LOG("NvAPI_DRS_SaveSettings failed");
         goto cleanup;
