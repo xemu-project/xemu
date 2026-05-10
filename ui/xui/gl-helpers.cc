@@ -35,7 +35,8 @@
 #include "ui/shader/xemu-logo-frag.h"
 
 Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
-GLuint g_controller_duke_tex, g_controller_s_tex, g_sb_controller_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
+GLuint g_controller_duke_tex, g_controller_s_tex, g_sb_controller_tex, g_logo_tex, 
+       g_icon_tex, g_xmu_tex;
 
 enum class ShaderType {
     Blit,
@@ -654,8 +655,8 @@ static void RenderDukeController(float frame_x, float frame_y, uint32_t primary_
     glUseProgram(0);
 }
 
-static void RenderControllerS(float frame_x, float frame_y, uint32_t primary_color,
-                        uint32_t secondary_color, ControllerState *state)
+static void RenderControllerS(float frame_x, float frame_y, uint32_t primary_color, 
+                              uint32_t secondary_color, ControllerState *state)
 {
     // Location within the controller texture of masked button locations,
     // relative to the origin of the controller
@@ -774,12 +775,12 @@ static void RenderControllerS(float frame_x, float frame_y, uint32_t primary_col
     float rstick_x = (float)state->axis[CONTROLLER_AXIS_RSTICK_X] / 32768.0;
     float rstick_y = (float)state->axis[CONTROLLER_AXIS_RSTICK_Y] / 32768.0;
     RenderDecal(
-        g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * rstick_x),
-        (int)(c_y - h / 2.0f + 10.0f * rstick_y), w, h, tex_items[obj_rstick].x,
-        tex_items[obj_rstick].y, w, h,
-        (state->buttons & CONTROLLER_BUTTON_RSTICK) ? secondary_color :
+        g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * lstick_x),
+        (int)(c_y - h / 2.0f + 10.0f * lstick_y), w, h, tex_items[obj_lstick].x,
+        tex_items[obj_lstick].y, w, h,
+        (state->buttons & CONTROLLER_BUTTON_LSTICK) ? secondary_color :
                                                          primary_color,
-        (state->buttons & CONTROLLER_BUTTON_RSTICK) ? primary_color :
+        (state->buttons & CONTROLLER_BUTTON_LSTICK) ? primary_color :
                                                          secondary_color,
         0);
 
@@ -870,19 +871,18 @@ void RenderSteelBattalionController(float frame_x, float frame_y, uint32_t prima
     float h = sb_tex_items[obj_sight_change_stick].h;
     float c_x = frame_x + sight_change_ctr.x;
     float c_y = frame_y + sight_change_ctr.y;
-    RenderDecal(
-        g_decal_shader, (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f),
-        w, h, sb_tex_items[obj_sight_change_stick].x,
-        sb_tex_items[obj_sight_change_stick].y, w, h,
-        primary_color, secondary_color, 0);
+    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w,
+                h, sb_tex_items[obj_sight_change_stick].x,
+                sb_tex_items[obj_sight_change_stick].y, w, h, primary_color,
+                secondary_color, 0);
 
     // Render left joystick
     w = sb_tex_items[obj_left_stick].w;
     h = sb_tex_items[obj_left_stick].h;
     c_x = frame_x + lstick_ctr.x;
     c_y = frame_y + lstick_ctr.y;
-    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f),
-                (int)(c_y - h / 2.0f), w, h, sb_tex_items[obj_left_stick].x,
+    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w,
+                h, sb_tex_items[obj_left_stick].x,
                 sb_tex_items[obj_left_stick].y, w, h, primary_color,
                 secondary_color, 0);
 
@@ -891,9 +891,8 @@ void RenderSteelBattalionController(float frame_x, float frame_y, uint32_t prima
     h = sb_tex_items[obj_right_stick].h;
     c_x = frame_x + rstick_ctr.x;
     c_y = frame_y + rstick_ctr.y;
-    RenderDecal(g_decal_shader, 
-                (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w, h,
-                sb_tex_items[obj_right_stick].x,
+    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w,
+                h, sb_tex_items[obj_right_stick].x,
                 sb_tex_items[obj_right_stick].y, w, h, primary_color,
                 secondary_color, 0);
 
@@ -902,8 +901,7 @@ void RenderSteelBattalionController(float frame_x, float frame_y, uint32_t prima
     h = sb_tex_items[obj_accel_pedal].h;
     c_x = frame_x + accel_pedal.x;
     c_y = frame_y + accel_pedal.y;
-    RenderDecal(g_decal_shader, c_x,
-                c_y, w, h, sb_tex_items[obj_accel_pedal].x,
+    RenderDecal(g_decal_shader, c_x, c_y, w, h, sb_tex_items[obj_accel_pedal].x,
                 sb_tex_items[obj_accel_pedal].y, w, h, primary_color,
                 secondary_color, 0);
 
@@ -912,8 +910,7 @@ void RenderSteelBattalionController(float frame_x, float frame_y, uint32_t prima
     h = sb_tex_items[obj_brake_pedal].h;
     c_x = frame_x + brake_pedal.x;
     c_y = frame_y + brake_pedal.y;
-    RenderDecal(g_decal_shader, c_x,
-                c_y, w, h, sb_tex_items[obj_brake_pedal].x,
+    RenderDecal(g_decal_shader, c_x, c_y, w, h, sb_tex_items[obj_brake_pedal].x,
                 sb_tex_items[obj_brake_pedal].y, w, h, primary_color,
                 secondary_color, 0);
 
@@ -922,7 +919,7 @@ void RenderSteelBattalionController(float frame_x, float frame_y, uint32_t prima
     h = sb_tex_items[obj_slide_step_pedal].h;
     c_x = frame_x + slide_step_pedal.x;
     c_y = frame_y + slide_step_pedal.y;
-    RenderDecal(g_decal_shader, c_x, c_y, w, h, 
+    RenderDecal(g_decal_shader, c_x, c_y, w, h,
                 sb_tex_items[obj_slide_step_pedal].x,
                 sb_tex_items[obj_slide_step_pedal].y, w, h, primary_color,
                 secondary_color, 0);
@@ -933,9 +930,9 @@ void RenderSteelBattalionController(float frame_x, float frame_y, uint32_t prima
     c_x = frame_x + radio_dial_ctr.x;
     c_y = frame_x + radio_dial_ctr.y;
     RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f - 9),
-        (int)(c_y - h / 2.0f), w, h, sb_tex_items[obj_radio_dial].x, 
-        sb_tex_items[obj_radio_dial].y, w, h,
-        primary_color, secondary_color, 0);
+                (int)(c_y - h / 2.0f), w, h, sb_tex_items[obj_radio_dial].x,
+                sb_tex_items[obj_radio_dial].y, w, h, primary_color,
+                secondary_color, 0);
 
     // Render the transmission lever
     w = sb_tex_items[obj_transmission_lever].w;
@@ -1018,12 +1015,15 @@ void RenderController(LibusbDevice *state)
     uint32_t primary_color = 0x1f1f1f00, secondary_color = 0x0f0f0f00;
     static ControllerState fake_state = { 0 };
 
-    if(strcmp(state->name, "Xbox Controller S") == 0)
-        RenderControllerS(frame_x, frame_y, primary_color, secondary_color, &fake_state);   
-    else if(strcmp(state->name, "Xbox Controller") == 0)
-        RenderDukeController(frame_x, frame_y, primary_color, secondary_color, &fake_state);
-    else if(strcmp(state->name, "Steel Battalion Controller") == 0)
-        RenderSteelBattalionController(frame_x, frame_y, primary_color, secondary_color);
+    if (strcmp(state->name, "Xbox Controller S") == 0)
+        RenderControllerS(frame_x, frame_y, primary_color, secondary_color,
+                          &fake_state);
+    else if (strcmp(state->name, "Xbox Controller") == 0)
+        RenderDukeController(frame_x, frame_y, primary_color, secondary_color,
+                             &fake_state);
+    else if (strcmp(state->name, "Steel Battalion Controller") == 0)
+        RenderSteelBattalionController(frame_x, frame_y, primary_color,
+                                       secondary_color);
 }
 
 void RenderControllerPort(float frame_x, float frame_y, int i,

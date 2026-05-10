@@ -246,7 +246,7 @@ static const char *get_bound_driver(int port)
     assert(port >= 0 && port <= 3);
     const char *driver = *port_index_to_driver_settings_key_map[port];
 
-    // If the driver in the config is NULL, empty, or unrecognized 
+    // If the driver in the config is NULL, empty, or unrecognized
     // then default to DRIVER_DUKE
     if (driver == NULL)
         return DRIVER_DUKE;
@@ -256,28 +256,31 @@ static const char *get_bound_driver(int port)
         return DRIVER_DUKE;
     if (strcmp(driver, DRIVER_S) == 0)
         return DRIVER_S;
-    if(strcmp(driver, DRIVER_USB_PASSTHROUGH) == 0)
+    if (strcmp(driver, DRIVER_USB_PASSTHROUGH) == 0)
         return DRIVER_USB_PASSTHROUGH;
 
     return DRIVER_DUKE;
 }
 
-static void libusb_device_connected(LibusbDevice *device) {
+static void libusb_device_connected(LibusbDevice *device)
+{
     int p = xemu_input_get_libusb_device_default_bind_port(device, 0);
     assert(p >= -1 && p < 4);
 
-    if(p >= 0 && !bound_libusb_devices[p] && !bound_controllers[p]) {
+    if (p >= 0 && !bound_libusb_devices[p] && !bound_controllers[p]) {
         bound_drivers[p] = DRIVER_USB_PASSTHROUGH;
         xemu_input_bind_passthrough(p, device, 1);
 
         char buf[128];
-        snprintf(buf, sizeof(buf), "Connected '%s' to port %d", device->name, p+1);
+        snprintf(buf, sizeof(buf), "Connected '%s' to port %d", device->name,
+                 p + 1);
         xemu_queue_notification(buf);
     }
 }
 
-static void libusb_device_disconnected(LibusbDevice *device) {
-    if(device->bound >= 0) {
+static void libusb_device_disconnected(LibusbDevice *device)
+{
+    if (device->bound >= 0) {
         char buf[128];
         snprintf(buf, 128, "Port %d Disconnected", device->bound + 1);
         xemu_queue_notification(buf);
@@ -299,7 +302,8 @@ void xemu_input_init(void)
         exit(1);
     }
 
-    xemu_init_libusb_passthrough(libusb_device_connected, libusb_device_disconnected);
+    xemu_init_libusb_passthrough(libusb_device_connected,
+                                 libusb_device_disconnected);
 
     // Create the keyboard input (always first)
     ControllerState *new_con = malloc(sizeof(ControllerState));
@@ -358,14 +362,16 @@ int xemu_input_get_controller_default_bind_port(ControllerState *state, int star
     return -1;
 }
 
-int xemu_input_get_libusb_device_default_bind_port(LibusbDevice *device, int start)
+int xemu_input_get_libusb_device_default_bind_port(LibusbDevice *device,
+                                                   int start)
 {
     assert(device);
     char guid[35] = { 0 };
-    snprintf(guid, sizeof(guid), "USB\\%04x:%04x:%d:%s", device->vendor_id, device->product_id, device->host_bus, device->host_port);
+    snprintf(guid, sizeof(guid), "USB\\%04x:%04x:%d:%s", device->vendor_id,
+             device->product_id, device->host_bus, device->host_port);
 
-    for(int i = start; i < 4; i++) {
-        if(strcmp(guid, *port_index_to_settings_key_map[i])== 0) {
+    for (int i = start; i < 4; i++) {
+        if (strcmp(guid, *port_index_to_settings_key_map[i]) == 0) {
             return i;
         }
     }
@@ -1030,7 +1036,7 @@ void xemu_input_rebind_xmu(int port)
 
 void xemu_input_bind_passthrough(int index, LibusbDevice *state, int save)
 {
-    if(bound_libusb_devices[index]) {
+    if (bound_libusb_devices[index]) {
         assert(bound_libusb_devices[index]->device != NULL);
         Error *err = NULL;
         qdev_unplug((DeviceState *)bound_libusb_devices[index]->device, &err);
@@ -1041,45 +1047,57 @@ void xemu_input_bind_passthrough(int index, LibusbDevice *state, int save)
         bound_libusb_devices[index] = NULL;
     }
 
-    if(save) {
+    if (save) {
         char guid_buf[35] = { 0 };
-        if(state) {
+        if (state) {
             // format:     hex       hex        int      string
             //         USB\vendor_id:product_id:host_bus:host_port
-            snprintf(guid_buf, sizeof(guid_buf), "USB\\%04x:%04x:%d:%s", state->vendor_id, state->product_id, state->host_bus, state->host_port);
+            snprintf(guid_buf, sizeof(guid_buf), "USB\\%04x:%04x:%d:%s",
+                     state->vendor_id, state->product_id, state->host_bus,
+                     state->host_port);
         }
-        xemu_settings_set_string(port_index_to_settings_key_map[index], guid_buf);
-        xemu_settings_set_string(port_index_to_driver_settings_key_map[index], bound_drivers[index]);
+        xemu_settings_set_string(port_index_to_settings_key_map[index],
+                                 guid_buf);
+        xemu_settings_set_string(port_index_to_driver_settings_key_map[index],
+                                 bound_drivers[index]);
     }
 
-    if(strcmp(bound_drivers[index], DRIVER_USB_PASSTHROUGH) == 0) {
-        if(state) {
+    if (strcmp(bound_drivers[index], DRIVER_USB_PASSTHROUGH) == 0) {
+        if (state) {
             if (state->bound >= 0) {
                 // Device was already bound to another port. Unbind it.
-                xemu_input_bind_passthrough(state->bound, NULL, state->bound != index);
+                xemu_input_bind_passthrough(state->bound, NULL,
+                                            state->bound != index);
             }
 
             bound_libusb_devices[index] = state;
             bound_libusb_devices[index]->bound = index;
 
-            const int port_map[4] = {3, 4, 1, 2};
+            const int port_map[4] = { 3, 4, 1, 2 };
 
-            if(state->internal_hub_ports > 0) {
+            if (state->internal_hub_ports > 0) {
                 // Create controller's internal USB hub.
                 char *port = g_strdup_printf("1.%d", port_map[index]);
-                DeviceState *usbhub_dev = xemu_bind_usb_hub(state->internal_hub_ports, port);
+                DeviceState *usbhub_dev =
+                    xemu_bind_usb_hub(state->internal_hub_ports, port);
                 g_free(port);
 
-                // Create XID controller. This is connected to Port 1 of the controller's internal USB Hub
+                // Create XID controller. This is connected to Port 1 of the
+                // controller's internal USB Hub
                 port = g_strdup_printf("1.%d.1", port_map[index]);
-                DeviceState *controller_dev = xemu_bind_usb_host(state->host_bus, state->host_port, port);
+                DeviceState *controller_dev =
+                    xemu_bind_usb_host(state->host_bus, state->host_port, port);
                 g_free(port);
 
-                if(state->internal_hub_ports > 1) {
-                    for(int i = 1; i < state->internal_hub_ports; i++) {
-                        port = g_strdup_printf("1.%d.%d", port_map[index], i+1);
-                        char *hostport = g_strdup_printf("%.*s%d", (int)strlen(state->host_port) - 1, state->host_port, i+1);
-                        DeviceState *expansion_port_dev = xemu_bind_usb_host(state->host_bus, hostport, port);
+                if (state->internal_hub_ports > 1) {
+                    for (int i = 1; i < state->internal_hub_ports; i++) {
+                        port =
+                            g_strdup_printf("1.%d.%d", port_map[index], i + 1);
+                        char *hostport = g_strdup_printf(
+                            "%.*s%d", (int)strlen(state->host_port) - 1,
+                            state->host_port, i + 1);
+                        DeviceState *expansion_port_dev =
+                            xemu_bind_usb_host(state->host_bus, hostport, port);
                         g_free(port);
                         g_free(hostport);
                         object_unref(OBJECT(expansion_port_dev));
@@ -1089,12 +1107,14 @@ void xemu_input_bind_passthrough(int index, LibusbDevice *state, int save)
                 // Unref for eventual cleanup
                 object_unref(OBJECT(usbhub_dev));
                 object_unref(OBJECT(controller_dev));
-                
+
                 state->device = usbhub_dev;
             } else {
-                // Create XID controller. This is connected to Port 1 of the controller's internal USB Hub
+                // Create XID controller. This is connected to Port 1 of the
+                // controller's internal USB Hub
                 char *port = g_strdup_printf("1.%d", port_map[index]);
-                DeviceState *controller_dev = xemu_bind_usb_host(state->host_bus, state->host_port, port);
+                DeviceState *controller_dev =
+                    xemu_bind_usb_host(state->host_bus, state->host_port, port);
                 g_free(port);
 
                 // Unref for eventual cleanup

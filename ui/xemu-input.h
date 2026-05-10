@@ -146,7 +146,8 @@ int xemu_input_get_controller_default_bind_port(ControllerState *state, int star
 void xemu_save_peripheral_settings(int player_index, int peripheral_index,
                                    int peripheral_type,
                                    const char *peripheral_parameter);
-int xemu_input_get_libusb_device_default_bind_port(LibusbDevice *device, int start);
+int xemu_input_get_libusb_device_default_bind_port(LibusbDevice *device,
+                                                   int start);
 
 void xemu_input_set_test_mode(int enabled);
 int xemu_input_get_test_mode(void);
