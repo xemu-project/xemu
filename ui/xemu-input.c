@@ -282,7 +282,7 @@ static void libusb_device_disconnected(LibusbDevice *device)
 {
     if (device->bound >= 0) {
         char buf[128];
-        snprintf(buf, 128, "Port %d Disconnected", device->bound + 1);
+        snprintf(buf, sizeof(buf), "Port %d Disconnected", device->bound + 1);
         xemu_queue_notification(buf);
 
         xemu_input_bind_passthrough(device->bound, NULL, 0);
