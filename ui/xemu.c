@@ -796,6 +796,12 @@ static void report_stats(void)
 }
 #endif
 
+// Time reserved for SDL_GL_SwapWindow to perform a swap. This value is chosen
+// empirically as the best balance between minimizing guest stalls while still
+// hitting the target host refresh rate.
+#define VSYNC_SWAP_GRACE_PERIOD_NS 300000LL
+static int64_t display_vsync_interval = 1000000000LL / 60;
+
 /**
  * Renders the main interface. Usually called from the main thread,
  * but may sometimes be called from another thread.
@@ -860,7 +866,20 @@ static void gl_render_frame(struct xemu_console *scon)
     }
 
     nv2a_release_framebuffer_surface();
+
+    static int64_t last_ui_frame_time_ns = 0;
+    if (g_config.display.window.vsync && last_ui_frame_time_ns) {
+        int64_t next_frame = last_ui_frame_time_ns + display_vsync_interval -
+                             VSYNC_SWAP_GRACE_PERIOD_NS;
+
+        int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+        if (now < next_frame) {
+            SDL_DelayPrecise(next_frame - now);
+        }
+    }
+
     SDL_GL_SwapWindow(scon->real_window);
+    last_ui_frame_time_ns = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
     assert(glGetError() == GL_NO_ERROR);
 
     qatomic_set(&rendering, false);
@@ -870,6 +889,26 @@ static void gl_render_frame(struct xemu_console *scon)
 #endif
 }
 
+static void calculate_vsync_interval_ns(void)
+{
+    SDL_DisplayID display_idx = SDL_GetDisplayForWindow(m_window);
+    const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(display_idx);
+    if (mode && mode->refresh_rate_numerator > 0 &&
+        mode->refresh_rate_denominator > 0) {
+        display_vsync_interval =
+            (1000000000LL * mode->refresh_rate_denominator) /
+            mode->refresh_rate_numerator;
+        return;
+    }
+
+    if (mode && mode->refresh_rate > 0) {
+        display_vsync_interval = (int64_t)(1000000000.0 / mode->refresh_rate);
+        return;
+    }
+
+    display_vsync_interval = 1000000000LL / 60;
+}
+
 static bool event_watch_callback(void *userdata, SDL_Event *event)
 {
     struct xemu_console *scon = (struct xemu_console *)userdata;
@@ -877,6 +916,9 @@ static bool event_watch_callback(void *userdata, SDL_Event *event)
     if (event->type == SDL_EVENT_WINDOW_EXPOSED ||
         event->type == SDL_EVENT_WINDOW_RESIZED) {
         gl_render_frame(scon);
+    } else if (event->type == SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED ||
+               event->type == SDL_EVENT_WINDOW_DISPLAY_CHANGED) {
+        calculate_vsync_interval_ns();
     }
 
     return true; // Ignored
@@ -1364,6 +1406,7 @@ int main(int argc, char **argv)
     xemu_main_loop_unlock();
 
     struct xemu_console *scon = &scon_list[0];
+    calculate_vsync_interval_ns();
     while (!qatomic_read(&qemu_exiting)) {
         poll_events(scon);
         gl_render_frame(scon);
