@@ -231,8 +231,13 @@ static const char *err_names[] = {
     [-LIBUSB_ERROR_OTHER]            = "OTHER",
 };
 
-libusb_context *ctx;
+static libusb_context *ctx;
 static uint32_t loglevel;
+
+libusb_context * get_libusb_context() 
+{
+    return ctx;
+}
 
 #ifndef CONFIG_WIN32
 

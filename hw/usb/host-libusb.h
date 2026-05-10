@@ -32,7 +32,7 @@
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 #endif
 
-extern libusb_context *ctx;
+libusb_context * get_libusb_context();
 int usb_host_init(void);
 int usb_host_get_port(libusb_device *dev, char *port, size_t len);
 

@@ -107,9 +107,11 @@ void xemu_init_libusb_passthrough(
 void xemu_shutdown_libusb_passthrough(void)
 {
     xemu_destroy_libusb_passthrough_timer();
-    while (QTAILQ_EMPTY(&available_libusb_devices)) {
-        QTAILQ_REMOVE(&available_libusb_devices,
-                      QTAILQ_FIRST(&available_libusb_devices), entry);
+    while (!QTAILQ_EMPTY(&available_libusb_devices)) {
+        LibusbDevice *device = QTAILQ_FIRST(&available_libusb_devices);
+        QTAILQ_REMOVE(&available_libusb_devices, device, entry);
+        g_free(device->host_port);
+        g_free(device);
     }
 }
 
@@ -125,6 +127,7 @@ static void get_libusb_devices(void)
     XidDeviceType type;
     LibusbDevice *iter, *iter2;
     bool previously_detected;
+    libusb_context *ctx = get_libusb_context();
 
     if (usb_host_init() != 0) {
         return;
@@ -153,11 +156,12 @@ static void get_libusb_devices(void)
         product_id = ddesc.idProduct;
 
         previously_detected = false;
-        // We already know about this one
+        
         QTAILQ_FOREACH (iter, &available_libusb_devices, entry) {
             if (iter->vendor_id == vendor_id &&
                 iter->product_id == product_id && iter->host_bus == bus &&
                 strcmp(iter->host_port, port) == 0) {
+                // We already know about this one
                 previously_detected = true;
                 iter->detected = true;
             }

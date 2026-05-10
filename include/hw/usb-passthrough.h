@@ -42,19 +42,28 @@ typedef enum XidDeviceType {
 typedef struct LibusbDevice {
     QTAILQ_ENTRY(LibusbDevice) entry;
 
-    unsigned short
-        vendor_id; // The vendor id of the device. Used to identify the device
-    unsigned short
-        product_id; // The product id of the device. Used to identify the device
-    unsigned int host_bus; // the bus on the host system. Used for binding
-    const char *host_port; // The port on the host system. Used for binding
-    const char *name; // The name of the device
-    bool detected; // true if it has been detected in the get_libusb_devices
-                   // process. Used internally
-    int bound; // internal port that this controller is bound to
-    int internal_hub_ports; // Number of ports on the internal hub. This value
-                            // is 0 if there is no internal hub
-    void *device; // The root device of the controller
+    // The vendor id of the device. Used to identify the device
+    unsigned short vendor_id; 
+    // The product id of the device. Used to identify the device
+    unsigned short product_id; 
+    // the bus on the host system. Used for binding
+    unsigned int host_bus; 
+    // The port on the host system. Used for binding
+    const char *host_port; 
+    // The name of the device
+    const char *name; 
+    // true if it has been detected in the get_libusb_devices
+    // process. Used internally
+    bool detected; 
+                   
+    // internal port that this controller is bound to
+    int bound; 
+    // Number of ports on the internal hub. This value
+    // is 0 if there is no internal hub
+    int internal_hub_ports; 
+                  
+    // The root device of the controller
+    void *device; 
 
     XidDeviceType type;
     uint8_t *buffer;

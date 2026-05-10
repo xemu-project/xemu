@@ -1015,15 +1015,23 @@ void RenderController(LibusbDevice *state)
     uint32_t primary_color = 0x1f1f1f00, secondary_color = 0x0f0f0f00;
     static ControllerState fake_state = { 0 };
 
-    if (strcmp(state->name, "Xbox Controller S") == 0)
-        RenderControllerS(frame_x, frame_y, primary_color, secondary_color,
-                          &fake_state);
-    else if (strcmp(state->name, "Xbox Controller") == 0)
-        RenderDukeController(frame_x, frame_y, primary_color, secondary_color,
-                             &fake_state);
-    else if (strcmp(state->name, "Steel Battalion Controller") == 0)
-        RenderSteelBattalionController(frame_x, frame_y, primary_color,
-                                       secondary_color);
+    switch(state->type)
+    {
+        case Gamepad:
+            RenderDukeController(frame_x, frame_y, primary_color,
+                                 secondary_color, &fake_state);
+            break;
+        case GamepadS:
+            RenderControllerS(frame_x, frame_y, primary_color,
+                              secondary_color, &fake_state);
+            break;
+        case SteelBattalionController:
+            RenderSteelBattalionController(frame_x, frame_y, 
+                                           primary_color,
+                                           secondary_color);
+        default:
+            break;
+    }   
 }
 
 void RenderControllerPort(float frame_x, float frame_y, int i,

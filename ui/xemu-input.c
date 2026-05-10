@@ -366,7 +366,7 @@ int xemu_input_get_libusb_device_default_bind_port(LibusbDevice *device,
                                                    int start)
 {
     assert(device);
-    char guid[35] = { 0 };
+    char guid[128] = { 0 };
     snprintf(guid, sizeof(guid), "USB\\%04x:%04x:%d:%s", device->vendor_id,
              device->product_id, device->host_bus, device->host_port);
 
@@ -853,9 +853,6 @@ void xemu_input_bind(int index, ControllerState *state, int save)
             object_unref(OBJECT(tmp_dev));
             g_free(port);
 
-            // Unref for eventual cleanup
-            object_unref(OBJECT(dev));
-
             state->device = dev;
         }
     }
@@ -1105,7 +1102,6 @@ void xemu_input_bind_passthrough(int index, LibusbDevice *state, int save)
                 }
 
                 // Unref for eventual cleanup
-                object_unref(OBJECT(usbhub_dev));
                 object_unref(OBJECT(controller_dev));
 
                 state->device = usbhub_dev;
@@ -1116,9 +1112,6 @@ void xemu_input_bind_passthrough(int index, LibusbDevice *state, int save)
                 DeviceState *controller_dev =
                     xemu_bind_usb_host(state->host_bus, state->host_port, port);
                 g_free(port);
-
-                // Unref for eventual cleanup
-                object_unref(OBJECT(controller_dev));
 
                 state->device = controller_dev;
             }
