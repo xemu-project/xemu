@@ -209,6 +209,7 @@ static void get_libusb_devices(void)
                 device_disconnected_callback(iter);
 
             QTAILQ_REMOVE(&available_libusb_devices, iter, entry);
+            g_free(iter->host_port);
             g_free(iter);
         }
     }
