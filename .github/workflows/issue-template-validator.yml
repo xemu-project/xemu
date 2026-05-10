@@ -29,8 +29,6 @@ jobs:
             // placeholder rejection phrases
             const placeholders = [
               "fill this out",
-              "n/a",
-              "none",
               "no description provided"
             ];
 
