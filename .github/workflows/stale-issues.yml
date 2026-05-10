@@ -1,0 +1,47 @@
+name: Stale Issues
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # Ran Daily
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check for override comment
+        id: override
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            const override = issue.data.some(c =>
+              c.body.toLowerCase().includes("do not close this issue.")
+            );
+
+            return { override };
+
+      - name: Run stale bot
+        if: steps.override.outputs.override != 'true'
+        uses: actions/stale@v9
+        with:
+          days-before-stale: 30
+          days-before-close: 7
+          stale-issue-message: >
+            This issue has been automatically marked as stale due to inactivity.
+            It will be closed unless further activity occurs.
+          close-issue-message: >
+            Closing this issue due to prolonged inactivity.
+          stale-issue-label: "stale"
+          exempt-issue-labels: "pinned,security"
+          remove-stale-when-updated: true
