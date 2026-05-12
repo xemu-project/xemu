@@ -1079,30 +1079,23 @@ void xemu_input_bind_passthrough(int index, LibusbDevice *state, int save)
                     xemu_bind_usb_hub(state->internal_hub_ports, port);
                 g_free(port);
 
-                // Create XID controller. This is connected to Port 1 of the
-                // controller's internal USB Hub
-                port = g_strdup_printf("1.%d.1", port_map[index]);
-                DeviceState *controller_dev =
-                    xemu_bind_usb_host(state->host_bus, state->host_port, port);
-                g_free(port);
-
-                if (state->internal_hub_ports > 1) {
-                    for (int i = 1; i < state->internal_hub_ports; i++) {
-                        port =
-                            g_strdup_printf("1.%d.%d", port_map[index], i + 1);
-                        char *hostport = g_strdup_printf(
-                            "%.*s%d", (int)strlen(state->host_port) - 1,
-                            state->host_port, i + 1);
-                        DeviceState *expansion_port_dev =
-                            xemu_bind_usb_host(state->host_bus, hostport, port);
-                        g_free(port);
-                        g_free(hostport);
-                        object_unref(OBJECT(expansion_port_dev));
-                    }
+                // bind each port of the controller's internal hub
+                for (int i = 0; i < state->internal_hub_ports; i++) {
+                    port =
+                        g_strdup_printf("1.%d.%d", port_map[index], i + 1);
+                    
+                    // This is safe because no known device has more than 3 ports
+                    char *hostport = g_strdup_printf(
+                        "%.*s%d", (int)strlen(state->host_port) - 1,
+                        state->host_port, i + 1);
+                        
+                    DeviceState *dev = xemu_bind_usb_host(state->host_bus, 
+                        hostport, port);
+                    
+                    g_free(port);
+                    g_free(hostport);
+                    object_unref(OBJECT(dev));
                 }
-
-                // Unref for eventual cleanup
-                object_unref(OBJECT(controller_dev));
 
                 state->device = usbhub_dev;
             } else {
