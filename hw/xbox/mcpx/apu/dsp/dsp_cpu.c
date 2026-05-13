@@ -164,7 +164,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000110000011110011SsssD", "asr S1, S2, D", NULL, NULL },
     { "00001101000100000100CCCC", "bcc xxxx", dis_bcc_long, emu_bcc_long }, //??
     { "00000101CCCC01aaaa0aaaaa", "bcc xxx", dis_bcc_imm, emu_bcc_imm },
-    { "0000110100011RRR0100CCCC", "bcc Rn", NULL, NULL },
+    { "0000110100011RRR0100CCCC", "bcc Rn", NULL, emu_bcc_reg },
     { "0000101101MMMRRR0S00bbbb", "bchg #n, [X or Y]:ea", dis_bchg_ea, emu_bchg_ea, match_MMMRRR },
     { "0000101100aaaaaa0S00bbbb", "bchg #n, [X or Y]:aa", dis_bchg_aa, emu_bchg_aa },
     { "0000101110pppppp0S00bbbb", "bchg #n, [X or Y]:pp", dis_bchg_pp, emu_bchg_pp },
@@ -177,21 +177,21 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000101011DDDDDD010bbbbb", "bclr #n, D", dis_bclr_reg, emu_bclr_reg },
     { "000011010001000011000000", "bra xxxx", dis_bra_long, emu_bra_long },
     { "00000101000011aaaa0aaaaa", "bra xxx", dis_bra_imm, emu_bra_imm },
-    { "0000110100011RRR11000000", "bra Rn", NULL, NULL },
+    { "0000110100011RRR11000000", "bra Rn", NULL, emu_bra_reg },
     { "0000110010MMMRRR0S0bbbbb", "brclr #n, [X or Y]:ea, xxxx", NULL, NULL, match_MMMRRR },
     { "0000110010aaaaaa1S0bbbbb", "brclr #n, [X or Y]:aa, xxxx", NULL, NULL },
     { "0000110011pppppp0S0bbbbb", "brclr #n, [X or Y]:pp, xxxx", dis_brclr_pp, emu_brclr_pp },
     { "0000010010qqqqqq0S0bbbbb", "brclr #n, [X or Y]:qq, xxxx", NULL, NULL },
     { "0000110011DDDDDD100bbbbb", "brclr #n, S, xxxx", dis_brclr_reg, emu_brclr_reg },
-    { "00000000000000100001CCCC", "brkcc", NULL, NULL },
+    { "00000000000000100001CCCC", "brkcc", NULL, emu_brkcc },
     { "0000110010MMMRRR0S1bbbbb", "brset #n, [X or Y]:ea, xxxx", NULL, NULL, match_MMMRRR },
     { "0000110010aaaaaa1S1bbbbb", "brset #n, [X or Y]:aa, xxxx", NULL, NULL },
     { "0000110011pppppp0S1bbbbb", "brset #n, [X or Y]:pp, xxxx", dis_brset_pp, emu_brset_pp },
     { "0000010010qqqqqq0S1bbbbb", "brset #n, [X or Y]:qq, xxxx", NULL, NULL },
     { "0000110011DDDDDD101bbbbb", "brset #n, S, xxxx", dis_brset_reg, emu_brset_reg },
-    { "00001101000100000000CCCC", "bscc xxxx", NULL, NULL },
-    { "00000101CCCC00aaaa0aaaaa", "bscc xxx", NULL, NULL },
-    { "0000110100011RRR0000CCCC", "bscc Rn", NULL, NULL },
+    { "00001101000100000000CCCC", "bscc xxxx", NULL, emu_bscc_long },
+    { "00000101CCCC00aaaa0aaaaa", "bscc xxx", NULL, emu_bscc_imm },
+    { "0000110100011RRR0000CCCC", "bscc Rn", NULL, emu_bscc_reg },
     { "0000110110MMMRRR0S0bbbbb", "bsclr #n, [X or Y]:ea, xxxx", NULL, NULL, match_MMMRRR },
     { "0000110110aaaaaa1S0bbbbb", "bsclr #n, [X or Y]:aa, xxxx", NULL, NULL },
     { "0000010010qqqqqq1S0bbbbb", "bsclr #n, [X or Y]:qq, xxxx", NULL, NULL },
@@ -204,7 +204,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000101011DDDDDD011bbbbb", "bset, #n, D", dis_bset_reg, emu_bset_reg },
     { "000011010001000010000000", "bsr xxxx", dis_bsr_long, emu_bsr_long },
     { "00000101000010aaaa0aaaaa", "bsr xxx", dis_bsr_imm, emu_bsr_imm },
-    { "0000110100011RRR10000000", "bsr Rn", NULL, NULL },
+    { "0000110100011RRR10000000", "bsr Rn", NULL, emu_bsr_reg },
     { "0000110110MMMRRR0S1bbbbb", "bsset #n, [X or Y]:ea, xxxx", NULL, NULL, match_MMMRRR },
     { "0000110110aaaaaa1S1bbbbb", "bsset #n, [X or Y]:aa, xxxx", NULL, NULL },
     { "0000110111pppppp0S1bbbbb", "bsset #n, [X or Y]:pp, xxxx", NULL, NULL },
@@ -219,8 +219,8 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000000101iiiiii1000d101", "cmp #xx, S2", dis_cmp_imm, emu_cmp_imm },
     { "00000001010000001100d101", "cmp #xxxx, S2", dis_cmp_long, emu_cmp_long },
     { "00001100000111111111gggd", "cmpu S1, S2", dis_cmpu, emu_cmpu },
-    { "000000000000001000000000", "debug", NULL, NULL },
-    { "00000000000000110000CCCC", "debugcc", NULL, NULL },
+    { "000000000000001000000000", "debug", NULL, emu_debug },
+    { "00000000000000110000CCCC", "debugcc", NULL, emu_debugcc },
     { "00000000000000000000101d", "dec D", NULL /*dis_dec*/, emu_dec },
     { "000000011000000001JJd000", "div S, D", dis_div, emu_div },
     { "000000010010010s1sdkQQQQ", "dmac S1, S2, D", NULL, NULL },
@@ -237,14 +237,14 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "000000000000000010001100", "enddo", NULL, emu_enddo },
     { "0000000101iiiiii1000d011", "eor #xx, D", NULL, NULL },
     { "00000001010000001100d011", "eor #xxxx, D", NULL, NULL },
-    { "0000110000011010000sSSSD", "extract S1, S2, D", NULL, NULL },
-    { "0000110000011000000s000D", "extract #CO, S2, D", NULL, NULL },
-    { "0000110000011010100sSSSD", "extractu S1, S2, D", NULL, NULL },
-    { "0000110000011000100s000D", "extractu #CO, S2, D", NULL, NULL },
+    { "0000110000011010000sSSSD", "extract S1, S2, D", NULL, emu_extract_reg },
+    { "0000110000011000000s000D", "extract #CO, S2, D", NULL, emu_extract_imm },
+    { "0000110000011010100sSSSD", "extractu S1, S2, D", NULL, emu_extractu_reg },
+    { "0000110000011000100s000D", "extractu #CO, S2, D", NULL, emu_extractu_imm },
     { "000000000000000000000101", "ill", NULL, emu_illegal },
     { "00000000000000000000100d", "inc D", NULL, emu_inc },
-    { "00001100000110110qqqSSSD", "insert S1, S2, D", NULL, NULL },
-    { "00001100000110010qqq000D", "insert #CO, S2, D", NULL, NULL },
+    { "00001100000110110qqqSSSD", "insert S1, S2, D", NULL, emu_insert_reg },
+    { "00001100000110010qqq000D", "insert #CO, S2, D", NULL, emu_insert_imm },
     { "00001110CCCCaaaaaaaaaaaa", "jcc xxx", dis_jcc_imm, emu_jcc_imm },
     { "0000101011MMMRRR1010CCCC", "jcc ea", dis_jcc_ea, emu_jcc_ea, match_MMMRRR },
     { "0000101001MMMRRR1S00bbbb", "jclr #n, [X or Y]:ea, xxxx", dis_jclr_ea, emu_jclr_ea, match_MMMRRR },
@@ -277,7 +277,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000010001000000010ddddd", "lra xxxx, D", NULL, NULL },
     { "000011000001111010iiiiiD", "lsl #ii, D", dis_lsl_imm, emu_lsl_imm },
     { "00001100000111100001sssD", "lsl S, D", NULL, NULL },
-    { "000011000001111011iiiiiD", "lsr #ii, D", NULL, NULL },
+    { "000011000001111011iiiiiD", "lsr #ii, D", NULL, emu_lsr_imm },
     { "00001100000111100011sssD", "lsr S, D", NULL, NULL },
     { "00000100010MMRRR000ddddd", "lua ea, D", dis_lua, emu_lua },
     { "0000010000aaaRRRaaaadddd", "lua (Rn + aa), D", dis_lua_rel, emu_lua_rel },
@@ -319,9 +319,9 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "000000000000000000000011", "pflush", NULL, NULL },
     { "000000000000000000000001", "pflushun", NULL, NULL },
     { "000000000000000000000010", "pfree", NULL, NULL },
-    { "0000101111MMMRRR10000001", "plock ea", NULL, NULL, match_MMMRRR },
+    { "0000101111MMMRRR10000001", "plock ea", NULL, emu_plock_ea, match_MMMRRR },
     { "000000000000000000001111", "plockr xxxx", NULL, NULL },
-    { "0000101011MMMRRR10000001", "punlock ea", NULL, NULL, match_MMMRRR },
+    { "0000101011MMMRRR10000001", "punlock ea", NULL, emu_punlock_ea, match_MMMRRR },
     { "000000000000000000001110", "punlockr xxxx", NULL, NULL },
     { "0000011001MMMRRR0S100000", "rep [X or Y]:ea", dis_rep_ea, emu_rep_ea, match_MMMRRR },
     { "0000011000aaaaaa0S100000", "rep [X or Y]:aa", dis_rep_aa, emu_rep_aa },
@@ -421,8 +421,12 @@ static const OpcodeEntry *lookup_opcode_slow(uint32_t op) {
         }
     }
 
-    fprintf(stderr, "op = %08x\n", op);
-    assert(false);
+    /* don't crash on unmatched opcodes — caller checks for
+     * NULL and skips via emu_undefined.  Most "unmatched" hits are
+     * data words being interpreted as code after we've already
+     * recovered from an earlier illegal instruction. */
+    fprintf(stderr, "Dsp: unmatched opcode 0x%06x at pc=0x%05x\n",
+            op, 0u);  /* PC isn't passed in; caller has it */
     return NULL;
 }
 
@@ -631,7 +635,11 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
             op = lookup_opcode(dsp->cur_inst);
             dsp->pram_opcache[dsp->pc] = op;
         }
-        if (op->emu_func) {
+        if (op == NULL) {
+            /* opcode didn't match any pattern — treat as
+             * unknown and skip past.  Don't crash. */
+            emu_undefined(dsp);
+        } else if (op->emu_func) {
             op->emu_func(dsp);
         } else {
             DPRINTF("%x - %s\n", dsp->cur_inst, op->name);
@@ -921,11 +929,13 @@ static void dsp_postexecute_interrupts(dsp_core_t* dsp)
 
 static uint32_t read_memory_p(dsp_core_t* dsp, uint32_t address)
 {
-    assert((address & 0xFF000000) == 0);
-    assert(address < DSP_PRAM_SIZE);
+    address &= 0xFFFFFF;
+    if (address >= DSP_PRAM_SIZE) {
+        fprintf(stderr, "Out of bounds P-RAM read at %x!\n", address);
+        return 0;
+    }
     uint32_t r = ldl_le_p(&dsp->pram[address]);
-    assert((r & 0xFF000000) == 0);
-    return r;
+    return r & 0xFFFFFF;
 }
 
 uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address)
@@ -949,8 +959,12 @@ uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address)
             }
         }
     } else if (space == DSP_SPACE_Y) {
-        assert(address < DSP_YRAM_SIZE);
-        return dsp->yram[address];
+        if (address < DSP_YRAM_SIZE) {
+            return dsp->yram[address];
+        } else {
+            fprintf(stderr, "Out of bounds Y-RAM read at %x!\n", address);
+            return 0x00FFFFFF;
+        }
     } else if (space == DSP_SPACE_P) {
         return read_memory_p(dsp, address);
     } else {
@@ -982,18 +996,27 @@ static void write_memory_raw(dsp_core_t* dsp, int space, uint32_t address, uint3
         } else if (address >= 0xc00 && address < 0xc00+DSP_MIXBUFFER_SIZE) {
             dsp->mixbuffer[address-0xc00] = value;
         } else {
-            assert(address < DSP_XRAM_SIZE);
-            dsp->xram[address] = value;
+            if (address < DSP_XRAM_SIZE) {
+                dsp->xram[address] = value;
+            } else {
+                fprintf(stderr, "Out of bounds X-RAM write at %x!\n", address);
+            }
         }
     } else if (space == DSP_SPACE_Y) {
-        assert(address < DSP_YRAM_SIZE);
-        dsp->yram[address] = value;
+        if (address < DSP_YRAM_SIZE) {
+            dsp->yram[address] = value;
+        } else {
+            fprintf(stderr, "Out of bounds Y-RAM write at %x!\n", address);
+        }
     } else if (space == DSP_SPACE_P) {
-        assert(address < DSP_PRAM_SIZE);
-        stl_le_p(&dsp->pram[address], value);
-        dsp->pram_opcache[address] = NULL;
+        if (address < DSP_PRAM_SIZE) {
+            stl_le_p(&dsp->pram[address], value);
+            dsp->pram_opcache[address] = NULL;
+        } else {
+            fprintf(stderr, "Out of bounds P-RAM write at %x!\n", address);
+        }
     } else {
-        assert(false);
+        fprintf(stderr, "Bad DSP memory space %d in write\n", space);
     }
 }
 

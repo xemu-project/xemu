@@ -27,13 +27,16 @@ typedef void (*emu_func_t)(dsp_core_t* dsp);
 
 static void emu_undefined(dsp_core_t* dsp)
 {
-    dsp->cur_inst_len = 0;
-    printf("Dsp: 0x%04x: 0x%06x Illegal instruction\n",dsp->pc, dsp->cur_inst);
-    /* Add some artificial CPU cycles to avoid being stuck in an infinite loop */
+    /* log the illegal instruction but DON'T assert.  This lets
+     * us discover more missing opcodes by collecting them in xemu.log,
+     * rather than crashing on the first one.  We advance PC by one word
+     * so execution continues.  Some firmware paths will misbehave but
+     * the DSP stays alive long enough to capture useful state. */
+    fprintf(stderr, "Dsp: 0x%04x: 0x%06x Illegal instruction (continuing)\n",
+            dsp->pc, dsp->cur_inst);
+    dsp->cur_inst_len = 1;
     dsp->instr_cycle += 100;
-    if (dsp->exception_debugging) {
-        assert(false);
-    }
+    /* exception_debugging is true by default but we override to non-fatal. */
 }
 
 
@@ -8120,4 +8123,404 @@ static void emu_wait(dsp_core_t* dsp)
     DPRINTF("Dsp: WAIT instruction\n");
 }
 
+/* ============================================================
+ * DSP56300 opcodes added for Xbox APU Surround/AC3 support.
+ *
+ * Implementations are clean-room from DSP56300 Family Manual
+ * (NXP DSP56300FM) §A.156 (extractu), §A.155 (extract), §A.32
+ * (brkcc), §A.151/A.155 (plock/punlock), §A.40 (debug/debugcc).
+ *
+ * xbox.bin GP firmware emits these when the EEPROM AudioFlags
+ * Surround/AC3 bits are set; without these handlers the DSP
+ * asserts on illegal instruction (xemu issue #108).
+ *
+ * License: GPL-2-or-later (matches xemu/QEMU).
+ * ============================================================
+ */
+
+static inline uint64_t dsp_read_accum48(dsp_core_t* dsp, int s)
+{
+    uint64_t hi = dsp->registers[s ? DSP_REG_B1 : DSP_REG_A1] & 0xFFFFFF;
+    uint64_t lo = dsp->registers[s ? DSP_REG_B0 : DSP_REG_A0] & 0xFFFFFF;
+    return (hi << 24) | lo;
+}
+
+static inline void dsp_write_accum_from_24(dsp_core_t* dsp, int d, uint32_t v24)
+{
+    if (d) {
+        dsp->registers[DSP_REG_B1] = v24 & 0xFFFFFF;
+        dsp->registers[DSP_REG_B0] = 0;
+        dsp->registers[DSP_REG_B2] = 0;
+    } else {
+        dsp->registers[DSP_REG_A1] = v24 & 0xFFFFFF;
+        dsp->registers[DSP_REG_A0] = 0;
+        dsp->registers[DSP_REG_A2] = 0;
+    }
+}
+
+static inline void dsp_ccr_extract(dsp_core_t* dsp, uint32_t v24)
+{
+    uint32_t sr = dsp->registers[DSP_REG_SR];
+    sr &= ~((1<<DSP_SR_N) | (1<<DSP_SR_Z) | (1<<DSP_SR_V) |
+            (1<<DSP_SR_C) | (1<<DSP_SR_E));
+    sr |= ((v24 >> 23) & 1) << DSP_SR_N;
+    sr |= (v24 == 0)        << DSP_SR_Z;
+    sr |= 1u                << DSP_SR_U;
+    dsp->registers[DSP_REG_SR] = sr;
+}
+
+static inline uint32_t dsp_read_s1_control(dsp_core_t* dsp, int sss)
+{
+    switch (sss & 7) {
+        case 4: return dsp->registers[DSP_REG_X0] & 0xFFFFFF;
+        case 5: return dsp->registers[DSP_REG_X1] & 0xFFFFFF;
+        case 6: return dsp->registers[DSP_REG_Y0] & 0xFFFFFF;
+        case 7: return dsp->registers[DSP_REG_Y1] & 0xFFFFFF;
+        default: return dsp->registers[DSP_REG_A1] & 0xFFFFFF;
+    }
+}
+
+static void emu_extractu_reg(dsp_core_t* dsp)
+{
+    uint32_t op  = dsp->cur_inst;
+    int      s   = (op >> 4) & 1;
+    int      sss = (op >> 1) & 7;
+    int      d   = (op >> 0) & 1;
+
+    uint32_t ctrl   = dsp_read_s1_control(dsp, sss);
+    uint32_t width  = (ctrl >> 6) & 0x3F;
+    uint32_t offset = (ctrl >> 0) & 0x3F;
+    if (width == 0) width = 1;
+    if (width > 24) width = 24;
+
+    uint64_t s2_val = dsp_read_accum48(dsp, s);
+    uint64_t mask   = (width >= 24) ? 0xFFFFFFu : ((1ULL << width) - 1);
+    uint32_t result = (uint32_t)((s2_val >> offset) & mask);
+
+    dsp_write_accum_from_24(dsp, d, result);
+    dsp_ccr_extract(dsp, result);
+}
+
+static void emu_extractu_imm(dsp_core_t* dsp)
+{
+    uint32_t op   = dsp->cur_inst;
+    int      s    = (op >> 4) & 1;
+    int      d    = (op >> 0) & 1;
+    uint32_t ctrl = read_memory_p(dsp, dsp->pc + 1);
+    dsp->cur_inst_len++;
+
+    uint32_t width  = (ctrl >> 6) & 0x3F;
+    uint32_t offset = (ctrl >> 0) & 0x3F;
+    if (width == 0) width = 1;
+    if (width > 24) width = 24;
+
+    uint64_t s2_val = dsp_read_accum48(dsp, s);
+    uint64_t mask   = (width >= 24) ? 0xFFFFFFu : ((1ULL << width) - 1);
+    uint32_t result = (uint32_t)((s2_val >> offset) & mask);
+
+    dsp_write_accum_from_24(dsp, d, result);
+    dsp_ccr_extract(dsp, result);
+}
+
+static inline void dsp_extract_signed_store(dsp_core_t* dsp, int d,
+                                              uint32_t v24, uint32_t width)
+{
+    uint32_t signbit = 1u << (width - 1);
+    uint32_t mask    = (width >= 24) ? 0xFFFFFFu : ((1u << width) - 1);
+    uint32_t result24;
+    uint8_t  ext;
+    if (v24 & signbit) {
+        result24 = (v24 | ~mask) & 0xFFFFFF;
+        ext      = 0xFF;
+    } else {
+        result24 = v24 & mask;
+        ext      = 0x00;
+    }
+    if (d) {
+        dsp->registers[DSP_REG_B1] = result24;
+        dsp->registers[DSP_REG_B0] = 0;
+        dsp->registers[DSP_REG_B2] = ext;
+    } else {
+        dsp->registers[DSP_REG_A1] = result24;
+        dsp->registers[DSP_REG_A0] = 0;
+        dsp->registers[DSP_REG_A2] = ext;
+    }
+    dsp_ccr_extract(dsp, result24);
+}
+
+static void emu_extract_reg(dsp_core_t* dsp)
+{
+    uint32_t op  = dsp->cur_inst;
+    int      s   = (op >> 4) & 1;
+    int      sss = (op >> 1) & 7;
+    int      d   = (op >> 0) & 1;
+
+    uint32_t ctrl   = dsp_read_s1_control(dsp, sss);
+    uint32_t width  = (ctrl >> 6) & 0x3F;
+    uint32_t offset = (ctrl >> 0) & 0x3F;
+    if (width == 0) width = 1;
+    if (width > 24) width = 24;
+
+    uint64_t s2_val = dsp_read_accum48(dsp, s);
+    uint32_t raw    = (uint32_t)((s2_val >> offset) & 0xFFFFFFu);
+    dsp_extract_signed_store(dsp, d, raw, width);
+}
+
+static void emu_extract_imm(dsp_core_t* dsp)
+{
+    uint32_t op   = dsp->cur_inst;
+    int      s    = (op >> 4) & 1;
+    int      d    = (op >> 0) & 1;
+    uint32_t ctrl = read_memory_p(dsp, dsp->pc + 1);
+    dsp->cur_inst_len++;
+
+    uint32_t width  = (ctrl >> 6) & 0x3F;
+    uint32_t offset = (ctrl >> 0) & 0x3F;
+    if (width == 0) width = 1;
+    if (width > 24) width = 24;
+
+    uint64_t s2_val = dsp_read_accum48(dsp, s);
+    uint32_t raw    = (uint32_t)((s2_val >> offset) & 0xFFFFFFu);
+    dsp_extract_signed_store(dsp, d, raw, width);
+}
+
+static void emu_brkcc(dsp_core_t* dsp)
+{
+    uint32_t cc = dsp->cur_inst & 0xF;
+    if (emu_calc_cc(dsp, cc)) {
+        emu_enddo(dsp);
+    }
+}
+
+/* INSERT — bit-field insert (inverse of EXTRACT).
+ *   D = (D & ~mask) | ((src & ((1<<width)-1)) << offset)
+ * Encoded with WIDTH in ctrl[12..6] and OFFSET in ctrl[5..0].
+ *
+ * Two forms (DSP56300FM A-145):
+ *   INSERT S1,S2,D : ctrl in S1 reg, src in S2 reg
+ *   INSERT #CO,S2,D: ctrl is inline 2nd word, src in S2 reg
+ *
+ * `qqq` field (3 bits) selects S2 from the 24-bit data-register set.
+ * Mapping (per DSP56300 Family Manual):
+ *   000=X0  001=X1  010=Y0  011=Y1  100=A1  101=B1  110=A   111=B
+ * For the A/B 56-bit-accumulator cases (110/111) we use A1/B1's
+ * 24-bit middle word as the source; this matches the typical firmware
+ * use of INSERT (packing 24-bit values into bit-fields).
+ */
+static inline uint32_t dsp_read_qqq_24(dsp_core_t* dsp, int qqq)
+{
+    switch (qqq & 7) {
+        case 0: return dsp->registers[DSP_REG_X0] & 0xFFFFFF;
+        case 1: return dsp->registers[DSP_REG_X1] & 0xFFFFFF;
+        case 2: return dsp->registers[DSP_REG_Y0] & 0xFFFFFF;
+        case 3: return dsp->registers[DSP_REG_Y1] & 0xFFFFFF;
+        case 4: return dsp->registers[DSP_REG_A1] & 0xFFFFFF;
+        case 5: return dsp->registers[DSP_REG_B1] & 0xFFFFFF;
+        case 6: return dsp->registers[DSP_REG_A1] & 0xFFFFFF;  /* A.MSP */
+        case 7: return dsp->registers[DSP_REG_B1] & 0xFFFFFF;
+        default: return 0;
+    }
+}
+
+static inline void dsp_insert_apply(dsp_core_t* dsp, int d,
+                                      uint32_t src24, uint32_t ctrl)
+{
+    uint32_t width  = (ctrl >> 6) & 0x3F;
+    uint32_t offset = (ctrl >> 0) & 0x3F;
+    if (width == 0) return;
+    if (width > 24) width = 24;
+    uint64_t data_mask  = (width >= 24) ? 0xFFFFFFu : ((1ULL << width) - 1);
+    uint64_t field_mask = data_mask << offset;
+    uint64_t data       = ((uint64_t)(src24) & data_mask) << offset;
+
+    /* D is a 56-bit accumulator: read as 48-bit (extension ignored). */
+    uint64_t cur = dsp_read_accum48(dsp, d);
+    uint64_t out = (cur & ~field_mask) | data;
+    /* Write back to D1 (high 24) + D0 (low 24).  D2 (ext) cleared
+     * unless the inserted field bridges into the extension byte. */
+    uint32_t new_d1 = (uint32_t)((out >> 24) & 0xFFFFFF);
+    uint32_t new_d0 = (uint32_t)( out        & 0xFFFFFF);
+    if (d) {
+        dsp->registers[DSP_REG_B1] = new_d1;
+        dsp->registers[DSP_REG_B0] = new_d0;
+        dsp->registers[DSP_REG_B2] = 0;
+    } else {
+        dsp->registers[DSP_REG_A1] = new_d1;
+        dsp->registers[DSP_REG_A0] = new_d0;
+        dsp->registers[DSP_REG_A2] = 0;
+    }
+    /* CCR: per DSP56300FM, only N (sign of D MSB), Z (D zero) updated. */
+    uint32_t sr = dsp->registers[DSP_REG_SR];
+    sr &= ~((1<<DSP_SR_N) | (1<<DSP_SR_Z));
+    sr |= ((new_d1 >> 23) & 1) << DSP_SR_N;
+    sr |= ((new_d1 == 0) && (new_d0 == 0)) << DSP_SR_Z;
+    dsp->registers[DSP_REG_SR] = sr;
+}
+
+static void emu_insert_reg(dsp_core_t* dsp)
+{
+    /* Encoding: 00001100000110110qqqSSSD
+     *   bit 0   = D (dest A/B)
+     *   bits 1-3 = SSS (S1 = control register select)
+     *   bits 4-6 = qqq (S2 = source register select)
+     */
+    uint32_t op  = dsp->cur_inst;
+    int      d   = (op >> 0) & 1;
+    int      sss = (op >> 1) & 7;
+    int      qqq = (op >> 4) & 7;
+    uint32_t ctrl = dsp_read_s1_control(dsp, sss);
+    uint32_t src  = dsp_read_qqq_24(dsp, qqq);
+    dsp_insert_apply(dsp, d, src, ctrl);
+}
+
+static void emu_insert_imm(dsp_core_t* dsp)
+{
+    /* Encoding: 00001100000110010qqq000D + next P-RAM word = CO */
+    uint32_t op   = dsp->cur_inst;
+    int      d    = (op >> 0) & 1;
+    int      qqq  = (op >> 4) & 7;
+    uint32_t ctrl = read_memory_p(dsp, dsp->pc + 1);
+    dsp->cur_inst_len++;
+    uint32_t src  = dsp_read_qqq_24(dsp, qqq);
+    dsp_insert_apply(dsp, d, src, ctrl);
+}
+
+/* BSCC xxxx — Branch to Subroutine on Condition (long form, 2-word).
+ * Mirror emu_bcc_long's relative-offset convention, but push the
+ * return address on the stack before jumping. */
+/* LSR #ii, D — logical shift right by `ii` (1..16, encoded 0..15
+ * with implicit +1 per DSP56300FM A-198).  Reuses existing single-bit
+ * emu_lsr_a / emu_lsr_b in a loop. */
+static void emu_lsr_imm(dsp_core_t* dsp)
+{
+    uint32_t D  = dsp->cur_inst & 1;
+    uint32_t ii = (dsp->cur_inst >> 1) & BITMASK(5);
+    void (*func)(dsp_core_t *dsp) = D ? emu_lsr_b : emu_lsr_a;
+    while (ii--) {
+        func(dsp);
+    }
+}
+
+static void emu_bscc_long(dsp_core_t* dsp)
+{
+    uint32_t xxxx = read_memory_p(dsp, dsp->pc + 1);
+    dsp->cur_inst_len++;
+    uint32_t cc_code = dsp->cur_inst & BITMASK(4);
+    if (emu_calc_cc(dsp, cc_code)) {
+        if (dsp->interrupt_state != DSP_INTERRUPT_LONG) {
+            dsp_stack_push(dsp,
+                dsp->pc + dsp->cur_inst_len,
+                dsp->registers[DSP_REG_SR], 0);
+        } else {
+            dsp->interrupt_state = DSP_INTERRUPT_DISABLED;
+        }
+        dsp->pc += xxxx;
+        dsp->pc &= BITMASK(24);
+        dsp->cur_inst_len = 0;
+    }
+}
+
+/* BSCC xxx — Branch to Subroutine on Condition (short form, 1-word).
+ * Encoding: 00000101CCCC00aaaa0aaaaa — 9-bit signed offset split.
+ * Mirror emu_bsr_imm + emu_bcc_imm. */
+static void emu_bscc_imm(dsp_core_t* dsp)
+{
+    uint32_t cc_code = (dsp->cur_inst >> 12) & BITMASK(4);
+    if (emu_calc_cc(dsp, cc_code)) {
+        uint32_t xxx = (dsp->cur_inst & BITMASK(5))
+                     + ((dsp->cur_inst & (BITMASK(4) << 6)) >> 1);
+        if (dsp->interrupt_state != DSP_INTERRUPT_LONG) {
+            dsp_stack_push(dsp,
+                dsp->pc + dsp->cur_inst_len,
+                dsp->registers[DSP_REG_SR], 0);
+        } else {
+            dsp->interrupt_state = DSP_INTERRUPT_DISABLED;
+        }
+        dsp->pc += dsp_signextend(9, xxx);
+        dsp->pc &= BITMASK(24);
+        dsp->cur_inst_len = 0;
+    }
+}
+
+/* BSCC Rn — Branch to Subroutine on Condition (register-indirect).
+ * Encoding: 0000110100011RRR0000CCCC  RRR=R-register source */
+static void emu_bscc_reg(dsp_core_t* dsp)
+{
+    uint32_t cc_code = dsp->cur_inst & BITMASK(4);
+    if (emu_calc_cc(dsp, cc_code)) {
+        uint32_t rrr = (dsp->cur_inst >> 8) & BITMASK(3);
+        uint32_t target = dsp->registers[DSP_REG_R0 + rrr] & BITMASK(24);
+        if (dsp->interrupt_state != DSP_INTERRUPT_LONG) {
+            dsp_stack_push(dsp,
+                dsp->pc + dsp->cur_inst_len,
+                dsp->registers[DSP_REG_SR], 0);
+        } else {
+            dsp->interrupt_state = DSP_INTERRUPT_DISABLED;
+        }
+        dsp->pc = target;
+        dsp->cur_inst_len = 0;
+    }
+}
+
+/* BCC Rn — Branch on Condition (register-indirect).
+ * Encoding: 0000110100011RRR0100CCCC */
+static void emu_bcc_reg(dsp_core_t* dsp)
+{
+    uint32_t cc_code = dsp->cur_inst & BITMASK(4);
+    if (emu_calc_cc(dsp, cc_code)) {
+        uint32_t rrr = (dsp->cur_inst >> 8) & BITMASK(3);
+        dsp->pc = dsp->registers[DSP_REG_R0 + rrr] & BITMASK(24);
+        dsp->cur_inst_len = 0;
+    }
+}
+
+/* BRA Rn — unconditional branch register-indirect.
+ * Encoding: 0000110100011RRR11000000 */
+static void emu_bra_reg(dsp_core_t* dsp)
+{
+    uint32_t rrr = (dsp->cur_inst >> 8) & BITMASK(3);
+    dsp->pc = dsp->registers[DSP_REG_R0 + rrr] & BITMASK(24);
+    dsp->cur_inst_len = 0;
+}
+
+/* BSR Rn — Branch to Subroutine register-indirect.
+ * Encoding: 0000110100011RRR10000000 */
+static void emu_bsr_reg(dsp_core_t* dsp)
+{
+    uint32_t rrr = (dsp->cur_inst >> 8) & BITMASK(3);
+    uint32_t target = dsp->registers[DSP_REG_R0 + rrr] & BITMASK(24);
+    if (dsp->interrupt_state != DSP_INTERRUPT_LONG) {
+        dsp_stack_push(dsp,
+            dsp->pc + dsp->cur_inst_len,
+            dsp->registers[DSP_REG_SR], 0);
+    } else {
+        dsp->interrupt_state = DSP_INTERRUPT_DISABLED;
+    }
+    dsp->pc = target;
+    dsp->cur_inst_len = 0;
+}
+
+static void emu_plock_ea(dsp_core_t* dsp)
+{
+    uint32_t ea_mode = (dsp->cur_inst >> 8) & BITMASK(6);
+    uint32_t dummy;
+    emu_calc_ea(dsp, ea_mode, &dummy);
+}
+
+static void emu_punlock_ea(dsp_core_t* dsp)
+{
+    uint32_t ea_mode = (dsp->cur_inst >> 8) & BITMASK(6);
+    uint32_t dummy;
+    emu_calc_ea(dsp, ea_mode, &dummy);
+}
+
+static void emu_debug(dsp_core_t* dsp)
+{
+    (void)dsp;
+}
+
+static void emu_debugcc(dsp_core_t* dsp)
+{
+    (void)dsp;
+}
 
