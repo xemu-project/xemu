@@ -117,7 +117,6 @@ static void smc_quick_cmd(SMBusDevice *dev, uint8_t read)
 
 static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
 {
-    Error *error = NULL;
     SMBusSMCDevice *smc = XBOX_SMC(dev);
 
     smc->cmd = buf[0];
@@ -145,6 +144,7 @@ static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
         break;
 
     case SMC_REG_TRAYEJECT:
+        Error *error = NULL;
         if (buf[0]) {
             const char *path = g_config.sys.files.dvd_path;
             qmp_blockdev_change_medium(true, "ide0-cd1", false, NULL, path,
@@ -154,6 +154,7 @@ static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
             xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
             qmp_eject(true, "ide0-cd1", false, NULL, true, false, &error);
         }
+        error_free(error);
         xbox_smc_update_tray_state();
         break;
 

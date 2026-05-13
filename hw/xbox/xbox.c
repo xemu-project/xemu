@@ -507,10 +507,10 @@ static void xbox_machine_options(MachineClass *m)
         "Set the encoder presented to the OS: conexant (default), focus, "
         "xcalibur");
 
-    object_property_add_bool(oc, "eject-after-boot",
+    object_class_property_add_bool(oc, "eject-after-boot",
                              machine_get_eject_after_boot,
                              machine_set_eject_after_boot);
-    object_property_set_description(oc, "eject-after-boot",
+    object_class_property_set_description(oc, "eject-after-boot",
                                     "Eject disc tray after boot");        
 }
 
