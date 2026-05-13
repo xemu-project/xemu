@@ -352,8 +352,9 @@ static void render_display(NV2AState *d, SurfaceBinding *surface)
     int framebuffer_bytes_per_pixel;
     get_vga_buffer_format(d, &format, &framebuffer_bytes_per_pixel);
 
-    if (surface && surface->color && surface->width == width &&
-        surface->height == height) {
+    if (surface && surface->color &&
+        surface->width * pg->surface_scale_factor == width &&
+        surface->height * pg->surface_scale_factor == height) {
         line_offset = vga_display_params.line_offset ?
                           surface->pitch / vga_display_params.line_offset :
                           1;
