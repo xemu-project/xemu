@@ -152,7 +152,7 @@ static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
                                        &error);
         } else {
             xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
-            qmp_eject(true, "ide0-cd1", false, NULL, true, false, &error)
+            qmp_eject(true, "ide0-cd1", false, NULL, true, false, &error);
         }
         xbox_smc_update_tray_state();
         break;
@@ -370,10 +370,12 @@ void xbox_smc_eject_button(void)
 void xbox_smc_tray_eject(uint8_t val)
 {
     Object *obj = object_resolve_path_type("", TYPE_XBOX_SMC, NULL);
-    uint8_t buf[2];
-    buf[0] = 0x0c;
-    buf[1] = val;
-    smc_write_data(obj, buf, 2);
+    if (obj) {
+        uint8_t buf[2];
+        buf[0] = 0x0c;
+        buf[1] = val;
+        smc_write_data(obj, buf, 2);
+    }
 }
 
 // FIXME: Ideally this would be called on a tray state change callback (see

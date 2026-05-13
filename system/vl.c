@@ -3018,7 +3018,7 @@ void qemu_init(int argc, char **argv)
 
     bool eject_after_boot = false;
     for (int i = 1; i < argc; i++) {
-        if (argv[i] && strcmp(argv[i], "-eject_after_boot")==0) {
+        if (argv[i] && strcmp(argv[i], "-eject_after_boot") == 0) {
             argv[i] = NULL;
             eject_after_boot = true;
             break;
