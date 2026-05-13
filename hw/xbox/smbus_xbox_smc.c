@@ -147,9 +147,8 @@ static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
         Error *error = NULL;
         if (buf[0]) {
             const char *path = g_config.sys.files.dvd_path;
-            qmp_blockdev_change_medium(true, "ide0-cd1", false, NULL, path,
-                                       false, "", false, false, false, 0,
-                                       &error);
+            qmp_blockdev_change_medium("ide0-cd1", NULL, path, "raw", false, false,
+                                        false, 0, &error);                                       
         } else {
             xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
             qmp_eject(true, "ide0-cd1", false, NULL, true, false, &error);
