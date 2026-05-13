@@ -1380,23 +1380,26 @@ int main(int argc, char **argv)
 
 void xemu_eject_disc(Error **errp)
 {
-    Error *error = NULL;
+    // Error *error = NULL;
 
     xbox_smc_eject_button();
-    xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
+    // xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
 
-    // Xbox software may request that the drive open, but do it now anyway
-    qmp_eject("ide0-cd1", NULL, true, false, &error);
-    if (error) {
-        error_propagate(errp, error);
-    }
+    // // Xbox software may request that the drive open, but do it now anyway
+    // qmp_eject("ide0-cd1", NULL, true, false, &error);
+    // if (error) {
+    //     error_propagate(errp, error);
+    // }
 
-    xbox_smc_update_tray_state();
+    // xbox_smc_update_tray_state();
 }
 
 void xemu_load_disc(const char *path, Error **errp)
 {
-    Error *error = NULL;
+    xemu_settings_set_string(&g_config.sys.files.dvd_path, path);
+    xbox_smc_tray_eject(1); // issue smc tray load command
+
+    /*Error *error = NULL;
 
     // Ensure an eject sequence is always triggered so Xbox software reloads
     xbox_smc_eject_button();
@@ -1410,5 +1413,5 @@ void xemu_load_disc(const char *path, Error **errp)
         xemu_settings_set_string(&g_config.sys.files.dvd_path, path);
     }
 
-    xbox_smc_update_tray_state();
+    xbox_smc_update_tray_state();*/
 }
