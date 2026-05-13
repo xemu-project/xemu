@@ -33,8 +33,19 @@ typedef struct NvApiProfileOpts {
     bool threaded_optimization;
 } NvApiProfileOpts;
 
+typedef enum NvApiVsyncMode {
+    VSYNC_MODE_APP_CONTROLLED,
+    VSYNC_MODE_FORCE_OFF,
+    VSYNC_MODE_FORCE_ON,
+} NvApiVsyncMode;
+
+typedef struct NvApiProfileState {
+    NvApiVsyncMode vsync_mode;
+} NvApiProfileState;
+
 bool nvapi_init(void);
-bool nvapi_setup_profile(NvApiProfileOpts opts);
+bool nvapi_setup_profile(NvApiProfileOpts opts,
+                         NvApiProfileState *active_state);
 void nvapi_finalize(void);
 
 #endif

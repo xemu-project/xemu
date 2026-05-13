@@ -32,6 +32,7 @@
 
 enum ESetting {
     OGL_THREAD_CONTROL_ID = 0x20C1221E,
+    VSYNCMODE_ID          = 0x00A879CF,
 };
 
 enum EValues_OGL_THREAD_CONTROL {
@@ -39,6 +40,18 @@ enum EValues_OGL_THREAD_CONTROL {
     OGL_THREAD_CONTROL_DISABLE                           = 0x00000002,
     OGL_THREAD_CONTROL_NUM_VALUES = 2,
     OGL_THREAD_CONTROL_DEFAULT = 0U
+};
+
+enum EValues_VSYNCMODE {
+    VSYNCMODE_PASSIVE                                    = 0x60925292,
+    VSYNCMODE_FORCEOFF                                   = 0x08416747,
+    VSYNCMODE_FORCEON                                    = 0x47814940,
+    VSYNCMODE_FLIPINTERVAL2                              = 0x32610244,
+    VSYNCMODE_FLIPINTERVAL3                              = 0x71271021,
+    VSYNCMODE_FLIPINTERVAL4                              = 0x13245256,
+    VSYNCMODE_VIRTUAL                                    = 0x18888888,
+    VSYNCMODE_NUM_VALUES = 7,
+    VSYNCMODE_DEFAULT = VSYNCMODE_PASSIVE
 };
 
 typedef uint32_t NvU32;
@@ -223,6 +236,7 @@ typedef NVDRS_PROFILE_V1         NVDRS_PROFILE;
     FUNC(NvAPI_DRS_LoadSettings, 0x375DBD6B)       \
     FUNC(NvAPI_DRS_SaveSettings, 0xFCBC7E14)       \
     FUNC(NvAPI_DRS_SetSetting, 0x577DD202)         \
+    FUNC(NvAPI_DRS_GetSetting, 0x73BF8338)         \
     FUNC(NvAPI_Initialize, 0x0150E828)             \
     FUNC(NvAPI_Unload, 0xD22BDD7E)
 
@@ -235,6 +249,7 @@ typedef int(__cdecl *NvAPI_DRS_GetApplicationInfo_t)(NvDRSSessionHandle, NvDRSPr
 typedef int(__cdecl *NvAPI_DRS_LoadSettings_t)(NvDRSSessionHandle);
 typedef int(__cdecl *NvAPI_DRS_SaveSettings_t)(NvDRSSessionHandle);
 typedef int(__cdecl *NvAPI_DRS_SetSetting_t)(NvDRSSessionHandle, NvDRSProfileHandle, NVDRS_SETTING *);
+typedef int(__cdecl *NvAPI_DRS_GetSetting_t)(NvDRSSessionHandle, NvDRSProfileHandle, NvU32, NVDRS_SETTING *);
 typedef int(__cdecl *NvAPI_Initialize_t)(void);
 typedef int(__cdecl *NvAPI_Unload_t)(void);
 typedef void *(__cdecl *NvAPI_QueryInterface_t)(unsigned int interface_id);

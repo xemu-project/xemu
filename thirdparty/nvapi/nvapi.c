@@ -89,7 +89,7 @@ void nvapi_finalize(void)
     }
 }
 
-bool nvapi_setup_profile(NvApiProfileOpts opts)
+bool nvapi_setup_profile(NvApiProfileOpts opts, NvApiProfileState *active_state)
 {
     if (g_hnvapi == NULL) {
         return false;
@@ -136,6 +136,27 @@ bool nvapi_setup_profile(NvApiProfileOpts opts)
             goto cleanup;
         }
         LOG("Added application to profile");
+    }
+
+    NVDRS_SETTING vsync_setting = {
+        .version = NVDRS_SETTING_VER,
+    };
+    if (NvAPI_DRS_GetSetting(session, profile, VSYNCMODE_ID, &vsync_setting)) {
+        LOG("NvAPI_DRS_GetSetting for settingId %x failed", VSYNCMODE_ID);
+        active_state->vsync_mode = VSYNC_MODE_APP_CONTROLLED;
+    } else {
+        switch (vsync_setting.u32CurrentValue) {
+        case VSYNCMODE_PASSIVE:
+            active_state->vsync_mode = VSYNC_MODE_APP_CONTROLLED;
+            break;
+        case VSYNCMODE_FORCEOFF:
+        case VSYNCMODE_VIRTUAL:
+            active_state->vsync_mode = VSYNC_MODE_FORCE_OFF;
+            break;
+        default:
+            active_state->vsync_mode = VSYNC_MODE_FORCE_ON;
+            break;
+        }
     }
 
     NVDRS_SETTING setting = {

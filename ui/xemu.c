@@ -802,6 +802,13 @@ static void report_stats(void)
 #define VSYNC_SWAP_GRACE_PERIOD_NS 300000LL
 static int64_t display_vsync_interval = 1000000000LL / 60;
 
+enum VsyncOverrideBehavior {
+    VOB_FORCE_OFF,
+    VOB_FORCE_ON,
+    VOB_NO_OVERRIDE,
+};
+static enum VsyncOverrideBehavior vsync_override = VOB_NO_OVERRIDE;
+
 /**
  * Renders the main interface. Usually called from the main thread,
  * but may sometimes be called from another thread.
@@ -868,7 +875,9 @@ static void gl_render_frame(struct xemu_console *scon)
     nv2a_release_framebuffer_surface();
 
     static int64_t last_ui_frame_time_ns = 0;
-    if (g_config.display.window.vsync && last_ui_frame_time_ns) {
+    if (last_ui_frame_time_ns &&
+        (vsync_override == VOB_FORCE_ON || (vsync_override == VOB_NO_OVERRIDE &&
+                                            g_config.display.window.vsync))) {
         int64_t next_frame = last_ui_frame_time_ns + display_vsync_interval -
                              VSYNC_SWAP_GRACE_PERIOD_NS;
 
@@ -1292,12 +1301,23 @@ static void setup_nvidia_profile(void)
     }
 
     if (nvapi_init()) {
-        nvapi_setup_profile((NvApiProfileOpts){
-            .profile_name = L"xemu",
-            .executable_name = exe_name,
-            .threaded_optimization = false,
-        });
+        NvApiProfileState current_state;
+        nvapi_setup_profile(
+            (NvApiProfileOpts){
+                .profile_name = L"xemu",
+                .executable_name = exe_name,
+                .threaded_optimization = false,
+            },
+            &current_state);
         nvapi_finalize();
+
+        if (current_state.vsync_mode == VSYNC_MODE_FORCE_OFF) {
+            vsync_override = VOB_FORCE_OFF;
+        } else if (current_state.vsync_mode == VSYNC_MODE_FORCE_ON) {
+            vsync_override = VOB_FORCE_ON;
+        } else {
+            vsync_override = VOB_NO_OVERRIDE;
+        }
     }
 }
 #endif
