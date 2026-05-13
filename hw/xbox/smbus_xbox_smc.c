@@ -31,6 +31,8 @@
 #include "hw/i2c/smbus_slave.h"
 #include "qemu/config-file.h"
 #include "qapi/error.h"
+#include "qapi/qapi-commands-block.h"
+#include "ui/xemu-settings.h"
 #include "system/block-backend.h"
 #include "system/blockdev.h"
 #include "system/system.h"
@@ -117,6 +119,7 @@ static void smc_quick_cmd(SMBusDevice *dev, uint8_t read)
 
 static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
 {
+    Error *error = NULL;
     SMBusSMCDevice *smc = XBOX_SMC(dev);
 
     smc->cmd = buf[0];
@@ -144,16 +147,14 @@ static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
         break;
 
     case SMC_REG_TRAYEJECT:
-        Error *error = NULL;
         if (buf[0]) {
             const char *path = g_config.sys.files.dvd_path;
             qmp_blockdev_change_medium("ide0-cd1", NULL, path, "raw", false, false,
                                         false, 0, &error);                                       
         } else {
             xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
-            qmp_eject(true, "ide0-cd1", false, NULL, true, false, &error);
+            qmp_eject("ide0-cd1", NULL, true, false, &error);
         }
-        error_free(error);
         xbox_smc_update_tray_state();
         break;
 
@@ -176,6 +177,8 @@ static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
         break;
     }
 
+    error_free(error);
+    
     return 0;
 }
 
@@ -371,10 +374,9 @@ void xbox_smc_tray_eject(uint8_t val)
 {
     Object *obj = object_resolve_path_type("", TYPE_XBOX_SMC, NULL);
     if (obj) {
-        uint8_t buf[2];
-        buf[0] = 0x0c;
-        buf[1] = val;
-        smc_write_data(obj, buf, 2);
+        SMBusSMCDevice *smc = XBOX_SMC(obj);
+        uint8_t buf[2] = { 0x0c, val };
+        smc_write_data(&smc->smbusdev, buf, 2);
     }
 }
 
