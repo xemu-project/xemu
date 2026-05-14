@@ -151,10 +151,9 @@ void pgraph_vk_image_blit(NV2AState *d)
         leftover_bytes = clipped_dest_size - consumed_bytes;
     }
 
-    hwaddr source_size = (adjusted_height ? (adjusted_height - 1) *
-                                                context_surfaces->source_pitch :
-                                            0) +
-                         image_blit->width * bytes_per_pixel;
+    size_t total_rows = adjusted_height + (leftover_bytes > 0 ? 1 : 0);
+    hwaddr source_size = total_rows ? (total_rows - 1) * context_surfaces->source_pitch +
+                                       (leftover_bytes ? leftover_bytes : row_pixels * bytes_per_pixel) : 0;
     pgraph_vk_download_surfaces_in_range_if_dirty(pg, source_addr, source_size);
 
     // TODO: just clear dirty_draw flag on surfaces that are fully overlapped.
