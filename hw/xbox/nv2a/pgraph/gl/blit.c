@@ -138,8 +138,7 @@ void pgraph_gl_image_blit(NV2AState *d)
     size_t adjusted_height = image_blit->height;
     size_t leftover_bytes = 0;
 
-    hwaddr clipped_dest_size =
-        nv_clip_gpu_tile_blit(d, dest_addr + dest_offset, dest_size);
+    hwaddr clipped_dest_size = nv_clip_gpu_tile_blit(d, dest_addr, dest_size);
 
     if (clipped_dest_size < dest_size) {
         adjusted_height = clipped_dest_size / context_surfaces->dest_pitch;
@@ -148,7 +147,9 @@ void pgraph_gl_image_blit(NV2AState *d)
         leftover_bytes = clipped_dest_size - consumed_bytes;
     }
 
-    hwaddr source_size = adjusted_height * context_surfaces->source_pitch +
+    hwaddr source_size = (adjusted_height ? (adjusted_height - 1) *
+                                                context_surfaces->source_pitch :
+                                            0) +
                          image_blit->width * bytes_per_pixel;
     pgraph_gl_download_surfaces_in_range_if_dirty(pg, source_addr, source_size);
 
@@ -210,7 +211,8 @@ void pgraph_gl_image_blit(NV2AState *d)
     memory_region_set_client_dirty(d->vram, dest_addr, clipped_dest_size,
                                    DIRTY_MEMORY_NV2A_TEX);
 
-    if (pgraph_gl_mark_surfaces_in_range_for_upload(d, dest_addr, dest_size)) {
+    if (pgraph_gl_mark_surfaces_in_range_for_upload(d, dest_addr,
+                                                    clipped_dest_size)) {
         ++pg->draw_time;
     }
 }
