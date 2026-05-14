@@ -122,6 +122,14 @@ static void memcpy_image(void *dst, void const *src, int dst_stride,
     }
 }
 
+static bool check_surface_overlaps_range(const SurfaceBinding *surface,
+                                         hwaddr range_start, hwaddr range_len)
+{
+    hwaddr surface_end = surface->vram_addr + surface->size;
+    hwaddr range_end = range_start + range_len;
+    return !(surface->vram_addr >= range_end || range_start >= surface_end);
+}
+
 unsigned int pgraph_vk_mark_surfaces_in_range_for_upload(NV2AState *d,
                                                          hwaddr start,
                                                          hwaddr size)
@@ -130,27 +138,15 @@ unsigned int pgraph_vk_mark_surfaces_in_range_for_upload(NV2AState *d,
     PGRAPHVkState *r = pg->vk_renderer_state;
     SurfaceBinding *surface;
 
-    hwaddr end = start + size - 1;
-
     unsigned int num_marked = 0;
     QTAILQ_FOREACH (surface, &r->surfaces, entry) {
-        hwaddr surf_end = surface->vram_addr + surface->size - 1;
-        bool overlapping = !(surface->vram_addr >= end || start >= surf_end);
-        if (overlapping) {
+        if (check_surface_overlaps_range(surface, start, size)) {
             surface->upload_pending = true;
             ++num_marked;
         }
     }
 
     return num_marked;
-}
-
-static bool check_surface_overlaps_range(const SurfaceBinding *surface,
-                                         hwaddr range_start, hwaddr range_len)
-{
-    hwaddr surface_end = surface->vram_addr + surface->size;
-    hwaddr range_end = range_start + range_len;
-    return !(surface->vram_addr >= range_end || range_start >= surface_end);
 }
 
 void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg,
