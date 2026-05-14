@@ -641,13 +641,9 @@ unsigned int pgraph_gl_mark_surfaces_in_range_for_upload(NV2AState *d,
 
     SurfaceBinding *surface;
 
-    hwaddr end = start + size - 1;
-
     unsigned int num_marked = 0;
     QTAILQ_FOREACH (surface, &r->surfaces, entry) {
-        hwaddr surf_end = surface->vram_addr + surface->size - 1;
-        bool overlapping = !(surface->vram_addr >= end || start >= surf_end);
-        if (overlapping) {
+        if (check_surface_overlaps_range(surface, start, size)) {
             surface->upload_pending = true;
             ++num_marked;
         }
@@ -664,12 +660,8 @@ void pgraph_gl_download_surfaces_in_range_if_dirty(PGRAPHState *pg,
 
     SurfaceBinding *surface;
 
-    hwaddr end = start + size - 1;
-
     QTAILQ_FOREACH (surface, &r->surfaces, entry) {
-        hwaddr surf_end = surface->vram_addr + surface->size - 1;
-        bool overlapping = !(surface->vram_addr >= end || start >= surf_end);
-        if (overlapping) {
+        if (check_surface_overlaps_range(surface, start, size)) {
             pgraph_gl_surface_download_if_dirty(
                 container_of(pg, NV2AState, pgraph), surface);
         }
