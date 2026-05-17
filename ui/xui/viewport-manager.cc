@@ -17,11 +17,13 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "viewport-manager.hh"
+#include "xemu-hud.h"
 
 ViewportManager g_viewport_mgr;
 
 ViewportManager::ViewportManager() {
     m_scale = 1;
+    m_pixel_density = 1;
     m_extents.x = 25 * m_scale; // Distance from Left
     m_extents.y = 25 * m_scale; // '' Top
     m_extents.z = 25 * m_scale; // '' Right
@@ -62,21 +64,15 @@ void ViewportManager::Update()
 {
     ImGuiIO &io = ImGui::GetIO();
 
+    SDL_Window *window = xemu_get_window();
+    m_pixel_density = fmax(SDL_GetWindowPixelDensity(window), 1.0f);
+
     if (g_config.display.ui.auto_scale) {
-        if (io.DisplaySize.x > 1920) {
-            g_config.display.ui.scale = 2;
-        } else {
-            g_config.display.ui.scale = 1;
-        }
+        float window_display_scale = fmax(SDL_GetWindowDisplayScale(window), 1.0f);
+        g_config.display.ui.scale = window_display_scale / m_pixel_density;
     }
 
-    m_scale = g_config.display.ui.scale;
-
-    if (m_scale < 1) {
-        m_scale = 1;
-    } else if (m_scale > 2) {
-        m_scale = 2;
-    }
+    m_scale = fmax(g_config.display.ui.scale, 1.0);
 
     if (io.DisplaySize.x > 640*m_scale) {
         m_extents.x = 25 * m_scale; // Distance from Left
