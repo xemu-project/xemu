@@ -92,18 +92,6 @@ void FontManager::Rebuild()
                                        18.0f * scale,
                                        &config, icon_ranges);
     }
-
-    // {
-    //     ImFontConfig config;
-    //     config.FontDataOwnedByAtlas = false;
-    //     config.RasterizerDensity = pixel_density;
-    //     static const ImWchar icon_ranges[] = { 0xf04c, 0xf04c, 0 };
-    //     m_big_state_icon_font = io.Fonts->AddFontFromMemoryTTF(
-    //         (void *)font_awesome_6_1_1_solid_data,
-    //         font_awesome_6_1_1_solid_size,
-    //         64.0f * scale, &config,
-    //         icon_ranges);
-    // }
     {
         ImFontConfig config = ImFontConfig();
         config.OversampleH = config.OversampleV = 1;
