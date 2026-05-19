@@ -65,14 +65,14 @@ void ViewportManager::Update()
     ImGuiIO &io = ImGui::GetIO();
 
     SDL_Window *window = xemu_get_window();
-    m_pixel_density = fmax(SDL_GetWindowPixelDensity(window), 1.0f);
+    m_pixel_density = fmaxf(SDL_GetWindowPixelDensity(window), 1.0f);
 
     if (g_config.display.ui.auto_scale) {
-        float window_display_scale = fmax(SDL_GetWindowDisplayScale(window), 1.0f);
+        float window_display_scale = fmaxf(SDL_GetWindowDisplayScale(window), 1.0f);
         g_config.display.ui.scale = window_display_scale / m_pixel_density;
     }
 
-    m_scale = fmax(g_config.display.ui.scale, 1.0);
+    m_scale = fmaxf(g_config.display.ui.scale, 1.0);
 
     if (io.DisplaySize.x > 640*m_scale) {
         m_extents.x = 25 * m_scale; // Distance from Left
