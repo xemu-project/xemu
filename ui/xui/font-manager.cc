@@ -36,8 +36,6 @@ void FontManager::Rebuild()
 {
     ImGuiIO &io = ImGui::GetIO();
 
-    // FIXME: Trim FA to only glyphs in use
-
     io.Fonts->Clear();
 
     float scale = g_viewport_mgr.m_scale;
