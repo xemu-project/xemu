@@ -30,7 +30,6 @@ FontManager::FontManager()
 {
     m_last_viewport_scale = 1;
     m_last_pixel_density = 1;
-    m_font_scale = 1;
 }
 
 void FontManager::Rebuild()
@@ -41,7 +40,7 @@ void FontManager::Rebuild()
 
     io.Fonts->Clear();
 
-    float scale = g_viewport_mgr.m_scale * m_font_scale;
+    float scale = g_viewport_mgr.m_scale;
     float pixel_density = g_viewport_mgr.m_pixel_density;
 
     {

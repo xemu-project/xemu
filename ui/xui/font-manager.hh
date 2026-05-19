@@ -36,7 +36,6 @@ public:
     // ImFont *m_big_state_icon_font;
     float m_last_viewport_scale;
     float m_last_pixel_density;
-    float m_font_scale;
 
     FontManager();
     void Rebuild();
