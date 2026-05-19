@@ -196,6 +196,9 @@ case "$platform" in # Adjust compilation options based on platform
     Linux)
         echo 'Compiling for Linux...'
         sys_cflags='-Wno-error=redundant-decls'
+        if [ "$target_arch" == "x86_64" ]; then
+            sys_cflags="$sys_cflags -march=x86-64-v3"
+        fi
         opts="$opts --disable-werror"
         postbuild='package_linux'
         ;;
@@ -238,6 +241,9 @@ case "$platform" in # Adjust compilation options based on platform
     CYGWIN*|MINGW*|MSYS*)
         echo 'Compiling for Windows...'
         sys_cflags='-Wno-error'
+        if [ "$target_arch" == "x86_64" ]; then
+            sys_cflags="$sys_cflags -march=x86-64-v3"
+        fi
         CFLAGS="${CFLAGS} -lIphlpapi -lCrypt32" # workaround for linking libs on mingw
         opts="$opts"
         postbuild='package_windows' # set the above function to be called after build
@@ -247,6 +253,10 @@ case "$platform" in # Adjust compilation options based on platform
         echo 'Cross-compiling for Windows...'
         export AR=${AR:-$CROSSAR}
         sys_cflags='-Wno-error'
+        if [ "$target_arch" = "x86_64" ] && \
+            [[ "$CROSSPREFIX" != aarch64-w64-mingw32.static* ]]; then
+                sys_cflags="$sys_cflags -march=x86-64-v3"
+        fi
         opts="$opts --cross-prefix=$CROSSPREFIX --static"
         postbuild='package_wincross' # set the above function to be called after build
         target="qemu-system-i386w.exe"
