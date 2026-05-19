@@ -69,10 +69,12 @@ void ViewportManager::Update()
 
     if (g_config.display.ui.auto_scale) {
         float window_display_scale = fmaxf(SDL_GetWindowDisplayScale(window), 1.0f);
-        g_config.display.ui.scale = window_display_scale / m_pixel_density;
+        m_scale = window_display_scale / m_pixel_density;
+    } else {
+        m_scale = g_config.display.ui.scale;
     }
 
-    m_scale = fmaxf(g_config.display.ui.scale, 1.0);
+    m_scale = fmaxf(m_scale, 1.0);
 
     if (io.DisplaySize.x > 640*m_scale) {
         m_extents.x = 25 * m_scale; // Distance from Left
