@@ -947,16 +947,13 @@ static void poll_events(struct xemu_console *scon)
 static void display_very_early_init(DisplayOptions *o)
 {
 #ifdef __linux__
-    /* on Linux, SDL may use fbcon|directfb|svgalib when run without
-     * accessible $DISPLAY to open X11 window.  This is often the case
-     * when qemu is run using sudo.  But in this case, and when actually
-     * run in X11 environment, SDL fights with X11 for the video card,
-     * making current display unavailable, often until reboot.
-     * So make x11 the default SDL video driver if this variable is unset.
-     * This is a bit hackish but saves us from bigger problem.
-     * Maybe it's a good idea to fix this in SDL instead.
+    /* SDL3 falls back to XWayland on compositors without fifo-v1 [1],
+     * breaking HiDPI. Swap may block when occluded, but the BQL is released
+     * before swap so emulation is unaffected.
+     *
+     * [1] https://github.com/libsdl-org/SDL/pull/9383
      */
-    setenv("SDL_VIDEODRIVER", "x11", 0);
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "wayland,x11");
 #endif
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {

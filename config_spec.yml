@@ -279,7 +279,7 @@ display:
       values: [native, auto, 4x3, 16x9]
       default: auto
     scale:
-      type: integer
+      type: float
       default: 1
     auto_scale:
       type: bool
