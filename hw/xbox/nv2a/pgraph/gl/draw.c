@@ -21,6 +21,7 @@
 
 #include "qemu/fast-hash.h"
 #include "hw/xbox/nv2a/nv2a_int.h"
+#include "hw/xbox/nv2a/pgraph/prim_rewrite.h"
 #include "debug.h"
 #include "renderer.h"
 
@@ -388,6 +389,19 @@ void pgraph_gl_flush_draw(NV2AState *d)
     }
     assert(r->shader_binding);
 
+    PrimAssemblyState assembly = {
+        .primitive_mode = pg->primitive_mode,
+        .polygon_mode = (enum ShaderPolygonMode)GET_MASK(
+            pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER),
+            NV_PGRAPH_SETUPRASTER_FRONTFACEMODE),
+        .last_provoking = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
+                                   NV_PGRAPH_CONTROL_3_PROVOKING_VERTEX) ==
+                          NV_PGRAPH_CONTROL_3_PROVOKING_VERTEX_LAST,
+        .flat_shading = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
+                                 NV_PGRAPH_CONTROL_3_SHADEMODE) ==
+                        NV_PGRAPH_CONTROL_3_SHADEMODE_FLAT,
+    };
+
     if (pg->draw_arrays_length) {
         NV2A_GL_DPRINTF(false, "Draw Arrays");
         nv2a_profile_inc_counter(NV2A_PROF_DRAW_ARRAYS);
@@ -399,51 +413,83 @@ void pgraph_gl_flush_draw(NV2AState *d)
                                       pg->draw_arrays_max_count - 1,
                                       false, 0,
                                       pg->draw_arrays_max_count - 1);
-        glMultiDrawArrays(r->shader_binding->gl_primitive_mode,
-                          pg->draw_arrays_start,
-                          pg->draw_arrays_count,
-                          pg->draw_arrays_length);
+
+        PrimRewrite prim_rw = pgraph_prim_rewrite_ranges(
+            &r->prim_rewrite_buf, assembly, pg->draw_arrays_start,
+            pg->draw_arrays_count, pg->draw_arrays_length);
+
+        if (prim_rw.num_indices > 0) {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, r->gl_prim_rewrite_buffer);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                         prim_rw.num_indices * sizeof(uint32_t),
+                         prim_rw.indices, GL_STREAM_DRAW);
+            glDrawElements(r->shader_binding->gl_primitive_mode,
+                           prim_rw.num_indices, GL_UNSIGNED_INT, (void *)0);
+        } else {
+            glMultiDrawArrays(r->shader_binding->gl_primitive_mode,
+                              pg->draw_arrays_start, pg->draw_arrays_count,
+                              pg->draw_arrays_length);
+        }
     } else if (pg->inline_elements_length) {
         NV2A_GL_DPRINTF(false, "Inline Elements");
         nv2a_profile_inc_counter(NV2A_PROF_INLINE_ELEMENTS);
         assert(pg->inline_buffer_length == 0);
         assert(pg->inline_array_length == 0);
 
+        uint32_t *draw_indices = pg->inline_elements;
+        unsigned int draw_index_count = pg->inline_elements_length;
+        PrimRewrite prim_rw = pgraph_prim_rewrite_indexed(
+            &r->prim_rewrite_buf, assembly, pg->inline_elements,
+            pg->inline_elements_length);
+        if (prim_rw.num_indices > 0) {
+            draw_indices = prim_rw.indices;
+            draw_index_count = prim_rw.num_indices;
+        }
+
         uint32_t min_element = (uint32_t)-1;
         uint32_t max_element = 0;
-        for (int i=0; i < pg->inline_elements_length; i++) {
-            max_element = MAX(pg->inline_elements[i], max_element);
-            min_element = MIN(pg->inline_elements[i], min_element);
+        for (unsigned int i = 0; i < draw_index_count; i++) {
+            max_element = MAX(draw_indices[i], max_element);
+            min_element = MIN(draw_indices[i], min_element);
         }
 
         pgraph_gl_bind_vertex_attributes(
                 d, min_element, max_element, false, 0,
-                pg->inline_elements[pg->inline_elements_length - 1]);
+                draw_indices[draw_index_count - 1]);
 
-        VertexKey k;
-        memset(&k, 0, sizeof(VertexKey));
-        k.count = pg->inline_elements_length;
-        k.gl_type = GL_UNSIGNED_INT;
-        k.gl_normalize = GL_FALSE;
-        k.stride = sizeof(uint32_t);
-        uint64_t h = fast_hash((uint8_t*)pg->inline_elements,
-                               pg->inline_elements_length * 4);
-
-        LruNode *node = lru_lookup(&r->element_cache, h, &k);
-        VertexLruNode *found = container_of(node, VertexLruNode, node);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, found->gl_buffer);
-        if (!found->initialized) {
-            nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_4);
+        if (prim_rw.num_indices > 0) {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, r->gl_prim_rewrite_buffer);
             glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                         pg->inline_elements_length * 4,
-                         pg->inline_elements, GL_STATIC_DRAW);
-            found->initialized = true;
+                         draw_index_count * sizeof(uint32_t), draw_indices,
+                         GL_STREAM_DRAW);
+            glDrawElements(r->shader_binding->gl_primitive_mode,
+                           draw_index_count, GL_UNSIGNED_INT, (void *)0);
         } else {
-            nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_4_NOTDIRTY);
+            VertexKey k;
+            memset(&k, 0, sizeof(VertexKey));
+            k.count = pg->inline_elements_length;
+            k.gl_type = GL_UNSIGNED_INT;
+            k.gl_normalize = GL_FALSE;
+            k.stride = sizeof(uint32_t);
+            uint64_t h = fast_hash((uint8_t*)pg->inline_elements,
+                                   pg->inline_elements_length * 4);
+
+            LruNode *node = lru_lookup(&r->element_cache, h, &k);
+            VertexLruNode *found = container_of(node, VertexLruNode, node);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, found->gl_buffer);
+            if (!found->initialized) {
+                nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_4);
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                             pg->inline_elements_length * 4,
+                             pg->inline_elements, GL_STATIC_DRAW);
+                found->initialized = true;
+            } else {
+                nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_4_NOTDIRTY);
+            }
+            glDrawElements(r->shader_binding->gl_primitive_mode,
+                           pg->inline_elements_length, GL_UNSIGNED_INT,
+                           (void *)0);
         }
-        glDrawElements(r->shader_binding->gl_primitive_mode,
-                       pg->inline_elements_length, GL_UNSIGNED_INT,
-                       (void *)0);
     } else if (pg->inline_buffer_length) {
         NV2A_GL_DPRINTF(false, "Inline Buffer");
         nv2a_profile_inc_counter(NV2A_PROF_INLINE_BUFFERS);
@@ -474,15 +520,40 @@ void pgraph_gl_flush_draw(NV2AState *d)
             }
         }
 
-        glDrawArrays(r->shader_binding->gl_primitive_mode,
-                     0, pg->inline_buffer_length);
+        PrimRewrite prim_rw = pgraph_prim_rewrite_sequential(
+            &r->prim_rewrite_buf, assembly, 0, pg->inline_buffer_length);
+
+        if (prim_rw.num_indices > 0) {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, r->gl_prim_rewrite_buffer);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                         prim_rw.num_indices * sizeof(uint32_t),
+                         prim_rw.indices, GL_STREAM_DRAW);
+            glDrawElements(r->shader_binding->gl_primitive_mode,
+                           prim_rw.num_indices, GL_UNSIGNED_INT, (void *)0);
+        } else {
+            glDrawArrays(r->shader_binding->gl_primitive_mode,
+                         0, pg->inline_buffer_length);
+        }
     } else if (pg->inline_array_length) {
         NV2A_GL_DPRINTF(false, "Inline Array");
         nv2a_profile_inc_counter(NV2A_PROF_INLINE_ARRAYS);
 
         unsigned int index_count = pgraph_gl_bind_inline_array(d);
-        glDrawArrays(r->shader_binding->gl_primitive_mode,
-                     0, index_count);
+
+        PrimRewrite prim_rw = pgraph_prim_rewrite_sequential(
+            &r->prim_rewrite_buf, assembly, 0, index_count);
+
+        if (prim_rw.num_indices > 0) {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, r->gl_prim_rewrite_buffer);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                         prim_rw.num_indices * sizeof(uint32_t),
+                         prim_rw.indices, GL_STREAM_DRAW);
+            glDrawElements(r->shader_binding->gl_primitive_mode,
+                           prim_rw.num_indices, GL_UNSIGNED_INT, (void *)0);
+        } else {
+            glDrawArrays(r->shader_binding->gl_primitive_mode,
+                         0, index_count);
+        }
     } else {
         NV2A_GL_DPRINTF(true, "EMPTY NV097_SET_BEGIN_END");
         NV2A_UNCONFIRMED("EMPTY NV097_SET_BEGIN_END");

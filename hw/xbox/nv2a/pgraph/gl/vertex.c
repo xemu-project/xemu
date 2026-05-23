@@ -271,6 +271,8 @@ void pgraph_gl_init_buffers(NV2AState *d)
 
     glGenBuffers(NV2A_VERTEXSHADER_ATTRIBUTES, r->gl_inline_buffer);
     glGenBuffers(1, &r->gl_inline_array_buffer);
+    glGenBuffers(1, &r->gl_prim_rewrite_buffer);
+    pgraph_prim_rewrite_init(&r->prim_rewrite_buf);
 
     glGenBuffers(1, &r->gl_memory_buffer);
     glBindBuffer(GL_ARRAY_BUFFER, r->gl_memory_buffer);
@@ -302,6 +304,10 @@ void pgraph_gl_finalize_buffers(PGRAPHState *pg)
 
     glDeleteBuffers(1, &r->gl_inline_array_buffer);
     r->gl_inline_array_buffer = 0;
+
+    glDeleteBuffers(1, &r->gl_prim_rewrite_buffer);
+    r->gl_prim_rewrite_buffer = 0;
+    pgraph_prim_rewrite_finalize(&r->prim_rewrite_buf);
 
     glDeleteBuffers(1, &r->gl_memory_buffer);
     r->gl_memory_buffer = 0;

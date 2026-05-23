@@ -153,6 +153,8 @@ void pgraph_vk_init_buffers(NV2AState *d)
             r->allocator, r->storage_buffers[buffers_to_map[i]].allocation,
             (void **)&r->storage_buffers[buffers_to_map[i]].mapped));
     }
+
+    pgraph_prim_rewrite_init(&r->prim_rewrite_buf);
 }
 
 void pgraph_vk_finalize_buffers(NV2AState *d)
@@ -166,6 +168,8 @@ void pgraph_vk_finalize_buffers(NV2AState *d)
         }
         destroy_buffer(pg, &r->storage_buffers[i]);
     }
+
+    pgraph_prim_rewrite_finalize(&r->prim_rewrite_buf);
 
     g_free(r->uploaded_bitmap);
     r->uploaded_bitmap = NULL;

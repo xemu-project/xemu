@@ -3,7 +3,6 @@ specific_ss.add([sdl, gloffscreen, files(
 	'debug.c',
 	'display.c',
 	'draw.c',
-	'gpuprops.c',
 	'renderer.c',
 	'reports.c',
 	'shaders.c',
