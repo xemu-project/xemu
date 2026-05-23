@@ -1236,7 +1236,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         vkCmdBlitImage(cmd, surface->image_scratch,
                        surface->image_scratch_current_layout, surface->image,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blitRegion,
-                       surface->color ? VK_FILTER_LINEAR : VK_FILTER_NEAREST);
+                       VK_FILTER_NEAREST);
     } else {
         // Note: We should be able to vkCmdCopyBufferToImage directly into
         // surface->image, but there is an apparent AMD Windows driver
