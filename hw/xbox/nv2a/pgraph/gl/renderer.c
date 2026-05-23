@@ -23,6 +23,7 @@
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "debug.h"
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/surface.h"
 
 GloContext *g_nv2a_context_render;
 GloContext *g_nv2a_context_display;
@@ -196,7 +197,6 @@ static PGRAPHRenderer pgraph_gl_renderer = {
         .flip_stall = pgraph_gl_flip_stall,
         .flush_draw = pgraph_gl_flush_draw,
         .get_report = pgraph_gl_get_report,
-        .image_blit = pgraph_gl_image_blit,
         .pre_savevm_trigger = pgraph_gl_pre_savevm_trigger,
         .pre_savevm_wait = pgraph_gl_pre_savevm_wait,
         .pre_shutdown_trigger = pgraph_gl_pre_shutdown_trigger,
@@ -204,6 +204,8 @@ static PGRAPHRenderer pgraph_gl_renderer = {
         .process_pending = pgraph_gl_process_pending,
         .process_pending_reports = pgraph_gl_process_pending_reports,
         .surface_update = pgraph_gl_surface_update,
+        .surface_get = pgraph_gl_surface_get,
+        .surface_download_if_dirty = pgraph_gl_surface_download_if_dirty,
         .set_surface_scale_factor = pgraph_gl_set_surface_scale_factor,
         .get_surface_scale_factor = pgraph_gl_get_surface_scale_factor,
         .get_framebuffer_surface = pgraph_gl_get_framebuffer_surface,

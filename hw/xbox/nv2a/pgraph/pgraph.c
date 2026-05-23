@@ -762,7 +762,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
             image_blit->height = parameter >> 16;
 
             if (image_blit->width && image_blit->height) {
-                d->pgraph.renderer->ops.image_blit(d);
+                pgraph_common_image_blit(d);
             }
             break;
         default:
