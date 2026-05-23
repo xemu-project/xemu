@@ -56,7 +56,9 @@ static void RunOnMainThread(std::function<void()> &&func)
 // Check if running as root or with elevated file capabilities (setcap)
 static bool ShouldBypassXDGPortal()
 {
-    // Force reset process dumpability to handle privilege drop state transitions cleanly
+    // Force reset process dumpability to handle privilege drop state transitions cleanly.
+    // NOTE: This is a process-wide side effect required because Linux restricts reads of
+    // /proc/self/status for processes with elevated capabilities on some configurations.
     prctl(PR_SET_DUMPABLE, 1, 0, 0, 0);
 
     // 1. Check for root or effective root execution
@@ -67,26 +69,24 @@ static bool ShouldBypassXDGPortal()
     // 2. Check CapEff (Effective), CapPrm (Permitted), and CapInh (Inheritable)
     // If ANY capabilities are active or were dropped incorrectly,
     // fallback to Zenity to avoid D-Bus auth mismatch faults.
-    try {
-        std::ifstream file("/proc/self/status");
-        if (file.is_open()) {
-            std::string line;
-            while (std::getline(file, line)) {
-                if (line.rfind("CapEff:", 0) == 0 ||
-                    line.rfind("CapPrm:", 0) == 0 ||
-                    line.rfind("CapInh:", 0) == 0) {
+    std::ifstream file("/proc/self/status");
+    if (file.is_open()) {
+        std::string line;
+        while (std::getline(file, line)) {
+            if (line.rfind("CapEff:", 0) == 0 ||
+                line.rfind("CapPrm:", 0) == 0 ||
+                line.rfind("CapInh:", 0) == 0) {
 
-                    std::string cap_str = line.substr(7);
-                    // Drop internal allocations/exceptions by switching to strtoull
-                    char* endptr = nullptr;
-                    unsigned long long cap_val = std::strtoull(cap_str.c_str(), &endptr, 16);
-                    if (cap_val != 0) {
-                       return true; // Capabilities are present; bypass portal
-                    }
+                std::string cap_str = line.substr(7);
+                // Drop internal allocations/exceptions by switching to strtoull
+                char* endptr = nullptr;
+                unsigned long long cap_val = std::strtoull(cap_str.c_str(), &endptr, 16);
+                if (cap_val != 0) {
+                    return true; // Capabilities are present; bypass portal
                 }
             }
         }
-    } catch (...) {}
+    }
     return false;
 }
 
@@ -97,14 +97,19 @@ static void RunZenityFallbackAsync(const std::vector<std::string>& extra_args,
                                    FileDialogCallback callback)
 {
     // Capture state and run inside a worker thread to keep the emulator rendering loop ticking
-    std::thread([extra_args, title = std::move(title), loc = std::move(default_location), callback = std::move(callback)]() {
+    std::thread([extra_args, title = std::move(title), loc = std::move(default_location),
+                 callback = std::move(callback)]() {
         int pipe_fd[2];
-        if (pipe(pipe_fd) < 0) return;
+        if (pipe(pipe_fd) < 0) {
+            // Do not invoke callback on failure; caller retains previous value
+            return;
+        }
 
         pid_t pid = fork();
         if (pid < 0) {
             close(pipe_fd[0]);
             close(pipe_fd[1]);
+            // Do not invoke callback on failure; caller retains previous value
             return;
         }
 
@@ -117,7 +122,9 @@ static void RunZenityFallbackAsync(const std::vector<std::string>& extra_args,
             setenv("G_MESSAGES_DEBUG", "", 1);
 
             // Construct array vector arguments securely for execvp
-            std::vector<std::string> args = {"zenity", "--file-selection", "--title=" + title};
+            std::vector<std::string> args = {"zenity", "--file-selection", "--title=" + title,
+                                             "--modal"};
+
             for (const auto& arg : extra_args) {
                 args.push_back(arg);
             }
@@ -141,9 +148,8 @@ static void RunZenityFallbackAsync(const std::vector<std::string>& extra_args,
         char read_buf[512];
         ssize_t bytes_read;
 
-        while ((bytes_read = read(pipe_fd[0], read_buf, sizeof(read_buf) - 1)) > 0) {
-            read_buf[bytes_read] = '\0';
-            result += read_buf;
+        while ((bytes_read = read(pipe_fd[0], read_buf, sizeof(read_buf))) > 0) {
+            result.append(read_buf, bytes_read);
         }
         close(pipe_fd[0]);
 
@@ -156,6 +162,9 @@ static void RunZenityFallbackAsync(const std::vector<std::string>& extra_args,
             result.pop_back();
         }
 
+        // Only invoke callback on a clean exit with a non-empty result.
+        // On cancel or error, skip the callback so the caller retains the
+        // previous value (avoids null assertion in xemu_settings_set_string).
         if (WIFEXITED(status) && WEXITSTATUS(status) == 0 && !result.empty()) {
             RunOnMainThread([callback = std::move(callback), result = std::move(result)]() {
                 callback(result.c_str());
@@ -222,9 +231,9 @@ void ShowOpenFileDialog(const SDL_DialogFileFilter *filters, int nfilters,
 
     auto cb = std::make_unique<FileDialogCallback>(std::move(callback));
     SDL_ShowOpenFileDialog(FileDialogCallbackWrapper, cb.release(), xemu_get_window(),
-                           filters, nfilters,
-                           normalized.empty() ? nullptr : normalized.c_str(),
-                           false);
+                          filters, nfilters,
+                          normalized.empty() ? nullptr : normalized.c_str(),
+                          false);
 }
 
 void ShowSaveFileDialog(const SDL_DialogFileFilter *filters, int nfilters,
