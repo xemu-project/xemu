@@ -164,7 +164,7 @@ static int nv2a_get_bpp(VGACommonState *s)
         /* This is only a fallback path */
         bpp = depth * 8;
         fprintf(stderr, "Unknown VGA depth: %d\n", depth);
-        assert(false);
+        assert(!"Unknown VGA depth - check logs for depth value");
         break;
     }
 
