@@ -22,16 +22,17 @@
 #include <SDL3/SDL_platform_defines.h>
 #include <filesystem>
 #include <string>
+#include <memory>
 
 #if defined(SDL_PLATFORM_LINUX)
 #include <vector>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/prctl.h>
 #include <fstream>
 #include <sstream>
 #include <cstdio>
-#include <memory>
 #include <thread>
 #endif
 
@@ -76,12 +77,12 @@ static bool ShouldBypassXDGPortal()
                     line.rfind("CapInh:", 0) == 0) {
 
                     std::string cap_str = line.substr(7);
-                    try {
-                        unsigned long long cap_val = std::stoull(cap_str, nullptr, 16);
-                        if (cap_val != 0) {
-                            return true; // Capabilities are present; bypass portal
-                        }
-                    } catch (...) {}
+                    // Drop internal allocations/exceptions by switching to strtoull
+                    char* endptr = nullptr;
+                    unsigned long long cap_val = std::strtoull(cap_str.c_str(), &endptr, 16);
+                    if (cap_val != 0) {
+                       return true; // Capabilities are present; bypass portal
+                    }
                 }
             }
         }
@@ -219,8 +220,8 @@ void ShowOpenFileDialog(const SDL_DialogFileFilter *filters, int nfilters,
     }
 #endif
 
-    auto *cb = new FileDialogCallback(std::move(callback));
-    SDL_ShowOpenFileDialog(FileDialogCallbackWrapper, cb, xemu_get_window(),
+    auto cb = std::make_unique<FileDialogCallback>(std::move(callback));
+    SDL_ShowOpenFileDialog(FileDialogCallbackWrapper, cb.release(), xemu_get_window(),
                            filters, nfilters,
                            normalized.empty() ? nullptr : normalized.c_str(),
                            false);
@@ -230,31 +231,35 @@ void ShowSaveFileDialog(const SDL_DialogFileFilter *filters, int nfilters,
                         const char *default_location,
                         FileDialogCallback callback)
 {
+    std::string normalized = NormalizeDefaultLocation(default_location);
+
 #if defined(SDL_PLATFORM_LINUX)
     if (ShouldBypassXDGPortal()) {
-        std::string loc = default_location ? default_location : "";
-        RunZenityFallbackAsync({"--save", "--confirm-overwrite"}, "Save File", loc, std::move(callback));
+        RunZenityFallbackAsync({"--save", "--confirm-overwrite"}, "Save File", normalized, std::move(callback));
         return;
     }
 #endif
 
-    auto *cb = new FileDialogCallback(std::move(callback));
-    SDL_ShowSaveFileDialog(FileDialogCallbackWrapper, cb, xemu_get_window(),
-                           filters, nfilters, default_location);
+    auto cb = std::make_unique<FileDialogCallback>(std::move(callback));
+    SDL_ShowSaveFileDialog(FileDialogCallbackWrapper, cb.release(), xemu_get_window(),
+                           filters, nfilters,
+                           normalized.empty() ? nullptr : normalized.c_str());
 }
 
 void ShowOpenFolderDialog(const char *default_location,
                           FileDialogCallback callback)
 {
+    std::string normalized = NormalizeDefaultLocation(default_location);
+
 #if defined(SDL_PLATFORM_LINUX)
     if (ShouldBypassXDGPortal()) {
-        std::string loc = default_location ? default_location : "";
-        RunZenityFallbackAsync({"--directory"}, "Select Folder", loc, std::move(callback));
+        RunZenityFallbackAsync({"--directory"}, "Select Folder", normalized, std::move(callback));
         return;
     }
 #endif
 
-    auto *cb = new FileDialogCallback(std::move(callback));
-    SDL_ShowOpenFolderDialog(FileDialogCallbackWrapper, cb,
-                             xemu_get_window(), default_location, false);
+    auto cb = std::make_unique<FileDialogCallback>(std::move(callback));
+    SDL_ShowOpenFolderDialog(FileDialogCallbackWrapper, cb.release(),
+                             xemu_get_window(),
+                             normalized.empty() ? nullptr : normalized.c_str(), false);
 }
