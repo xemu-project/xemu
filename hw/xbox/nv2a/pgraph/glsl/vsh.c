@@ -369,7 +369,7 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
             mstring_append(body, "  fogFactor -= 1.5;\n");
             break;
         default:
-            assert(false);
+            assert(!"Invalid fog mode");
             break;
         }
         switch (state->fog_mode) {
