@@ -796,112 +796,52 @@ static void report_stats(void)
 }
 #endif
 
-typedef struct VBlankPhaseLockedLoop {
-    int64_t vblank_period_ns;
-    int64_t expected_vblank_ns;
-    int64_t last_vblank_ns;
-    int64_t integral_gain_divisor;
-    int64_t proportional_gain_divisor;
-    bool phase_locked;
-    bool resync_required;
-} VBlankPLL;
-static VBlankPLL vblank_pll_state = { 0 };
-
-static inline int64_t pll_wrap_phase_error(int64_t error, int64_t period)
-{
-    const int64_t wrapped = error % period;
-    const int64_t half_period = period / 2;
-
-    if (wrapped > half_period) {
-        return wrapped - period;
-    }
-
-    if (wrapped < -half_period) {
-        return wrapped + period;
-    }
-
-    return wrapped;
-}
-
-// Time reserved for SDL_GL_SwapWindow to perform a swap. This value is chosen
-// empirically as the best balance between minimizing guest stalls while still
-// hitting the target host refresh rate.
-#define VSYNC_SWAP_GRACE_PERIOD_NS 1400000LL
-#define MISSED_FRAME_RESYNC_COUNT 8
-
-#define PLL_BASE_JITTER_NS 1500000LL
-
-static inline void pll_swap_window(SDL_Window *window)
-{
-    if (qatomic_xchg(&vblank_pll_state.resync_required, false)) {
-        vblank_pll_state.last_vblank_ns = 0;
-        vblank_pll_state.phase_locked = false;
-    }
-
-    if (vblank_pll_state.phase_locked) {
-        int64_t now = (int64_t)SDL_GetTicksNS();
-        int64_t sleep_target_ns =
-            vblank_pll_state.expected_vblank_ns - VSYNC_SWAP_GRACE_PERIOD_NS;
-        int64_t delay_ns = sleep_target_ns - now;
-
-        if (delay_ns > 0 && delay_ns < vblank_pll_state.vblank_period_ns) {
-            SDL_DelayPrecise((uint64_t)delay_ns);
-        }
-    }
-
-    SDL_GL_SwapWindow(window);
-    const int64_t swap_finish = (int64_t)SDL_GetTicksNS();
-
-    if (!vblank_pll_state.phase_locked) {
-        if (vblank_pll_state.last_vblank_ns != 0) {
-            int64_t delta = pll_wrap_phase_error(
-                swap_finish - vblank_pll_state.last_vblank_ns,
-                vblank_pll_state.vblank_period_ns);
-
-            const int64_t bootstrap_tol =
-                MIN(PLL_BASE_JITTER_NS, vblank_pll_state.vblank_period_ns / 5);
-            if (llabs(delta) < bootstrap_tol) {
-                vblank_pll_state.expected_vblank_ns = swap_finish;
-                vblank_pll_state.phase_locked = true;
-            }
-        }
-        vblank_pll_state.last_vblank_ns = swap_finish;
-        return;
-    }
-
-    int64_t error_ns = swap_finish - vblank_pll_state.expected_vblank_ns;
-    if (llabs(error_ns) >
-        vblank_pll_state.vblank_period_ns * MISSED_FRAME_RESYNC_COUNT) {
-        vblank_pll_state.expected_vblank_ns = swap_finish;
-    } else {
-        int64_t phase_error_ns =
-            pll_wrap_phase_error(error_ns, vblank_pll_state.vblank_period_ns);
-        int64_t nearest_vblank = swap_finish - phase_error_ns;
-
-        const int64_t tear_tol =
-            MIN(PLL_BASE_JITTER_NS * 2, vblank_pll_state.vblank_period_ns / 4);
-        if (llabs(phase_error_ns) > tear_tol) {
-            // Handle adaptive vsync tearing swaps. These can occur
-            // significantly out of phase and should be ignored.
-            vblank_pll_state.expected_vblank_ns =
-                nearest_vblank + vblank_pll_state.vblank_period_ns;
-        } else {
-            vblank_pll_state.vblank_period_ns +=
-                phase_error_ns / vblank_pll_state.integral_gain_divisor;
-            vblank_pll_state.expected_vblank_ns =
-                nearest_vblank + vblank_pll_state.vblank_period_ns +
-                (phase_error_ns / vblank_pll_state.proportional_gain_divisor);
-        }
-    }
-}
-
 enum VsyncOverrideBehavior {
     VOB_FORCE_OFF,
     VOB_FORCE_ON,
     VOB_NO_OVERRIDE,
 };
 
-static enum VsyncOverrideBehavior vsync_override = VOB_NO_OVERRIDE;
+static enum VsyncOverrideBehavior host_vsync_override = VOB_NO_OVERRIDE;
+static int64_t host_vblank_period_ns = 0;
+static bool force_vsync_resync = true;
+
+// Time reserved for SDL_GL_SwapWindow to perform a swap. This value is chosen
+// empirically as the best balance between minimizing guest stalls while still
+// hitting the target host refresh rate.
+#define VSYNC_SWAP_GRACE_PERIOD_NS 800000LL
+#define VSYNC_RESYNC_FRAMES 2
+
+static inline void vsync_swap_window(SDL_Window *window)
+{
+    static int64_t last_swap_complete = 0;
+    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+
+    if (last_swap_complete > 0 && !force_vsync_resync) {
+        int64_t next_vblank = last_swap_complete + host_vblank_period_ns -
+                              VSYNC_SWAP_GRACE_PERIOD_NS;
+        int64_t sleep_duration_ns = next_vblank - now;
+        if (sleep_duration_ns > 0) {
+            SDL_DelayPrecise(sleep_duration_ns);
+        }
+    }
+
+    SDL_GL_SwapWindow(window);
+
+    int64_t post_swap = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+
+    if (!last_swap_complete || force_vsync_resync ||
+        post_swap >
+            last_swap_complete + VSYNC_RESYNC_FRAMES * host_vblank_period_ns) {
+        last_swap_complete = post_swap;
+        force_vsync_resync = false;
+    } else {
+        int64_t elapsed_frames =
+            (post_swap - last_swap_complete + host_vblank_period_ns / 2) /
+            host_vblank_period_ns;
+        last_swap_complete += elapsed_frames * host_vblank_period_ns;
+    }
+}
 
 /**
  * Renders the main interface. Usually called from the main thread,
@@ -958,7 +898,7 @@ static void gl_render_frame(struct xemu_console *scon)
     xemu_main_loop_unlock();
 
     xemu_hud_render();
-    glFinish();
+    glFlush();
 
     if (release_surface_texture) {
         xemu_main_loop_lock();
@@ -968,9 +908,10 @@ static void gl_render_frame(struct xemu_console *scon)
 
     nv2a_release_framebuffer_surface();
 
-    if (vsync_override == VOB_FORCE_ON ||
-        (vsync_override == VOB_NO_OVERRIDE && g_config.display.window.vsync)) {
-        pll_swap_window(scon->real_window);
+    if (host_vsync_override == VOB_FORCE_ON ||
+        (host_vsync_override == VOB_NO_OVERRIDE &&
+         g_config.display.window.vsync)) {
+        vsync_swap_window(scon->real_window);
     } else {
         SDL_GL_SwapWindow(scon->real_window);
     }
@@ -983,31 +924,21 @@ static void gl_render_frame(struct xemu_console *scon)
 #endif
 }
 
-static inline void apply_vsync_interval(const int64_t interval)
-{
-    vblank_pll_state.vblank_period_ns = interval;
-    // Gain is calculated with a target of locking within ~1.6 seconds at 60Hz.
-    vblank_pll_state.integral_gain_divisor = 1666666666LL / interval;
-    vblank_pll_state.proportional_gain_divisor = 166666666LL / interval;
-}
-
 static void calculate_vsync_interval_ns(void)
 {
     SDL_DisplayID display_idx = SDL_GetDisplayForWindow(m_window);
     const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(display_idx);
     if (mode && mode->refresh_rate_numerator > 0 &&
         mode->refresh_rate_denominator > 0) {
-        apply_vsync_interval((1000000000LL * mode->refresh_rate_denominator) /
-                             mode->refresh_rate_numerator);
-        return;
+        host_vblank_period_ns =
+            (1000000000LL * mode->refresh_rate_denominator) /
+            mode->refresh_rate_numerator;
+    } else if (mode && mode->refresh_rate > 0) {
+        host_vblank_period_ns = (int64_t)(1000000000.0 / mode->refresh_rate);
+    } else {
+        host_vblank_period_ns = 1000000000LL / 60;
     }
-
-    if (mode && mode->refresh_rate > 0) {
-        apply_vsync_interval((int64_t)(1000000000.0 / mode->refresh_rate));
-        return;
-    }
-
-    apply_vsync_interval(1000000000LL / 60);
+    force_vsync_resync = 1;
 }
 
 static bool event_watch_callback(void *userdata, SDL_Event *event)
@@ -1023,7 +954,7 @@ static bool event_watch_callback(void *userdata, SDL_Event *event)
     } else if (event->type == SDL_EVENT_WINDOW_RESTORED ||
                event->type == SDL_EVENT_WINDOW_MAXIMIZED ||
                event->type == SDL_EVENT_WINDOW_FOCUS_GAINED) {
-        qatomic_set(&vblank_pll_state.resync_required, true);
+        force_vsync_resync = 1;
     }
 
     return true; // Ignored
@@ -1294,6 +1225,8 @@ static void display_init(DisplayState *ds, DisplayOptions *o)
     scon_list[0].real_window = m_window;
     scon_list[0].winctx = m_context;
 
+    calculate_vsync_interval_ns();
+
     mouse_mode_notifier.notify = mouse_mode_change;
     qemu_add_mouse_mode_change_notifier(&mouse_mode_notifier);
 
@@ -1408,11 +1341,11 @@ static void setup_nvidia_profile(void)
         nvapi_finalize();
 
         if (current_state.vsync_mode == VSYNC_MODE_FORCE_OFF) {
-            vsync_override = VOB_FORCE_OFF;
+            host_vsync_override = VOB_FORCE_OFF;
         } else if (current_state.vsync_mode == VSYNC_MODE_FORCE_ON) {
-            vsync_override = VOB_FORCE_ON;
+            host_vsync_override = VOB_FORCE_ON;
         } else {
-            vsync_override = VOB_NO_OVERRIDE;
+            host_vsync_override = VOB_NO_OVERRIDE;
         }
     }
 }
@@ -1522,7 +1455,6 @@ int main(int argc, char **argv)
     xemu_main_loop_unlock();
 
     struct xemu_console *scon = &scon_list[0];
-    calculate_vsync_interval_ns();
     while (!qatomic_read(&qemu_exiting)) {
         poll_events(scon);
         gl_render_frame(scon);
