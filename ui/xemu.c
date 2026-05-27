@@ -898,7 +898,7 @@ static void gl_render_frame(struct xemu_console *scon)
     xemu_main_loop_unlock();
 
     xemu_hud_render();
-    glFlush();
+    glFinish();
 
     if (release_surface_texture) {
         xemu_main_loop_lock();
