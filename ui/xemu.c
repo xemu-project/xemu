@@ -809,7 +809,7 @@ static bool force_vsync_resync = true;
 // Time reserved for SDL_GL_SwapWindow to perform a swap. This value is chosen
 // empirically as the best balance between minimizing guest stalls while still
 // hitting the target host refresh rate.
-#define VSYNC_SWAP_GRACE_PERIOD_NS 800000LL
+#define VSYNC_SWAP_GRACE_PERIOD_NS 1400000LL
 #define VSYNC_RESYNC_FRAMES 2
 
 static inline void vsync_swap_window(SDL_Window *window)
