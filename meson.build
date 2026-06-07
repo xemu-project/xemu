@@ -450,7 +450,16 @@ if host_arch in ['i386', 'x86_64']
     qemu_isa_flags += cc.get_supported_arguments('-mneeded')
   endif
   if get_option('x86_version') >= '3'
-    qemu_isa_flags += ['-mmovbe', '-mabm', '-mbmi', '-mbmi2', '-mfma', '-mf16c']
+    qemu_isa_flags += ['-mmovbe', '-mlzcnt', '-mbmi', '-mbmi2', '-mfma', '-mf16c']
+    # The Win64 ABI only guarantees 16-byte stack alignment and its SEH unwind
+    # format cannot express realignment beyond that, but GCC's autovectorizer
+    # emits 32-byte-aligned spills (vmovdqa) for 256-bit ymm registers under
+    # -mavx2, which then fault at runtime. Cap autovectorization at 128-bit on
+    # Windows to avoid the crash while keeping the rest of the v3 ISA (FMA,
+    # BMI2, LZCNT, MOVBE, VEX-encoded 128-bit ops).
+    if host_os == 'windows'
+      qemu_isa_flags += cc.get_supported_arguments('-mprefer-vector-width=128')
+    endif
   endif
 
   # add required vector instruction set (each level implies those below)
@@ -3327,7 +3336,7 @@ if have_cpuid_h
 else
   have_avx2 = false
   have_avx512bw = false
-  if get_option('x86_version') >= '3'
+  if get_option('x86_version') >= '3' and host_arch in ['i386', 'x86_64']
     error('Cannot enable AVX optimizations due to missing cpuid.h')
   endif
 endif
