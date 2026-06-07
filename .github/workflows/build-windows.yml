@@ -60,6 +60,7 @@ jobs:
           opts=(
             --extra-cflags="-flto-incremental=${LTO_CACHE_DIR} -flto-partition=cache"
             -Db_lto=true
+            -Dx86_version=3
           )
           mkdir -p ${LTO_CACHE_DIR}
         elif [[ "${{ matrix.arch }}" == "arm64" ]]; then
