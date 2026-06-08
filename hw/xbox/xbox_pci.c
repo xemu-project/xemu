@@ -138,7 +138,7 @@ static int xbox_lpc_map_irq(PCIDevice *pci_dev, int intx)
     case 30: return XBOX_NUM_INT_IRQS + 2; /* agp bridge -> PIRQC, IRQ 3 */
     default:
         /* don't actually know how this should work */
-        assert(false);
+        assert(!"Mapping LPC to IRQ failed");
         return XBOX_NUM_INT_IRQS + ((slot + intx) & 3);
     }
 }

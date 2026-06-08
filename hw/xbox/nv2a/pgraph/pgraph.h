@@ -374,7 +374,7 @@ static inline void pgraph_apply_anti_aliasing_factor(PGRAPHState *pg,
         if (height) { *height *= 2; }
         break;
     default:
-        assert(false);
+        assert(!"Invalid aa surface format");
         break;
     }
 }

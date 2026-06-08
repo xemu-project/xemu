@@ -457,7 +457,16 @@ if host_arch in ['i386', 'x86_64']
     qemu_isa_flags += cc.get_supported_arguments('-mneeded')
   endif
   if get_option('x86_version') >= '3'
-    qemu_isa_flags += ['-mmovbe', '-mabm', '-mbmi', '-mbmi2', '-mfma', '-mf16c']
+    qemu_isa_flags += ['-mmovbe', '-mlzcnt', '-mbmi', '-mbmi2', '-mfma', '-mf16c']
+    # The Win64 ABI only guarantees 16-byte stack alignment and its SEH unwind
+    # format cannot express realignment beyond that, but GCC's autovectorizer
+    # emits 32-byte-aligned spills (vmovdqa) for 256-bit ymm registers under
+    # -mavx2, which then fault at runtime. Cap autovectorization at 128-bit on
+    # Windows to avoid the crash while keeping the rest of the v3 ISA (FMA,
+    # BMI2, LZCNT, MOVBE, VEX-encoded 128-bit ops).
+    if host_os == 'windows'
+      qemu_isa_flags += cc.get_supported_arguments('-mprefer-vector-width=128')
+    endif
   endif
 
   # add required vector instruction set (each level implies those below)
@@ -1671,16 +1680,39 @@ endif
 
 sdl = not_found
 if not get_option('sdl').auto() or have_system
-  sdl = dependency('sdl3', required: get_option('sdl'),
-                   fallback: ['sdl3', 'sdl3_dep'],
-                   default_options: ['default_library=static'])
+  sdl = dependency('sdl3', required: false, allow_fallback: false)
+  if not sdl.found() and not get_option('sdl').disabled()
+    sdl3_cmake_opts = cmake.subproject_options()
+    sdl3_cmake_opts.add_cmake_defines({
+      'SDL_CAMERA': 'OFF',
+      'SDL_DISKAUDIO': 'OFF',
+      'SDL_DUMMYVIDEO': 'OFF',
+      'SDL_FRIBIDI': 'OFF',
+      'SDL_GPU': 'OFF',
+      'SDL_HAPTIC': 'OFF',
+      'SDL_LIBTHAI': 'OFF',
+      'SDL_POWER': 'OFF',
+      'SDL_RENDER': 'OFF',
+      'SDL_SENSOR': 'OFF',
+      'SDL_SHARED': 'OFF',
+      'SDL_STATIC': 'ON',
+      'SDL_TEST_LIBRARY': 'OFF',
+      'SDL_TRAY': 'OFF',
+      'SDL_VIRTUAL_JOYSTICK': 'OFF',
+      'SDL_X11_XTEST': 'OFF',
+    })
+    sdl3_sp = cmake.subproject('sdl3', options: sdl3_cmake_opts, required: get_option('sdl'))
+    if sdl3_sp.found()
+      sdl = sdl3_sp.dependency('SDL3-static')
+      meson.override_dependency('sdl3', sdl)
+    endif
+  endif
   sdl_image = not_found
 endif
 if sdl.found()
   # Some versions of SDL have problems with -Wundef
   if not cc.compiles('''
                      #include <SDL3/SDL.h>
-                     #include <SDL_syswm.h>
                      int main(int argc, char *argv[]) { return 0; }
                      ''', dependencies: sdl.partial_dependency(compile_args: true, includes: true), args: '-Werror=undef')
     sdl = declare_dependency(compile_args: '-Wno-undef',
@@ -3321,7 +3353,7 @@ if have_cpuid_h
 else
   have_avx2 = false
   have_avx512bw = false
-  if get_option('x86_version') >= '3'
+  if get_option('x86_version') >= '3' and host_arch in ['i386', 'x86_64']
     error('Cannot enable AVX optimizations due to missing cpuid.h')
   endif
 endif
