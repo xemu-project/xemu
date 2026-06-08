@@ -1,0 +1,2 @@
+# ignore sources which are in submodules in upstream git
+extend-diff-ignore ^capstone/|^dtc/|^slirp/|^roms/.*/

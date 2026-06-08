@@ -1,0 +1,8 @@
+hlsl.include.system.unresolved.vert
+ERROR: hlsl.include.system.unresolved.vert:2: '#include' : Could not process include directive for header name: foo.h
+ERROR: 1 compilation errors.  No code generated.
+
+
+WARNING: Linking vertex stage: Entry point not found
+
+SPIR-V is not generated for failed compile or link

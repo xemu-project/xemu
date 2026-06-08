@@ -1,0 +1,24 @@
+SKELETONS = rss.bpf.skeleton.h
+
+LLVM_STRIP ?= llvm-strip
+CLANG ?= clang
+INC_FLAGS = `$(CLANG) -print-file-name=include`
+EXTRA_CFLAGS ?= -O2 -g -target bpf
+
+all: $(SKELETONS)
+
+.PHONY: clean
+
+clean:
+	rm -f $(SKELETONS) $(SKELETONS:%.skeleton.h=%.o)
+
+%.o: %.c
+	$(CLANG) $(INC_FLAGS) \
+                -D__KERNEL__ -D__ASM_SYSREG_H \
+                -I../include $(LINUXINCLUDE) \
+                $(EXTRA_CFLAGS) -c $< -o $@
+	$(LLVM_STRIP) -g $@
+
+%.skeleton.h: %.o
+	bpftool gen skeleton $< > $@
+	cp $@ ../../ebpf/

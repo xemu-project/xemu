@@ -1,0 +1,7 @@
+config MIPS
+    bool
+    imply SEMIHOSTING if TCG
+
+config MIPS64
+    bool
+    select MIPS

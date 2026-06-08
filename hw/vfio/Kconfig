@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+config VFIO
+    bool
+    depends on LINUX
+
+config VFIO_PCI
+    bool
+    default y
+    select VFIO
+    select EDID
+    depends on LINUX && PCI
+
+config VFIO_CCW
+    bool
+    default y
+    select VFIO
+    depends on LINUX && S390_CCW_VIRTIO
+
+config VFIO_AP
+    bool
+    default y
+    select VFIO
+    depends on LINUX && S390_CCW_VIRTIO
+
+config VFIO_IGD
+    bool
+    default y if PC_PCI
+    depends on VFIO_PCI

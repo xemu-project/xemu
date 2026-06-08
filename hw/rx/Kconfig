@@ -1,0 +1,13 @@
+config RX62N_MCU
+    bool
+    select RX_ICU
+    select RENESAS_TMR
+    select RENESAS_CMT
+    select RENESAS_SCI
+
+config RX_GDBSIM
+    bool
+    default y
+    depends on RX && FDT
+    select DEVICE_TREE
+    select RX62N_MCU

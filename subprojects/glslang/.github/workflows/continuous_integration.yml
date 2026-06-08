@@ -1,0 +1,339 @@
+name: Continuous Integration
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+
+permissions: read-all
+
+jobs:
+  linux:
+    needs: linux-shared # fastest job to do sanity check
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [{cc: clang, cxx: clang++}, {cc: gcc, cxx: g++}]
+        cmake_build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
+        with:
+          key: ubuntu-22-${{ matrix.cmake_build_type }}-${{ matrix.compiler.cc }}-${{matrix.compiler.cxx}}
+      - run: ./update_glslang_sources.py
+      - name: Configure
+        run: cmake -S . -B build -D CMAKE_BUILD_TYPE=${{ matrix.cmake_build_type }} -DBUILD_WERROR=ON -D GLSLANG_TESTS=ON
+        env:
+          CC: ${{matrix.compiler.cc}}
+          CXX: ${{matrix.compiler.cxx}}
+          CMAKE_GENERATOR: Ninja
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      - name: Build
+        run: cmake --build build
+      - name: Install
+        run: cmake --install build --prefix build/install
+      - name: Test find_package support
+        run: |
+          cmake -S Test/find_package -B build/find_package && \
+          cmake --build build/find_package
+      - name: Test
+        run: ctest --output-on-failure --test-dir build
+      - name: Check known validation failure list
+        run: grep -l 'Validation failed' Test/baseResults/* | sort -fd | diff -u Test/baseResults/validation_fails.txt -
+
+  linux-shared:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [{cc: clang, cxx: clang++}, {cc: gcc, cxx: g++}]
+        cmake_build_type: [Release]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
+        with:
+          key: ubuntu-22-${{ matrix.cmake_build_type }}-${{ matrix.compiler.cc }}-${{matrix.compiler.cxx}}
+      - run: ./update_glslang_sources.py
+      - name: Configure
+        run: cmake -S . -B build -D CMAKE_BUILD_TYPE=${{ matrix.cmake_build_type }} -DBUILD_WERROR=ON -D GLSLANG_TESTS=ON -DBUILD_SHARED_LIBS=ON
+        env:
+          CC: ${{matrix.compiler.cc}}
+          CXX: ${{matrix.compiler.cxx}}
+          CMAKE_GENERATOR: Ninja
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      - name: Build
+        run: cmake --build build
+      - name: Install
+        run: cmake --install build --prefix build/install
+      - name: Test find_package support
+        run: |
+          cmake -S Test/find_package -B build/find_package && \
+          cmake --build build/find_package
+      - name: Test
+        run: ctest --output-on-failure --test-dir build
+
+  linux-asan:
+    needs: linux-shared # fastest job to do sanity check
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [{cc: gcc, cxx: g++}]
+        cmake_build_type: [Debug]
+        flags: ['-fsanitize=address', '-fsanitize=thread', '-fsanitize=undefined']
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
+        with:
+          key: ubuntu-22-${{ matrix.cmake_build_type }}-${{ matrix.compiler.cc }}-${{matrix.compiler.cxx}}-${{matrix.flags}}
+      # This is to combat a bug when using 6.6 linux kernels with thread/address sanitizer
+      # https://github.com/google/sanitizers/issues/1716
+      - run: sudo sysctl vm.mmap_rnd_bits=28
+      - run: ./update_glslang_sources.py
+      - name: Configure
+        run: cmake -S . -B build -D CMAKE_BUILD_TYPE=${{ matrix.cmake_build_type }} -D GLSLANG_TESTS=ON
+        env:
+          CC: ${{matrix.compiler.cc}}
+          CXX: ${{matrix.compiler.cxx}}
+          CMAKE_GENERATOR: Ninja
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          CFLAGS: ${{matrix.flags}}
+          CXXFLAGS: ${{matrix.flags}}
+          LDFLAGS: ${{matrix.flags}}
+      - name: Build
+        run: cmake --build build
+      - name: Install
+        run: cmake --install build --prefix build/install
+      - name: Test
+        env:
+          UBSAN_OPTIONS: 'halt_on_error=1:print_stacktrace=1'
+        run: ctest --output-on-failure --test-dir build
+
+  # Ensure we can compile/run on an older distro, with older tools (cmake, python, etc)
+  linux_min:
+    needs: linux-shared # fastest job to do sanity check
+    name: Linux Backcompat
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.7'
+      - uses: lukka/get-cmake@7bfc9baacbbdcb5e37957ad05c3546b3e222be3c # v4.3.2
+        with:
+          cmakeVersion: 3.22.1
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
+        with:
+          key: linux_backcompat
+      - run: ./update_glslang_sources.py
+      - name: Configure
+        run: cmake -S . -B build -D CMAKE_BUILD_TYPE=Release -D GLSLANG_TESTS=ON
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      - name: Build
+        run: cmake --build build
+      - name: Install
+        run: cmake --install build --prefix build/install
+      - name: Test find_package support
+        run: |
+          cmake -S Test/find_package -B build/find_package && \
+          cmake --build build/find_package
+      - name: Test
+        run: ctest --output-on-failure --test-dir build
+
+  macos:
+    # iOS is 10x expensive to run on GitHub machines, so only run if we know something else passed as well
+    needs: windows-shared
+    runs-on: ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+        compiler: [{cc: clang, cxx: clang++}]
+        cmake_build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - run: ./update_glslang_sources.py
+      - run: |
+          cmake -S . -B build \
+          -D CMAKE_BUILD_TYPE=${{matrix.cmake_build_type}} \
+          -G Ninja \
+          -D BUILD_WERROR=ON \
+          -D GLSLANG_TESTS=ON \
+          -D "CMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+        env:
+          CC: ${{matrix.compiler.cc}}
+          CXX: ${{matrix.compiler.cxx}}
+          MACOSX_DEPLOYMENT_TARGET: 11.0
+      - run: cmake --build build
+      - run: cmake --install build --prefix build/install
+      - name: Test find_package support
+        run: |
+          cmake -S Test/find_package -B build/find_package && \
+          cmake --build build/find_package
+      - run: ctest --output-on-failure --test-dir build
+
+  macos-shared:
+    # iOS is 10x expensive to run on GitHub machines, so only run if we know something else passed as well
+    needs: windows-shared
+    runs-on: ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+        compiler: [{cc: clang, cxx: clang++}]
+        cmake_build_type: [Release]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - run: ./update_glslang_sources.py
+      - run: |
+          cmake -S . -B build \
+          -D CMAKE_BUILD_TYPE=${{matrix.cmake_build_type}} \
+          -G Ninja \
+          -D BUILD_WERROR=ON \
+          -D GLSLANG_TESTS=ON \
+          -DBUILD_SHARED_LIBS=ON \
+          -D "CMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+        env:
+          CC: ${{matrix.compiler.cc}}
+          CXX: ${{matrix.compiler.cxx}}
+          MACOSX_DEPLOYMENT_TARGET: 11.0
+      - run: cmake --build build
+      - run: cmake --install build --prefix build/install
+      - name: Test find_package support
+        run: |
+          cmake -S Test/find_package -B build/find_package && \
+          cmake --build build/find_package
+      - run: ctest --output-on-failure --test-dir build
+
+  windows:
+    needs: linux-shared # fastest job to do sanity check
+    runs-on: ${{matrix.os.genus}}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+          os: [{genus: windows-2022, family: windows}]
+          cmake_build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - run: python update_glslang_sources.py
+      - name: Build
+        run: |
+          cmake -S. -Bbuild -G "Visual Studio 17 2022" -A x64 -DCMAKE_INSTALL_PREFIX="$PWD/build/install" -DBUILD_WERROR=ON -D GLSLANG_TESTS=ON
+          cmake --build build --config ${{matrix.cmake_build_type}} --target install
+      - name: Test find_package support
+        run: |
+          cmake -S Test/find_package -B build/find_package
+          cmake --build build/find_package
+      - name: Test
+        run: ctest -C ${{matrix.cmake_build_type}} --output-on-failure --test-dir build
+
+  windows-shared:
+    needs: linux-shared # fastest job to do sanity check
+    runs-on: ${{matrix.os.genus}}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+          os: [{genus: windows-2022, family: windows}]
+          cmake_build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - run: python update_glslang_sources.py
+      - name: Build
+        run: |
+          cmake -S. -Bbuild -G "Visual Studio 17 2022" -A x64 -DCMAKE_INSTALL_PREFIX="$PWD/build/install" -DBUILD_WERROR=ON -D GLSLANG_TESTS=ON -DBUILD_SHARED_LIBS=ON
+          cmake --build build --config ${{matrix.cmake_build_type}} --target install
+      - name: Test find_package support
+        run: |
+          cmake -S Test/find_package -B build/find_package
+          cmake --build build/find_package
+      - name: Test
+        run: ctest -C ${{matrix.cmake_build_type}} --output-on-failure --test-dir build
+
+  iOS:
+    # iOS is 10x expensive to run on GitHub machines, so only run if we know something else passed as well
+    needs: windows-shared
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
+        with:
+          key: IOS
+      - run: ./update_glslang_sources.py
+      # NOTE: The MacOS SDK ships universal binaries. CI should reflect this.
+      - name: Configure Universal Binary for iOS
+        run: |
+          cmake -S . -B build \
+          -D CMAKE_BUILD_TYPE=Debug \
+          -D CMAKE_SYSTEM_NAME=iOS \
+          "-D CMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
+          -G Ninja
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      - run: cmake --build build
+      - run: cmake --install build --prefix /tmp
+
+  android:
+    needs: linux-shared # fastest job to do sanity check
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        # Android NDK currently offers 2 different toolchains.
+        # Test both to ensure we are compatible with either approach.
+        LEGACY: [ON, OFF]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
+        with:
+          key: android-${{ matrix.LEGACY }}
+      - run: ./update_glslang_sources.py
+      - name: Configure for Android
+        run: |
+          cmake -S . -B build/ --toolchain $ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+          -D CMAKE_BUILD_TYPE=Release \
+          -D ANDROID_ABI=armeabi-v7a \
+          -D ANDROID_USE_LEGACY_TOOLCHAIN_FILE=${{ matrix.LEGACY }} \
+          -G Ninja
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      - run: cmake --build build/
+      - run: cmake --install build/ --prefix /tmp
+
+  emscripten:
+    needs: linux-shared # fastest job to do sanity check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
+        with:
+          key: ubuntu-emscripten
+      - uses: mymindstorm/setup-emsdk@667eb33f24e84e7f362c16d8d7fff0629a73e15e # v15
+      - name: Update Glslang Sources
+        run: ./update_glslang_sources.py
+      - name: Configure
+        run: emcmake cmake -GNinja -Bbuild/web -DCMAKE_BUILD_TYPE=Release -DENABLE_GLSLANG_JS=ON -DENABLE_OPT=OFF
+        env:
+          CMAKE_GENERATOR: Ninja
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      - name: Build
+        run: cmake --build build/web

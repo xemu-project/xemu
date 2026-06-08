@@ -1,0 +1,33 @@
+config SUN4M
+    bool
+    default y
+    depends on SPARC && !SPARC64
+    imply TCX
+    imply CG3
+    select CS4231
+    select ECCMEMCTL
+    select EMPTY_SLOT
+    select UNIMP
+    select ESCC
+    select ESP
+    select FDC_SYSBUS
+    select SLAVIO
+    select LANCE
+    select M48T59
+    select STP2000
+    select CHRP_NVRAM
+    select OR_IRQ
+
+config LEON3
+    bool
+    default y
+    depends on SPARC && !SPARC64
+    select GRLIB
+
+config GRLIB
+    bool
+    select PTIMER
+
+config SLAVIO
+    bool
+    select PTIMER

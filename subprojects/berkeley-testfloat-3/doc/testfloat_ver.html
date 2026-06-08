@@ -1,0 +1,270 @@
+
+<HTML>
+
+<HEAD>
+<TITLE>testfloat_ver</TITLE>
+</HEAD>
+
+<BODY>
+
+<H1>Berkeley TestFloat Release 3e: <CODE>testfloat_ver</CODE></H1>
+
+<P>
+John R. Hauser<BR>
+2018 January 20<BR>
+</P>
+
+
+<H2>Overview</H2>
+
+<P>
+The <CODE>testfloat_ver</CODE> program accepts test-case results obtained from
+exercising an implementation of floating-point arithmetic and verifies that
+those results conform to the IEEE Standard for Binary Floating-Point
+Arithmetic.
+<CODE>testfloat_ver</CODE> is part of the Berkeley TestFloat package, a small
+collection of programs for performing such tests.
+For general information about TestFloat, see file
+<A HREF="TestFloat-general.html"><NOBR><CODE>TestFloat-general.html</CODE></NOBR></A>.
+</P>
+
+<P>
+A single execution of <CODE>testfloat_ver</CODE> verifies results for only a
+single floating-point operation and associated options.
+The <CODE>testfloat_ver</CODE> program must be repeatedly executed to verify
+results for each operation to be tested.
+</P>
+
+<P>
+The test cases to be verified are read by <CODE>testfloat_ver</CODE> from
+standard input.
+This input will typically be piped from another program that, for each test
+case, invokes the floating-point operation and writes out the results.
+The format of <CODE>testfloat_ver</CODE>&rsquo;s input is raw hexadecimal text,
+described in the section below titled <I>Input Format</I>.
+</P>
+
+<P>
+For each test case given to it, <CODE>testfloat_ver</CODE> examines the
+computed results and reports any unexpected results as likely errors.
+
+For more about the operation of <CODE>testfloat_ver</CODE> and how to interpret
+its output, refer to
+<A HREF="TestFloat-general.html"><NOBR><CODE>TestFloat-general.html</CODE></NOBR></A>.
+</P>
+
+
+<H2>Command Syntax</H2>
+
+<P>
+The <CODE>testfloat_ver</CODE> program is executed as a command with this
+syntax:
+<BLOCKQUOTE>
+<PRE>
+testfloat_ver [&lt;<I>option</I>&gt;...] &lt;<I>function</I>&gt;
+</PRE>
+</BLOCKQUOTE>
+Square brackets (<CODE>[ ]</CODE>) denote optional arguments,
+<CODE>&lt;<I>option</I>&gt;</CODE> is a supported option, and
+<CODE>&lt;<I>function</I>&gt;</CODE> is the name of a testable operation.
+The available options are documented below.
+The testable operation names are listed in
+<A HREF="TestFloat-general.html"><NOBR><CODE>TestFloat-general.html</CODE></NOBR></A>.
+If <CODE>testfloat_ver</CODE> is executed without any arguments, a summary of
+usage is written.
+</P>
+
+
+<H2>Options</H2>
+
+<P>
+The <CODE>testfloat_ver</CODE> program accepts several command options.
+If mutually contradictory options are given, the last one has priority.
+</P>
+
+<H3><CODE>-help</CODE></H3>
+
+<P>
+The <CODE>-help</CODE> option causes a summary of program usage to be written,
+after which the program exits.
+</P>
+
+<H3><CODE>-errors &lt;<I>num</I>&gt;</CODE></H3>
+
+<P>
+The <CODE>-errors</CODE> option instructs <CODE>testfloat_ver</CODE> to report
+no more than the specified number of errors.
+The argument to <CODE>-errors</CODE> must be a nonnegative decimal integer.
+Once the specified number of error reports has been generated, the program
+exits.
+The default is <NOBR><CODE>-errors</CODE> <CODE>20</CODE></NOBR>.
+</P>
+
+<P>
+Against intuition, <NOBR><CODE>-errors</CODE> <CODE>0</CODE></NOBR> causes
+<CODE>testfloat_ver</CODE> to continue for any number of errors.
+</P>
+
+<H3><CODE>-checkNaNs</CODE></H3>
+
+<P>
+The <CODE>-checkNaNs</CODE> option causes <CODE>testfloat_ver</CODE> to verify
+the bitwise correctness of NaN results.
+In order for this option to be sensible, <CODE>testfloat_ver</CODE> must have
+been compiled so that its internal reference implementation of floating-point
+(Berkeley SoftFloat) generates the proper NaN results for the system being
+tested.
+</P>
+
+<H3><CODE>-checkInvInts</CODE></H3>
+
+<P>
+The <CODE>-checkInvInts</CODE> option causes <CODE>testfloat_ver</CODE> to
+verify the bitwise correctness of integer results of invalid operations.
+In order for this option to be sensible, <CODE>testfloat_ver</CODE> must have
+been compiled so that its internal reference implementation of floating-point
+(Berkeley SoftFloat) generates the proper integer results for the system being
+tested.
+</P>
+
+<H3><CODE>-checkAll</CODE></H3>
+
+<P>
+Enables both <CODE>-checkNaNs</CODE> and <CODE>-checkInvInts</CODE>.
+</P>
+
+<H3><CODE>-precision32, -precision64, -precision80</CODE></H3>
+
+<P>
+When <CODE>&lt;<I>function</I>&gt;</CODE> is an <NOBR>80-bit</NOBR>
+double-extended-precision operation affected by rounding precision control, the
+<CODE>-precision32</CODE> option indicates that the rounding precision should
+be <NOBR>32 bits</NOBR>, equivalent to <NOBR>32-bit</NOBR> single-precision.
+Likewise, <CODE>-precision64</CODE> indicates that the rounding precision
+should be <NOBR>64 bits</NOBR>, equivalent to <NOBR>64-bit</NOBR>
+double-precision, and <CODE>-precision80</CODE> indicates that the rounding
+precision should be the full <NOBR>80 bits</NOBR> of the
+double-extended-precision format.
+All these options are ignored for operations not affected by rounding precision
+control.
+When rounding precision is applicable but not specified, the default assumption
+is the full <NOBR>80 bits</NOBR>, same as <CODE>-precision80</CODE>.
+</P>
+
+<H3><CODE>-rnear_even, -rnear_maxMag, -rminMag, -rmin, -rmax, -rodd</CODE></H3>
+
+<P>
+When <CODE>&lt;<I>function</I>&gt;</CODE> is an operation that requires
+rounding, the <CODE>-rnear_even</CODE> option indicates that rounding should be
+to nearest/even, <CODE>-rnear_maxMag</CODE> indicates rounding to
+nearest/maximum magnitude (nearest-away), <CODE>-rminMag</CODE> indicates
+rounding to minimum magnitude (toward zero), <CODE>-rmin</CODE> indicates
+rounding to minimum (down, toward negative infinity), <CODE>-rmax</CODE>
+indicates rounding to maximum (up, toward positive infinity), and
+<CODE>-rodd</CODE>, if supported, indicates rounding to odd.
+These options are ignored for operations that are exact and thus do not round.
+When rounding mode is relevant but not specified, the default assumption is
+rounding to nearest/even, same as <CODE>-rnear_even</CODE>.
+</P>
+
+<H3><CODE>-tininessbefore, -tininessafter</CODE></H3>
+
+<P>
+When <CODE>&lt;<I>function</I>&gt;</CODE> is an operation that requires
+rounding, the <CODE>-tininessbefore</CODE> option indicates that tininess on
+underflow should be detected before rounding, while <CODE>-tininessafter</CODE>
+indicates that tininess on underflow should be detected after rounding.
+These options are ignored for operations that are exact and thus do not round.
+When the method of tininess detection matters but is not specified, the default
+assumption is that tininess should be detected after rounding, same as
+<CODE>-tininessafter</CODE>.
+</P>
+
+<H3><CODE>-notexact, -exact</CODE></H3>
+
+<P>
+When <CODE>&lt;<I>function</I>&gt;</CODE> is an operation that rounds to an
+integer (either conversion to an integer type or a <CODE>roundToInt</CODE>
+operation), the <CODE>-notexact</CODE> option indicates that the <I>inexact</I>
+exception flag should never be raised, while <CODE>-exact</CODE> indicates that
+the <I>inexact</I> exception flag should be raised when the result is inexact.
+For other operations, these options are ignored.
+If neither option is specified, the default assumption is that the
+<I>inexact</I> exception flag should not be raised when rounding to an integer,
+same as <CODE>-notexact</CODE>.
+</P>
+
+
+<H2>Input Format</H2>
+
+<P>
+For a given <CODE>&lt;<I>function</I>&gt;</CODE> argument, the input format
+expected by <CODE>testfloat_ver</CODE> is the same as the output generated by
+program
+<A HREF="testfloat_gen.html"><NOBR><CODE>testfloat_gen</CODE></NOBR></A> for
+the same argument.
+</P>
+
+<P>
+Input to <CODE>testfloat_ver</CODE> is expected to be text, with each line
+containing the data for one test case.
+The number of input lines thus equals the number of test cases.
+A single test case is organized as follows:  first are the operands for the
+operation, next is the result value obtained, and last is a number indicating
+the exception flags that were raised.
+These values are all expected to be provided as raw hexadecimal numbers
+separated on the line by spaces.
+For example, for the command
+<BLOCKQUOTE>
+<PRE>
+testfloat_ver f64_add
+</PRE>
+</BLOCKQUOTE>
+valid input could include these lines:
+<BLOCKQUOTE>
+<PRE>
+3F90EB5825D6851E C3E0080080000000 C3E0080080000000 01
+41E3C00000000000 C182024F8AE474A8 41E377F6C1D46E2D 01
+7FD80FFFFFFFFFFF 7FEFFFFFFFFFFF80 7FF0000000000000 05
+3FFFED6A25C534BE 3CA1000000020000 3FFFED6A25C534BF 01
+...
+</PRE>
+</BLOCKQUOTE>
+On each line above, the first two hexadecimal numbers represent the
+<NOBR>64-bit</NOBR> floating-point operands, the third hexadecimal number is
+the <NOBR>64-bit</NOBR> floating-point result of the operation (the sum), and
+the last hexadecimal number gives the exception flags that were raised by the
+operation.
+</P>
+
+<P>
+Note that, for floating-point values, the sign and exponent are at the
+most-significant end of the number.
+Thus, for the first number on the first line above, the leading hexadecimal
+digits <CODE>3F9</CODE> are the sign and encoded exponent of the
+<NOBR>64-bit</NOBR> floating-point value, and the remaining digits are the
+encoded significand.
+</P>
+
+<P>
+Exception flags are encoded with one bit per flag as follows:
+<BLOCKQUOTE>
+<TABLE CELLSPACING=0 CELLPADDING=0>
+<TR>
+  <TD>bit 0<CODE>&nbsp;&nbsp;&nbsp;</CODE></TD>
+  <TD><I>inexact</I> exception</TD>
+</TR>
+<TR><TD>bit 1</TD><TD><I>underflow</I> exception</TD></TR>
+<TR><TD>bit 2</TD><TD><I>overflow</I> exception</TD></TR>
+<TR>
+  <TD>bit 3</TD>
+  <TD><I>infinite</I> exception (&ldquo;divide by zero&rdquo;)</TD>
+</TR>
+<TR><TD>bit 4</TD><TD><I>invalid</I> exception</TD></TR>
+</TABLE>
+</BLOCKQUOTE>
+</P>
+
+
+</BODY>
+

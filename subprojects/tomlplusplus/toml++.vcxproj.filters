@@ -1,0 +1,303 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="include\toml++\toml.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\toml.hpp">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\array.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\array.inl">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\date_time.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\toml_formatter.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\toml_formatter.inl">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\formatter.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\json_formatter.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\json_formatter.inl">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\node.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\node.inl">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\node_view.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\parse_error.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\parse_result.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\parser.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\parser.inl">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\preprocessor.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\print_to_stream.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\table.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\table.inl">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\unicode.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\value.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\version.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\header_start.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\header_end.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\source_region.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\std_optional.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\std_vector.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\std_map.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\make_node.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\forward_declarations.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\std_except.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\std_string.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\std_new.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\std_string.inl">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\print_to_stream.inl">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\formatter.inl">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\std_initializer_list.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\yaml_formatter.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\std_utility.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\simd.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\key.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\at_path.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\unicode_autogenerated.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\path.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\toml++\impl\std_variant.hpp">
+      <Filter>include\impl</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="toml++.props" />
+    <None Include=".gitattributes" />
+    <None Include=".gitignore" />
+    <None Include="CODE_OF_CONDUCT.md" />
+    <None Include="CONTRIBUTING.md" />
+    <None Include="LICENSE" />
+    <None Include="meson.build" />
+    <None Include="README.md" />
+    <None Include="tools\ci_single_header_check.py">
+      <Filter>tools</Filter>
+    </None>
+    <None Include="tools\generate_windows_test_targets.py">
+      <Filter>tools</Filter>
+    </None>
+    <None Include="tools\generate_single_header.py">
+      <Filter>tools</Filter>
+    </None>
+    <None Include="tools\generate_conformance_tests.py">
+      <Filter>tools</Filter>
+    </None>
+    <None Include="tools\utils.py">
+      <Filter>tools</Filter>
+    </None>
+    <None Include="docs\pages\main_page.dox">
+      <Filter>docs\pages</Filter>
+    </None>
+    <None Include="cpp.hint" />
+    <None Include="docs\poxy.toml">
+      <Filter>docs</Filter>
+    </None>
+    <None Include=".runsettings" />
+    <None Include="cmake\install-rules.cmake">
+      <Filter>cmake</Filter>
+    </None>
+    <None Include="cmake\project-is-top-level.cmake">
+      <Filter>cmake</Filter>
+    </None>
+    <None Include="cmake\tomlplusplusConfig.cmake">
+      <Filter>cmake</Filter>
+    </None>
+    <None Include="cmake\variables.cmake">
+      <Filter>cmake</Filter>
+    </None>
+    <None Include=".clang-format" />
+    <None Include=".editorconfig" />
+    <None Include="tools\clang_format.bat">
+      <Filter>tools</Filter>
+    </None>
+    <None Include=".github\pull_request_template.md">
+      <Filter>.github</Filter>
+    </None>
+    <None Include=".github\ISSUE_TEMPLATE\bug_report.md">
+      <Filter>.github</Filter>
+    </None>
+    <None Include=".github\ISSUE_TEMPLATE\config.yml">
+      <Filter>.github</Filter>
+    </None>
+    <None Include=".github\ISSUE_TEMPLATE\feature_request.md">
+      <Filter>.github</Filter>
+    </None>
+    <None Include="include\toml++\impl\yaml_formatter.inl">
+      <Filter>include\impl</Filter>
+    </None>
+    <None Include="CHANGELOG.md" />
+    <None Include="tools\generate_single_header.bat">
+      <Filter>tools</Filter>
+    </None>
+    <None Include="include\toml++\impl\unicode.inl">
+      <Filter>include\impl</Filter>
+    </None>
+    <None Include=".github\ISSUE_TEMPLATE\spec_bug_report.md">
+      <Filter>.github</Filter>
+    </None>
+    <None Include="include\toml++\impl\at_path.inl">
+      <Filter>include\impl</Filter>
+    </None>
+    <None Include="src\meson.build">
+      <Filter>src</Filter>
+    </None>
+    <None Include="include\meson.build">
+      <Filter>include</Filter>
+    </None>
+    <None Include=".github\workflows\ci.yaml">
+      <Filter>.github\workflows</Filter>
+    </None>
+    <None Include=".github\workflows\gh-pages.yaml">
+      <Filter>.github\workflows</Filter>
+    </None>
+    <None Include="cmake\tomlplusplusConfig.cmake.meson.in">
+      <Filter>cmake</Filter>
+    </None>
+    <None Include="cmake\tomlplusplusConfigVersion.cmake.meson.in">
+      <Filter>cmake</Filter>
+    </None>
+    <None Include=".tipi\deps">
+      <Filter>.tipi</Filter>
+    </None>
+    <None Include=".gitmodules" />
+    <None Include="vendor\README.md">
+      <Filter>vendor</Filter>
+    </None>
+    <None Include="include\toml++\impl\path.inl">
+      <Filter>include\impl</Filter>
+    </None>
+    <None Include=".github\FUNDING.yml">
+      <Filter>.github</Filter>
+    </None>
+    <None Include="tools\version.py">
+      <Filter>tools</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="docs">
+      <UniqueIdentifier>{5ed0949f-6855-4664-ad86-2b38ceeb400b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include">
+      <UniqueIdentifier>{98f8e2f6-ce87-435a-bd9a-4f02b8ac66e7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="tools">
+      <UniqueIdentifier>{573403e5-97d9-4c96-972d-60a17566ee53}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="docs\pages">
+      <UniqueIdentifier>{9bdc71ff-34f1-4312-9f15-1850d4c5908b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="cmake">
+      <UniqueIdentifier>{47351d16-986b-4f4b-bd5e-b7c66a7a68d3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\impl">
+      <UniqueIdentifier>{4e42aaa3-98cd-4678-9c1c-ffa3eaf519d7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include=".github">
+      <UniqueIdentifier>{e3ab5e86-e053-48a6-9fee-f6442a63aaa6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src">
+      <UniqueIdentifier>{5ae94dae-1dce-4522-a33a-230bdb075921}</UniqueIdentifier>
+    </Filter>
+    <Filter Include=".github\workflows">
+      <UniqueIdentifier>{f9731b43-6c33-4209-9e53-e65af54f80c4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include=".tipi">
+      <UniqueIdentifier>{f34bec4a-27c1-478d-bdff-2f672cb564db}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="vendor">
+      <UniqueIdentifier>{d6d69e89-b238-4dee-9f6a-68b755154539}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="toml++.natvis" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="meson_options.txt" />
+    <Text Include="tools\requirements.txt">
+      <Filter>tools</Filter>
+    </Text>
+    <Text Include="CMakeLists.txt" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,2 @@
+args-member-unknown.json: In command 'oops':
+args-member-unknown.json:2: parameter 'member' uses unknown type 'NoSuchType'

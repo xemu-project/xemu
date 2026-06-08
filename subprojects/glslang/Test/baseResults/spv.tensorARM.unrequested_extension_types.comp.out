@@ -1,0 +1,8 @@
+spv.tensorARM.unrequested_extension_types.comp
+ERROR: 0:8: 'tensor with bfloat16_t type' : required extension not requested: GL_ARM_tensors_bfloat16
+ERROR: 0:9: 'tensor with floate5m2_t type' : required extension not requested: GL_ARM_tensors_float_e5m2
+ERROR: 0:10: 'tensor with floate4m3_t type' : required extension not requested: GL_ARM_tensors_float_e4m3
+ERROR: 3 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

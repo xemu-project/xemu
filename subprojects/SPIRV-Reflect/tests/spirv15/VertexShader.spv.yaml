@@ -1,0 +1,192 @@
+%YAML 1.1
+---
+all_type_descriptions:
+  - &td0
+    id: 6
+    op: 25
+    type_name: "type.2d.image"
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00010008 # EXTERNAL_IMAGE FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 1, depth: 2, arrayed: 0, ms: 0, sampled: 1, image_format: 0 } # dim=2D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td1
+    id: 13
+    op: 23
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td2
+    id: 8
+    op: 21
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00000004 # INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+all_block_variables:
+  - &bv0
+    name: 
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    flags: 0x00000000 # NONE
+    member_count: 0
+    members:
+    type_description:
+all_descriptor_bindings:
+  - &db0
+    spirv_id: 7
+    name: "Tex0"
+    binding: 0
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 2 # VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+    resource_type: 4 # SRV
+    image: { dim: 1, depth: 2, arrayed: 0, ms: 0, sampled: 1, image_format: 0 } # dim=2D image_format=Unknown
+    block: *bv0 # 
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td0
+    word_offset: { binding: 76, set: 72 }
+all_interface_variables:
+  - &iv0
+    spirv_id: 2
+    name: "in.var.POSITION"
+    location: 0
+    storage_class: 1 # Input
+    semantic: 
+    decoration_flags: 0x00000000 # NONE
+    built_in: -1 # ??? (-1)
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 109 # VK_FORMAT_R32G32B32A32_SFLOAT
+    type_description: *td1
+    word_offset: { location: 68 }
+  - &iv1
+    spirv_id: 3
+    name: 
+    location: 4294967295
+    storage_class: 1 # Input
+    semantic: 
+    decoration_flags: 0x00000010 # BUILT_IN 
+    built_in: 43 # InstanceIndex
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 98 # VK_FORMAT_R32_UINT
+    type_description: *td2
+    word_offset: { location: 0 }
+  - &iv2
+    spirv_id: 4
+    name: 
+    location: 4294967295
+    storage_class: 1 # Input
+    semantic: 
+    decoration_flags: 0x00000010 # BUILT_IN 
+    built_in: 4425 # BaseInstance
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 98 # VK_FORMAT_R32_UINT
+    type_description: *td2
+    word_offset: { location: 0 }
+  - &iv3
+    spirv_id: 5
+    name: 
+    location: 4294967295
+    storage_class: 3 # Output
+    semantic: 
+    decoration_flags: 0x00000010 # BUILT_IN 
+    built_in: 0 # Position
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 109 # VK_FORMAT_R32G32B32A32_SFLOAT
+    type_description: *td1
+    word_offset: { location: 0 }
+module:
+  generator: 14 # Google spiregg
+  entry_point_name: "vsmain"
+  entry_point_id: 1
+  source_language: 5 # HLSL
+  source_language_version: 600
+  spirv_execution_model: 0 # Vertex
+  shader_stage: 0x00000001 # VS
+  descriptor_binding_count: 1
+  descriptor_bindings:
+    - *db0 # "Tex0"
+  descriptor_set_count: 1
+  descriptor_sets:
+  - set: 0
+    binding_count: 1
+    bindings:
+      - *db0 # "Tex0"
+  input_variable_count: 3,
+  input_variables:
+    - *iv0 # "in.var.POSITION"
+    - *iv1 # 
+    - *iv2 # 
+  output_variable_count: 1,
+  output_variables:
+    - *iv3 # 
+  push_constant_count: 0,
+  push_constants:
+  specialization_constant_count: 0,
+  specialization_constants:
+...

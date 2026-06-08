@@ -1,0 +1,20 @@
+hlsl.attribute.nonident.negative.frag
+ERROR: 0:2: ''' : expected 
+ERROR: 0:2: 'namespace or attribute identifier' : Expected 
+ERROR: 0:2: ']' : Expected 
+ERROR: 0:2: 'declaration' : Expected 
+(3): error at column 0, HLSL parsing failed.
+ERROR: 5 compilation errors.  No code generated.
+
+
+Shader version: 500
+gl_FragCoord origin is upper left
+
+
+Linked fragment stage:
+
+
+Shader version: 500
+gl_FragCoord origin is upper left
+
+SPIR-V is not generated for failed compile or link

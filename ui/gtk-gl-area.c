@@ -1,0 +1,395 @@
+/*
+ * GTK UI -- glarea opengl code.
+ *
+ * Requires 3.16+ (GtkGLArea widget).
+ *
+ * This work is licensed under the terms of the GNU GPL, version 2 or later.
+ * See the COPYING file in the top-level directory.
+ */
+
+#include "qemu/osdep.h"
+#include "qemu/main-loop.h"
+
+#include "trace.h"
+
+#include "ui/console.h"
+#include "ui/gtk.h"
+#include "ui/egl-helpers.h"
+
+#include "system/system.h"
+
+static void gtk_gl_area_set_scanout_mode(VirtualConsole *vc, bool scanout)
+{
+    if (vc->gfx.scanout_mode == scanout) {
+        return;
+    }
+
+    vc->gfx.scanout_mode = scanout;
+    if (!vc->gfx.scanout_mode) {
+        gtk_gl_area_make_current(GTK_GL_AREA(vc->gfx.drawing_area));
+        egl_fb_destroy(&vc->gfx.guest_fb);
+        if (vc->gfx.surface) {
+            surface_gl_destroy_texture(vc->gfx.gls, vc->gfx.ds);
+            surface_gl_create_texture(vc->gfx.gls, vc->gfx.ds);
+        }
+    }
+}
+
+/** DisplayState Callbacks (opengl version) **/
+
+void gd_gl_area_draw(VirtualConsole *vc)
+{
+#ifdef CONFIG_GBM
+    QemuDmaBuf *dmabuf = vc->gfx.guest_fb.dmabuf;
+#endif
+    int pw, ph, gs, y1, y2;
+    int ww, wh;
+    int ww_surface, wh_surface;
+    int fbw, fbh;
+    int wx_offset, wy_offset;
+
+    if (!vc->gfx.gls || !vc->gfx.ds) {
+        return;
+    }
+
+    gtk_gl_area_make_current(GTK_GL_AREA(vc->gfx.drawing_area));
+    gs = gdk_window_get_scale_factor(gtk_widget_get_window(vc->gfx.drawing_area));
+    fbw = surface_width(vc->gfx.ds);
+    fbh = surface_height(vc->gfx.ds);
+    ww = gtk_widget_get_allocated_width(vc->gfx.drawing_area);
+    wh = gtk_widget_get_allocated_height(vc->gfx.drawing_area);
+    pw = ww * gs;
+    ph = wh * gs;
+
+    gd_update_scale(vc, ww, wh, fbw, fbh);
+
+    ww_surface = fbw * vc->gfx.scale_x;
+    wh_surface = fbh * vc->gfx.scale_y;
+
+    wx_offset = wy_offset = 0;
+    if (ww > ww_surface) {
+        wx_offset = (ww - ww_surface) / 2;
+    }
+    if (wh > wh_surface) {
+        wy_offset = (wh - wh_surface) / 2;
+    }
+
+    if (vc->gfx.scanout_mode) {
+        if (!vc->gfx.guest_fb.framebuffer) {
+            return;
+        }
+
+#ifdef CONFIG_GBM
+        if (dmabuf) {
+            if (!qemu_dmabuf_get_draw_submitted(dmabuf)) {
+                return;
+            } else {
+                qemu_dmabuf_set_draw_submitted(dmabuf, false);
+            }
+        }
+#endif
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, vc->gfx.guest_fb.framebuffer);
+        /* GtkGLArea sets GL_DRAW_FRAMEBUFFER for us */
+
+        if (wx_offset > 0) {
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(0, 0, wx_offset * gs, wh * gs);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glScissor((ww - wx_offset) * gs, 0, wx_offset * gs, wh * gs);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glDisable(GL_SCISSOR_TEST);
+        }
+        if (wy_offset > 0) {
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(0, 0, ww * gs, wy_offset * gs);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glScissor(0, (wh - wy_offset) * gs, ww * gs, wy_offset * gs);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glDisable(GL_SCISSOR_TEST);
+        }
+
+        glViewport(0, 0, pw, ph);
+        y1 = vc->gfx.y0_top ? 0 : vc->gfx.h;
+        y2 = vc->gfx.y0_top ? vc->gfx.h : 0;
+        glBlitFramebuffer(0, y1, vc->gfx.w, y2,
+                          wx_offset * gs, wy_offset * gs,
+                          (ww - wx_offset) * gs, (wh - wy_offset) * gs,
+                          GL_COLOR_BUFFER_BIT, GL_NEAREST);
+#ifdef CONFIG_GBM
+        if (dmabuf) {
+            egl_dmabuf_create_sync(dmabuf);
+        }
+#endif
+        glFlush();
+#ifdef CONFIG_GBM
+        if (dmabuf) {
+            int fence_fd;
+            egl_dmabuf_create_fence(dmabuf);
+            fence_fd = qemu_dmabuf_get_fence_fd(dmabuf);
+            if (fence_fd >= 0) {
+                qemu_set_fd_handler(fence_fd, gd_hw_gl_flushed, NULL, vc);
+                return;
+            }
+            graphic_hw_gl_block(vc->gfx.dcl.con, false);
+        }
+#endif
+    } else {
+        gtk_gl_area_make_current(GTK_GL_AREA(vc->gfx.drawing_area));
+
+        surface_gl_setup_viewport(vc->gfx.gls, vc->gfx.ds, pw, ph);
+        surface_gl_render_texture(vc->gfx.gls, vc->gfx.ds);
+    }
+}
+
+void gd_gl_area_update(DisplayChangeListener *dcl,
+                   int x, int y, int w, int h)
+{
+    VirtualConsole *vc = container_of(dcl, VirtualConsole, gfx.dcl);
+
+    if (!vc->gfx.gls || !vc->gfx.ds) {
+        return;
+    }
+
+    gtk_gl_area_make_current(GTK_GL_AREA(vc->gfx.drawing_area));
+    surface_gl_update_texture(vc->gfx.gls, vc->gfx.ds, x, y, w, h);
+    vc->gfx.glupdates++;
+    gdk_gl_context_clear_current();
+}
+
+void gd_gl_area_refresh(DisplayChangeListener *dcl)
+{
+    VirtualConsole *vc = container_of(dcl, VirtualConsole, gfx.dcl);
+
+    gd_update_monitor_refresh_rate(vc, vc->window ? vc->window : vc->gfx.drawing_area);
+
+    if (vc->gfx.guest_fb.dmabuf &&
+        qemu_dmabuf_get_draw_submitted(vc->gfx.guest_fb.dmabuf)) {
+        /*
+         * gd_egl_refresh() calls gd_egl_draw() if a DMA-BUF draw has already
+         * been submitted, but this function does not call gd_gl_area_draw() in
+         * such a case due to display corruption.
+         *
+         * Calling gd_gl_area_draw() is necessary to prevent a situation where
+         * there is a scheduled draw event but it won't happen bacause the window
+         * is currently in inactive state (minimized or tabified). If draw is not
+         * done for a long time, gl_block timeout and/or fence timeout (on the
+         * guest) will happen eventually.
+         *
+         * However, it is found that calling gd_gl_area_draw() here causes guest
+         * display corruption on a Wayland Compositor. The display corruption is
+         * more serious than the possible fence timeout so gd_gl_area_draw() is
+         * omitted for now.
+         */
+        return;
+    }
+
+    if (!vc->gfx.gls) {
+        if (!gtk_widget_get_realized(vc->gfx.drawing_area)) {
+            return;
+        }
+        gtk_gl_area_make_current(GTK_GL_AREA(vc->gfx.drawing_area));
+        vc->gfx.gls = qemu_gl_init_shader();
+        if (vc->gfx.ds) {
+            surface_gl_create_texture(vc->gfx.gls, vc->gfx.ds);
+        }
+    }
+
+    graphic_hw_update(dcl->con);
+
+    if (vc->gfx.glupdates) {
+        vc->gfx.glupdates = 0;
+        gtk_gl_area_set_scanout_mode(vc, false);
+        gtk_gl_area_queue_render(GTK_GL_AREA(vc->gfx.drawing_area));
+    }
+}
+
+void gd_gl_area_switch(DisplayChangeListener *dcl,
+                       DisplaySurface *surface)
+{
+    VirtualConsole *vc = container_of(dcl, VirtualConsole, gfx.dcl);
+    bool resized = true;
+
+    trace_gd_switch(vc->label, surface_width(surface), surface_height(surface));
+
+    if (vc->gfx.ds &&
+        surface_width(vc->gfx.ds) == surface_width(surface) &&
+        surface_height(vc->gfx.ds) == surface_height(surface)) {
+        resized = false;
+    }
+
+    if (vc->gfx.gls) {
+        gtk_gl_area_make_current(GTK_GL_AREA(vc->gfx.drawing_area));
+        surface_gl_destroy_texture(vc->gfx.gls, vc->gfx.ds);
+        surface_gl_create_texture(vc->gfx.gls, surface);
+    }
+    vc->gfx.ds = surface;
+
+    if (resized) {
+        gd_update_windowsize(vc);
+    }
+}
+
+static int gd_cmp_gl_context_version(int major, int minor, QEMUGLParams *params)
+{
+    if (major > params->major_ver) {
+        return 1;
+    }
+    if (major < params->major_ver) {
+        return -1;
+    }
+    if (minor > params->minor_ver) {
+        return 1;
+    }
+    if (minor < params->minor_ver) {
+        return -1;
+    }
+    return 0;
+}
+
+QEMUGLContext gd_gl_area_create_context(DisplayGLCtx *dgc,
+                                        QEMUGLParams *params)
+{
+    VirtualConsole *vc = container_of(dgc, VirtualConsole, gfx.dgc);
+    GdkWindow *window;
+    GdkGLContext *ctx;
+    GError *err = NULL;
+    int major, minor;
+
+    window = gtk_widget_get_window(vc->gfx.drawing_area);
+    ctx = gdk_window_create_gl_context(window, &err);
+    if (err) {
+        g_printerr("Create gdk gl context failed: %s\n", err->message);
+        g_error_free(err);
+        return NULL;
+    }
+    gdk_gl_context_set_required_version(ctx,
+                                        params->major_ver,
+                                        params->minor_ver);
+    gdk_gl_context_realize(ctx, &err);
+    if (err) {
+        g_printerr("Realize gdk gl context failed: %s\n", err->message);
+        g_error_free(err);
+        g_clear_object(&ctx);
+        return NULL;
+    }
+
+    gdk_gl_context_make_current(ctx);
+    gdk_gl_context_get_version(ctx, &major, &minor);
+    gdk_gl_context_clear_current();
+    gtk_gl_area_make_current(GTK_GL_AREA(vc->gfx.drawing_area));
+
+    if (gd_cmp_gl_context_version(major, minor, params) == -1) {
+        /* created ctx version < requested version */
+        g_clear_object(&ctx);
+    }
+
+    trace_gd_gl_area_create_context(ctx, params->major_ver, params->minor_ver);
+    return ctx;
+}
+
+void gd_gl_area_destroy_context(DisplayGLCtx *dgc, QEMUGLContext ctx)
+{
+    GdkGLContext *current_ctx = gdk_gl_context_get_current();
+
+    trace_gd_gl_area_destroy_context(ctx, current_ctx);
+    if (ctx == current_ctx) {
+        gdk_gl_context_clear_current();
+    }
+    g_clear_object(&ctx);
+}
+
+void gd_gl_area_scanout_texture(DisplayChangeListener *dcl,
+                                uint32_t backing_id,
+                                bool backing_y_0_top,
+                                uint32_t backing_width,
+                                uint32_t backing_height,
+                                uint32_t x, uint32_t y,
+                                uint32_t w, uint32_t h,
+                                void *d3d_tex2d)
+{
+    VirtualConsole *vc = container_of(dcl, VirtualConsole, gfx.dcl);
+
+    vc->gfx.x = x;
+    vc->gfx.y = y;
+    vc->gfx.w = w;
+    vc->gfx.h = h;
+    vc->gfx.y0_top = backing_y_0_top;
+
+    gtk_gl_area_make_current(GTK_GL_AREA(vc->gfx.drawing_area));
+
+    if (backing_id == 0 || vc->gfx.w == 0 || vc->gfx.h == 0) {
+        gtk_gl_area_set_scanout_mode(vc, false);
+        return;
+    }
+
+    gtk_gl_area_set_scanout_mode(vc, true);
+    egl_fb_setup_for_tex(&vc->gfx.guest_fb, backing_width, backing_height,
+                         backing_id, false);
+}
+
+void gd_gl_area_scanout_disable(DisplayChangeListener *dcl)
+{
+    VirtualConsole *vc = container_of(dcl, VirtualConsole, gfx.dcl);
+
+    gtk_gl_area_set_scanout_mode(vc, false);
+}
+
+void gd_gl_area_scanout_flush(DisplayChangeListener *dcl,
+                          uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+{
+    VirtualConsole *vc = container_of(dcl, VirtualConsole, gfx.dcl);
+
+    if (vc->gfx.guest_fb.dmabuf &&
+        !qemu_dmabuf_get_draw_submitted(vc->gfx.guest_fb.dmabuf)) {
+        graphic_hw_gl_block(vc->gfx.dcl.con, true);
+        qemu_dmabuf_set_draw_submitted(vc->gfx.guest_fb.dmabuf, true);
+        gtk_gl_area_set_scanout_mode(vc, true);
+    }
+    gtk_gl_area_queue_render(GTK_GL_AREA(vc->gfx.drawing_area));
+}
+
+void gd_gl_area_scanout_dmabuf(DisplayChangeListener *dcl,
+                               QemuDmaBuf *dmabuf)
+{
+#ifdef CONFIG_GBM
+    VirtualConsole *vc = container_of(dcl, VirtualConsole, gfx.dcl);
+    uint32_t x, y, width, height, backing_width, backing_height, texture;
+    bool y0_top;
+
+    gtk_gl_area_make_current(GTK_GL_AREA(vc->gfx.drawing_area));
+    egl_dmabuf_import_texture(dmabuf);
+    texture = qemu_dmabuf_get_texture(dmabuf);
+    if (!texture) {
+        return;
+    }
+
+    x = qemu_dmabuf_get_x(dmabuf);
+    y = qemu_dmabuf_get_y(dmabuf);
+    width = qemu_dmabuf_get_width(dmabuf);
+    height = qemu_dmabuf_get_height(dmabuf);
+    backing_width = qemu_dmabuf_get_backing_width(dmabuf);
+    backing_height = qemu_dmabuf_get_backing_height(dmabuf);
+    y0_top = qemu_dmabuf_get_y0_top(dmabuf);
+
+    gd_gl_area_scanout_texture(dcl, texture, y0_top,
+                               backing_width, backing_height,
+                               x, y, width, height, NULL);
+
+    if (qemu_dmabuf_get_allow_fences(dmabuf)) {
+        vc->gfx.guest_fb.dmabuf = dmabuf;
+    }
+#endif
+}
+
+void gtk_gl_area_init(void)
+{
+    display_opengl = 1;
+}
+
+int gd_gl_area_make_current(DisplayGLCtx *dgc,
+                            QEMUGLContext ctx)
+{
+    gdk_gl_context_make_current(ctx);
+    return 0;
+}

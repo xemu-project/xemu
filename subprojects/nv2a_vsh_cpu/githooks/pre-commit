@@ -1,0 +1,102 @@
+#!/bin/bash
+#
+# To enable this hook, rename this file to "pre-commit" and copy into the
+# ../.git/hooks directory.
+
+
+# Cross platform projects tend to avoid non-ASCII filenames; prevent
+# them from being added to the repository. We exploit the fact that the
+# printable range starts at the space character and ends with tilde.
+function check_no_nonascii_characters {
+  if [ "${allownonascii}" == "true" ]; then
+    return
+  fi
+
+  # Note that the use of brackets around a tr range is ok here, (it's
+  # even required, for portability to Solaris 10's /usr/bin/tr), since
+  # the square bracket bytes happen to fall in the designated range.
+  if test $(git diff --cached --name-only --diff-filter=A -z "${against}" |
+	      LC_ALL=C tr -d '[ -~]\0' | wc -c) != 0
+  then
+    cat <<\EOF
+Error: Attempt to add a non-ASCII file name.
+
+This can cause problems if you want to work with people on other platforms.
+
+To be portable it is advisable to rename the file.
+
+If you know what you are doing you can disable this check using:
+
+  git config hooks.allownonascii true
+EOF
+    exit 1
+  fi
+}
+
+
+function check_no_diffmarkers_or_whitespace_errors {
+  # If there are whitespace errors, print the offending file names and fail.
+  set -e
+  git diff-index --check --cached "${against}" --
+  set +e
+}
+
+
+function run_clang_format {
+  echo "${changed_c_filenames}" | grep -v '3rdparty'
+  if [[ "${changed_c_filenames}" == "" ]]; then
+    return
+  fi
+  # Run clang-format against any changed C++ files.
+  if ! which clang-format > /dev/null; then
+    cat <<\EOF
+Warning: clang-format is not installed or is not in the PATH.
+
+Please install and amend this commit.
+
+Debian:
+        sudo apt install clang-format
+EOF
+    return
+  fi
+
+  # Reformat the files in-place and re-add any that were changed.
+  #
+  # Note that this has the side effect of incorporating changes to staged files
+  # that were not themselves staged. E.g., if you edit a file, `git add`, then
+  # edit some more, then commit, all of the changes will be committed, not just
+  # the staged ones. Depending on typical workflows it might be better to do
+  # something more complicated here, or to just have the hook fail instead of
+  # perform an in-place fix.
+  files_to_format="$(echo "${changed_c_filenames}" | grep -v '3rdparty')"
+  echo "${files_to_format}" | xargs clang-format -i
+  echo "${files_to_format}" | xargs git add
+}
+
+
+# If you want to allow non-ASCII filenames set this variable to true.
+allownonascii=$(git config --bool hooks.allownonascii)
+
+if git rev-parse --verify HEAD >/dev/null 2>&1; then
+  against=HEAD
+else
+  # Initial commit: diff against an empty tree object
+  against=$(git hash-object -t tree /dev/null)
+fi
+
+# Redirect output to stderr.
+exec 1>&2
+
+
+added_and_modified_filenames="$(git diff --cached --name-only --diff-filter=d)"
+changed_c_filenames="$(echo "${added_and_modified_filenames}" | \
+                            grep -E '.*\.(c|cpp|h|hpp)$')"
+
+
+# Allow blank line at EOF.
+git config --local core.whitespace -blank-at-eof
+
+check_no_nonascii_characters
+check_no_diffmarkers_or_whitespace_errors
+run_clang_format
+

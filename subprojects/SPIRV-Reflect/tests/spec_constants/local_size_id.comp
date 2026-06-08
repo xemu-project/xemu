@@ -1,0 +1,7 @@
+#version 450
+
+// note Z is not and ID
+// Vulkan 1.3 is needed for glslang to use LocalSizeId over LocalSize
+layout(local_size_x_id = 8, local_size_y_id = 4, local_size_z = 4) in;
+
+void main() { }

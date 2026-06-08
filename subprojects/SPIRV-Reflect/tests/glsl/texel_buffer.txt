@@ -1,0 +1,50 @@
+generator       : Google Shaderc over Glslang
+entry point     : main
+source lang     : GLSL
+source lang ver : 450
+source file     : 
+shader stage    : VS
+
+
+  Input variables: 1
+
+    0:
+      spirv id  : 15
+      location  : (built-in) InstanceIndex
+      type      : int
+      semantic  : 
+      name      : gl_InstanceIndex
+      qualifier : 
+
+
+  Output variables: 1
+
+    0:
+      spirv id  : 40
+      location  : (built-in) ???
+      type      : 
+      semantic  : 
+      name      : 
+      qualifier : 
+
+
+  Descriptor bindings: 2
+
+    Binding 0.1
+      spirv id : 12
+      set      : 0
+      binding  : 1
+      type     : VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER (SRV)
+      count    : 1
+      accessed : true
+      name     : texel_buffer_i
+
+    Binding 0.2
+      spirv id : 29
+      set      : 0
+      binding  : 2
+      type     : VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER (SRV)
+      count    : 1
+      accessed : true
+      name     : texel_buffer_f
+

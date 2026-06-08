@@ -1,0 +1,65 @@
+# aspeed_smc.c
+
+aspeed_smc_flash_set_segment(int cs, uint64_t reg, uint64_t start, uint64_t end) "CS%d segreg=0x%"PRIx64" [ 0x%"PRIx64" - 0x%"PRIx64" ]"
+aspeed_smc_flash_read(int cs, uint64_t addr,  uint32_t size, uint64_t data, int mode) "CS%d @0x%" PRIx64 " size %u: 0x%" PRIx64" mode:%d"
+aspeed_smc_do_snoop(int cs, int index, int dummies, int data) "CS%d index:0x%x dummies:%d data:0x%x"
+aspeed_smc_flash_write(int cs, uint64_t addr,  uint32_t size, uint64_t data, int mode) "CS%d @0x%" PRIx64 " size %u: 0x%" PRIx64" mode:%d"
+aspeed_smc_read(uint64_t addr,  uint32_t size, uint64_t data) "@0x%" PRIx64 " size %u: 0x%" PRIx64
+aspeed_smc_dma_checksum(uint32_t addr, uint32_t data) "0x%08x: 0x%08x"
+aspeed_smc_dma_rw(const char *dir, uint32_t flash_addr, uint64_t dram_addr, uint32_t size) "%s flash:@0x%08x dram:@0x%" PRIx64 " size:0x%08x"
+aspeed_smc_write(uint64_t addr,  uint32_t size, uint64_t data) "@0x%" PRIx64 " size %u: 0x%" PRIx64
+aspeed_smc_flash_select(int cs, const char *prefix) "CS%d %sselect"
+
+# npcm7xx_fiu.c
+
+npcm7xx_fiu_enter_reset(const char *id, int reset_type) "%s reset type: %d"
+npcm7xx_fiu_hold_reset(const char *id) "%s"
+npcm7xx_fiu_select(const char *id, int cs) "%s select CS%d"
+npcm7xx_fiu_deselect(const char *id, int cs) "%s deselect CS%d"
+npcm7xx_fiu_ctrl_read(const char *id, uint64_t addr, uint32_t data) "%s offset: 0x%04" PRIx64 " value: 0x%08" PRIx32
+npcm7xx_fiu_ctrl_write(const char *id, uint64_t addr, uint32_t data) "%s offset: 0x%04" PRIx64 " value: 0x%08" PRIx32
+npcm7xx_fiu_flash_read(const char *id, int cs, uint64_t addr, unsigned int size, uint64_t value) "%s[%d] offset: 0x%08" PRIx64 " size: %u value: 0x%" PRIx64
+npcm7xx_fiu_flash_write(const char *id, unsigned cs, uint64_t addr, unsigned int size, uint64_t value) "%s[%d] offset: 0x%08" PRIx64 " size: %u value: 0x%" PRIx64
+
+# npcm_pspi.c
+npcm_pspi_enter_reset(const char *id, int reset_type) "%s reset type: %d"
+npcm_pspi_ctrl_read(const char *id, uint64_t addr, uint16_t data) "%s offset: 0x%03" PRIx64 " value: 0x%04" PRIx16
+npcm_pspi_ctrl_write(const char *id, uint64_t addr, uint16_t data) "%s offset: 0x%03" PRIx64 " value: 0x%04" PRIx16
+
+# ibex_spi_host.c
+
+ibex_spi_host_reset(const char *msg) "%s"
+ibex_spi_host_transfer(uint32_t tx_data, uint32_t rx_data) "tx_data: 0x%" PRIx32 " rx_data: @0x%" PRIx32
+ibex_spi_host_write(uint64_t addr, uint32_t size, uint64_t data) "@0x%" PRIx64 " size %u: 0x%" PRIx64
+ibex_spi_host_read(uint64_t addr, uint32_t size) "@0x%" PRIx64 " size %u:"
+
+#pnv_spi.c
+pnv_spi_read(uint64_t addr, uint64_t val) "addr 0x%" PRIx64 " val 0x%" PRIx64
+pnv_spi_write(uint64_t addr, uint64_t val) "addr 0x%" PRIx64 " val 0x%" PRIx64
+pnv_spi_read_RDR(uint64_t val) "data extracted = 0x%" PRIx64
+pnv_spi_write_TDR(uint64_t val) "being written, data written = 0x%" PRIx64
+pnv_spi_start_sequencer(void) ""
+pnv_spi_reset(void) "spic engine sequencer configuration and spi communication"
+pnv_spi_sequencer_op(const char* op, uint8_t index) "%s at index = 0x%x"
+pnv_spi_shifter_stating(void) "pull CS line low"
+pnv_spi_shifter_done(void) "pull the CS line high"
+pnv_spi_log_Ncounts(uint8_t N1_bits, uint8_t N1_bytes, uint8_t N1_tx, uint8_t N1_rx, uint8_t N2_bits, uint8_t N2_bytes, uint8_t N2_tx, uint8_t N2_rx) "N1_bits = %d, N1_bytes = %d, N1_tx = %d, N1_rx = %d, N2_bits = %d, N2_bytes = %d, N2_tx = %d, N2_rx = %d"
+pnv_spi_tx_append(const char* frame, uint8_t byte, uint8_t tdr_index) "%s = 0x%2.2x to payload from TDR at index %d"
+pnv_spi_tx_append_FF(const char* frame) "%s to Payload"
+pnv_spi_tx_request(const char* frame, uint32_t payload_len) "%s, payload len = %d"
+pnv_spi_rx_received(uint32_t payload_len) "payload len = %d"
+pnv_spi_rx_read_N1frame(void) ""
+pnv_spi_rx_read_N2frame(void) ""
+pnv_spi_shift_rx(uint8_t byte, uint32_t index) "byte = 0x%2.2x into RDR from payload index %d"
+pnv_spi_sequencer_stop_requested(const char* reason) "due to %s"
+pnv_spi_RDR_match(const char* result) "%s"
+
+# allwinner_a10_spi.c
+allwinner_a10_spi_update_irq(uint32_t level) "IRQ level is %d"
+allwinner_a10_spi_flush_txfifo_begin(uint32_t tx, uint32_t rx) "Begin: TX Fifo Size = %d, RX Fifo Size = %d"
+allwinner_a10_spi_flush_txfifo_end(uint32_t tx, uint32_t rx) "End: TX Fifo Size = %d, RX Fifo Size = %d"
+allwinner_a10_spi_burst_length(uint32_t len) "Burst length = %d"
+allwinner_a10_spi_tx(uint8_t byte) "write 0x%02x"
+allwinner_a10_spi_rx(uint8_t byte) "read 0x%02x"
+allwinner_a10_spi_read(const char* regname, uint32_t value) "reg[%s] => 0x%08x"
+allwinner_a10_spi_write(const char* regname, uint32_t value) "reg[%s] <= 0x%08x"

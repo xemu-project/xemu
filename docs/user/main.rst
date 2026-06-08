@@ -1,0 +1,268 @@
+.. _user-mode:
+
+QEMU User space emulator
+========================
+
+Supported Operating Systems
+---------------------------
+
+The following OS are supported in user space emulation:
+
+-  Linux (referred as qemu-linux-user)
+
+-  BSD (referred as qemu-bsd-user)
+
+Features
+--------
+
+QEMU user space emulation has the following notable features:
+
+System call translation
+~~~~~~~~~~~~~~~~~~~~~~~
+
+System calls are the principle interface between user-space and the
+kernel. Generally the same system calls exist on all versions of the
+kernel so QEMU includes a generic system call translator. The
+translator takes care of adjusting endianess, 32/64 bit parameter size
+and then calling the equivalent host system call.
+
+QEMU can also adjust device specific ``ioctl()`` calls in a similar
+fashion.
+
+POSIX signal handling
+~~~~~~~~~~~~~~~~~~~~~
+
+QEMU can redirect to the running program all signals coming from the
+host (such as ``SIGALRM``), as well as synthesize signals from
+virtual CPU exceptions (for example ``SIGFPE`` when the program
+executes a division by zero).
+
+QEMU relies on the host kernel to emulate most signal system calls,
+for example to emulate the signal mask. On Linux, QEMU supports both
+normal and real-time signals.
+
+Threading
+~~~~~~~~~
+
+On Linux, QEMU can emulate the ``clone`` syscall and create a real
+host thread (with a separate virtual CPU) for each emulated thread.
+However as QEMU relies on the system libc to call ``clone`` on its
+behalf we limit the flags accepted to those it uses. Specifically this
+means flags affecting namespaces (e.g. container runtimes) are not
+supported. QEMU user-mode processes can still be run inside containers
+though.
+
+While QEMU does its best to emulate atomic operations properly
+differences between the host and guest memory models can cause issues
+for software that makes assumptions about the memory model.
+
+QEMU was conceived so that ultimately it can emulate itself. Although it
+is not very useful, it is an important test to show the power of the
+emulator.
+
+.. _linux-user-mode:
+
+Linux User space emulator
+-------------------------
+
+Command line options
+~~~~~~~~~~~~~~~~~~~~
+
+::
+
+   qemu-i386 [-h] [-d] [-L path] [-s size] [-cpu model] [-g endpoint] [-B offset] [-R size] program [arguments...]
+
+``-h``
+   Print the help
+
+``-L path``
+   Set the x86 elf interpreter prefix (default=/usr/local/qemu-i386)
+
+``-s size``
+   Set the x86 stack size in bytes (default=524288)
+
+``-cpu model``
+   Select CPU model (-cpu help for list and additional feature
+   selection)
+
+``-E var=value``
+   Set environment var to value.
+
+``-U var``
+   Remove var from the environment.
+
+``-B offset``
+   Offset guest address by the specified number of bytes. This is useful
+   when the address region required by guest applications is reserved on
+   the host. This option is currently only supported on some hosts.
+
+``-R size``
+   Pre-allocate a guest virtual address space of the given size (in
+   bytes). \"G\", \"M\", and \"k\" suffixes may be used when specifying
+   the size.
+
+Debug options:
+
+``-d item1,...``
+   Activate logging of the specified items (use '-d help' for a list of
+   log items)
+
+``-g endpoint``
+   Wait gdb connection to a port (e.g., ``1234``) or a unix socket (e.g.,
+   ``/tmp/qemu.sock``).
+
+   If a unix socket path contains single ``%d`` placeholder (e.g.,
+   ``/tmp/qemu-%d.sock``), it is replaced by the emulator PID, which is useful
+   when passing this option via the ``QEMU_GDB`` environment variable to a
+   multi-process application.
+
+   If the endpoint address is followed by ``,suspend=n`` (e.g.,
+   ``1234,suspend=n``), then the emulated program starts without waiting for a
+   connection, which can be established at any later point in time.
+
+``-one-insn-per-tb``
+   Run the emulation with one guest instruction per translation block.
+   This slows down emulation a lot, but can be useful in some situations,
+   such as when trying to analyse the logs produced by the ``-d`` option.
+
+Environment variables:
+
+QEMU_STRACE
+   Print system calls and arguments similar to the 'strace' program
+   (NOTE: the actual 'strace' program will not work because the user
+   space emulator hasn't implemented ptrace). At the moment this is
+   incomplete. All system calls that don't have a specific argument
+   format are printed with information for six arguments. Many
+   flag-style arguments don't have decoders and will show up as numbers.
+
+Other binaries
+~~~~~~~~~~~~~~
+
+-  user mode (Alpha)
+
+   * ``qemu-alpha`` TODO.
+
+-  user mode (Arm)
+
+   * ``qemu-armeb`` TODO.
+
+   * ``qemu-arm`` is also capable of running Arm \"Angel\" semihosted ELF
+     binaries (as implemented by the arm-elf and arm-eabi Newlib/GDB
+     configurations), and arm-uclinux bFLT format binaries.
+
+-  user mode (ColdFire)
+
+-  user mode (M68K)
+
+   * ``qemu-m68k`` is capable of running semihosted binaries using the BDM
+     (m5xxx-ram-hosted.ld) or m68k-sim (sim.ld) syscall interfaces, and
+     coldfire uClinux bFLT format binaries.
+
+   The binary format is detected automatically.
+
+-  user mode (i386)
+
+   * ``qemu-i386`` TODO.
+   * ``qemu-x86_64`` TODO.
+
+-  user mode (Microblaze)
+
+   * ``qemu-microblaze`` TODO.
+
+-  user mode (MIPS)
+
+   * ``qemu-mips`` executes 32-bit big endian MIPS binaries (MIPS O32 ABI).
+
+   * ``qemu-mipsel`` executes 32-bit little endian MIPS binaries (MIPS O32 ABI).
+
+   * ``qemu-mips64`` executes 64-bit big endian MIPS binaries (MIPS N64 ABI).
+
+   * ``qemu-mips64el`` executes 64-bit little endian MIPS binaries (MIPS N64
+     ABI).
+
+   * ``qemu-mipsn32`` executes 32-bit big endian MIPS binaries (MIPS N32 ABI).
+
+   * ``qemu-mipsn32el`` executes 32-bit little endian MIPS binaries (MIPS N32
+     ABI).
+
+-  user mode (PowerPC)
+
+   * ``qemu-ppc64`` TODO.
+   * ``qemu-ppc`` TODO.
+
+-  user mode (SH4)
+
+   * ``qemu-sh4eb`` TODO.
+   * ``qemu-sh4`` TODO.
+
+-  user mode (SPARC)
+
+   * ``qemu-sparc`` can execute Sparc32 binaries (Sparc32 CPU, 32 bit ABI).
+
+   * ``qemu-sparc32plus`` can execute Sparc32 and SPARC32PLUS binaries
+     (Sparc64 CPU, 32 bit ABI).
+
+   * ``qemu-sparc64`` can execute some Sparc64 (Sparc64 CPU, 64 bit ABI) and
+     SPARC32PLUS binaries (Sparc64 CPU, 32 bit ABI).
+
+.. _bsd-user-mode:
+
+BSD User space emulator
+-----------------------
+
+BSD Status
+~~~~~~~~~~
+
+-  target Sparc64 on Sparc64: Some trivial programs work.
+
+Quick Start
+~~~~~~~~~~~
+
+In order to launch a BSD process, QEMU needs the process executable
+itself and all the target dynamic libraries used by it.
+
+-  On Sparc64, you can just try to launch any process by using the
+   native libraries::
+
+      qemu-sparc64 /bin/ls
+
+Command line options
+~~~~~~~~~~~~~~~~~~~~
+
+::
+
+   qemu-sparc64 [-h] [-d] [-L path] [-s size] [-bsd type] program [arguments...]
+
+``-h``
+   Print the help
+
+``-L path``
+   Set the library root path (default=/)
+
+``-s size``
+   Set the stack size in bytes (default=524288)
+
+``-ignore-environment``
+   Start with an empty environment. Without this option, the initial
+   environment is a copy of the caller's environment.
+
+``-E var=value``
+   Set environment var to value.
+
+``-U var``
+   Remove var from the environment.
+
+``-bsd type``
+   Set the type of the emulated BSD Operating system. Valid values are
+   FreeBSD, NetBSD and OpenBSD (default).
+
+Debug options:
+
+``-d item1,...``
+   Activate logging of the specified items (use '-d help' for a list of
+   log items)
+
+``-one-insn-per-tb``
+   Run the emulation with one guest instruction per translation block.
+   This slows down emulation a lot, but can be useful in some situations,
+   such as when trying to analyse the logs produced by the ``-d`` option.

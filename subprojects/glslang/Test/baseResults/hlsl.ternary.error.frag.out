@@ -1,0 +1,92 @@
+hlsl.ternary.error.frag
+ERROR: 0:3: 'missing' : unknown variable 
+ERROR: 0:3: ':' :  wrong operand types: no operation ':' exists that takes a left-hand operand of type ' in 4-component vector of float' and a right operand of type ' temp void' (or there is no acceptable conversion)
+ERROR: 0:2: '' : function does not return a value: @main
+ERROR: 3 compilation errors.  No code generated.
+
+
+Shader version: 500
+gl_FragCoord origin is upper left
+ERROR: node is still EOpNull!
+0:2  Function Definition: @main(i1;i1;vf4;vf4; ( temp 4-component vector of float)
+0:2    Function Parameters: 
+0:2      'a' ( in int)
+0:2      'b' ( in int)
+0:2      'col0' ( in 4-component vector of float)
+0:2      'col1' ( in 4-component vector of float)
+0:?     Sequence
+0:3      Branch: Return
+0:2  Function Definition: main( ( temp void)
+0:2    Function Parameters: 
+0:?     Sequence
+0:2      move second child to first child ( temp int)
+0:?         'a' ( temp int)
+0:?         'a' (layout( location=0) flat in int)
+0:2      move second child to first child ( temp int)
+0:?         'b' ( temp int)
+0:?         'b' (layout( location=1) flat in int)
+0:2      move second child to first child ( temp 4-component vector of float)
+0:?         'col0' ( temp 4-component vector of float)
+0:?         'col0' (layout( location=2) in 4-component vector of float)
+0:2      move second child to first child ( temp 4-component vector of float)
+0:?         'col1' ( temp 4-component vector of float)
+0:?         'col1' (layout( location=3) in 4-component vector of float)
+0:2      move second child to first child ( temp 4-component vector of float)
+0:?         '@entryPointOutput' (layout( location=0) out 4-component vector of float)
+0:2        Function Call: @main(i1;i1;vf4;vf4; ( temp 4-component vector of float)
+0:?           'a' ( temp int)
+0:?           'b' ( temp int)
+0:?           'col0' ( temp 4-component vector of float)
+0:?           'col1' ( temp 4-component vector of float)
+0:?   Linker Objects
+0:?     '@entryPointOutput' (layout( location=0) out 4-component vector of float)
+0:?     'a' (layout( location=0) flat in int)
+0:?     'b' (layout( location=1) flat in int)
+0:?     'col0' (layout( location=2) in 4-component vector of float)
+0:?     'col1' (layout( location=3) in 4-component vector of float)
+
+
+Linked fragment stage:
+
+
+Shader version: 500
+gl_FragCoord origin is upper left
+ERROR: node is still EOpNull!
+0:2  Function Definition: @main(i1;i1;vf4;vf4; ( temp 4-component vector of float)
+0:2    Function Parameters: 
+0:2      'a' ( in int)
+0:2      'b' ( in int)
+0:2      'col0' ( in 4-component vector of float)
+0:2      'col1' ( in 4-component vector of float)
+0:?     Sequence
+0:3      Branch: Return
+0:2  Function Definition: main( ( temp void)
+0:2    Function Parameters: 
+0:?     Sequence
+0:2      move second child to first child ( temp int)
+0:?         'a' ( temp int)
+0:?         'a' (layout( location=0) flat in int)
+0:2      move second child to first child ( temp int)
+0:?         'b' ( temp int)
+0:?         'b' (layout( location=1) flat in int)
+0:2      move second child to first child ( temp 4-component vector of float)
+0:?         'col0' ( temp 4-component vector of float)
+0:?         'col0' (layout( location=2) in 4-component vector of float)
+0:2      move second child to first child ( temp 4-component vector of float)
+0:?         'col1' ( temp 4-component vector of float)
+0:?         'col1' (layout( location=3) in 4-component vector of float)
+0:2      move second child to first child ( temp 4-component vector of float)
+0:?         '@entryPointOutput' (layout( location=0) out 4-component vector of float)
+0:2        Function Call: @main(i1;i1;vf4;vf4; ( temp 4-component vector of float)
+0:?           'a' ( temp int)
+0:?           'b' ( temp int)
+0:?           'col0' ( temp 4-component vector of float)
+0:?           'col1' ( temp 4-component vector of float)
+0:?   Linker Objects
+0:?     '@entryPointOutput' (layout( location=0) out 4-component vector of float)
+0:?     'a' (layout( location=0) flat in int)
+0:?     'b' (layout( location=1) flat in int)
+0:?     'col0' (layout( location=2) in 4-component vector of float)
+0:?     'col1' (layout( location=3) in 4-component vector of float)
+
+SPIR-V is not generated for failed compile or link

@@ -1,0 +1,214 @@
+---
+Language:        Cpp
+AccessModifierOffset: -2
+AlignAfterOpenBracket: Align
+AlignConsecutiveMacros: Consecutive
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveBitFields: Consecutive
+AlignConsecutiveDeclarations: None
+AlignEscapedNewlines: Right
+AlignOperands:   AlignAfterOperator
+AlignTrailingComments: true
+AllowAllArgumentsOnNextLine: false
+AllowAllConstructorInitializersOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortEnumsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: None
+AllowShortLambdasOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakAfterDefinitionReturnType: None
+AlwaysBreakAfterReturnType: None
+AlwaysBreakBeforeMultilineStrings: false
+AlwaysBreakTemplateDeclarations: Yes
+AttributeMacros:
+  - TOML_ABSTRACT_INTERFACE
+  - TOML_CALLCONV
+  - TOML_CLOSED_ENUM
+  - TOML_CLOSED_FLAGS_ENUM
+  - TOML_EMPTY_BASES
+  - TOML_EXPORTED_CLASS
+  - TOML_FLAGS_ENUM
+  - TOML_OPEN_ENUM
+  - TOML_OPEN_FLAGS_ENUM
+  - TOML_TRIVIAL_ABI
+  - TOML_UNLIKELY_CASE
+BinPackArguments: false
+BinPackParameters: false
+BraceWrapping:
+  AfterCaseLabel:  true
+  AfterClass:      true
+  AfterControlStatement: Always
+  AfterEnum:       true
+  AfterFunction:   true
+  AfterNamespace:  true
+  AfterObjCDeclaration: false
+  AfterStruct:     true
+  AfterUnion:      true
+  AfterExternBlock: true
+  BeforeCatch:     true
+  BeforeElse:      true
+  BeforeLambdaBody: true
+  BeforeWhile:     true
+  IndentBraces:    false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: true
+BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeConceptDeclarations: true
+BreakBeforeBraces: Custom
+BreakBeforeInheritanceComma: false
+BreakInheritanceList: BeforeColon
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializersBeforeComma: false
+BreakConstructorInitializers: BeforeColon
+BreakAfterJavaFieldAnnotations: false
+BreakStringLiterals: true
+ColumnLimit:     120
+CommentPragmas:  '^([/*!#]|\s*(===|---|clang-format))'
+CompactNamespaces: false
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+Cpp11BracedListStyle: false
+DeriveLineEnding: false
+DerivePointerAlignment: false
+DisableFormat:   false
+EmptyLineBeforeAccessModifier: LogicalBlock
+ExperimentalAutoDetectBinPacking: false
+FixNamespaceComments: false
+ForEachMacros:
+  - foreach
+  - Q_FOREACH
+  - BOOST_FOREACH
+StatementAttributeLikeMacros:
+  - Q_EMIT
+IncludeBlocks:   Preserve
+IncludeCategories:
+  - Regex:           '^"(llvm|llvm-c|clang|clang-c)/'
+    Priority:        2
+    SortPriority:    0
+    CaseSensitive:   false
+  - Regex:           '^(<|"(gtest|gmock|isl|json)/)'
+    Priority:        3
+    SortPriority:    0
+    CaseSensitive:   false
+  - Regex:           '.*'
+    Priority:        1
+    SortPriority:    0
+    CaseSensitive:   false
+IncludeIsMainRegex: '(Test)?$'
+IncludeIsMainSourceRegex: ''
+IndentCaseLabels: true
+IndentCaseBlocks: false
+IndentGotoLabels: true
+IndentPPDirectives: None
+IndentExternBlock: Indent
+IndentRequires:  false
+IndentWidth:     4
+IndentWrappedFunctionNames: false
+InsertTrailingCommas: None
+JavaScriptQuotes: Leave
+JavaScriptWrapImports: true
+KeepEmptyLinesAtTheStartOfBlocks: false
+MacroBlockBegin: ''
+MacroBlockEnd:   ''
+MaxEmptyLinesToKeep: 1
+NamespaceIndentation: All
+ObjCBinPackProtocolList: Auto
+ObjCBlockIndentWidth: 2
+ObjCBreakBeforeNestedBlockParam: true
+ObjCSpaceAfterProperty: false
+ObjCSpaceBeforeProtocolList: true
+PenaltyBreakAssignment: 2
+PenaltyBreakBeforeFirstCallParameter: 19
+PenaltyBreakComment: 1
+PenaltyBreakFirstLessLess: 120
+PenaltyBreakString: 1000
+PenaltyBreakTemplateDeclaration: 10
+PenaltyExcessCharacter: 1000000
+PenaltyReturnTypeOnItsOwnLine: 1000000
+PenaltyIndentedWhitespace: 0
+PointerAlignment: Left
+ReflowComments:  true
+SortIncludes:    false
+SortJavaStaticImport: Before
+SortUsingDeclarations: false
+SpaceAfterCStyleCast: false
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCaseColon: false
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeParens: ControlStatements
+SpaceAroundPointerQualifiers: Default
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceInEmptyBlock: false
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 1
+SpacesInAngles:  false
+SpacesInConditionalStatement: false
+SpacesInContainerLiterals: true
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceBeforeSquareBrackets: false
+BitFieldColonSpacing: Both
+Standard:        Latest
+StatementMacros:
+  - __pragma
+  - _Pragma
+  - TOML_ALWAYS_INLINE
+  - TOML_API
+  - TOML_ATTR
+  - TOML_CONST_GETTER
+  - TOML_CONST_INLINE_GETTER
+  - TOML_EXPORTED_CLASS
+  - TOML_EXPORTED_MEMBER_FUNCTION
+  - TOML_EXPORTED_FREE_FUNCTION
+  - TOML_EXPORTED_STATIC_FUNCTION
+  - TOML_EXTERN
+  - TOML_EXTERNAL_LINKAGE
+  - TOML_INTERNAL_LINKAGE
+  - TOML_LIKELY_CASE
+  - TOML_MEMBER_ATTR
+  - TOML_NEVER_INLINE
+  - TOML_NODISCARD
+  - TOML_NODISCARD_CTOR
+  - TOML_PRAGMA_CLANG
+  - TOML_PRAGMA_CLANG_GE_9
+  - TOML_PRAGMA_CLANG_GE_10
+  - TOML_PRAGMA_CLANG_GE_11
+  - TOML_PRAGMA_GCC
+  - TOML_PRAGMA_MSVC
+  - TOML_PRAGMA_ICC
+  - TOML_PURE_GETTER
+  - TOML_PURE_INLINE_GETTER
+  - TOML_RETURNS_BY_THROWING
+TabWidth:        4
+TypenameMacros:
+UseCRLF:         false
+UseTab:          Always
+WhitespaceSensitiveMacros:
+  - STRINGIZE
+  - PP_STRINGIZE
+  - BOOST_PP_STRINGIZE
+  - TOML_ATTR
+  - TOML_CONCAT
+  - TOML_HAS_INCLUDE
+  - TOML_LIKELY
+  - TOML_MAKE_STRING
+  - TOML_PRAGMA_CLANG
+  - TOML_PRAGMA_CLANG_GE_9
+  - TOML_PRAGMA_CLANG_GE_10
+  - TOML_PRAGMA_CLANG_GE_11
+  - TOML_PRAGMA_GCC
+  - TOML_PRAGMA_MSVC
+  - TOML_PRAGMA_ICC
+  - TOML_UNLIKELY
+...
+

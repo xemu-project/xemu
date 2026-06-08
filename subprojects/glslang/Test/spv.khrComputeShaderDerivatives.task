@@ -1,0 +1,21 @@
+#version 450
+#extension GL_EXT_mesh_shader : enable
+#extension GL_KHR_compute_shader_derivatives : require
+
+layout(local_size_x = 4) in;
+layout(derivative_group_linearKHR) in;
+
+layout(binding = 0, std430) buffer Output {
+    float dx;
+} outData;
+
+void main()
+{
+    float value = float(gl_LocalInvocationIndex);
+    float localDx = dFdx(value);
+    if (gl_LocalInvocationIndex == 0u)
+        outData.dx = localDx;
+
+    barrier();
+    EmitMeshTasksEXT(1u, 1u, 1u);
+}

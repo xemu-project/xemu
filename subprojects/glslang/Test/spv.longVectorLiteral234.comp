@@ -1,0 +1,20 @@
+#version 450 core
+#extension GL_EXT_long_vector : enable
+
+layout (local_size_x = 1) in;
+
+// Long vectors with literal 2, 3, 4 components must not require LongVectorEXT capability.
+void main()
+{
+    vector<float, 2> v2 = vector<float, 2>(1.0, 2.0);
+    vector<float, 3> v3 = vector<float, 3>(1.0, 2.0, 3.0);
+    vector<float, 4> v4 = vector<float, 4>(1.0, 2.0, 3.0, 4.0);
+
+    v2 += v2;
+    v3 = v3 * 2.0;
+    v4 = v4 + vector<float, 4>(0.0);
+
+    int n2 = v2.length();
+    int n3 = v3.length();
+    int n4 = v4.length();
+}

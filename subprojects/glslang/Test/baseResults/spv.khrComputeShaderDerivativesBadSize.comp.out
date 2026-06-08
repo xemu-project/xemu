@@ -1,0 +1,6 @@
+spv.khrComputeShaderDerivativesBadSize.comp
+ERROR: 0:5: 'derivative_group_quads' : requires local_size_x and local_size_y to be multiple of two 
+ERROR: 1 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

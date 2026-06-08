@@ -1,0 +1,8 @@
+spv.longVectorBadParams.constructors.as.type.comp
+ERROR: 0:11: 'void' : invalid element type for vector 
+ERROR: 0:11: 'void' : invalid element type for vector 
+ERROR: 0:11: '' :  syntax error, unexpected IDENTIFIER, expecting COMMA or SEMICOLON
+ERROR: 3 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

@@ -1,0 +1,62 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Output {
+    uint value;
+} outputBuffer;
+
+
+uint abortOne()
+{
+    outputBuffer.value = 1;
+    abortEXT("abortOne:%d", outputBuffer.value);
+    return outputBuffer.value;
+}
+
+void abortTwo()
+{
+    outputBuffer.value = 2;
+    if (gl_GlobalInvocationID.x == 1)
+    {
+        abortEXT("abortTwo");
+        outputBuffer.value = 3;
+    }
+    return;
+}
+
+void abortThree()
+{
+    abortEXT();
+    outputBuffer.value = 4;
+    return;
+}
+
+void abortFour()
+{
+    for (int i=0; i < 3; i++)
+        abortEXT("Iteration exceeded limit: in invocation %i %u", i, gl_GlobalInvocationID.x);
+    return;
+}
+
+void abortFive()
+{
+    abortEXT("", outputBuffer.value);
+    return;
+}
+
+void main() {
+    outputBuffer.value = 0;
+
+    abortEXT();
+
+    abortOne();
+    abortTwo();
+    abortThree();
+    abortFour();
+    abortFive();
+
+    abortEXT();
+}

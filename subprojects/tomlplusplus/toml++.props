@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+	<PropertyGroup>
+		<BuildInfoJobStartTicks>$([System.DateTime]::Now.Ticks)</BuildInfoJobStartTicks>
+	</PropertyGroup>
+
+	<!-- :: repo paths -->
+	<PropertyGroup>
+		<TomlRepoRoot>$(MSBuildThisFileDirectory)</TomlRepoRoot>
+	</PropertyGroup>
+	<Choose>
+		<When Condition="'$(SolutionName)'=='toml++'">
+			<PropertyGroup>
+				<TomlOutRoot>$(TomlRepoRoot)</TomlOutRoot>
+			</PropertyGroup>
+		</When>
+		<Otherwise>
+			<PropertyGroup>
+				<TomlOutRoot>$(ProjectDir)</TomlOutRoot>
+			</PropertyGroup>
+		</Otherwise>
+	</Choose>
+
+	<!-- :: TomlStripSymbols -->
+	<PropertyGroup>
+		<TomlStripSymbols_ Condition="'$(TomlStripSymbols.Trim())'!=''">$([System.Convert]::ToBoolean($(TomlStripSymbols.Trim().ToLower())))</TomlStripSymbols_>
+		<TomlStripSymbols_ Condition="'$(TomlStripSymbols.Trim())'==''">False</TomlStripSymbols_>
+	</PropertyGroup>
+
+	<!-- :: TomlDeleteIntDir -->
+	<PropertyGroup>
+		<TomlDeleteIntDir_ Condition="'$(TomlDeleteIntDir.Trim())'!=''">$([System.Convert]::ToBoolean($(TomlDeleteIntDir.Trim().ToLower())))</TomlDeleteIntDir_>
+		<TomlDeleteIntDir_ Condition="'$(TomlDeleteIntDir.Trim())'==''">False</TomlDeleteIntDir_>
+	</PropertyGroup>
+
+	<!-- :: TomlOptimizedDebug -->
+	<PropertyGroup>
+		<TomlOptimizedDebug_ Condition="'$(TomlOptimizedDebug.Trim())'!=''">$([System.Convert]::ToBoolean($(TomlOptimizedDebug.Trim().ToLower())))</TomlOptimizedDebug_>
+		<TomlOptimizedDebug_ Condition="'$(TomlOptimizedDebug.Trim())'==''">False</TomlOptimizedDebug_>
+		<TomlOptimizedDebug_ Condition="!$(Configuration.ToLower().Contains('debug'))">False</TomlOptimizedDebug_>
+	</PropertyGroup>
+
+	<!-- :: TomlInstructionSet -->
+	<PropertyGroup>
+		<TomlInstructionSet_ Condition="'$(TomlInstructionSet.Trim().ToLower())'=='sse2'">StreamingSIMDExtensions2</TomlInstructionSet_>
+		<TomlInstructionSet_ Condition="'$(TomlInstructionSet.Trim().ToLower())'=='sse'">StreamingSIMDExtensions</TomlInstructionSet_>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(PlatformArchitecture)'=='64'">
+		<TomlInstructionSet_ Condition="'$(TomlInstructionSet.Trim().ToLower())'=='avx512'">AdvancedVectorExtensions512</TomlInstructionSet_>
+		<TomlInstructionSet_ Condition="'$(TomlInstructionSet.Trim().ToLower())'=='avx2'">AdvancedVectorExtensions2</TomlInstructionSet_>
+		<TomlInstructionSet_ Condition="'$(TomlInstructionSet.Trim().ToLower())'=='avx'">AdvancedVectorExtensions</TomlInstructionSet_>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(TomlInstructionSet_)'==''">
+		<TomlInstructionSet_ Condition="'$(PlatformArchitecture)'=='64'">AdvancedVectorExtensions</TomlInstructionSet_>
+		<TomlInstructionSet_ Condition="'$(PlatformArchitecture)'=='32'">StreamingSIMDExtensions2</TomlInstructionSet_>
+	</PropertyGroup>
+
+	<!-- :: project paths -->
+	<PropertyGroup>
+		<OutDir>$(TomlOutRoot)bin\win$(PlatformArchitecture)_vc$(PlatformToolsetVersion)_$(Configuration)_$(ConfigurationType)\</OutDir>
+		<IntDir>$(TomlOutRoot)build\$(ProjectName)_win$(PlatformArchitecture)_vc$(PlatformToolsetVersion)_$(Configuration)\</IntDir>
+		<IncludePath>$(TomlRepoRoot)include;$(IncludePath)</IncludePath>
+	</PropertyGroup>
+
+	<!-- :: base compiler settings -->
+	<ItemDefinitionGroup>
+		<ClCompile>
+			<SmallerTypeCheck>false</SmallerTypeCheck>
+			<BasicRuntimeChecks>Default</BasicRuntimeChecks>
+			<BufferSecurityCheck>false</BufferSecurityCheck>
+			<ControlFlowGuard>false</ControlFlowGuard>
+			<FloatingPointExceptions>false</FloatingPointExceptions> <!-- /fp:except- -->
+			<ExceptionHandling>Sync</ExceptionHandling> <!-- /EHsc -->
+			<ConformanceMode>true</ConformanceMode> <!-- /permissive- -->
+			<StringPooling>true</StringPooling> <!-- /GF -->
+			<OpenMPSupport>false</OpenMPSupport> <!-- /openmp- -->
+			<DebugInformationFormat>ProgramDatabase</DebugInformationFormat> <!-- /Zi -->
+			<!--<SDLCheck>false</SDLCheck> --> <!-- /sdl- -->
+			<SupportJustMyCode>false</SupportJustMyCode> <!-- /jmc- -->
+			<IntrinsicFunctions>true</IntrinsicFunctions>
+			<FunctionLevelLinking>true</FunctionLevelLinking>
+			<TreatWarningAsError>true</TreatWarningAsError>
+			<WarningLevel>Level4</WarningLevel>
+			<LanguageStandard>stdcpplatest</LanguageStandard>
+			<DiagnosticsFormat>Caret</DiagnosticsFormat>
+			<ProgramDataBaseFileName>$(OutDir)$(TargetName).pdb</ProgramDataBaseFileName>
+			<EnableEnhancedInstructionSet>$(TomlInstructionSet_)</EnableEnhancedInstructionSet>
+			<!-- conformance flags -->
+			<AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
+			<AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
+			<AdditionalOptions>%(AdditionalOptions) /volatile:iso</AdditionalOptions>
+			<AdditionalOptions>%(AdditionalOptions) /Zc:__cplusplus</AdditionalOptions>
+			<AdditionalOptions>%(AdditionalOptions) /Zc:inline</AdditionalOptions>
+			<AdditionalOptions>%(AdditionalOptions) /Zc:throwingNew</AdditionalOptions>
+			<!-- defines -->
+			<PreprocessorDefinitions>%(PreprocessorDefinitions);_WINSOCK_DEPRECATED_NO_WARNINGS</PreprocessorDefinitions>
+			<PreprocessorDefinitions>%(PreprocessorDefinitions);_SCL_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+			<PreprocessorDefinitions>%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+			<PreprocessorDefinitions>%(PreprocessorDefinitions);_MSC_TOOLSET_VER=$(PlatformToolsetVersion)</PreprocessorDefinitions>
+			<PreprocessorDefinitions>%(PreprocessorDefinitions);_ITERATOR_DEBUG_LEVEL=0</PreprocessorDefinitions>
+			<PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+			<!-- modules -->
+			<EnableModules>false</EnableModules>
+			<BuildStlModules>false</BuildStlModules>
+		</ClCompile>
+		<Link>
+			<TreatLinkerWarningAsErrors>true</TreatLinkerWarningAsErrors>
+			<GenerateDebugInformation>DebugFull</GenerateDebugInformation>
+			<LargeAddressAware>true</LargeAddressAware>
+			<SubSystem>Console</SubSystem>
+		</Link>
+	</ItemDefinitionGroup>
+
+	<!-- :: debug -->
+	<ItemDefinitionGroup Condition="$(Configuration.ToLower().Contains('debug')) And '$(TomlOptimizedDebug_)'=='False'">
+		<ClCompile>
+			<Optimization>Disabled</Optimization> <!-- /Od -->
+			<OmitFramePointers>false</OmitFramePointers> <!-- /Oy- -->
+			<AdditionalOptions>%(AdditionalOptions) /MP</AdditionalOptions>
+		</ClCompile>
+		<Link>
+			<OptimizeReferences>false</OptimizeReferences> <!-- /OPT:NOREF -->
+			<EnableCOMDATFolding>false</EnableCOMDATFolding> <!-- /OPT:NOICF -->
+			<LinkIncremental>true</LinkIncremental>
+		</Link>
+	</ItemDefinitionGroup>
+	<PropertyGroup Condition="'$(TomlOptimizedDebug_)'=='True'">
+		<LinkIncremental>false</LinkIncremental>
+	</PropertyGroup>
+
+	<!-- :: release or optimized debug -->
+	<ItemDefinitionGroup Condition="!$(Configuration.ToLower().Contains('debug')) Or '$(TomlOptimizedDebug_)'=='True'">
+		<ClCompile>
+			<Optimization>MaxSpeed</Optimization> <!-- /O2 -->
+			<OmitFramePointers>true</OmitFramePointers> <!-- /Oy -->
+			<InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion> <!-- /Ob2 -->
+			<AdditionalOptions Condition="$([System.Environment]::ProcessorCount) &gt; 8">
+				%(AdditionalOptions)
+				/MP2
+				/cgthreads8
+			</AdditionalOptions>
+			<AdditionalOptions Condition="$([System.Environment]::ProcessorCount) &lt;= 8">
+				%(AdditionalOptions)
+				/MP1
+				/cgthreads$([System.Math]::Min($([System.Environment]::ProcessorCount),8))
+			</AdditionalOptions>
+		</ClCompile>
+		<Link>
+			<EnableCOMDATFolding>true</EnableCOMDATFolding>
+			<OptimizeReferences>true</OptimizeReferences>
+			<AdditionalOptions>%(AdditionalOptions) /INCREMENTAL:NO</AdditionalOptions>
+		</Link>
+	</ItemDefinitionGroup>
+
+	<!-- :: release -->
+	<ItemDefinitionGroup Condition="!$(Configuration.ToLower().Contains('debug'))">
+		<ClCompile>
+			<PreprocessorDefinitions>%(PreprocessorDefinitions);NDEBUG=1</PreprocessorDefinitions>
+		</ClCompile>
+		<Link>
+			<LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+		</Link>
+	</ItemDefinitionGroup>
+	
+	<!-- :: strip debug symbols -->
+	<ItemDefinitionGroup Condition="'$(TomlStripSymbols_)'=='True'">
+		<ClCompile>
+			<DebugInformationFormat>None</DebugInformationFormat>
+		</ClCompile>
+		<Link>
+			<GenerateDebugInformation>false</GenerateDebugInformation>
+		</Link>
+	</ItemDefinitionGroup>
+
+	<!-- dump bits of MSBuild info -->
+	<Target Name="TomlPrintBuildProperties" BeforeTargets="PrepareForBuild">
+		<Message Importance="high" Text="[toml++] Platform: $(Platform)" />
+		<Message Importance="high" Text="[toml++] PlatformArchitecture: $(PlatformArchitecture)" />
+		<Message Importance="high" Text="[toml++] PlatformToolsetVersion: $(PlatformToolsetVersion)" />
+		<Message Importance="high" Text="[toml++] Configuration: $(Configuration)" />
+		<Message Importance="high" Text="[toml++] SolutionDir: $(SolutionDir)" />
+		<Message Importance="high" Text="[toml++] ProjectDir: $(ProjectDir)" />
+		<Message Importance="high" Text="[toml++] MSBuildThisFileDirectory: $(MSBuildThisFileDirectory)" />
+		<Message Importance="high" Text="[toml++] TomlInstructionSet: $(TomlInstructionSet_)" />
+		<Message Importance="high" Text="[toml++] TomlStripSymbols: $(TomlStripSymbols_)" />
+		<Message Importance="high" Text="[toml++] TomlOptimizedDebug: $(TomlOptimizedDebug_)" />
+		<Message Importance="high" Text="[toml++] TomlDeleteIntDir: $(TomlDeleteIntDir_)" />
+	</Target>
+
+	<!-- Report how long each build took -->
+	<Target Name="TomlReportBuildDuration" AfterTargets="Build">
+		<Message
+			Importance="high"
+			Text="===== $(ProjectName) ($(Configuration) $(Platform)) built in $([System.TimeSpan]::FromTicks($([System.DateTime]::Now.Ticks))
+				.Subtract($([System.TimeSpan]::FromTicks($(BuildInfoJobStartTicks))))
+				.ToString()
+			). ====="
+		/>
+	</Target>
+
+	<!-- Delete IntDir -->
+	<Target Name="TomlDeleteIntDir" AfterTargets="TomlReportBuildDuration" Condition="'$(TomlDeleteIntDir_)'=='True' And Exists('$(IntDir)')">
+		<RemoveDir Directories="$(IntDir)" />
+	</Target>
+	
+</Project>

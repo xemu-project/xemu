@@ -1,0 +1,10 @@
+spv.nv.explicittypecast.error.vert
+ERROR: 0:16: '' : type cast has to be either scalar, vector, matrix or buffer reference 
+ERROR: 0:16: 'assign' :  cannot convert from ' temp highp uint' to ' temp structure{ global highp uint dummy}'
+ERROR: 0:20: 'uvec2 conversion to reference' : required extension not requested: GL_EXT_buffer_reference_uvec2
+ERROR: 0:24: '=' :  cannot convert from ' temp unknown type' to ' temp highp int'
+ERROR: 0:24: '' :  syntax error, unexpected IDENTIFIER, expecting COMMA or SEMICOLON
+ERROR: 5 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

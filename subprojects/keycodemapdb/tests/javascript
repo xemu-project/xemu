@@ -1,0 +1,53 @@
+#!/usr/bin/env node
+/*
+ * Keycode Map Generator JavaScript Tests
+ *
+ * Copyright 2017 Pierre Ossman for Cendio AB
+ *
+ * This file is dual license under the terms of the GPLv2 or later
+ * and 3-clause BSD licenses.
+ */
+
+"use strict";
+
+var assert = require('assert');
+var babel = require('babel-core');
+var fs = require('fs');
+
+function include(fn) {
+  var options = {
+    plugins: ["transform-es2015-modules-commonjs"]
+  };
+
+  var code = babel.transformFileSync(fn, options).code;
+  fs.writeFileSync("." + fn + "_nodejs.js", code);
+  var imp = require("./." + fn + "_nodejs.js");
+  fs.unlinkSync("./." + fn + "_nodejs.js");
+
+  return imp
+}
+
+var code_map_osx_to_win32 = include("osx2win32.js").default;
+var name_map_osx_to_win32 = include("osx2win32_name.js").default;
+
+var code_map_osx_to_xkb = include("osx2xkb.js").default;
+var name_map_osx_to_xkb = include("osx2xkb_name.js").default;
+
+var code_map_html_to_win32 = include("html2win32.js").default;
+var name_map_html_to_win32 = include("html2win32_name.js").default;
+
+var code_table_osx = include("osx.js").default;
+var name_table_osx = include("osx_name.js").default;
+
+assert.equal(code_map_osx_to_win32[0x1d], 0x30);
+assert.equal(name_map_osx_to_win32[0x1d], "VK_0");
+
+assert.equal(code_map_osx_to_xkb[0x1d], "AE10");
+assert.equal(name_map_osx_to_xkb[0x1d], "AE10");
+
+assert.equal(code_map_html_to_win32["ControlLeft"], 0x11);
+assert.equal(name_map_html_to_win32["ControlLeft"], "VK_CONTROL");
+
+assert.equal(code_table_osx[0x1d], 0x3b);
+assert.equal(name_table_osx[0x1d], "Control");
+
