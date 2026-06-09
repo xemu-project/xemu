@@ -85,6 +85,7 @@ if have_block
     'test-authz-list': [authz],
     'test-authz-listfile': [authz],
     'test-io-task': [testblock],
+    'test-nbd-client': [testblock],
     'test-io-channel-socket': ['socket-helpers.c', 'io-channel-helpers.c', io],
     'test-io-channel-file': ['io-channel-helpers.c', io],
     'test-io-channel-command': ['io-channel-helpers.c', io],

@@ -681,11 +681,17 @@ static int nbd_send_meta_query(QIOChannel *ioc, uint32_t opt,
     char *data;
     char *p;
 
-    assert(strnlen(export, NBD_MAX_STRING_SIZE + 1) <= NBD_MAX_STRING_SIZE);
+    if (strlen(export) > NBD_MAX_STRING_SIZE) {
+        error_setg(errp, "export name too long");
+        return -1;
+    }
     export_len = strlen(export);
     data_len = sizeof(export_len) + export_len + sizeof(queries);
     if (query) {
-        assert(strnlen(query, NBD_MAX_STRING_SIZE + 1) <= NBD_MAX_STRING_SIZE);
+        if (strlen(query) > NBD_MAX_STRING_SIZE) {
+            error_setg(errp, "meta context query too long");
+            return -1;
+        }
         query_len = strlen(query);
         data_len += sizeof(query_len) + query_len;
     } else {
@@ -1050,7 +1056,10 @@ int nbd_receive_negotiate(QIOChannel *ioc, QCryptoTLSCreds *tlscreds,
     bool zeroes;
     bool base_allocation = info->base_allocation;
 
-    assert(info->name && strlen(info->name) <= NBD_MAX_STRING_SIZE);
+    if (!info->name || strlen(info->name) > NBD_MAX_STRING_SIZE) {
+        error_setg(errp, "export name too long");
+        return -1;
+    }
     trace_nbd_receive_negotiate_name(info->name);
 
     result = nbd_start_negotiate(ioc, tlscreds, hostname, outioc,
