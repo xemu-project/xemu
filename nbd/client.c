@@ -352,10 +352,6 @@ static int nbd_opt_info_or_go(QIOChannel *ioc, uint32_t opt,
     info->flags = 0;
 
     assert(opt == NBD_OPT_GO || opt == NBD_OPT_INFO);
-    if (len > NBD_MAX_STRING_SIZE) {
-        error_setg(errp, "export name too long");
-        return -1;
-    }
     trace_nbd_opt_info_go_start(nbd_opt_lookup(opt), info->name);
     buf = g_malloc(4 + len + 2 + 2 * info->request_sizes + 1);
     stl_be_p(buf, len);
