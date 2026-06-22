@@ -266,6 +266,29 @@ void xemu_input_init(void)
         SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     }
 
+        SDL_hid_device_info *devs = SDL_hid_enumerate(0, 0);
+    {
+        SDL_hid_device_info *cur_dev = devs;
+
+        fprintf(stderr, "--- HID Enumeration Start ---\n");
+        while (cur_dev) {
+            fprintf(stderr,
+                    "VID: %04hx PID: %04hx | Path: %s | Mfr: %ls | Prod: %ls\n",
+                    cur_dev->vendor_id, cur_dev->product_id,
+                    cur_dev->path ? cur_dev->path : "N/A",
+                    cur_dev->manufacturer_string ?
+                        cur_dev->manufacturer_string :
+                        L"N/A",
+                    cur_dev->product_string ? cur_dev->product_string : L"N/A");
+            cur_dev = cur_dev->next;
+        }
+        fprintf(stderr, "--- HID Enumeration End ---\n");
+
+        if (devs) {
+            SDL_hid_free_enumeration(devs);
+        }
+    }
+
     if (!SDL_Init(SDL_INIT_GAMEPAD)) {
         fprintf(stderr, "Failed to initialize SDL gamepad subsystem: %s\n", SDL_GetError());
         exit(1);
