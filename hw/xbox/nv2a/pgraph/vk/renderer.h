@@ -41,7 +41,11 @@
 #include "constants.h"
 #include "glsl.h"
 
+#if defined(__APPLE__)
+#define HAVE_EXTERNAL_MEMORY 0
+#else
 #define HAVE_EXTERNAL_MEMORY 1
+#endif
 
 typedef struct QueueFamilyIndices {
     int queue_family;
@@ -286,6 +290,7 @@ typedef struct PGRAPHVkDisplayState {
     int width, height;
     int draw_time;
 
+#if HAVE_EXTERNAL_MEMORY
     // OpenGL Interop
 #ifdef WIN32
     HANDLE handle;
@@ -294,6 +299,7 @@ typedef struct PGRAPHVkDisplayState {
 #endif
     GLuint gl_memory_obj;
     GLuint gl_texture_id;
+#endif
 } PGRAPHVkDisplayState;
 
 typedef struct ComputePipelineKey {
