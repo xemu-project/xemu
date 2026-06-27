@@ -214,8 +214,6 @@ static void throttle(MCPXAPUState *d)
             d->next_frame_time_us += (queued_bytes > mid) - (queued_bytes < mid);
         }
     }
-
-    d->sleep_acc_us += qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_us;
 }
 
 static void se_frame(MCPXAPUState *d)
@@ -225,22 +223,21 @@ static void se_frame(MCPXAPUState *d)
     g_dbg.gp_realtime = d->gp.realtime;
     g_dbg.ep_realtime = d->ep.realtime;
 
-    int64_t now_ms = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
-    int64_t elapsed_ms = now_ms - d->frame_count_time_ms;
-    if (elapsed_ms >= 1000) {
+    int64_t start_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+    int64_t elapsed_us = start_us - d->frame_count_time_us;
+    if (elapsed_us >= 1000000) {
         /* A rudimentary calculation to determine approximately how taxed the APU
-         * thread is, by measuring how much time we spend waiting for buffer to drain
-         * versus working on building frames.
+         * thread is, by measuring how much time we spend building frames.
          * =1: thread is not sleeping and likely falling behind realtime
          * <1: thread is able to complete work on time
          */
-        g_dbg.utilization = 1.0 - d->sleep_acc_us / (elapsed_ms * 1000.0);
-        g_dbg.frames_processed = (int)(d->frame_count * 1000.0 / elapsed_ms + 0.5);
+        g_dbg.utilization = (double)d->frame_work_acc_us / (double)elapsed_us;
+        g_dbg.frames_processed = (int)(d->frame_count * 1000000.0 / elapsed_us + 0.5);
         throttle_publish_debug(d);
 
-        d->frame_count_time_ms = now_ms;
+        d->frame_count_time_us = start_us;
         d->frame_count = 0;
-        d->sleep_acc_us = 0;
+        d->frame_work_acc_us = 0;
     }
     d->frame_count++;
 
@@ -252,6 +249,7 @@ static void se_frame(MCPXAPUState *d)
     mcpx_apu_monitor_frame(d);
 
     d->ep_frame_div++;
+    d->frame_work_acc_us += qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_us;
 
     mcpx_debug_end_frame();
 }
@@ -326,10 +324,8 @@ static void mcpx_apu_reset_locked(MCPXAPUState *d)
     mcpx_apu_vp_reset(d);
 
     // FIXME: Reset DSP state
-    memset(d->gp.dsp->core.pram_opcache, 0,
-           sizeof(d->gp.dsp->core.pram_opcache));
-    memset(d->ep.dsp->core.pram_opcache, 0,
-           sizeof(d->ep.dsp->core.pram_opcache));
+    dsp_invalidate_opcache(d->gp.dsp);
+    dsp_invalidate_opcache(d->ep.dsp);
     d->set_irq = false;
 }
 
@@ -357,10 +353,22 @@ static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state)
         bql_unlock();
         qemu_mutex_lock(&d->lock);
         mcpx_apu_wait_for_idle(d);
+        if (d->gp.dsp) {
+            dsp_sync_to_vm(d->gp.dsp);
+        }
+        if (d->ep.dsp) {
+            dsp_sync_to_vm(d->ep.dsp);
+        }
         qemu_mutex_unlock(&d->lock);
         bql_lock();
     } else {
         qemu_mutex_lock(&d->lock);
+        if (d->gp.dsp) {
+            dsp_sync_from_vm(d->gp.dsp);
+        }
+        if (d->ep.dsp) {
+            dsp_sync_from_vm(d->ep.dsp);
+        }
         mcpx_apu_resume(d);
         qemu_mutex_unlock(&d->lock);
     }
@@ -440,6 +448,23 @@ static void mcpx_apu_exitfn(PCIDevice *dev)
     mcpx_apu_monitor_finalize(d);
 }
 
+static bool vp_dsp_dma_read_count_needed(void *opaque)
+{
+    DSPDMAState *s = opaque;
+    return s->dma_read_count != 0;
+}
+
+static const VMStateDescription vmstate_vp_dsp_dma_read_count = {
+    .name = "mcpx-apu/dsp-state/dma/dma_read_count",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = vp_dsp_dma_read_count_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(dma_read_count, DSPDMAState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 const VMStateDescription vmstate_vp_dsp_dma_state = {
     .name = "mcpx-apu/dsp-state/dma",
     .version_id = 1,
@@ -452,6 +477,10 @@ const VMStateDescription vmstate_vp_dsp_dma_state = {
         VMSTATE_BOOL(error, DSPDMAState),
         VMSTATE_BOOL(eol, DSPDMAState),
         VMSTATE_END_OF_LIST()
+    },
+    .subsections = (const VMStateDescription * const []) {
+        &vmstate_vp_dsp_dma_read_count,
+        NULL
     }
 };
 
@@ -460,37 +489,33 @@ const VMStateDescription vmstate_vp_dsp_core_state = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields      = (VMStateField[]) {
-        // FIXME: Remove unnecessary fields
-        VMSTATE_UINT16(instr_cycle, dsp_core_t),
-        VMSTATE_UINT32(pc, dsp_core_t),
-        VMSTATE_UINT32_ARRAY(registers, dsp_core_t, DSP_REG_MAX),
-        VMSTATE_UINT32_2DARRAY(stack, dsp_core_t, 2, 16),
-        VMSTATE_UINT32_ARRAY(xram, dsp_core_t, DSP_XRAM_SIZE),
-        VMSTATE_UINT32_ARRAY(yram, dsp_core_t, DSP_YRAM_SIZE),
-        VMSTATE_UINT32_ARRAY(pram, dsp_core_t, DSP_PRAM_SIZE),
-        VMSTATE_UINT32_ARRAY(mixbuffer, dsp_core_t, DSP_MIXBUFFER_SIZE),
-        VMSTATE_UINT32_ARRAY(periph, dsp_core_t, DSP_PERIPH_SIZE),
-        VMSTATE_UINT32(loop_rep, dsp_core_t),
-        VMSTATE_UINT32(pc_on_rep, dsp_core_t),
-        VMSTATE_UINT16(interrupt_state, dsp_core_t),
-        VMSTATE_UINT16(interrupt_instr_fetch, dsp_core_t),
-        VMSTATE_UINT16(interrupt_save_pc, dsp_core_t),
-        VMSTATE_UINT16(interrupt_counter, dsp_core_t),
-        VMSTATE_UINT16(interrupt_ipl_to_raise, dsp_core_t),
-        VMSTATE_UINT16(interrupt_pipeline_count, dsp_core_t),
-        VMSTATE_INT16_ARRAY(interrupt_ipl, dsp_core_t, 12),
-        VMSTATE_UINT16_ARRAY(interrupt_is_pending, dsp_core_t, 12),
-        VMSTATE_UINT32(num_inst, dsp_core_t),
-        VMSTATE_UINT32(cur_inst_len, dsp_core_t),
-        VMSTATE_UINT32(cur_inst, dsp_core_t),
-        VMSTATE_UNUSED(1),
-        VMSTATE_UINT32(disasm_memory_ptr, dsp_core_t),
-        VMSTATE_BOOL(exception_debugging, dsp_core_t),
-        VMSTATE_UINT32(disasm_prev_inst_pc, dsp_core_t),
-        VMSTATE_BOOL(disasm_is_looping, dsp_core_t),
-        VMSTATE_UINT32(disasm_cur_inst, dsp_core_t),
-        VMSTATE_UINT16(disasm_cur_inst_len, dsp_core_t),
-        VMSTATE_UINT32_ARRAY(disasm_registers_save, dsp_core_t, 64),
+        VMSTATE_UINT16(instr_cycle, DspCoreState),
+        VMSTATE_UINT32(pc, DspCoreState),
+        VMSTATE_UINT32_ARRAY(registers, DspCoreState, DSP_REG_MAX),
+        VMSTATE_UINT32_2DARRAY(stack, DspCoreState, 2, 16),
+        VMSTATE_UINT32_ARRAY(xram, DspCoreState, DSP_XRAM_SIZE),
+        VMSTATE_UINT32_ARRAY(yram, DspCoreState, DSP_YRAM_SIZE),
+        VMSTATE_UINT32_ARRAY(pram, DspCoreState, DSP_PRAM_SIZE),
+        VMSTATE_UINT32_ARRAY(mixbuffer, DspCoreState, DSP_MIXBUFFER_SIZE),
+        VMSTATE_UINT32_ARRAY(periph, DspCoreState, DSP_PERIPH_SIZE),
+        VMSTATE_UINT32(loop_rep, DspCoreState),
+        VMSTATE_UINT32(pc_on_rep, DspCoreState),
+        VMSTATE_UINT16(interrupt_state, DspCoreState),
+        VMSTATE_UINT16(interrupt_instr_fetch, DspCoreState),
+        VMSTATE_UINT16(interrupt_save_pc, DspCoreState),
+        VMSTATE_UINT16(interrupt_counter, DspCoreState),
+        VMSTATE_UINT16(interrupt_ipl_to_raise, DspCoreState),
+        VMSTATE_UINT16(interrupt_pipeline_count, DspCoreState),
+        VMSTATE_INT16_ARRAY(interrupt_ipl, DspCoreState, 12),
+        VMSTATE_UINT16_ARRAY(interrupt_is_pending, DspCoreState, 12),
+        VMSTATE_UNUSED(4),   /* was num_inst */
+        VMSTATE_UINT32(cur_inst_len, DspCoreState),
+        VMSTATE_UINT32(cur_inst, DspCoreState),
+        VMSTATE_UNUSED(273), /* was: unused(1) + disasm_memory_ptr(4) +
+                              * exception_debugging(1) + disasm_prev_inst_pc(4) +
+                              * disasm_is_looping(1) + disasm_cur_inst(4) +
+                              * disasm_cur_inst_len(2) +
+                              * disasm_registers_save(256) */
         VMSTATE_END_OF_LIST()
     }
 };
@@ -500,7 +525,7 @@ const VMStateDescription vmstate_vp_dsp_state = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_STRUCT(core, DSPState, 1, vmstate_vp_dsp_core_state, dsp_core_t),
+        VMSTATE_STRUCT(core, DSPState, 1, vmstate_vp_dsp_core_state, DspCoreState),
         VMSTATE_STRUCT(dma, DSPState, 1, vmstate_vp_dsp_dma_state, DSPDMAState),
         VMSTATE_INT32(save_cycles, DSPState),
         VMSTATE_UINT32(interrupts, DSPState),
