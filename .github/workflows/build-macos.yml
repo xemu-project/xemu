@@ -66,6 +66,7 @@ jobs:
             -Db_lto_mode=thin
             -Db_thinlto_cache=true
             -Db_thinlto_cache_dir="$LTO_CACHE_DIR"
+            -Dx86_version=3
           )
           mkdir -p ${LTO_CACHE_DIR}
         fi

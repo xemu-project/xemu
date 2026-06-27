@@ -160,7 +160,7 @@ void ShowMainMenu()
                 ui_scale_idx = 0;
             } else {
                 ui_scale_idx = g_config.display.ui.scale;
-                if (ui_scale_idx < 0) ui_scale_idx = 0;
+                if (ui_scale_idx < 1) ui_scale_idx = 1;
                 else if (ui_scale_idx > 2) ui_scale_idx = 2;
             }
             if (ImGui::Combo("UI Scale", &ui_scale_idx,

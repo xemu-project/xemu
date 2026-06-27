@@ -37,7 +37,7 @@ jobs:
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     steps:
     - name: Clone tree
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
       with:
         fetch-depth: 0
         ref: ${{ inputs.ref }}
@@ -57,7 +57,7 @@ jobs:
         cp xemu-${{ needs.build.outputs.pkg_version }}-windows-x86_64.zip xemu-win-x86_64-release.zip
         cp xemu-${{ needs.build.outputs.pkg_version }}-windows-arm64.zip xemu-win-aarch64-release.zip
     - name: Create release
-      uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+      uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
       with:
         name: ${{ inputs.pre-release && 'Latest Development Build' || inputs.tag }}
         tag_name: ${{ inputs.tag }}

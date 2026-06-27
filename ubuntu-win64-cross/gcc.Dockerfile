@@ -6,9 +6,9 @@ FROM ubuntu:24.04
 
 ENV MXE_PATH=/usr/local/mxe
 ENV MXE_REPO=https://github.com/mxe/mxe.git
-ENV MXE_VERSION=9c716d7337fcec2b95eef7ed8f5970b4b8e97f68
+ENV MXE_VERSION=d9441093aa48e376aa6e49bcc7118ccc2b683a1e
 
-ARG PLUGIN_DIRS="plugins/gcc15"
+ARG PLUGIN_DIRS="plugins/gcc16"
 ARG TARGETS="x86_64-w64-mingw32.static"
 ARG JOBS=6
 
