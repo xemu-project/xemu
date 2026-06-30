@@ -38,6 +38,16 @@ package_macos() {
         -p "@executable_path/${lib_rpath}/" \
         -s ${PWD}/macos-libs/${target_arch}/opt/local/lib/
 
+    # The binary is linked with two rpaths into macos-libs; dylibbundler rewrites
+    # both to the same bundled path, producing a duplicate LC_RPATH that recent
+    # dyld rejects ("duplicate LC_RPATH"). Collapse them down to a single entry.
+    rpath="@executable_path/${lib_rpath}/"
+    while [ "$(otool -l "$exe_path" \
+                | awk '/cmd LC_RPATH/{f=1} f&&/ path /{print $2; f=0}' \
+                | grep -cF "$rpath")" -gt 1 ]; do
+      install_name_tool -delete_rpath "$rpath" "$exe_path"
+    done
+
     # Fixup some paths dylibbundler missed
     for dep in $(otool -L "$exe_path" | grep -e '/opt/local/' | cut -d' ' -f1); do
       dep_basename="$(basename $dep)"

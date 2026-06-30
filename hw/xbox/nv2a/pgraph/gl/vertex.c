@@ -81,6 +81,14 @@ void pgraph_gl_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
 
     pg->compressed_attrs = 0;
 
+    /* All inline attributes share gl_inline_array_buffer, so bind it once here
+     * instead of redundantly re-binding the same buffer for every attribute
+     * inside the loop below. (The non-inline path binds gl_memory_buffer via
+     * update_memory_buffer() per attribute.) */
+    if (inline_data) {
+        glBindBuffer(GL_ARRAY_BUFFER, r->gl_inline_array_buffer);
+    }
+
     for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
         VertexAttribute *attr = &pg->vertex_attributes[i];
 
@@ -143,7 +151,7 @@ void pgraph_gl_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
 
         hwaddr start = 0;
         if (inline_data) {
-            glBindBuffer(GL_ARRAY_BUFFER, r->gl_inline_array_buffer);
+            /* gl_inline_array_buffer already bound once before the loop */
             attrib_data_addr = attr->inline_array_offset;
             stride = inline_stride;
         } else {
@@ -224,8 +232,10 @@ unsigned int pgraph_gl_bind_inline_array(NV2AState *d)
     nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_2);
     glBindBuffer(GL_ARRAY_BUFFER, r->gl_inline_array_buffer);
     GLsizeiptr buffer_size = index_count * vertex_size;
-    glBufferData(GL_ARRAY_BUFFER, buffer_size, NULL, GL_STREAM_DRAW);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, buffer_size, pg->inline_array);
+    /* glBufferData with data both orphans (reallocates storage, preserving the
+     * GL_STREAM_DRAW non-stalling behavior) and uploads in a single call,
+     * saving a glBufferSubData per inline-array draw. */
+    glBufferData(GL_ARRAY_BUFFER, buffer_size, pg->inline_array, GL_STREAM_DRAW);
     pgraph_gl_bind_vertex_attributes(d, 0, index_count-1, true, vertex_size,
                                   index_count-1);
 
