@@ -2391,6 +2391,10 @@ if host_os == 'windows'
   vulkan = declare_dependency(compile_args: ['-DVK_USE_PLATFORM_WIN32_KHR'])
 elif host_os == 'linux'
   vulkan = dependency('vulkan')
+elif host_os == 'darwin'
+  # Vulkan via MoltenVK (Metal). The Vulkan SDK provides vulkan.pc; build.sh
+  # exports VULKAN_SDK and adds its pkgconfig dir to PKG_CONFIG_PATH.
+  vulkan = dependency('vulkan', required: false)
 endif
 
 if vulkan.found()

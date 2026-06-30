@@ -32,12 +32,19 @@ static char const *const validation_layers[] = {
 };
 
 static char const *const required_device_extensions[] = {
+#if HAVE_EXTERNAL_MEMORY
 #ifdef WIN32
     VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,
     VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,
 #else
     VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
     VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,
+#endif
+#else
+    /* No external-memory interop (macOS/MoltenVK). MoltenVK always exposes (and
+     * the spec requires enabling) VK_KHR_portability_subset; requiring it here
+     * both satisfies that rule and keeps this array non-empty. */
+    "VK_KHR_portability_subset",
 #endif
 };
 
@@ -142,6 +149,13 @@ add_optional_instance_extension_names(PGRAPHState *pg,
         g_config.display.vulkan.validation_layers &&
         add_extension_if_available(available_extensions, enabled_extension_names,
                                    VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
+#if !HAVE_EXTERNAL_MEMORY
+    /* Portability drivers (MoltenVK) are only enumerated when this instance
+     * extension is enabled and the matching create flag is set. */
+    add_extension_if_available(available_extensions, enabled_extension_names,
+                               VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+#endif
 }
 
 static bool create_instance(PGRAPHState *pg, Error **errp)
@@ -199,6 +213,9 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
         .enabledExtensionCount = enabled_extension_names->len,
         .ppEnabledExtensionNames =
             &g_array_index(enabled_extension_names, const char *, 0),
+#if !HAVE_EXTERNAL_MEMORY
+        .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
+#endif
     };
 
     enable_validation = g_config.display.vulkan.validation_layers;
@@ -489,7 +506,10 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
         }
         F(depthClamp, true),
         F(fillModeNonSolid, true),
-        F(geometryShader, true),
+        /* Metal/MoltenVK has no geometry shaders. On macOS we emulate the
+         * geometry-shader work (primitive expansion, z-perspective) without it,
+         * so it is optional there; required elsewhere. */
+        F(geometryShader, HAVE_EXTERNAL_MEMORY),
         F(occlusionQueryPrecise, true),
         F(samplerAnisotropy, false),
         F(shaderClipDistance, true),

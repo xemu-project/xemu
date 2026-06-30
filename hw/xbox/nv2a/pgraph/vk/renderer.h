@@ -41,7 +41,15 @@
 #include "constants.h"
 #include "glsl.h"
 
+/* Apple's OpenGL is frozen at 4.1 and lacks EXT_memory_object, so the
+ * GL<->Vulkan external-memory interop used to present cannot work on macOS.
+ * Instead the rendered display image is read back to the CPU and uploaded to a
+ * regular GL texture (see vk/display.c). */
+#if defined(__APPLE__)
+#define HAVE_EXTERNAL_MEMORY 0
+#else
 #define HAVE_EXTERNAL_MEMORY 1
+#endif
 
 typedef struct QueueFamilyIndices {
     int queue_family;
@@ -287,12 +295,22 @@ typedef struct PGRAPHVkDisplayState {
     int draw_time;
 
     // OpenGL Interop
+#if HAVE_EXTERNAL_MEMORY
 #ifdef WIN32
     HANDLE handle;
 #else
     int fd;
 #endif
     GLuint gl_memory_obj;
+#else
+    // CPU readback present (no external-memory interop, e.g. macOS): the display
+    // image is copied into this host-visible buffer, then uploaded to the GL
+    // texture for the normal GL present path.
+    VkBuffer readback_buffer;
+    VkDeviceMemory readback_memory;
+    VkDeviceSize readback_size;
+    void *readback_mapped;
+#endif
     GLuint gl_texture_id;
 } PGRAPHVkDisplayState;
 

@@ -239,6 +239,27 @@ case "$platform" in # Adjust compilation options based on platform
                         -isysroot ${sdk}"
         sys_ldflags='-headerpad_max_install_names'
         export PKG_CONFIG_LIBDIR="${lib_prefix}/lib/pkgconfig"
+
+        # Vulkan via MoltenVK: locate the installed Vulkan SDK and expose its
+        # pkgconfig (vulkan.pc) so meson's dependency('vulkan') resolves. The
+        # loader/MoltenVK are loaded at runtime (volk dlopen) and bundled by
+        # package_macos.
+        if [[ -z "${VULKAN_SDK}" ]]; then
+            vulkan_sdk_root="${HOME}/VulkanSDK"
+            if [[ -d "${vulkan_sdk_root}" ]]; then
+                newest_sdk="$(ls -d "${vulkan_sdk_root}"/*/macOS 2>/dev/null | sort -V | tail -1)"
+                if [[ -n "${newest_sdk}" ]]; then
+                    export VULKAN_SDK="${newest_sdk}"
+                fi
+            fi
+        fi
+        if [[ -n "${VULKAN_SDK}" && -d "${VULKAN_SDK}/lib/pkgconfig" ]]; then
+            echo "Using Vulkan SDK: ${VULKAN_SDK}"
+            export PKG_CONFIG_PATH="${VULKAN_SDK}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+        else
+            echo "Warning: Vulkan SDK not found; Vulkan renderer will be disabled"
+        fi
+
         opts="$opts --disable-cocoa --cross-prefix="
         postbuild='package_macos'
         ;;

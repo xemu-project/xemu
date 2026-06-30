@@ -552,6 +552,23 @@ static void destroy_current_display_image(PGRAPHState *pg)
     CloseHandle(d->handle);
     d->handle = 0;
 #endif
+#else
+    glDeleteTextures(1, &d->gl_texture_id);
+    d->gl_texture_id = 0;
+
+    if (d->readback_mapped) {
+        vkUnmapMemory(r->device, d->readback_memory);
+        d->readback_mapped = NULL;
+    }
+    if (d->readback_buffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(r->device, d->readback_buffer, NULL);
+        d->readback_buffer = VK_NULL_HANDLE;
+    }
+    if (d->readback_memory != VK_NULL_HANDLE) {
+        vkFreeMemory(r->device, d->readback_memory, NULL);
+        d->readback_memory = VK_NULL_HANDLE;
+    }
+    d->readback_size = 0;
 #endif
 
     vkDestroyImageView(r->device, d->image_view, NULL);
@@ -612,11 +629,16 @@ static void create_display_image(PGRAPHState *pg, int width, int height)
         .format = VK_FORMAT_R8G8B8A8_UNORM,
         .tiling = use_optimal_tiling ? VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_LINEAR,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+#if !HAVE_EXTERNAL_MEMORY
+                 | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+#endif
+                 ,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
+#if HAVE_EXTERNAL_MEMORY
     VkExternalMemoryImageCreateInfo external_memory_image_create_info = {
         .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
 #ifdef WIN32
@@ -626,6 +648,7 @@ static void create_display_image(PGRAPHState *pg, int width, int height)
 #endif
     };
     image_create_info.pNext = &external_memory_image_create_info;
+#endif
 
     VK_CHECK(vkCreateImage(r->device, &image_create_info, NULL, &d->image));
 
@@ -641,6 +664,7 @@ static void create_display_image(PGRAPHState *pg, int width, int height)
                                       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
     };
 
+#if HAVE_EXTERNAL_MEMORY
     VkExportMemoryAllocateInfo export_memory_alloc_info = {
         .sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
         .handleTypes =
@@ -652,6 +676,7 @@ static void create_display_image(PGRAPHState *pg, int width, int height)
             ,
     };
     alloc_info.pNext = &export_memory_alloc_info;
+#endif
 
     VK_CHECK(vkAllocateMemory(r->device, &alloc_info, NULL, &d->memory));
     VK_CHECK(vkBindImageMemory(r->device, d->image, d->memory, 0));
@@ -711,6 +736,50 @@ static void create_display_image(PGRAPHState *pg, int width, int height)
     glTexStorageMem2DEXT(GL_TEXTURE_2D, 1, gl_internal_format,
                          image_create_info.extent.width,
                          image_create_info.extent.height, d->gl_memory_obj, 0);
+    assert(glGetError() == GL_NO_ERROR);
+
+#else // !HAVE_EXTERNAL_MEMORY
+
+    // No GL<->Vulkan interop (macOS): allocate a host-visible buffer to read the
+    // rendered image back to the CPU, and a plain GL texture to present it.
+    d->readback_size = (VkDeviceSize)image_create_info.extent.width *
+                       image_create_info.extent.height * 4;
+
+    VkBufferCreateInfo readback_buffer_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = d->readback_size,
+        .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+    VK_CHECK(vkCreateBuffer(r->device, &readback_buffer_info, NULL,
+                            &d->readback_buffer));
+
+    VkMemoryRequirements readback_reqs;
+    vkGetBufferMemoryRequirements(r->device, d->readback_buffer, &readback_reqs);
+
+    VkMemoryAllocateInfo readback_alloc = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = readback_reqs.size,
+        .memoryTypeIndex = pgraph_vk_get_memory_type(
+            pg, readback_reqs.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
+    };
+    VK_CHECK(vkAllocateMemory(r->device, &readback_alloc, NULL,
+                              &d->readback_memory));
+    VK_CHECK(vkBindBufferMemory(r->device, d->readback_buffer,
+                                d->readback_memory, 0));
+    VK_CHECK(vkMapMemory(r->device, d->readback_memory, 0, d->readback_size, 0,
+                         &d->readback_mapped));
+
+    glGenTextures(1, &d->gl_texture_id);
+    glBindTexture(GL_TEXTURE_2D, d->gl_texture_id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, gl_internal_format,
+                 image_create_info.extent.width,
+                 image_create_info.extent.height, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 NULL);
     assert(glGetError() == GL_NO_ERROR);
 
 #endif // HAVE_EXTERNAL_MEMORY
@@ -989,6 +1058,7 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
                                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
+#if HAVE_EXTERNAL_MEMORY
     pgraph_vk_transition_image_layout(pg, cmd, disp->image,
                                       VK_FORMAT_R8G8B8_UNORM,
                                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -997,6 +1067,35 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     pgraph_vk_end_debug_marker(r, cmd);
     pgraph_vk_end_single_time_commands(pg, cmd);
     nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_5);
+#else
+    // Copy the rendered image into the host-visible readback buffer, then (after
+    // the queue idles in end_single_time_commands) upload it to the GL texture.
+    pgraph_vk_transition_image_layout(pg, cmd, disp->image,
+                                      VK_FORMAT_R8G8B8A8_UNORM,
+                                      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+    VkBufferImageCopy copy_region = {
+        .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .imageSubresource.layerCount = 1,
+        .imageExtent.width = disp->width,
+        .imageExtent.height = disp->height,
+        .imageExtent.depth = 1,
+    };
+    vkCmdCopyImageToBuffer(cmd, disp->image,
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           disp->readback_buffer, 1, &copy_region);
+
+    pgraph_vk_end_debug_marker(r, cmd);
+    pgraph_vk_end_single_time_commands(pg, cmd);
+    nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_5);
+
+    glBindTexture(GL_TEXTURE_2D, disp->gl_texture_id);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, disp->width, disp->height, GL_RGBA,
+                    GL_UNSIGNED_BYTE, disp->readback_mapped);
+    assert(glGetError() == GL_NO_ERROR);
+#endif
 
     disp->draw_time = surface->draw_time;
 }

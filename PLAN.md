@@ -85,15 +85,38 @@ Modest in absolute terms — the menu is pathologically draw-heavy (200-900
 immediate-mode draws/frame), so it's still single-digit FPS at peak. The win is
 real and free; bigger levers remain (below).
 
+### Optimization #2 attempted + REVERTED (no measurable gain)
+
+Cached the per-attribute enable/disable mask + generic `glVertexAttrib4fv`
+values in `PGRAPHGLState` and skipped redundant calls (routed `vertex.c` and the
+`draw.c` inline-buffer branch through helpers; correctness verified — only those
+files touch `gl_vertex_array`'s enable state / the context generic values).
+
+Measured (same linear-fit method, menu): **162 µs/draw → 157 µs/draw (~3%)**,
+within scene-to-scene noise; fixed overhead unchanged. Conclusion: the
+`glEnable/DisableVertexAttribArray` + `glVertexAttrib4fv` calls are **cheap** on
+Apple's GL — they are *not* where the per-draw time goes. Reverted to keep the
+tree minimal (no benefit ≠ worth the shadow-state complexity).
+
+**What this tells us:** the per-draw cost is dominated by the calls we *kept* —
+`glVertexAttribPointer` setup, `glBufferData`/`glBufferSubData` uploads, and the
+draw + Metal command encoding itself — not attribute enable state. The committed
+opt #1 (which removed redundant `glBindBuffer` + a redundant upload) was the real
+win precisely because it cut buffer-binding/upload work.
+
 ### Next levers (larger, in priority order)
-1. **Cache vertex-attribute state across draws** — `ATTR_BIND` runs ~1.5× per
-   draw call (redundant `glVertexAttribPointer`/`glEnableVertexAttribArray`).
-   Track enabled-mask + last pointers/format in `PGRAPHGLState` and skip
-   unchanged rebinds. Must route *all* attribute paths through the cache
-   (`vertex.c` + the inline-buffer branch in `draw.c`) to stay correct.
-2. **Reduce per-draw buffer re-specification** — inline buffer/array draws
-   re-`glBufferData` every draw; a persistent ring buffer would cut allocations.
+1. **Reduce per-draw buffer re-specification** — inline buffer/array draws
+   re-`glBufferData` every draw (orphan+realloc). A persistent/ring buffer with
+   `glBufferSubData` into sub-ranges (or `glMapBufferRange` with
+   `UNSYNCHRONIZED`) would cut per-draw allocations — the measured hot cost.
+2. **Reduce draw-call count** — the menu issues 200-900 immediate-mode draws/
+   frame; batching consecutive compatible inline draws is the structural fix but
+   is a larger change.
 3. **Vulkan/Metal** (see above) — the structural ceiling on Apple Silicon.
+
+These are no longer "minimal changes." Opt #1 (~20%, committed) is the
+reasonable stopping point for the minimal-change mandate; further gains require
+structural work or the Vulkan port.
 
 ## ⛔ Aside: direct-from-shell launch crashes (not how users run it)
 
@@ -125,7 +148,110 @@ Implications:
   the **native Vulkan/Metal path** (MoltenVK or KosmicKrisp + a real swapchain
   present), since Apple's OpenGL is both deprecated *and* now crashing.
 
-## ⚠️⚠️ Showstopper: the Vulkan backend can't present on macOS
+## ✅✅ BREAKTHROUGH: Vulkan/MoltenVK renderer WORKS on macOS
+
+Phase 0 of the port landed and runs. Status: **xemu renders Halo 2 on the
+Vulkan backend via MoltenVK (Metal) on Apple M5 — confirmed visually smooth by
+the user, "miles better than before."**
+
+What was done:
+- `meson.build`: darwin branch resolves `dependency('vulkan')` from the SDK.
+- `build.sh`: locates the installed Vulkan SDK, exports `VULKAN_SDK` and adds its
+  pkgconfig to `PKG_CONFIG_PATH`. (Bundling MoltenVK into the .app: TODO.)
+- `vk/renderer.h`: `HAVE_EXTERNAL_MEMORY = 0` on `__APPLE__` + readback buffer
+  fields in the display state.
+- `vk/instance.c`: portability-enumeration instance ext + create flag,
+  portability-subset device ext, external-memory device exts conditional,
+  `geometryShader` made optional on macOS.
+- `vk/renderer.c`: GL context (`g_gl_context`) created unconditionally (needed
+  for the present texture); `get_framebuffer_surface` uses the sync→render path
+  for both interop and readback.
+- `vk/display.c`: **CPU-readback present** — render to `disp->image`, copy to a
+  host-visible buffer, `glTexSubImage2D` into `gl_texture_id`, present via the
+  existing GL path. Avoids the GL/Vulkan external-memory interop Apple GL can't do.
+
+Surprise: **MoltenVK 1.4.350 accepts the geometry-shader pipeline stages** (it
+appears to emulate them) — no VK errors, pipelines create/bind, ~400 draws/frame
+render correctly. So the planned geometry-shader-free rewrite (Phases 1-2) may
+not be necessary; keep as fallback if specific scenes glitch.
+
+### Measured (Halo 2 menu, the previously-"skippy" scene)
+- OpenGL: collapsed to **3-5 fps** (85-220 ms/frame) at ~400 draws/frame.
+- Vulkan/MoltenVK: **~29-30 fps** (22-37 ms/frame) at the same ~400 draws/frame.
+- ≈ **6-10× improvement.** Runs without crashes or validation errors.
+
+### Remaining to ship
+- Bundle `libvulkan`/`libMoltenVK` + ICD json into `dist/xemu.app` and set the
+  loader env from the bundle at startup, so it runs without an installed SDK.
+- Default the macOS renderer to Vulkan.
+- Gameplay validation (in progress) — watch for scenes where MoltenVK's
+  geom-shader emulation might differ; if found, do Phases 1-2.
+
+## (historical) Was a FUNDAMENTAL BLOCKER: Metal has no geometry shaders
+
+Investigated the full Vulkan/MoltenVK path (SDK 1.4.350 installed, instance/
+device compat drafted). It is blocked by a hardware/API-level limitation, not a
+wiring gap:
+
+- xemu's Vulkan renderer marks **`geometryShader` as a *required* device
+  feature** (`vk/instance.c` `desired_features`). If absent, device creation
+  aborts and the renderer can't initialize.
+- `pgraph_glsl_need_geom()` (`glsl/geom.c`) returns **true for TRIANGLES,
+  TRIANGLE_STRIP/FAN, QUADS, QUAD_STRIP, LINES/LOOP/STRIP, and POLYGON** — i.e.
+  every primitive except POINTS. The geometry shader performs essential work:
+  quad→triangle decomposition (`calc_quadz`), Z-perspective (`calc_triz`),
+  provoking-vertex/winding correction. Without it, virtually nothing renders
+  correctly.
+- **Metal has no geometry shader stage.** `vulkaninfo` on this M5 confirms
+  MoltenVK reports `geometryShader = false` (also `wideLines = false`).
+  KosmicKrisp is *also* a Vulkan-on-Metal driver, so it has the same limitation
+  (geometry shaders aren't something a Metal backend can expose; MoltenVK
+  emulates tessellation via compute but not geometry shaders).
+
+**Conclusion:** This is *why* xemu's `meson.build` only wires Vulkan for Windows
+and Linux — the renderer can't run on any Metal-based Vulkan driver as-is.
+"Move to Vulkan/Metal" is therefore **not a wiring task**; it requires
+re-architecting the primitive pipeline to eliminate geometry shaders (emulate
+quad/line/triangle expansion + Z-perspective via **compute pre-pass or
+CPU-side/vertex expansion**). That is a large graphics-engineering project
+(weeks), independent of (and larger than) the present-path issue below.
+
+Verification done up front (per "profile everything"): SDK installed, MoltenVK
+device features dumped, geometry-shader dependency traced through the renderer —
+so we know this *before* committing build cycles to a dead end.
+
+### CHOSEN PATH: geometry-shader-free Vulkan renderer (phased)
+
+Geometry shader does only: (1) primitive expansion, (2) Z-perspective slope
+(`calc_triz`/`calc_quadz` → `triMZ`, `vtxPos0/1/2`), (3) provoking-vertex/winding
+(`tri_rot`). MoltenVK lacks `VK_EXT_provoking_vertex` dynamic state, so winding/
+provoking is handled via CPU index ordering. Plan:
+
+- **Phase 0 — plumbing & device init (build milestone):** meson darwin vulkan
+  dep; `HAVE_EXTERNAL_MEMORY=0` on darwin; instance: portability-enumeration +
+  portability-subset, external-memory device exts conditional, `geometryShader`
+  made optional; CPU-readback present in `vk/display.c`; build.sh SDK env +
+  bundle MoltenVK. Goal: compiles, MoltenVK device initializes, presents.
+- **Phase 1 — CPU primitive expansion:** in `vk/draw.c`, expand QUADS/QUAD_STRIP
+  (→ triangle list), TRIANGLE_FAN/STRIP, LINE_* on the CPU; map topology to
+  non-adjacency; never attach a geometry stage (`need_geom`→false on darwin).
+  Goal: geometry renders (winding via index order).
+- **Phase 2 — Z-perspective in VSH:** replicate `calc_triz`/`calc_quadz` per-
+  vertex in the vertex shader, emit `triMZ`/`vtxPos0/1/2` as flat varyings so the
+  fragment shader matches the geom-shader output. Goal: correct depth.
+- **Phase 3 — polygon line/point modes, edge cases, perf tuning.**
+
+### Other options (not chosen)
+- **A. Big rewrite — geometry-shader-free Vulkan renderer.** Replace geom-shader
+  primitive emulation with compute/vertex expansion so the Vulkan renderer runs
+  on MoltenVK/KosmicKrisp. Highest ceiling, weeks of work, real risk.
+- **B. Stay on OpenGL, attack the real per-frame cost** — persistent/ring vertex
+  buffers + draw batching (targets the measured `glBufferData`/draw hot cost),
+  and/or the CPU/TCG + audio side that makes *boot* skippy. Tractable now.
+- **C. Profile boot first** to see if the first-startup skippiness is even
+  GPU-bound (could be CPU/TCG or audio), then pick A or B with data.
+
+## ⚠️⚠️ (Secondary) Even if geom shaders worked: the Vulkan backend can't present on macOS
 
 Deeper investigation (`hw/xbox/nv2a/pgraph/vk/display.c`) found that the Vulkan
 renderer does **not** present via a Vulkan swapchain. It renders the NV2A frame

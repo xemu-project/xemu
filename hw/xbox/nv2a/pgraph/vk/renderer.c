@@ -22,15 +22,14 @@
 
 #include "gloffscreen.h"
 
-#if HAVE_EXTERNAL_MEMORY
+/* A GL context is needed to present the rendered frame, both for the
+ * external-memory interop path and for the macOS CPU-readback path (which
+ * uploads the read-back image into a GL texture). */
 static GloContext *g_gl_context;
-#endif
 
 static void early_context_init(void)
 {
-#if HAVE_EXTERNAL_MEMORY
     g_gl_context = glo_context_create();
-#endif
 }
 
 static void pgraph_vk_init(NV2AState *d, Error **errp)
@@ -39,9 +38,7 @@ static void pgraph_vk_init(NV2AState *d, Error **errp)
 
     pg->vk_renderer_state = (PGRAPHVkState *)g_malloc0(sizeof(PGRAPHVkState));
 
-#if HAVE_EXTERNAL_MEMORY
     glo_set_current(g_gl_context);
-#endif
 
     pgraph_vk_debug_init();
 
@@ -190,18 +187,15 @@ static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
 
     surface->frame_time = pg->frame_time;
 
-#if HAVE_EXTERNAL_MEMORY
+    // Both the external-memory interop and the macOS CPU-readback paths render
+    // the display image (and, for readback, upload it into gl_texture_id) on the
+    // pfifo thread during this sync, then present that GL texture.
     qemu_event_reset(&d->pgraph.sync_complete);
     qatomic_set(&pg->sync_pending, true);
     pfifo_kick(d);
     qemu_mutex_unlock(&d->pfifo.lock);
     qemu_event_wait(&d->pgraph.sync_complete);
     return r->display.gl_texture_id;
-#else
-    qemu_mutex_unlock(&d->pfifo.lock);
-    pgraph_vk_wait_for_surface_download(surface);
-    return 0;
-#endif
 }
 
 static PGRAPHRenderer pgraph_vk_renderer = {
