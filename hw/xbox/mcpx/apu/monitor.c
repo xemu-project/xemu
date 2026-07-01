@@ -54,8 +54,16 @@ void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
     }
     int frame_bytes = sizeof(d->monitor.frame_buf);
     int drain = MAX(dev_drain_bytes, frame_bytes);
-    d->monitor.queued_bytes_low = drain;
-    d->monitor.queued_bytes_high = 3 * drain;
+
+    /* Floor the buffer window at a real latency budget so the audio can ride
+     * through host CPU/scheduling spikes (thermal throttling, background load)
+     * without underrunning -- the cause of "crackling under heavy load". The
+     * pacing keeps the queue within [low, high], so this trades a little audio
+     * latency (~30-80ms) for robustness. */
+    int bytes_per_ms =
+        spec.freq * spec.channels * SDL_AUDIO_BYTESIZE(spec.format) / 1000;
+    d->monitor.queued_bytes_low = MAX(drain, 30 * bytes_per_ms);
+    d->monitor.queued_bytes_high = MAX(3 * drain, 80 * bytes_per_ms);
 
     SDL_ResumeAudioDevice(dev);
 }
