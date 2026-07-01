@@ -38,6 +38,7 @@
 #include "qobject/qdict.h"
 #include "system/block-backend.h"
 #include "system/blockdev.h"
+#include "system/xemu-redump.h"
 
 static BlockBackend *qmp_get_blk(const char *blk_name, const char *qdev_id,
                                  Error **errp)
@@ -360,6 +361,14 @@ void qmp_blockdev_change_medium(const char *device,
 
     if (format) {
         qdict_put_str(options, "driver", format);
+    }
+
+    if (format && strcmp(format, "raw") == 0) {
+        uint64_t offset = 0;
+
+        if (xemu_redump_detect_game_partition(filename, &offset)) {
+            qdict_put_int(options, "offset", offset);
+        }
     }
 
     medium_bs = bdrv_open(filename, NULL, options, bdrv_flags, errp);
