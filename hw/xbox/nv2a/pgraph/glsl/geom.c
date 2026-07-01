@@ -306,9 +306,9 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                          "\n",
                          opts.vulkan ? 450 : 400, layout_in, layout_out);
     pgraph_glsl_get_vtx_header(output, opts.vulkan, state->smooth_shading, true,
-                               true, true);
+                               true, true, false);
     pgraph_glsl_get_vtx_header(output, opts.vulkan, state->smooth_shading,
-                               false, false, false);
+                               false, false, false, false);
 
     char vertex_order_buf[80];
     const char *vertex_order_body = "";

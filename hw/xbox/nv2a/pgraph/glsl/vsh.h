@@ -101,6 +101,12 @@ typedef struct GenVshGlslOptions {
     bool prefix_outputs;
     bool use_push_constants_for_uniform_attrs;
     int ubo_binding;
+    /* Geometry-shader-free path (macOS/MoltenVK): write each vertex's clip-space
+     * position to a storage buffer (indexed by gl_VertexIndex) instead of
+     * emitting the flat vtxPos0/1/2/triMZ varyings; the fragment shader
+     * reconstructs the per-triangle data from it. */
+    bool clip_pos_ssbo;
+    int clip_pos_ssbo_binding;
 } GenVshGlslOptions;
 
 MString *pgraph_glsl_gen_vsh(const VshState *state,

@@ -812,7 +812,22 @@ static MString* psh_convert(struct PixelShader *ps)
 {
     MString *preflight = mstring_new();
     pgraph_glsl_get_vtx_header(preflight, ps->opts.vulkan,
-                             ps->state->smooth_shading, true, false, false);
+                             ps->state->smooth_shading, true, false, false,
+                             ps->opts.clip_pos_ssbo);
+
+    if (ps->opts.clip_pos_ssbo) {
+        // Geometry-shader-free path: read per-vertex clip positions and the
+        // triangle-list index buffer to reconstruct vtxPos0/1/2 per triangle.
+        mstring_append_fmt(
+            preflight,
+            "layout(std430, binding = %d) readonly buffer ClipPosBuffer {\n"
+            "    vec4 clipPos[];\n"
+            "};\n"
+            "layout(std430, binding = %d) readonly buffer TriIndexBuffer {\n"
+            "    uint triIndices[];\n"
+            "};\n",
+            ps->opts.clip_pos_ssbo_binding, ps->opts.index_ssbo_binding);
+    }
 
     if (ps->opts.vulkan) {
         mstring_append_fmt(
@@ -976,6 +991,34 @@ static MString* psh_convert(struct PixelShader *ps)
         );
 
     MString *clip = mstring_new();
+
+    if (ps->opts.clip_pos_ssbo) {
+        // Reconstruct the triangle's three clip-space positions from the
+        // per-vertex clip-position buffer via the triangle-list index buffer,
+        // and compute the z-slope (triMZ) here instead of in the (absent)
+        // geometry shader. Mirrors glsl/geom.c calc_triz (b*inverse(m)).
+        mstring_append(clip,
+            "uint triBase = uint(gl_PrimitiveID) * 3u;\n"
+            "vec4 vtxPos0 = clipPos[triIndices[triBase + 0u]];\n"
+            "vec4 vtxPos1 = clipPos[triIndices[triBase + 1u]];\n"
+            "vec4 vtxPos2 = clipPos[triIndices[triBase + 2u]];\n"
+            "mat2 triM = mat2(vtxPos1.xy - vtxPos0.xy, vtxPos2.xy - vtxPos0.xy);\n");
+        if (ps->state->z_perspective) {
+            mstring_append(clip,
+                "precise vec2 triB = vec2(vtxPos0.w - vtxPos1.w, vtxPos0.w - vtxPos2.w);\n"
+                "triB /= vec2(vtxPos1.w, vtxPos2.w) * vtxPos0.w;\n");
+        } else {
+            mstring_append(clip,
+                "precise vec2 triB = vec2(vtxPos1.z - vtxPos0.z, vtxPos2.z - vtxPos0.z);\n");
+        }
+        mstring_append(clip,
+            "float triDet = kahan_det(triM[0], triM[1]);\n"
+            "float triDzx = kahan_det(triB, vec2(triM[0].y, triM[1].y)) / triDet;\n"
+            "float triDzy = kahan_det(vec2(triB.y, triB.x), vec2(triM[1].x, triM[0].x)) / triDet;\n"
+            "float triMZ = max(abs(triDzx), abs(triDzy));\n"
+            "triMZ = (isnan(triMZ) || isinf(triMZ)) ? 0.0 : triMZ;\n");
+    }
+
     mstring_append_fmt(clip, "/*  Window-clip (%slusive) */\n",
                        ps->state->window_clip_exclusive ? "Exc" : "Inc");
     if (!ps->state->window_clip_exclusive) {
@@ -1001,7 +1044,28 @@ static MString* psh_convert(struct PixelShader *ps)
                              "}\n");
     }
 
-    if (ps->state->z_perspective) {
+    if (ps->state->z_perspective && ps->opts.fs_gl_fragcoord_depth) {
+        // gl_FragCoord.w is the perspective-correct interpolated 1/w, so its
+        // reciprocal is exactly the barycentric-interpolated w used above, but
+        // without depending on the (only approximately emulated on MoltenVK)
+        // geometry-shader vtxPos0/1/2. The polygon-offset slope
+        // (depthFactor*triMZ*w*w == depthFactor*d(w)/dscreen) is obtained from
+        // the screen-space derivatives of w.
+        mstring_append(
+            clip,
+            "precise float zvalue = 1.0 / gl_FragCoord.w;\n"
+            "if (zvalue > 0.0) {\n"
+            "  float zslopeofs = depthFactor *\n"
+            "      max(abs(dFdx(zvalue)), abs(dFdy(zvalue)));\n"
+            "  zvalue += depthOffset;\n"
+            "  zvalue += zslopeofs;\n"
+            "} else {\n"
+            "  zvalue = uintBitsToFloat(0x7F7FFFFFu);\n"
+            "}\n"
+            "if (isnan(zvalue)) {\n"
+            "  zvalue = uintBitsToFloat(0x7F7FFFFFu);\n"
+            "}\n");
+    } else if (ps->state->z_perspective) {
         mstring_append(
             clip,
             "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n"

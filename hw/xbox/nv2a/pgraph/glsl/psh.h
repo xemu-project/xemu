@@ -98,6 +98,17 @@ typedef struct GenPshGlslOptions {
     bool vulkan;
     int ubo_binding;
     int tex_binding;
+    /* Geometry-shader-free path (macOS/MoltenVK): reconstruct vtxPos0/1/2 and
+     * triMZ from the clip-position + index storage buffers (via gl_PrimitiveID)
+     * instead of reading flat geometry-shader varyings. */
+    bool clip_pos_ssbo;
+    int clip_pos_ssbo_binding;
+    int index_ssbo_binding;
+    /* Compute the perspective (W-buffer) depth from gl_FragCoord.w and its
+     * screen-space derivatives instead of the geometry-shader-provided
+     * vtxPos0/1/2/triMZ. Fixes depth artifacts where the geometry shader is only
+     * approximately emulated (MoltenVK). */
+    bool fs_gl_fragcoord_depth;
 } GenPshGlslOptions;
 
 MString *pgraph_glsl_gen_psh(const PshState *state, GenPshGlslOptions opts);

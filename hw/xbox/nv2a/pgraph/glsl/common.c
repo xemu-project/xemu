@@ -26,7 +26,8 @@ const char *uniform_element_type_to_str[] = {
 };
 
 MString *pgraph_glsl_get_vtx_header(MString *out, bool location, bool smooth,
-                                    bool in, bool prefix, bool array)
+                                    bool in, bool prefix, bool array,
+                                    bool skip_tri_pos)
 {
     const char *smooth_s = "";
     const char *flat_s = "flat ";
@@ -54,7 +55,15 @@ MString *pgraph_glsl_get_vtx_header(MString *out, bool location, bool smooth,
         { flat_s,      float_s, "triMZ"  },
     };
 
-    for (int i = 0; i < ARRAY_SIZE(attr); i++) {
+    /* The geometry-shader-free path (macOS/MoltenVK) reconstructs the last four
+     * flat entries (vtxPos0/1/2, triMZ) in the fragment shader from a storage
+     * buffer, so they are omitted from the vsh->fsh varyings here. */
+    int count = ARRAY_SIZE(attr);
+    if (skip_tri_pos) {
+        count -= 4;
+    }
+
+    for (int i = 0; i < count; i++) {
         if (location) {
             mstring_append_fmt(out, "layout(location = %d) ", i);
         }

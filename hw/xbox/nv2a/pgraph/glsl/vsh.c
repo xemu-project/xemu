@@ -233,7 +233,8 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         "}\n");
 
     pgraph_glsl_get_vtx_header(header, opts.vulkan, state->smooth_shading,
-                               false, opts.prefix_outputs, false);
+                               false, opts.prefix_outputs, false,
+                               opts.clip_pos_ssbo);
 
     if (opts.prefix_outputs) {
         mstring_append(header,
@@ -252,6 +253,15 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
                        "#define triMZ v_triMZ\n"
                        );
     }
+
+    if (opts.clip_pos_ssbo) {
+        mstring_append_fmt(header,
+            "layout(std430, binding = %d) buffer ClipPosBuffer {\n"
+            "    vec4 clipPos[];\n"
+            "};\n",
+            opts.clip_pos_ssbo_binding);
+    }
+
     mstring_append(header, "\n");
 
     int num_uniform_attrs = 0;
@@ -405,12 +415,20 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
                    "  vtxT1 = oT1;\n"
                    "  vtxT2 = oT2;\n"
                    "  vtxT3 = oT3;\n"
+    );
+    if (opts.clip_pos_ssbo) {
+        // Store this vertex's clip-space position for the fragment shader to
+        // read back per triangle (geometry-shader-free path).
+        mstring_append(body, "  clipPos[gl_VertexIndex] = vtxPos;\n");
+    } else {
+        mstring_append(body,
                    "  vtxPos0 = vtxPos;\n"
                    "  vtxPos1 = vtxPos;\n"
                    "  vtxPos2 = vtxPos;\n"
                    "  triMZ = 0.0;\n"
-                   "  gl_PointSize = oPts.x;\n"
-    );
+        );
+    }
+    mstring_append(body, "  gl_PointSize = oPts.x;\n");
 
     if (state->specular_enable) {
         mstring_append(body,

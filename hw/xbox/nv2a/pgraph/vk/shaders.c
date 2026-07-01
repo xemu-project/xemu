@@ -25,6 +25,11 @@
 #define VSH_UBO_BINDING 0
 #define PSH_UBO_BINDING 1
 #define PSH_TEX_BINDING 2
+/* Storage buffers for the geometry-shader-free path (macOS/MoltenVK). Present
+ * in the layout for all pipelines but only used by that path's shaders. */
+#define CLIP_POS_SSBO_BINDING (PSH_TEX_BINDING + NV2A_MAX_TEXTURES)
+#define INDEX_SSBO_BINDING (CLIP_POS_SSBO_BINDING + 1)
+#define NUM_DESCRIPTOR_BINDINGS (INDEX_SSBO_BINDING + 1)
 
 const size_t MAX_UNIFORM_ATTR_VALUES_SIZE = NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float);
 
@@ -42,6 +47,10 @@ static void create_descriptor_pool(PGRAPHState *pg)
         {
             .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .descriptorCount = NV2A_MAX_TEXTURES * num_sets,
+        },
+        {
+            .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 2 * num_sets,
         }
     };
 
@@ -68,7 +77,7 @@ static void create_descriptor_set_layout(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    VkDescriptorSetLayoutBinding bindings[2 + NV2A_MAX_TEXTURES];
+    VkDescriptorSetLayoutBinding bindings[NUM_DESCRIPTOR_BINDINGS];
 
     bindings[0] = (VkDescriptorSetLayoutBinding){
         .binding = VSH_UBO_BINDING,
@@ -90,6 +99,20 @@ static void create_descriptor_set_layout(PGRAPHState *pg)
             .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
         };
     }
+    // Geometry-shader-free path: clip positions (written by the vertex pre-pass,
+    // read by the fragment shader) and the index buffer (read by the FS).
+    bindings[CLIP_POS_SSBO_BINDING] = (VkDescriptorSetLayoutBinding){
+        .binding = CLIP_POS_SSBO_BINDING,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+    bindings[INDEX_SSBO_BINDING] = (VkDescriptorSetLayoutBinding){
+        .binding = INDEX_SSBO_BINDING,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
     VkDescriptorSetLayoutCreateInfo layout_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         .bindingCount = ARRAY_SIZE(bindings),
@@ -171,7 +194,7 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
         need_uniform_write = true;
     }
 
-    VkWriteDescriptorSet descriptor_writes[2 + NV2A_MAX_TEXTURES];
+    VkWriteDescriptorSet descriptor_writes[NUM_DESCRIPTOR_BINDINGS];
 
     assert(r->descriptor_set_index < ARRAY_SIZE(r->descriptor_sets));
 
@@ -223,7 +246,37 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
         };
     }
 
-    vkUpdateDescriptorSets(r->device, 6, descriptor_writes, 0, NULL);
+    // Storage buffers for the geometry-shader-free path. Always bound (valid
+    // buffers); only actually read/written by that path's shaders.
+    VkDescriptorBufferInfo clip_pos_info = {
+        .buffer = r->storage_buffers[BUFFER_CLIP_POS].buffer,
+        .offset = 0,
+        .range = VK_WHOLE_SIZE,
+    };
+    descriptor_writes[CLIP_POS_SSBO_BINDING] = (VkWriteDescriptorSet){
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = r->descriptor_sets[r->descriptor_set_index],
+        .dstBinding = CLIP_POS_SSBO_BINDING,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 1,
+        .pBufferInfo = &clip_pos_info,
+    };
+    VkDescriptorBufferInfo index_ssbo_info = {
+        .buffer = r->storage_buffers[BUFFER_INDEX].buffer,
+        .offset = 0,
+        .range = VK_WHOLE_SIZE,
+    };
+    descriptor_writes[INDEX_SSBO_BINDING] = (VkWriteDescriptorSet){
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = r->descriptor_sets[r->descriptor_set_index],
+        .dstBinding = INDEX_SSBO_BINDING,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 1,
+        .pBufferInfo = &index_ssbo_info,
+    };
+
+    vkUpdateDescriptorSets(r->device, NUM_DESCRIPTOR_BINDINGS, descriptor_writes,
+                           0, NULL);
 
     r->descriptor_set_index++;
 }
@@ -264,7 +317,35 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
 
     ShaderModuleCacheKey key;
 
-    bool need_geometry_shader = pgraph_glsl_need_geom(&binding->state.geom);
+    // Geometry-shader-free path (macOS/MoltenVK), gated behind XEMU_CLIP_SSBO
+    // while in development so the default build keeps the working geom-emulation
+    // path. For now only native triangle-list FILL primitives (no CPU
+    // expansion needed); quads/strips/fans/lines still use the geometry shader.
+    static int clip_ssbo_env = -1;
+    if (clip_ssbo_env < 0) {
+        clip_ssbo_env = getenv("XEMU_CLIP_SSBO") != NULL;
+    }
+    bool use_clip_ssbo =
+        clip_ssbo_env &&
+        binding->state.geom.primitive_mode == PRIM_TYPE_TRIANGLES &&
+        binding->state.geom.polygon_front_mode == POLY_MODE_FILL;
+    binding->clip_pos_ssbo = use_clip_ssbo;
+
+    // Heat/perf lever (macOS/MoltenVK): MoltenVK emulates geometry shaders with
+    // extra per-draw compute work. For smooth-shaded, z-perspective triangle-list
+    // FILL draws we can skip the geometry shader entirely: the topology is native
+    // (no expansion), depth comes from gl_FragCoord.w (fs_gl_fragcoord_depth, not
+    // the geom-produced vtxPos0/1/2), and smooth shading means the color varyings
+    // are interpolated (no provoking-vertex dependency the geom shader handled).
+    bool skip_geom_triangles =
+        !HAVE_EXTERNAL_MEMORY &&
+        binding->state.geom.primitive_mode == PRIM_TYPE_TRIANGLES &&
+        binding->state.geom.polygon_front_mode == POLY_MODE_FILL &&
+        binding->state.geom.smooth_shading &&
+        binding->state.psh.z_perspective;
+
+    bool need_geometry_shader = pgraph_glsl_need_geom(&binding->state.geom) &&
+                                !use_clip_ssbo && !skip_geom_triangles;
     if (need_geometry_shader) {
         memset(&key, 0, sizeof(key));
         key.kind = VK_SHADER_STAGE_GEOMETRY_BIT;
@@ -280,6 +361,8 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     key.vsh.state = binding->state.vsh;
     key.vsh.glsl_opts.vulkan = true;
     key.vsh.glsl_opts.prefix_outputs = need_geometry_shader;
+    key.vsh.glsl_opts.clip_pos_ssbo = use_clip_ssbo;
+    key.vsh.glsl_opts.clip_pos_ssbo_binding = CLIP_POS_SSBO_BINDING;
     key.vsh.glsl_opts.use_push_constants_for_uniform_attrs =
         r->use_push_constants_for_uniform_attrs;
     key.vsh.glsl_opts.ubo_binding = VSH_UBO_BINDING;
@@ -291,6 +374,13 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     key.psh.glsl_opts.vulkan = true;
     key.psh.glsl_opts.ubo_binding = PSH_UBO_BINDING;
     key.psh.glsl_opts.tex_binding = PSH_TEX_BINDING;
+    key.psh.glsl_opts.clip_pos_ssbo = use_clip_ssbo;
+    key.psh.glsl_opts.clip_pos_ssbo_binding = CLIP_POS_SSBO_BINDING;
+    key.psh.glsl_opts.index_ssbo_binding = INDEX_SSBO_BINDING;
+    // On MoltenVK the geometry shader (which produces vtxPos0/1/2/triMZ) is only
+    // approximately emulated; derive perspective depth from gl_FragCoord instead
+    // to avoid the resulting depth artifacts.
+    key.psh.glsl_opts.fs_gl_fragcoord_depth = !HAVE_EXTERNAL_MEMORY;
     binding->psh.module_info = get_and_ref_shader_module_for_key(r, &key);
 
     update_shader_uniform_locs(binding);

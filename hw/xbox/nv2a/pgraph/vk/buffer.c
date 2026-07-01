@@ -89,7 +89,10 @@ void pgraph_vk_init_buffers(NV2AState *d)
     r->storage_buffers[BUFFER_INDEX] = (StorageBuffer){
         .alloc_info = device_alloc_create_info,
         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                 /* Also read as an SSBO by the fragment shader (geometry-shader-
+                  * free path) to map gl_PrimitiveID -> triangle vertex indices. */
+                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         .buffer_size = sizeof(pg->inline_elements) * 100,
     };
 
@@ -135,6 +138,14 @@ void pgraph_vk_init_buffers(NV2AState *d)
         .alloc_info = host_alloc_create_info,
         .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         .buffer_size = r->storage_buffers[BUFFER_UNIFORM].buffer_size,
+    };
+
+    // Per-vertex clip positions for the geometry-shader-free path. Indexed by
+    // gl_VertexIndex; sized generously to cover a batch's max vertex index.
+    r->storage_buffers[BUFFER_CLIP_POS] = (StorageBuffer){
+        .alloc_info = device_alloc_create_info,
+        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        .buffer_size = 16 * 1024 * 1024,
     };
 
     for (int i = 0; i < BUFFER_COUNT; i++) {

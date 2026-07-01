@@ -100,6 +100,10 @@ enum Buffer {
     BUFFER_VERTEX_INLINE_STAGING,
     BUFFER_UNIFORM,
     BUFFER_UNIFORM_STAGING,
+    /* Per-vertex clip-space positions written by a vertex-shader pre-pass and
+     * read by the fragment shader to emulate the geometry shader's per-triangle
+     * outputs (vtxPos0/1/2, triMZ) on Metal/MoltenVK (no geometry shaders). */
+    BUFFER_CLIP_POS,
     BUFFER_COUNT
 };
 
@@ -202,6 +206,9 @@ typedef struct ShaderBinding {
         ShaderModuleInfo *module_info;
         PshUniformLocs uniform_locs;
     } psh;
+    /* Uses the geometry-shader-free clip-position SSBO path; the draw path must
+     * run a vertex-only pre-pass to populate clipPos before the main draw. */
+    bool clip_pos_ssbo;
 } ShaderBinding;
 
 typedef struct TextureKey {
