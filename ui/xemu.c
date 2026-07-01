@@ -1394,12 +1394,18 @@ void xemu_eject_disc(Error **errp)
 void xemu_load_disc(const char *path, Error **errp)
 {
     Error *error = NULL;
+    const char *format = "raw";
+    const char *ext = strrchr(path, '.');
+
+    if (ext && !g_ascii_strcasecmp(ext, ".chd")) {
+        format = "chd";
+    }
 
     // Ensure an eject sequence is always triggered so Xbox software reloads
     xbox_smc_eject_button();
     xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
 
-    qmp_blockdev_change_medium("ide0-cd1", NULL, path, "raw", false, false,
+    qmp_blockdev_change_medium("ide0-cd1", NULL, path, format, false, false,
                                false, 0, &error);
     if (error) {
         error_propagate(errp, error);

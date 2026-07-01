@@ -390,7 +390,8 @@ public:
                 const auto &file_path = file.path();
                 if (std::filesystem::is_regular_file(file_path) &&
                     (file_path.extension() == ".iso" ||
-                     file_path.extension() == ".xiso")) {
+                     file_path.extension() == ".xiso" ||
+                     file_path.extension() == ".chd")) {
                     sorted_file_names.insert(
                         { file_path.stem().string(), file_path.string() });
                 }
