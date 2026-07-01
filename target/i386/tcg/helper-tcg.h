@@ -118,6 +118,10 @@ void do_smm_enter(X86CPU *cpu);
 /* system/bpt_helper.c */
 bool check_hw_breakpoints(CPUX86State *env, bool force_dr6_update);
 
+/* fpu_helper.c: native-host SSE arithmetic (see hard-SSE note there) */
+extern int x86_use_hard_sse;
+void x86_sse_hard_selftest(void);
+
 /*
  * Do the tasks usually performed by gen_eob().  Callers of this function
  * should also handle TF as appropriate.

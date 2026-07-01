@@ -37,8 +37,11 @@
 
 static int g_use_hard_fpu;
 
-#if defined(XBOX) && defined(__x86_64__)
+#ifdef XBOX
 #include "ui/xemu-settings.h"
+#endif
+
+#if defined(XBOX) && defined(__x86_64__)
 #define MAP_GEN_HELPER_SOFT_HARD(name) \
     (g_use_hard_fpu ? gen_helper_##name##__hard : gen_helper_##name##__soft)
 #define gen_helper_flds_FT0       MAP_GEN_HELPER_SOFT_HARD(flds_FT0)
@@ -4229,6 +4232,13 @@ void tcg_x86_init(void)
 
 #if defined(XBOX) && defined(__x86_64__)
     g_use_hard_fpu = g_config.perf.hard_fpu;
+#endif
+#ifdef XBOX
+    /* Native-host SSE arithmetic. Unlike hard x87 (which needs an 80-bit host
+     * FPU, x86 only), SSE is plain IEEE binary32/64 and is correct on any host
+     * -- notably ARM/Apple Silicon, where softfloat SSE was a top CPU cost. */
+    x86_use_hard_sse = g_config.perf.hard_fpu;
+    x86_sse_hard_selftest();
 #endif
 }
 

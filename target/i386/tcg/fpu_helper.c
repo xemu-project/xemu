@@ -3506,6 +3506,123 @@ void helper_emms(CPUX86State *env)
     *(uint32_t *)(env->fptags + 4) = 0x01010101;
 }
 
+/*
+ * Hard SSE: native host float/double arithmetic instead of softfloat.
+ *
+ * QEMU emulates SSE add/sub/mul/div bit-by-bit in software (softfloat) to
+ * guarantee exact x86 IEEE-754 semantics. On hosts without a native x87 (e.g.
+ * Apple Silicon, __aarch64__) even the "hard FPU" path is compiled out, so
+ * *all* of a game's SSE vector math ran through softfloat -- a top CPU cost in
+ * profiling. SSE is pure IEEE binary32/binary64, which every supported host
+ * FPU implements identically to x86 for the common case, so we can substitute
+ * a single native instruction.
+ *
+ * We only take the native path when the guest FP environment matches the host
+ * default: round-to-nearest-even and no flush-to-zero / denormals-are-zero.
+ * Otherwise (rare) we fall back to softfloat, preserving correctness. NaN
+ * payload propagation and the MXCSR exception-flag bits are not replicated on
+ * the native path; games do not depend on these (same tradeoff as hard x87).
+ */
+int x86_use_hard_sse;
+
+static inline bool sse_hard_active(CPUX86State *env)
+{
+    return x86_use_hard_sse &&
+           env->sse_status.float_rounding_mode == float_round_nearest_even &&
+           !env->sse_status.flush_to_zero &&
+           !env->sse_status.flush_inputs_to_zero;
+}
+
+#define GEN_SSE_HARD_OP(name, op)                                             \
+    static inline float32 glue(sse_, glue(name, 32))(float32 a, float32 b,    \
+                                                     CPUX86State *env)        \
+    {                                                                         \
+        if (sse_hard_active(env)) {                                           \
+            union { float32 i; float f; } x = { .i = a }, y = { .i = b }, r;  \
+            r.f = x.f op y.f;                                                 \
+            return r.i;                                                       \
+        }                                                                     \
+        return glue(float32_, name)(a, b, &env->sse_status);                  \
+    }                                                                         \
+    static inline float64 glue(sse_, glue(name, 64))(float64 a, float64 b,    \
+                                                     CPUX86State *env)        \
+    {                                                                         \
+        if (sse_hard_active(env)) {                                           \
+            union { float64 i; double f; } x = { .i = a }, y = { .i = b }, r; \
+            r.f = x.f op y.f;                                                 \
+            return r.i;                                                       \
+        }                                                                     \
+        return glue(float64_, name)(a, b, &env->sse_status);                  \
+    }
+GEN_SSE_HARD_OP(add, +)
+GEN_SSE_HARD_OP(sub, -)
+GEN_SSE_HARD_OP(mul, *)
+GEN_SSE_HARD_OP(div, /)
+#undef GEN_SSE_HARD_OP
+
+/*
+ * One-time validation that the native path is bit-identical to softfloat for
+ * normal-range inputs under round-to-nearest. Runs at startup; on any mismatch
+ * it disables hard SSE so we fail safe to softfloat rather than render wrong.
+ */
+void x86_sse_hard_selftest(void)
+{
+    if (!x86_use_hard_sse) {
+        return;
+    }
+
+    float_status st = { 0 };
+    set_float_rounding_mode(float_round_nearest_even, &st);
+
+    static const float f32v[] = { 0.0f, 1.0f, -1.0f, 0.5f, 3.14159f, 65504.0f,
+                                  1e-20f, 1e20f, 123456.75f, -0.0001f };
+    static const double f64v[] = { 0.0, 1.0, -1.0, 0.5, 3.141592653589793,
+                                   1e-300, 1e300, 987654.321, -2.5, 42.0 };
+
+    for (unsigned i = 0; i < ARRAY_SIZE(f32v); i++) {
+        for (unsigned j = 0; j < ARRAY_SIZE(f32v); j++) {
+            union { float32 i; float f; } a = { .f = f32v[i] },
+                                          b = { .f = f32v[j] }, rn;
+            float32 rs;
+#define CHK32(oper, sfop)                                                     \
+            rn.f = a.f oper b.f;                                               \
+            rs = sfop(a.i, b.i, &st);                                          \
+            if (rn.i != rs && !float32_is_any_nan(rs)) {                       \
+                goto fail;                                                     \
+            }
+            CHK32(+, float32_add)
+            CHK32(-, float32_sub)
+            CHK32(*, float32_mul)
+            if (b.f != 0.0f) { CHK32(/, float32_div) }
+#undef CHK32
+        }
+    }
+
+    for (unsigned i = 0; i < ARRAY_SIZE(f64v); i++) {
+        for (unsigned j = 0; j < ARRAY_SIZE(f64v); j++) {
+            union { float64 i; double f; } a = { .f = f64v[i] },
+                                           b = { .f = f64v[j] }, rn;
+            float64 rs;
+#define CHK64(oper, sfop)                                                     \
+            rn.f = a.f oper b.f;                                               \
+            rs = sfop(a.i, b.i, &st);                                          \
+            if (rn.i != rs && !float64_is_any_nan(rs)) {                       \
+                goto fail;                                                     \
+            }
+            CHK64(+, float64_add)
+            CHK64(-, float64_sub)
+            CHK64(*, float64_mul)
+            if (b.f != 0.0) { CHK64(/, float64_div) }
+#undef CHK64
+        }
+    }
+    return;
+
+fail:
+    fprintf(stderr, "[hard-sse] self-test mismatch; disabling hard SSE\n");
+    x86_use_hard_sse = 0;
+}
+
 #define SHIFT 0
 #include "ops_sse.h"
 
