@@ -66,6 +66,9 @@ endif
 if get_option('cloop').allowed()
   block_ss.add(files('cloop.c'))
 endif
+if get_option('chd').allowed() and libchdr.found()
+  block_ss.add(files('chd.c'), libchdr)
+endif
 if get_option('bochs').allowed()
   block_ss.add(files('bochs.c'))
 endif

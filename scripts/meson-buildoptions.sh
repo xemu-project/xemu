@@ -108,6 +108,7 @@ meson_options_help() {
   printf "%s\n" '  canokey         CanoKey support'
   printf "%s\n" '  cap-ng          cap_ng support'
   printf "%s\n" '  capstone        Whether and how to find the capstone library'
+  printf "%s\n" '  chd             CHD image format support'
   printf "%s\n" '  cloop           cloop image format support'
   printf "%s\n" '  cocoa           Cocoa user interface (macOS only)'
   printf "%s\n" '  colo-proxy      colo-proxy support'
@@ -278,6 +279,8 @@ _meson_option_parse() {
     --disable-cfi) printf "%s" -Dcfi=false ;;
     --enable-cfi-debug) printf "%s" -Dcfi_debug=true ;;
     --disable-cfi-debug) printf "%s" -Dcfi_debug=false ;;
+    --enable-chd) printf "%s" -Dchd=enabled ;;
+    --disable-chd) printf "%s" -Dchd=disabled ;;
     --enable-cloop) printf "%s" -Dcloop=enabled ;;
     --disable-cloop) printf "%s" -Dcloop=disabled ;;
     --enable-cocoa) printf "%s" -Dcocoa=enabled ;;
