@@ -4,6 +4,7 @@ xemu_ss.add(files(
   'compat.cc',
   'debug.cc',
   'font-manager.cc',
+  'github-issue.cc',
   'gl-helpers.cc',
   'input-manager.cc',
   'main-menu.cc',
