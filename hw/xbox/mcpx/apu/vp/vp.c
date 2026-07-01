@@ -1059,21 +1059,27 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
             for (unsigned int channel = 0; channel < channels; channel++) {
                 uint32_t ival;
                 float fval;
+                // Read directly from the mapped guest RAM pointer instead of
+                // going through address_space_*() per sample (the dominant CPU
+                // cost in profiling). Host and guest are both little-endian, so
+                // the ld*_le_p() host loads match ld*_le_phys() exactly. Mirrors
+                // the ADPCM path's existing use of d->ram_ptr.
+                uint8_t *sample_ptr = d->ram_ptr + addr;
                 switch (sample_size) {
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_U8:
-                    ival = ldub_phys(&address_space_memory, addr);
+                    ival = ldub_p(sample_ptr);
                     fval = uint8_to_float(ival & 0xff);
                     break;
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S16:
-                    ival = lduw_le_phys(&address_space_memory, addr);
+                    ival = lduw_le_p(sample_ptr);
                     fval = int16_to_float(ival & 0xffff);
                     break;
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S24:
-                    ival = ldl_le_phys(&address_space_memory, addr);
+                    ival = ldl_le_p(sample_ptr);
                     fval = int24_to_float(ival);
                     break;
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S32:
-                    ival = ldl_le_phys(&address_space_memory, addr);
+                    ival = ldl_le_p(sample_ptr);
                     fval = int32_to_float(ival);
                     break;
                 default:
