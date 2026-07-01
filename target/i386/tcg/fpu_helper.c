@@ -3561,6 +3561,36 @@ GEN_SSE_HARD_OP(div, /)
 #undef GEN_SSE_HARD_OP
 
 /*
+ * Native SSE compare (used by CMPPS/CMPSS/... predicates). Returns the same
+ * FloatRelation as softfloat: a NaN operand makes all of <,>,== false, giving
+ * "unordered", exactly matching float32_compare. quiet vs signalling only
+ * differs in the (unreplicated) exception flag, so the native path ignores it.
+ */
+#define GEN_SSE_HARD_CMP(sz, ftype, itype)                                    \
+    static inline FloatRelation glue(sse_cmp, sz)(itype a, itype b,           \
+                                                  CPUX86State *env, bool quiet)\
+    {                                                                         \
+        if (sse_hard_active(env)) {                                           \
+            union { itype i; ftype f; } x = { .i = a }, y = { .i = b };       \
+            if (x.f < y.f) {                                                  \
+                return float_relation_less;                                   \
+            } else if (x.f > y.f) {                                           \
+                return float_relation_greater;                                \
+            } else if (x.f == y.f) {                                          \
+                return float_relation_equal;                                  \
+            }                                                                 \
+            return float_relation_unordered;                                  \
+        }                                                                     \
+        return quiet ? glue(float, glue(sz, _compare_quiet))(a, b,            \
+                                                        &env->sse_status)     \
+                     : glue(float, glue(sz, _compare))(a, b,                  \
+                                                        &env->sse_status);    \
+    }
+GEN_SSE_HARD_CMP(32, float, float32)
+GEN_SSE_HARD_CMP(64, double, float64)
+#undef GEN_SSE_HARD_CMP
+
+/*
  * One-time validation that the native path is bit-identical to softfloat for
  * normal-range inputs under round-to-nearest. Runs at startup; on any mismatch
  * it disables hard SSE so we fail safe to softfloat rather than render wrong.
@@ -3614,6 +3644,33 @@ void x86_sse_hard_selftest(void)
             CHK64(*, float64_mul)
             if (b.f != 0.0) { CHK64(/, float64_div) }
 #undef CHK64
+        }
+    }
+
+    /* Validate native compare (including NaN/inf) matches softfloat's
+     * FloatRelation exactly. */
+    {
+        static const float cf[] = { 0.0f, -0.0f, 1.0f, -1.0f, 3.14f,
+                                    __builtin_inff(), -__builtin_inff(),
+                                    __builtin_nanf("") };
+        for (unsigned i = 0; i < ARRAY_SIZE(cf); i++) {
+            for (unsigned j = 0; j < ARRAY_SIZE(cf); j++) {
+                union { float32 i; float f; } a = { .f = cf[i] },
+                                              b = { .f = cf[j] };
+                FloatRelation rn;
+                if (a.f < b.f) {
+                    rn = float_relation_less;
+                } else if (a.f > b.f) {
+                    rn = float_relation_greater;
+                } else if (a.f == b.f) {
+                    rn = float_relation_equal;
+                } else {
+                    rn = float_relation_unordered;
+                }
+                if (rn != float32_compare(a.i, b.i, &st)) {
+                    goto fail;
+                }
+            }
         }
     }
     return;

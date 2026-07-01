@@ -1058,10 +1058,10 @@ static inline bool FPU_GE(FloatRelation x)
 /* We must make sure we evaluate the argument in case it is a signalling NAN */
 #define FPU_FALSE(x) (x == float_relation_equal && 0)
 
-#define FPU_CMPQ(size, a, b) \
-    float ## size ## _compare_quiet(a, b, &env->sse_status)
-#define FPU_CMPS(size, a, b) \
-    float ## size ## _compare(a, b, &env->sse_status)
+/* Route through sse_cmp<size>(), which uses native host compares when the FP
+ * env is host-default and softfloat otherwise (see fpu_helper.c). */
+#define FPU_CMPQ(size, a, b) glue(sse_cmp, size)(a, b, env, true)
+#define FPU_CMPS(size, a, b) glue(sse_cmp, size)(a, b, env, false)
 
 #else
 #define SSE_HELPER_CMP(name, F, C) SSE_HELPER_CMP_P(name, F, C)
