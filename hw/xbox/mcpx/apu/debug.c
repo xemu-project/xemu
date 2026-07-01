@@ -24,9 +24,13 @@
 struct McpxApuDebug g_dbg, g_dbg_cache;
 int g_dbg_voice_monitor = -1;
 uint64_t g_dbg_muted_voices[4];
+int g_dbg_stats_wanted;
 
 const struct McpxApuDebug *mcpx_apu_get_debug_info(void)
 {
+    /* The debug UI is polling; keep collecting worker timing for a short while
+     * so the display stays populated even between polls. */
+    qatomic_set(&g_dbg_stats_wanted, 120);
     return &g_dbg_cache;
 }
 

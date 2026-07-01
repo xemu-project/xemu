@@ -94,10 +94,24 @@ static float clampf(float v, float min, float max)
     }
 }
 
+/* attenuate() is called ~8x per active voice per audio frame (once per mixbin)
+ * and previously evaluated powf() every time — a top CPU cost in profiling.
+ * The input is a 12-bit volume (4096 distinct values), so precompute the whole
+ * curve into a table once at startup and index it. Values are bit-identical to
+ * the old expression. */
+static float attenuate_lut[0x1000];
+
+static void attenuate_lut_init(void)
+{
+    for (unsigned int vol = 0; vol < 0x1000; vol++) {
+        attenuate_lut[vol] =
+            (vol == 0xFFF) ? 0.0f : powf(10.0f, vol / (64.0f * -20.0f));
+    }
+}
+
 static float attenuate(uint16_t vol)
 {
-    vol &= 0xFFF;
-    return (vol == 0xFFF) ? 0.0 : powf(10.0f, vol/(64.0 * -20.0f));
+    return attenuate_lut[vol & 0xFFF];
 }
 
 static uint32_t voice_get_mask(MCPXAPUState *d, uint16_t voice_handle,
@@ -1332,7 +1346,7 @@ static void voice_process(MCPXAPUState *d,
                                NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH);
     int8_t ps = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_ENV0,
                                NV_PAVS_VOICE_CFG_ENV0_EF_PITCHSCALE);
-    float rate = 1.0 / powf(2.0f, (p + ps * 32 * ef_value) / 4096.0f);
+    float rate = exp2f(-((p + ps * 32 * ef_value) / 4096.0f));
     dbg->rate = rate;
 
     float ea_value = voice_step_envelope(
@@ -1374,23 +1388,28 @@ static void voice_process(MCPXAPUState *d,
         return;
     }
 
+    /* The bin/volume fields all live in five voice-parameter words (VBIN, FMT,
+     * VOLA, VOLB, VOLC). Read each word from guest RAM once here and extract
+     * the bitfields locally rather than issuing a fresh RAM load per field via
+     * voice_get_mask() (~20 redundant loads per voice per frame). Results are
+     * bit-identical. */
+    hwaddr voice_base = d->regs[NV_PAPU_VPVADDR] + v * NV_PAVS_SIZE;
+    uint32_t w_vbin = ldl_le_p(d->ram_ptr + voice_base + NV_PAVS_VOICE_CFG_VBIN);
+    uint32_t w_fmt  = ldl_le_p(d->ram_ptr + voice_base + NV_PAVS_VOICE_CFG_FMT);
+    uint32_t w_vola = ldl_le_p(d->ram_ptr + voice_base + NV_PAVS_VOICE_TAR_VOLA);
+    uint32_t w_volb = ldl_le_p(d->ram_ptr + voice_base + NV_PAVS_VOICE_TAR_VOLB);
+    uint32_t w_volc = ldl_le_p(d->ram_ptr + voice_base + NV_PAVS_VOICE_TAR_VOLC);
+#define VP_FIELD(w, m) (((w) & (m)) >> ctz32(m))
+
     int bin[8];
-    bin[0] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V0BIN);
-    bin[1] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V1BIN);
-    bin[2] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V2BIN);
-    bin[3] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V3BIN);
-    bin[4] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V4BIN);
-    bin[5] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
-                            NV_PAVS_VOICE_CFG_VBIN_V5BIN);
-    bin[6] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                            NV_PAVS_VOICE_CFG_FMT_V6BIN);
-    bin[7] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                            NV_PAVS_VOICE_CFG_FMT_V7BIN);
+    bin[0] = VP_FIELD(w_vbin, NV_PAVS_VOICE_CFG_VBIN_V0BIN);
+    bin[1] = VP_FIELD(w_vbin, NV_PAVS_VOICE_CFG_VBIN_V1BIN);
+    bin[2] = VP_FIELD(w_vbin, NV_PAVS_VOICE_CFG_VBIN_V2BIN);
+    bin[3] = VP_FIELD(w_vbin, NV_PAVS_VOICE_CFG_VBIN_V3BIN);
+    bin[4] = VP_FIELD(w_vbin, NV_PAVS_VOICE_CFG_VBIN_V4BIN);
+    bin[5] = VP_FIELD(w_vbin, NV_PAVS_VOICE_CFG_VBIN_V5BIN);
+    bin[6] = VP_FIELD(w_fmt, NV_PAVS_VOICE_CFG_FMT_V6BIN);
+    bin[7] = VP_FIELD(w_fmt, NV_PAVS_VOICE_CFG_FMT_V7BIN);
 
     if (v < MCPX_HW_MAX_3D_VOICES) {
         bin[0] = d->vp.hrtf_submix[0];
@@ -1400,31 +1419,20 @@ static void voice_process(MCPXAPUState *d,
     }
 
     uint16_t vol[8];
-    vol[0] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA,
-                            NV_PAVS_VOICE_TAR_VOLA_VOLUME0);
-    vol[1] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA,
-                            NV_PAVS_VOICE_TAR_VOLA_VOLUME1);
-    vol[2] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB,
-                            NV_PAVS_VOICE_TAR_VOLB_VOLUME2);
-    vol[3] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB,
-                            NV_PAVS_VOICE_TAR_VOLB_VOLUME3);
-    vol[4] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC,
-                            NV_PAVS_VOICE_TAR_VOLC_VOLUME4);
-    vol[5] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC,
-                            NV_PAVS_VOICE_TAR_VOLC_VOLUME5);
+    vol[0] = VP_FIELD(w_vola, NV_PAVS_VOICE_TAR_VOLA_VOLUME0);
+    vol[1] = VP_FIELD(w_vola, NV_PAVS_VOICE_TAR_VOLA_VOLUME1);
+    vol[2] = VP_FIELD(w_volb, NV_PAVS_VOICE_TAR_VOLB_VOLUME2);
+    vol[3] = VP_FIELD(w_volb, NV_PAVS_VOICE_TAR_VOLB_VOLUME3);
+    vol[4] = VP_FIELD(w_volc, NV_PAVS_VOICE_TAR_VOLC_VOLUME4);
+    vol[5] = VP_FIELD(w_volc, NV_PAVS_VOICE_TAR_VOLC_VOLUME5);
 
-    vol[6] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC,
-                            NV_PAVS_VOICE_TAR_VOLC_VOLUME6_B11_8) << 8;
-    vol[6] |= voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB,
-                             NV_PAVS_VOICE_TAR_VOLB_VOLUME6_B7_4) << 4;
-    vol[6] |= voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA,
-                             NV_PAVS_VOICE_TAR_VOLA_VOLUME6_B3_0);
-    vol[7] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC,
-                            NV_PAVS_VOICE_TAR_VOLC_VOLUME7_B11_8) << 8;
-    vol[7] |= voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB,
-                             NV_PAVS_VOICE_TAR_VOLB_VOLUME7_B7_4) << 4;
-    vol[7] |= voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA,
-                             NV_PAVS_VOICE_TAR_VOLA_VOLUME7_B3_0);
+    vol[6] = VP_FIELD(w_volc, NV_PAVS_VOICE_TAR_VOLC_VOLUME6_B11_8) << 8;
+    vol[6] |= VP_FIELD(w_volb, NV_PAVS_VOICE_TAR_VOLB_VOLUME6_B7_4) << 4;
+    vol[6] |= VP_FIELD(w_vola, NV_PAVS_VOICE_TAR_VOLA_VOLUME6_B3_0);
+    vol[7] = VP_FIELD(w_volc, NV_PAVS_VOICE_TAR_VOLC_VOLUME7_B11_8) << 8;
+    vol[7] |= VP_FIELD(w_volb, NV_PAVS_VOICE_TAR_VOLB_VOLUME7_B7_4) << 4;
+    vol[7] |= VP_FIELD(w_vola, NV_PAVS_VOICE_TAR_VOLA_VOLUME7_B3_0);
+#undef VP_FIELD
 
     // FIXME: If phase negations means to flip the signal upside down
     //        we should modify volume of bin6 and bin7 here.
@@ -1456,7 +1464,7 @@ static void voice_process(MCPXAPUState *d,
             int16_t fc = voice_get_mask(
                 d, v, NV_PAVS_VOICE_TAR_FCA + (ch % channels) * 4,
                 NV_PAVS_VOICE_TAR_FCA_FC0);
-            float fc_f = clampf(pow(2, fc / 4096.0), 0.003906f, 1.0f);
+            float fc_f = clampf(exp2(fc / 4096.0), 0.003906f, 1.0f);
             uint16_t q = voice_get_mask(
                 d, v, NV_PAVS_VOICE_TAR_FCA + (ch % channels) * 4,
                 NV_PAVS_VOICE_TAR_FCA_FC1);
@@ -1613,7 +1621,9 @@ static void *voice_worker_thread(void *arg)
     self->queue_len = 0;
 
     do {
-        int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+        bool want_stats = qatomic_read(&g_dbg_stats_wanted) > 0;
+        int64_t start_time =
+            want_stats ? qemu_clock_get_us(QEMU_CLOCK_REALTIME) : 0;
         g_dbg.vp.workers[worker_id].num_voices = self->queue_len;
 
         if (self->queue_len) {
@@ -1652,8 +1662,10 @@ static void *voice_worker_thread(void *arg)
             qemu_cond_signal(&vwd->work_finished);
         }
 
-        int64_t end_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-        g_dbg.vp.workers[worker_id].time_us = end_time - start_time;
+        if (want_stats) {
+            int64_t end_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+            g_dbg.vp.workers[worker_id].time_us = end_time - start_time;
+        }
 
         qemu_cond_wait(&vwd->work_pending, &vwd->lock);
     } while (!vwd->workers_should_exit);
@@ -1741,7 +1753,15 @@ voice_work_dispatch(MCPXAPUState *d,
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
 
-    int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+    /* Only pay for timing instrumentation while the debug UI is actually
+     * displaying it; decay the request once per frame. */
+    int stats_wanted = qatomic_read(&g_dbg_stats_wanted);
+    if (stats_wanted > 0) {
+        qatomic_set(&g_dbg_stats_wanted, stats_wanted - 1);
+    }
+    bool want_stats = stats_wanted > 0;
+    int64_t start_time =
+        want_stats ? qemu_clock_get_us(QEMU_CLOCK_REALTIME) : 0;
 
     while (true) {
         if (qatomic_read(&d->pause_requested)) {
@@ -1776,8 +1796,10 @@ voice_work_dispatch(MCPXAPUState *d,
         }
     }
 
-    int64_t end_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-    g_dbg.vp.total_worker_time_us = end_time - start_time;
+    if (want_stats) {
+        int64_t end_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+        g_dbg.vp.total_worker_time_us = end_time - start_time;
+    }
 
     qemu_mutex_unlock(&vwd->lock);
 }
@@ -1785,6 +1807,9 @@ voice_work_dispatch(MCPXAPUState *d,
 static void voice_work_init(MCPXAPUState *d)
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+
+    /* Build the volume attenuation table before any worker thread runs. */
+    attenuate_lut_init();
 
     int num_workers = g_config.audio.vp.num_workers ?: SDL_GetNumLogicalCPUCores();
     vwd->num_workers = MAX(1, MIN(num_workers, MAX_VOICE_WORKERS));

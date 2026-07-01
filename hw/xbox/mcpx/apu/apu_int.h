@@ -127,6 +127,10 @@ extern MCPXAPUState *g_state; // Used via debug handlers
 extern struct McpxApuDebug g_dbg, g_dbg_cache;
 extern int g_dbg_voice_monitor;
 extern uint64_t g_dbg_muted_voices[4];
+/* Frames remaining for which the APU should collect per-worker timing stats.
+ * Set nonzero by mcpx_apu_get_debug_info() when the debug UI polls; lets the
+ * audio path skip qemu_clock_get_us() syscalls during normal gameplay. */
+extern int g_dbg_stats_wanted;
 
 void mcpx_debug_begin_frame(void);
 void mcpx_debug_end_frame(void);
