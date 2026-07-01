@@ -101,8 +101,11 @@ static uint32_t voice_get_mask(MCPXAPUState *d, uint16_t voice_handle,
                                hwaddr offset, uint32_t mask)
 {
     hwaddr voice = d->regs[NV_PAPU_VPVADDR] + voice_handle * NV_PAVS_SIZE;
-    return (ldl_le_phys(&address_space_memory, voice + offset) & mask) >>
-           ctz32(mask);
+    // Voice parameter blocks live in guest RAM; read them directly from the
+    // mapped host pointer instead of paying address_space translation on every
+    // access (voice_get_mask is called many times per voice per frame, a top
+    // CPU cost in profiling). Little-endian host + guest => ldl_le_p matches.
+    return (ldl_le_p(d->ram_ptr + voice + offset) & mask) >> ctz32(mask);
 }
 
 static void voice_set_mask(MCPXAPUState *d, uint16_t voice_handle,
@@ -110,7 +113,8 @@ static void voice_set_mask(MCPXAPUState *d, uint16_t voice_handle,
 {
     hwaddr voice = d->regs[NV_PAPU_VPVADDR]
                     + voice_handle * NV_PAVS_SIZE;
-    uint32_t v = ldl_le_phys(&address_space_memory, voice + offset) & ~mask;
+    uint32_t v = ldl_le_p(d->ram_ptr + voice + offset) & ~mask;
+    // Write via the address space so RAM dirty tracking stays correct.
     stl_le_phys(&address_space_memory, voice + offset,
                 v | ((val << ctz32(mask)) & mask));
 }
@@ -1029,7 +1033,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                         hwaddr addr = get_data_ptr(d->regs[NV_PAPU_VPSGEADDR],
                                                    0xFFFFFFFF, linear_addr);
                         adpcm_block[word_index] =
-                            ldl_le_phys(&address_space_memory, addr);
+                            ldl_le_p(d->ram_ptr + addr);
                         linear_addr += 4;
                     }
                 }
