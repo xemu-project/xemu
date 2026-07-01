@@ -72,6 +72,7 @@
 #include "system/system.h"
 #include "system/numa.h"
 #include "system/hostmem.h"
+#include "system/xemu-redump.h"
 #include "exec/gdbstub.h"
 #include "gdbstub/enums.h"
 #include "qemu/timer.h"
@@ -3090,8 +3091,15 @@ void qemu_init(int argc, char **argv)
     // connected but no media present.
     fake_argv[fake_argc++] = strdup("-drive");
     char *escaped_dvd_path = strdup_double_commas(dvd_path);
-    fake_argv[fake_argc++] = g_strdup_printf("index=1,media=cdrom,file=%s",
-        escaped_dvd_path);
+    uint64_t dvd_offset = 0;
+    if (xemu_redump_detect_game_partition(dvd_path, &dvd_offset)) {
+        fake_argv[fake_argc++] = g_strdup_printf(
+            "index=1,media=cdrom,file=%s,format=raw,offset=%" PRIu64,
+            escaped_dvd_path, dvd_offset);
+    } else {
+        fake_argv[fake_argc++] = g_strdup_printf(
+            "index=1,media=cdrom,file=%s", escaped_dvd_path);
+    }
     free(escaped_dvd_path);
 
     fake_argv[fake_argc++] = strdup("-display");
