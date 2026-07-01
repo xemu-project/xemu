@@ -12,7 +12,11 @@
 #include "qemu/rcu.h"
 #include "exec/cpu-common.h"
 
-#define TB_JMP_CACHE_BITS 12
+/* Enlarged from 12 (4096 entries) to 14 (16384): large guest code working sets
+ * with heavy indirect branching (e.g. C++ virtual calls in Halo 2) overflow the
+ * jump cache, forcing slow global-hash TB lookups (tb_htable_lookup, a top CPU
+ * cost in profiling). ~256KB/CPU. */
+#define TB_JMP_CACHE_BITS 14
 #define TB_JMP_CACHE_SIZE (1 << TB_JMP_CACHE_BITS)
 
 /*
