@@ -66,6 +66,35 @@ package_macos() {
       done
     done
 
+    # Bundle MoltenVK (the Vulkan-on-Metal driver) and the Vulkan loader so the
+    # Vulkan renderer works without an installed Vulkan SDK. The app loads the
+    # loader by absolute path and points it at this ICD at startup (see
+    # xemu_macos_get_bundled_vk_get_instance_proc_addr).
+    vk_libdir="dist/xemu.app/Contents/Libraries/${target_arch}"
+    if [[ -n "${VULKAN_SDK}" && -f "${VULKAN_SDK}/lib/libMoltenVK.dylib" ]]; then
+      echo "Bundling MoltenVK from ${VULKAN_SDK}"
+      cp -L "${VULKAN_SDK}/lib/libMoltenVK.dylib" "${vk_libdir}/libMoltenVK.dylib"
+      cp -L "${VULKAN_SDK}/lib/libvulkan.1.dylib" "${vk_libdir}/libvulkan.1.dylib"
+      codesign -s - -f "${vk_libdir}/libMoltenVK.dylib"
+      codesign -s - -f "${vk_libdir}/libvulkan.1.dylib"
+
+      icd_dir="dist/xemu.app/Contents/Resources/vulkan/icd.d"
+      mkdir -p "${icd_dir}"
+      # library_path is resolved relative to the ICD json's directory.
+      cat > "${icd_dir}/MoltenVK_icd.json" <<ICD
+{
+    "file_format_version": "1.0.0",
+    "ICD": {
+        "library_path": "../../../Libraries/${target_arch}/libMoltenVK.dylib",
+        "api_version": "1.2.0",
+        "is_portability_driver": true
+    }
+}
+ICD
+    else
+      echo "Warning: VULKAN_SDK not set or MoltenVK missing; Vulkan renderer will require an installed SDK at runtime"
+    fi
+
     # Copy in runtime resources
     mkdir -p dist/xemu.app/Contents/Resources
 

@@ -100,10 +100,6 @@ enum Buffer {
     BUFFER_VERTEX_INLINE_STAGING,
     BUFFER_UNIFORM,
     BUFFER_UNIFORM_STAGING,
-    /* Per-vertex clip-space positions written by the vertex-shader pre-pass and
-     * read by the fragment shader to emulate the geometry shader's per-triangle
-     * outputs (vtxPos0/1/2, triMZ) on Metal/MoltenVK. */
-    BUFFER_CLIP_POS,
     BUFFER_COUNT
 };
 

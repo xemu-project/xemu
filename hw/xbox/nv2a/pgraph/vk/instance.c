@@ -19,6 +19,7 @@
 
 #include "qemu/osdep.h"
 #include "ui/xemu-settings.h"
+#include "ui/xemu-os-utils.h"
 #include "renderer.h"
 #include "xemu-version.h"
 
@@ -163,10 +164,19 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
     PGRAPHVkState *r = pg->vk_renderer_state;
     VkResult result;
 
-    result = volkInitialize();
-    if (result != VK_SUCCESS) {
-        error_setg(errp, "volkInitialize failed");
-        return false;
+#if defined(__APPLE__)
+    PFN_vkGetInstanceProcAddr bundled_gipa =
+        (PFN_vkGetInstanceProcAddr)xemu_macos_get_bundled_vk_get_instance_proc_addr();
+    if (bundled_gipa) {
+        volkInitializeCustom(bundled_gipa);
+    } else
+#endif
+    {
+        result = volkInitialize();
+        if (result != VK_SUCCESS) {
+            error_setg(errp, "volkInitialize failed");
+            return false;
+        }
     }
 
     uint32_t instance_version = VK_API_VERSION_1_0;

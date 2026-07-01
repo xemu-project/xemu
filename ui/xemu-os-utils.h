@@ -26,6 +26,13 @@ extern "C" {
 
 const char *xemu_get_os_info(void);
 
+#if defined(__APPLE__)
+/* Load the MoltenVK loader bundled in the .app and return its
+ * vkGetInstanceProcAddr (as void*, for volkInitializeCustom), or NULL to fall
+ * back to volkInitialize(). Call before volk is initialized. */
+void *xemu_macos_get_bundled_vk_get_instance_proc_addr(void);
+#endif
+
 #ifdef CONFIG_CPUID_H
 #include <cpuid.h>
 #endif

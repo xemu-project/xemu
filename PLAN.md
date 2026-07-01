@@ -249,12 +249,27 @@ verification (I can't see rendering output). Partial payoff only once enough
 increments land. The fast ~90%-correct geom-emulation build remains the
 fallback meanwhile.
 
-### Remaining to ship
-- Bundle `libvulkan`/`libMoltenVK` + ICD json into `dist/xemu.app` and set the
-  loader env from the bundle at startup, so it runs without an installed SDK.
-- Default the macOS renderer to Vulkan.
-- Gameplay validation (in progress) — watch for scenes where MoltenVK's
-  geom-shader emulation might differ; if found, do Phases 1-2.
+### Shipping status — SELF-CONTAINED VULKAN BUILD WORKS ✅
+- [x] **Bundle MoltenVK** into `dist/xemu.app`: `build.sh` copies libMoltenVK +
+  libvulkan loader into `Contents/Libraries/<arch>` and writes an ICD json to
+  `Contents/Resources/vulkan/icd.d/`. At startup
+  (`xemu_macos_get_bundled_vk_get_instance_proc_addr`) the app `dlopen`s the
+  bundled loader by absolute path (survives hardened runtime, which strips
+  `DYLD_*`), sets `VK_ICD_FILENAMES` to the bundled ICD, and uses
+  `volkInitializeCustom`. **Verified: launches with NO SDK env, selects Apple
+  M5, renders ~30fps.**
+- [x] **Vulkan is the macOS default renderer** (`get_default_renderer`).
+- Result: a standalone `.app` that runs the fast Vulkan/Metal renderer on any
+  Apple Silicon Mac without a Vulkan SDK install. ~6-10× faster than OpenGL,
+  ~90% visually correct.
+
+### Remaining (future)
+- **Pixel-perfect:** the compute-pre-pass (clip-position SSBO + two-pass),
+  designed and documented above; needs a live-visual-iteration environment.
+- Minor cleanup: the unused `VK_KHR_fragment_shader_barycentric` extension/feature
+  enable in instance.c + renderer.h (harmless leftovers from the dead barycentric
+  attempt) can be stripped.
+- Gameplay validation of the ~90% build across more scenes.
 
 ## (historical) Was a FUNDAMENTAL BLOCKER: Metal has no geometry shaders
 
