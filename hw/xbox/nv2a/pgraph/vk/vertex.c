@@ -49,8 +49,13 @@ void pgraph_vk_update_vertex_ram_buffer(PGRAPHState *pg, hwaddr offset,
 
     pgraph_vk_download_surfaces_in_range_if_dirty(pg, offset, size);
 
-    size_t start_bit = offset / TARGET_PAGE_SIZE;
-    size_t end_bit = TARGET_PAGE_ALIGN(offset + size) / TARGET_PAGE_SIZE;
+    /* Track upload conflicts at a fine granularity (see
+     * VERTEX_RAM_DIRTY_TRACK_GRANULARITY) rather than per guest page, so
+     * non-overlapping vertex writes that merely share a 4KB page no longer
+     * force a spurious full GPU flush. */
+    const size_t gran = VERTEX_RAM_DIRTY_TRACK_GRANULARITY;
+    size_t start_bit = offset / gran;
+    size_t end_bit = (offset + size + gran - 1) / gran;
     size_t nbits = end_bit - start_bit;
 
     if (find_next_bit(r->uploaded_bitmap, start_bit + nbits, start_bit) <

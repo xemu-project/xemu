@@ -401,6 +401,13 @@ typedef struct PGRAPHVkState {
     size_t num_vertex_ram_buffer_syncs;
     unsigned long *uploaded_bitmap;
     size_t bitmap_size;
+/* Granularity (bytes) of vertex-RAM upload conflict tracking. A finer unit than
+ * the 4KB guest page reduces false-positive VK_FINISH_REASON_VERTEX_BUFFER_DIRTY
+ * pipeline flushes: two non-overlapping vertex writes packed into the same page
+ * previously forced a full GPU finish. Tracking is strictly more precise as the
+ * unit shrinks (a real byte-range overlap always shares a unit), so this only
+ * removes spurious flushes. 256B keeps the bitmap tiny (VRAM/256). */
+#define VERTEX_RAM_DIRTY_TRACK_GRANULARITY 256
 
     VkVertexInputAttributeDescription vertex_attribute_descriptions[NV2A_VERTEXSHADER_ATTRIBUTES];
     int vertex_attribute_to_description_location[NV2A_VERTEXSHADER_ATTRIBUTES];

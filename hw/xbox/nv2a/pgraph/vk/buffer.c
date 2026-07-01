@@ -109,7 +109,8 @@ void pgraph_vk_init_buffers(NV2AState *d)
         .buffer_size = memory_region_size(d->vram),
     };
 
-    r->bitmap_size = memory_region_size(d->vram) / 4096;
+    r->bitmap_size =
+        memory_region_size(d->vram) / VERTEX_RAM_DIRTY_TRACK_GRANULARITY;
     r->uploaded_bitmap = bitmap_new(r->bitmap_size);
     bitmap_clear(r->uploaded_bitmap, 0, r->bitmap_size);
 
