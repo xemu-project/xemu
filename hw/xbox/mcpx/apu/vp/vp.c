@@ -114,9 +114,11 @@ static void voice_set_mask(MCPXAPUState *d, uint16_t voice_handle,
     hwaddr voice = d->regs[NV_PAPU_VPVADDR]
                     + voice_handle * NV_PAVS_SIZE;
     uint32_t v = ldl_le_p(d->ram_ptr + voice + offset) & ~mask;
-    // Write via the address space so RAM dirty tracking stays correct.
-    stl_le_phys(&address_space_memory, voice + offset,
-                v | ((val << ctz32(mask)) & mask));
+    // Voice parameter blocks are APU-owned data in guest RAM (never executed as
+    // code, not a display surface), so write directly to the mapped pointer and
+    // skip the address_space dirty-tracking machinery, which profiling showed to
+    // be a significant cost (invalidate_and_set_dirty / physical_memory_*).
+    stl_le_p(d->ram_ptr + voice + offset, v | ((val << ctz32(mask)) & mask));
 }
 
 static void voice_off(MCPXAPUState *d, uint16_t v)
