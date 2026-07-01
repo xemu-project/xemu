@@ -100,6 +100,10 @@ enum Buffer {
     BUFFER_VERTEX_INLINE_STAGING,
     BUFFER_UNIFORM,
     BUFFER_UNIFORM_STAGING,
+    /* Per-vertex clip-space positions written by the vertex-shader pre-pass and
+     * read by the fragment shader to emulate the geometry shader's per-triangle
+     * outputs (vtxPos0/1/2, triMZ) on Metal/MoltenVK. */
+    BUFFER_CLIP_POS,
     BUFFER_COUNT
 };
 
@@ -345,6 +349,7 @@ typedef struct PGRAPHVkState {
     bool debug_utils_extension_enabled;
     bool custom_border_color_extension_enabled;
     bool memory_budget_extension_enabled;
+    bool fragment_shader_barycentric_enabled;
 
     VkPhysicalDevice physical_device;
     VkPhysicalDeviceFeatures enabled_physical_device_features;

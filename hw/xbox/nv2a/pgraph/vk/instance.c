@@ -348,6 +348,15 @@ static void add_optional_device_extension_names(
     r->memory_budget_extension_enabled = add_extension_if_available(
         available_extensions, enabled_extension_names,
         VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+
+#if !HAVE_EXTERNAL_MEMORY
+    /* Used to emulate the geometry shader's per-triangle outputs (vtxPos0/1/2,
+     * triMZ) in the fragment shader on Metal/MoltenVK, which has no geometry
+     * shaders. */
+    r->fragment_shader_barycentric_enabled = add_extension_if_available(
+        available_extensions, enabled_extension_names,
+        VK_KHR_FRAGMENT_SHADER_BARYCENTRIC_EXTENSION_NAME);
+#endif
 }
 
 static bool check_device_support_required_extensions(VkPhysicalDevice device)
@@ -537,6 +546,18 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
     }
 
     void *next_struct = NULL;
+
+    VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR barycentric_features;
+    if (r->fragment_shader_barycentric_enabled) {
+        barycentric_features =
+            (VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR){
+                .sType =
+                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_BARYCENTRIC_FEATURES_KHR,
+                .fragmentShaderBarycentric = VK_TRUE,
+                .pNext = next_struct,
+            };
+        next_struct = &barycentric_features;
+    }
 
     VkPhysicalDeviceCustomBorderColorFeaturesEXT custom_border_features;
     if (r->custom_border_color_extension_enabled) {

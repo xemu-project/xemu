@@ -180,6 +180,75 @@ not be necessary; keep as fallback if specific scenes glitch.
 - Vulkan/MoltenVK: **~29-30 fps** (22-37 ms/frame) at the same ~400 draws/frame.
 - ≈ **6-10× improvement.** Runs without crashes or validation errors.
 
+### CORRECTNESS REWRITE (chosen): geometry-shader-free via fragment barycentrics
+
+User confirmed Vulkan is fast + smooth but has rendering artifacts (missing /
+overlapping geometry) — MoltenVK's geometry-shader emulation is approximate. The
+fragment shader needs per-triangle data (`vtxPos0/1/2`, `triMZ`) for NV2A depth
+emulation (`psh.c:1004-1055`), normally produced by the geom shader.
+
+**Key enabler:** MoltenVK supports `VK_KHR_fragment_shader_barycentric`
+(`fragmentShaderBarycentric=true`). So the FS can read all 3 triangle vertices'
+positions via `pervertexEXT` — no geometry shader and no compute pre-pass.
+
+Architecture (Vulkan, macOS):
+- Keep the existing vertex shader; it outputs clip-space `vtxPos` per vertex.
+- **CPU primitive expansion** (`vk/draw.c`): quads/quad-strips → triangle list,
+  fans/strips → list, with provoking-vertex/winding ordering baked into indices.
+  Topology becomes TRIANGLE_LIST/LINE_LIST/POINT_LIST (no adjacency, no geom).
+- **Fragment shader barycentric path**: declare `pervertexEXT in vec4 v_vtxPos[3]`,
+  set `vtxPos0/1/2` from it, and compute `triMZ` in the FS (port `calc_triz`).
+- `need_geom` → false on the barycentric path; enable the device extension +
+  feature.
+
+Increments (build/test each):
+1. Enable `VK_KHR_fragment_shader_barycentric` (device ext + feature struct).
+2. Shader path: vsh emits per-vertex `vtxPos`; psh reconstructs `vtxPos0/1/2` +
+   `triMZ` via barycentrics. Force `need_geom=false` for TRIANGLES; validate
+   depth correct.
+3. CPU expansion for QUADS/QUAD_STRIP/TRIANGLE_FAN/STRIP + provoking/winding.
+4. Lines/polygon-line modes; cleanup; perf re-measure.
+
+### CORRECTNESS REWRITE v2: clip-position SSBO + two-pass (chosen)
+
+Barycentric is dead on MoltenVK (`PerVertexKHR` decoration unsupported in MSL —
+runtime error, pipeline creation fails). Reverted that path.
+
+Verified MoltenVK building blocks (vulkaninfo): `vertexPipelineStoresAndAtomics`,
+`fragmentStoresAndAtomics`, compute, `multiDrawIndirect` — all true. So we can
+produce the per-triangle data ourselves:
+
+**Design (per draw that would need a geometry shader):**
+1. **CPU expansion** (`vk/draw.c`): expand the primitive into a TRIANGLE_LIST
+   index buffer (quads→2 tris, strips/fans→list), ordered for NV2A
+   provoking-vertex/winding. Uniform list means triangle N = indices
+   [3N, 3N+1, 3N+2] — simple `gl_PrimitiveID` mapping in the FS.
+2. **Pre-pass:** vertex-only pipeline (`rasterizerDiscard=true`) using the
+   existing VSH plus an added SSBO write `clipPos[gl_VertexIndex] = vtxPos`.
+   Draws the source geometry; no fragments. Then a shader-write→read barrier.
+3. **Main pass:** draw the triangle-list. FS reads the index SSBO +
+   `clipPos` SSBO via `gl_PrimitiveID` to get vtxPos0/1/2, computes triMZ
+   (calc_triz). `need_geom=false`.
+
+Reuses the existing (complex) vertex shader rather than reimplementing T&L in
+compute. Cost: extra pre-pass draw + barrier per draw (CPU/GPU), an SSBO sized
+to vertex count, and CPU expansion.
+
+Increments (each built + user-verified; emulator run bounded + auto-killed):
+1. clipPos SSBO + VSH pre-pass write + FS read, TRIANGLE_LIST only (no
+   expansion) — validate plain triangles get correct depth.
+2. CPU expansion: TRIANGLE_STRIP/FAN → list.
+3. CPU expansion: QUADS/QUAD_STRIP → list (+ provoking/winding).
+4. Lines/polygon modes; perf tuning (the per-draw barrier is also a thermal
+   lever).
+
+NOTE (scope/working mode): this is a large, multi-day GPU rewrite touching the
+core draw loop, pipeline creation, shader generation, and descriptor/buffer
+management. It will take several build+test cycles, each needing visual
+verification (I can't see rendering output). Partial payoff only once enough
+increments land. The fast ~90%-correct geom-emulation build remains the
+fallback meanwhile.
+
 ### Remaining to ship
 - Bundle `libvulkan`/`libMoltenVK` + ICD json into `dist/xemu.app` and set the
   loader env from the bundle at startup, so it runs without an installed SDK.
