@@ -363,10 +363,13 @@ void qmp_blockdev_change_medium(const char *device,
         qdict_put_str(options, "driver", format);
     }
 
-    if (format && strcmp(format, "raw") == 0) {
+    if (!format || strcmp(format, "raw") == 0) {
         uint64_t offset = 0;
 
         if (xemu_redump_detect_game_partition(filename, &offset)) {
+            if (!format) {
+                qdict_put_str(options, "driver", "raw");
+            }
             qdict_put_int(options, "offset", offset);
         }
     }
