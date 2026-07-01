@@ -31,6 +31,9 @@ const char *xemu_get_os_info(void);
  * vkGetInstanceProcAddr (as void*, for volkInitializeCustom), or NULL to fall
  * back to volkInitialize(). Call before volk is initialized. */
 void *xemu_macos_get_bundled_vk_get_instance_proc_addr(void);
+
+/* Raise the calling thread's QoS to audio-priority (call from audio threads). */
+void xemu_macos_set_audio_thread_priority(void);
 #endif
 
 #ifdef CONFIG_CPUID_H

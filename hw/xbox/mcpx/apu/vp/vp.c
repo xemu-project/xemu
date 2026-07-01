@@ -20,6 +20,9 @@
  */
 
 #include "hw/xbox/mcpx/apu/apu_int.h"
+#ifdef __APPLE__
+#include "ui/xemu-os-utils.h"
+#endif
 #include "adpcm.h"
 
 static const struct {
@@ -1600,6 +1603,9 @@ static void *voice_worker_thread(void *arg)
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
 
     rcu_register_thread();
+#ifdef __APPLE__
+    xemu_macos_set_audio_thread_priority();
+#endif
     qemu_mutex_lock(&vwd->lock);
 
     int worker_id = ctz64(vwd->workers_pending);

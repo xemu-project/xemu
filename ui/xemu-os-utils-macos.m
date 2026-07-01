@@ -20,11 +20,21 @@
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
 #include <dlfcn.h>
+#include <pthread/qos.h>
 #include "xemu-os-utils.h"
 
 const char *xemu_get_os_info(void)
 {
 	return [[[NSProcessInfo processInfo] operatingSystemVersionString] UTF8String];
+}
+
+// Raise the calling (audio) thread's scheduling priority so macOS keeps
+// servicing it even while other apps contend for CPU (e.g. launching a
+// browser), which otherwise starves audio production and causes underrun
+// crackle. USER_INTERACTIVE is the highest standard QoS class.
+void xemu_macos_set_audio_thread_priority(void)
+{
+	pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
 }
 
 #if defined(__aarch64__)

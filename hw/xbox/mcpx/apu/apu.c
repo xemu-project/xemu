@@ -20,6 +20,9 @@
  */
 
 #include "apu_int.h"
+#ifdef __APPLE__
+#include "ui/xemu-os-utils.h"
+#endif
 
 MCPXAPUState *g_state; // Used via debug handlers
 
@@ -257,6 +260,9 @@ static void se_frame(MCPXAPUState *d)
 static void *mcpx_apu_frame_thread(void *arg)
 {
     MCPXAPUState *d = MCPX_APU_DEVICE(arg);
+#ifdef __APPLE__
+    xemu_macos_set_audio_thread_priority();
+#endif
     qemu_mutex_lock(&d->lock);
     while (!qatomic_read(&d->exiting)) {
         if (d->pause_requested) {
