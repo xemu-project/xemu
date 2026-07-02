@@ -1,5 +1,5 @@
 //
-// xemu User Interface
+// UI EEPROM EDITOR
 //
 // Copyright (C) 2026 JBW89
 //
