@@ -19,6 +19,7 @@
 #include "eeprom-editor.hh"
 
 #include <algorithm>
+#include <cstdio>
 
 #include "viewport-manager.hh"
 #include "../xemu-notifications.h"
@@ -55,6 +56,13 @@ constexpr size_t kUserChecksumOffset = 0x60;
 constexpr size_t kLanguageOffset = 0x90;
 constexpr size_t kVideoSettingsOffset = 0x94;
 constexpr size_t kAudioSettingsOffset = 0x98;
+constexpr size_t kGameRatingOffset = 0x9c;
+constexpr size_t kPasscodeOffset = 0xa0;
+constexpr size_t kMovieRatingOffset = 0xa4;
+constexpr size_t kLiveIpOffset = 0xa8;
+constexpr size_t kLiveDnsOffset = 0xac;
+constexpr size_t kLiveGatewayOffset = 0xb0;
+constexpr size_t kLiveSubnetOffset = 0xb4;
 constexpr size_t kMiscFlagsOffset = 0xb8;
 constexpr size_t kDvdRegionOffset = 0xbc;
 
@@ -134,6 +142,44 @@ const Choice kDvdRegions[] = {
     { "6 China", 6 },
 };
 
+const Choice kGameRatings[] = {
+    { "Unrated", 0 },
+    { "Adults Only (AO)", 1 },
+    { "Mature (M)", 2 },
+    { "Teen (T)", 3 },
+    { "Everyone (E)", 4 },
+    { "Kids to Adults (K-A)", 5 },
+    { "Early Childhood (EC)", 6 },
+};
+
+const Choice kMovieRatings[] = {
+    { "Unrated", 0 },
+    { "Adults Only (NC-17)", 1 },
+    { "Restricted (R)", 2 },
+    { "Parents Strongly Cautioned (PG-13)", 4 },
+    { "Parental Guidance Suggested (PG)", 5 },
+    { "General Audiences (G)", 7 },
+};
+
+const Choice kPasscodeButtons[] = {
+    { "NONE", 0x0 },
+    { "Up", 0x1 },
+    { "Down", 0x2 },
+    { "Left", 0x3 },
+    { "Right", 0x4 },
+    { "A", 0x5 },
+    { "B", 0x6 },
+    { "X", 0x7 },
+    { "Y", 0x8 },
+    { "Unknown 9", 0x9 },
+    { "Unknown A", 0xa },
+    { "Left Trigger", 0xb },
+    { "Right Trigger", 0xc },
+    { "Unknown D", 0xd },
+    { "Unknown E", 0xe },
+    { "Unknown F", 0xf },
+};
+
 VideoOutputSupport VideoOutputSupportForStandard(int video_standard)
 {
     if (video_standard < 0 ||
@@ -200,7 +246,7 @@ bool ChoiceCombo(const char *label, int *index, const Choice (&choices)[N])
 
 bool SupportedCheckbox(const char *label, bool *value, bool supported)
 {
-    ImVec4 color = supported ? ImVec4(0.25f, 0.55f, 1.0f, 1.0f)
+    ImVec4 color = supported ? ImVec4(0.35f, 0.9f, 0.35f, 1.0f)
                              : ImVec4(1.0f, 0.25f, 0.25f, 1.0f);
 
     ImGui::PushStyleColor(ImGuiCol_CheckMark, color);
@@ -386,6 +432,35 @@ void DrawHexInput(const char *label, char *buffer, size_t buffer_size)
                          ImGuiInputTextFlags_CharsNoBlank);
 }
 
+void FormatIpv4(const uint8_t *data, char *buffer, size_t buffer_size)
+{
+    snprintf(buffer, buffer_size, "%u.%u.%u.%u", data[0], data[1], data[2],
+             data[3]);
+}
+
+bool ParseIpv4(const char *text, uint8_t *out, const char *label,
+               std::string &error)
+{
+    unsigned int octets[4];
+    char tail;
+
+    if (sscanf(text, "%u.%u.%u.%u%c", &octets[0], &octets[1], &octets[2],
+               &octets[3], &tail) != 4) {
+        error = std::string(label) + " must be an IPv4 address.";
+        return false;
+    }
+
+    for (size_t i = 0; i < 4; i++) {
+        if (octets[i] > 255) {
+            error = std::string(label) + " contains an invalid IPv4 octet.";
+            return false;
+        }
+        out[i] = (uint8_t)octets[i];
+    }
+
+    return true;
+}
+
 extern "C" {
 extern char **gArgv;
 }
@@ -537,6 +612,26 @@ bool MainMenuEepromEditor::PopulateFromEeprom()
     m_audio_ac3 = audio & 0x00010000;
     m_audio_dts = audio & 0x00020000;
 
+    m_game_rating = ChoiceIndexForValue(
+        kGameRatings, ReadLe32(m_eeprom.data() + kGameRatingOffset));
+    m_movie_rating = ChoiceIndexForValue(
+        kMovieRatings, ReadLe32(m_eeprom.data() + kMovieRatingOffset));
+
+    uint32_t passcode = ReadLe32(m_eeprom.data() + kPasscodeOffset) & 0xffff;
+    for (size_t i = 0; i < G_N_ELEMENTS(m_passcode); i++) {
+        uint32_t nibble = (passcode >> ((3 - i) * 4)) & 0xf;
+        m_passcode[i] = ChoiceIndexForValue(kPasscodeButtons, nibble);
+    }
+
+    FormatIpv4(m_eeprom.data() + kLiveIpOffset, m_live_ip,
+               sizeof(m_live_ip));
+    FormatIpv4(m_eeprom.data() + kLiveDnsOffset, m_live_dns,
+               sizeof(m_live_dns));
+    FormatIpv4(m_eeprom.data() + kLiveGatewayOffset, m_live_gateway,
+               sizeof(m_live_gateway));
+    FormatIpv4(m_eeprom.data() + kLiveSubnetOffset, m_live_subnet,
+               sizeof(m_live_subnet));
+
     uint32_t misc = ReadLe32(m_eeprom.data() + kMiscFlagsOffset);
     m_misc_auto_off = misc & 0x00000001;
     m_misc_disable_dst = misc & 0x00000002;
@@ -601,6 +696,29 @@ bool MainMenuEepromEditor::ApplyToEeprom(std::string &error)
         audio |= 0x00020000;
     }
     WriteLe32(m_eeprom.data() + kAudioSettingsOffset, audio);
+
+    WriteLe32(m_eeprom.data() + kGameRatingOffset,
+              ChoiceValue(kGameRatings, m_game_rating));
+    WriteLe32(m_eeprom.data() + kMovieRatingOffset,
+              ChoiceValue(kMovieRatings, m_movie_rating));
+
+    uint32_t passcode = 0;
+    for (size_t i = 0; i < G_N_ELEMENTS(m_passcode); i++) {
+        passcode |= ChoiceValue(kPasscodeButtons, m_passcode[i])
+                    << ((3 - i) * 4);
+    }
+    WriteLe32(m_eeprom.data() + kPasscodeOffset, passcode);
+
+    if (!ParseIpv4(m_live_ip, m_eeprom.data() + kLiveIpOffset, "IP address",
+                   error) ||
+        !ParseIpv4(m_live_dns, m_eeprom.data() + kLiveDnsOffset,
+                   "DNS server", error) ||
+        !ParseIpv4(m_live_gateway, m_eeprom.data() + kLiveGatewayOffset,
+                   "Gateway", error) ||
+        !ParseIpv4(m_live_subnet, m_eeprom.data() + kLiveSubnetOffset,
+                   "Subnet mask", error)) {
+        return false;
+    }
 
     uint32_t misc = ReadLe32(m_eeprom.data() + kMiscFlagsOffset);
     misc &= ~kMiscKnownMask;
@@ -863,6 +981,37 @@ void MainMenuEepromEditor::DrawModal(bool *restart_dirty)
                             &m_misc_disable_live_signin);
             ImGui::Checkbox("Disable Xbox Live policy on next boot",
                             &m_misc_disable_live_policy);
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Parental")) {
+            ChoiceCombo("Max game rating", &m_game_rating, kGameRatings);
+            ChoiceCombo("Max movie rating", &m_movie_rating, kMovieRatings);
+
+            ImGui::Text("Passcode");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(120 * g_viewport_mgr.m_scale);
+            ChoiceCombo("##passcode0", &m_passcode[0], kPasscodeButtons);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(120 * g_viewport_mgr.m_scale);
+            ChoiceCombo("##passcode1", &m_passcode[1], kPasscodeButtons);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(120 * g_viewport_mgr.m_scale);
+            ChoiceCombo("##passcode2", &m_passcode[2], kPasscodeButtons);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(120 * g_viewport_mgr.m_scale);
+            ChoiceCombo("##passcode3", &m_passcode[3], kPasscodeButtons);
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Live")) {
+            ImGui::Text("Xbox Live Settings (Deprecated)");
+            ImGui::InputText("IP address", m_live_ip, sizeof(m_live_ip));
+            ImGui::InputText("DNS server", m_live_dns, sizeof(m_live_dns));
+            ImGui::InputText("Gateway", m_live_gateway,
+                             sizeof(m_live_gateway));
+            ImGui::InputText("Subnet mask", m_live_subnet,
+                             sizeof(m_live_subnet));
             ImGui::EndTabItem();
         }
 

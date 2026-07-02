@@ -46,6 +46,9 @@ private:
     int m_video_aspect = 0;
     int m_audio_output = 0;
     int m_dvd_region = 0;
+    int m_game_rating = 0;
+    int m_movie_rating = 0;
+    int m_passcode[4] = {};
 
     bool m_video_480p = false;
     bool m_video_720p = false;
@@ -64,6 +67,10 @@ private:
     char m_serial[13] = {};
     char m_mac[13] = {};
     char m_online_key[33] = {};
+    char m_live_ip[16] = {};
+    char m_live_dns[16] = {};
+    char m_live_gateway[16] = {};
+    char m_live_subnet[16] = {};
 
     void Open(const char *configured_path);
     void DrawModal(bool *restart_dirty);
