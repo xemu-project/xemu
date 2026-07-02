@@ -1,7 +1,10 @@
 /*
  * QEMU Block driver for CHD images
  *
- * This work is licensed under the terms of the GNU GPL, version 2 or later.
+ * Copyright (c) 2026 JBW89
+ *
+ * This work is licensed under the terms of the GNU GPL, version 2 or
+ * later.  See the COPYING file in the top-level directory.
  *
  * CHD is the MAME Compressed Hunks of Data format. This driver exposes a CHD
  * as a read-only DVD/raw block image and applies xemu's Xbox DVD
