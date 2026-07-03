@@ -16,6 +16,7 @@
 #include "qapi/error.h"
 #include "block/block-io.h"
 #include "block/block_int.h"
+#include "qemu/bswap.h"
 #include "qemu/module.h"
 #include "libchdr/chd.h"
 
@@ -26,8 +27,17 @@
 #define XEMU_XDVDFS_VOLUME_DESCRIPTOR_SECTOR 32
 #define XEMU_REDUMP_GAME_PARTITION_SECTOR 0x30600
 #define XEMU_XDVDFS_MAGIC_OFFSET 0x7ec
+#define XEMU_XDVDFS_ROOT_SECTOR_OFFSET 0x14
+#define XEMU_XDVDFS_ROOT_SIZE_OFFSET 0x18
+#define XEMU_XDVDFS_ENTRY_MIN_SIZE 14
+#define XEMU_XDVDFS_ENTRY_NAME_OFFSET 14
+#define XEMU_XDVDFS_ENTRY_OFFSET_SHIFT 2
+#define XEMU_XDVDFS_ENTRY_MAX_DEPTH 1024
+#define XEMU_XDVDFS_ENTRY_DIRECTORY 0x10
+#define XEMU_XDVDFS_MAX_ROOT_DIRECTORY_SIZE (16 * 1024 * 1024)
 
 static const char xemu_xdvdfs_magic[] = "MICROSOFT*XBOX*MEDIA";
+static const char xemu_xdvdfs_default_xbe[] = "default.xbe";
 
 typedef struct BDRVCHDFile {
     BdrvChild *child;
@@ -216,18 +226,243 @@ static int chd_read_bytes(BDRVCHDState *s, uint64_t offset,
     return 0;
 }
 
-static bool chd_has_xdvdfs_magic(BDRVCHDState *s, uint64_t offset)
+static bool chd_add_u64(uint64_t a, uint64_t b, uint64_t *result)
 {
-    uint8_t sector[XEMU_XDVDFS_SECTOR_SIZE];
-
-    if (chd_read_bytes(s, offset, sector, sizeof(sector)) < 0) {
+    if (a > UINT64_MAX - b) {
         return false;
     }
 
-    return memcmp(sector, xemu_xdvdfs_magic,
-                  sizeof(xemu_xdvdfs_magic) - 1) == 0 &&
-           memcmp(sector + XEMU_XDVDFS_MAGIC_OFFSET, xemu_xdvdfs_magic,
-                  sizeof(xemu_xdvdfs_magic) - 1) == 0;
+    *result = a + b;
+    return true;
+}
+
+static bool chd_sector_to_offset(uint64_t partition_offset, uint32_t sector,
+                                 uint64_t *offset)
+{
+    uint64_t sector_offset = (uint64_t)sector * XEMU_XDVDFS_SECTOR_SIZE;
+
+    return chd_add_u64(partition_offset, sector_offset, offset);
+}
+
+static bool chd_extent_in_image(BDRVCHDState *s, uint64_t offset,
+                                uint64_t bytes)
+{
+    if (bytes > s->logical_bytes) {
+        return false;
+    }
+
+    return offset <= s->logical_bytes - bytes;
+}
+
+static bool chd_read_exact(BDRVCHDState *s, uint64_t offset, void *buf,
+                           size_t bytes)
+{
+    if (!chd_extent_in_image(s, offset, bytes)) {
+        return false;
+    }
+
+    return chd_read_bytes(s, offset, buf, bytes) == 0;
+}
+
+static bool chd_entry_name_is_default_xbe(const uint8_t *name,
+                                          uint8_t name_length)
+{
+    if (name_length != sizeof(xemu_xdvdfs_default_xbe) - 1) {
+        return false;
+    }
+
+    return g_ascii_strncasecmp((const char *)name, xemu_xdvdfs_default_xbe,
+                               name_length) == 0;
+}
+
+static bool chd_entry_file_is_valid(BDRVCHDState *s, uint64_t partition_offset,
+                                    const uint8_t *entry)
+{
+    uint32_t entry_sector;
+    uint32_t entry_size;
+    uint64_t entry_offset;
+
+    entry_sector = ldl_le_p(entry + 4);
+    entry_size = ldl_le_p(entry + 8);
+
+    if (!entry_sector || !entry_size) {
+        return false;
+    }
+
+    if (!chd_sector_to_offset(partition_offset, entry_sector, &entry_offset)) {
+        return false;
+    }
+
+    return chd_extent_in_image(s, entry_offset, entry_size);
+}
+
+static bool chd_find_default_xbe_in_tree(BDRVCHDState *s,
+                                         const uint8_t *directory,
+                                         uint32_t directory_size,
+                                         uint32_t entry_offset,
+                                         uint16_t depth,
+                                         uint64_t partition_offset)
+{
+    const uint8_t *entry;
+    uint16_t left_entry_offset;
+    uint16_t right_entry_offset;
+    uint8_t attributes;
+    uint8_t name_length;
+    uint32_t child_offset;
+
+    if (depth > XEMU_XDVDFS_ENTRY_MAX_DEPTH) {
+        return false;
+    }
+
+    if (entry_offset > directory_size ||
+        directory_size - entry_offset < XEMU_XDVDFS_ENTRY_MIN_SIZE) {
+        return false;
+    }
+
+    entry = directory + entry_offset;
+    name_length = entry[13];
+
+    if (name_length > directory_size - entry_offset -
+        XEMU_XDVDFS_ENTRY_MIN_SIZE) {
+        return false;
+    }
+
+    attributes = entry[12];
+    if (!(attributes & XEMU_XDVDFS_ENTRY_DIRECTORY) &&
+        chd_entry_name_is_default_xbe(
+            entry + XEMU_XDVDFS_ENTRY_NAME_OFFSET, name_length) &&
+        chd_entry_file_is_valid(s, partition_offset, entry)) {
+        return true;
+    }
+
+    left_entry_offset = lduw_le_p(entry);
+    if (left_entry_offset) {
+        child_offset = (uint32_t)left_entry_offset <<
+                       XEMU_XDVDFS_ENTRY_OFFSET_SHIFT;
+        if (chd_find_default_xbe_in_tree(s, directory, directory_size,
+                                         child_offset, depth + 1,
+                                         partition_offset)) {
+            return true;
+        }
+    }
+
+    right_entry_offset = lduw_le_p(entry + 2);
+    if (right_entry_offset) {
+        child_offset = (uint32_t)right_entry_offset <<
+                       XEMU_XDVDFS_ENTRY_OFFSET_SHIFT;
+        if (chd_find_default_xbe_in_tree(s, directory, directory_size,
+                                         child_offset, depth + 1,
+                                         partition_offset)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool chd_find_default_xbe_linear(BDRVCHDState *s,
+                                        const uint8_t *directory,
+                                        uint32_t directory_size,
+                                        uint64_t partition_offset)
+{
+    uint32_t entry_offset = 0;
+
+    while (directory_size - entry_offset >= XEMU_XDVDFS_ENTRY_MIN_SIZE) {
+        const uint8_t *entry = directory + entry_offset;
+        uint8_t attributes = entry[12];
+        uint8_t name_length = entry[13];
+        uint32_t entry_size;
+
+        if (name_length > directory_size - entry_offset -
+            XEMU_XDVDFS_ENTRY_MIN_SIZE) {
+            return false;
+        }
+
+        if (!(attributes & XEMU_XDVDFS_ENTRY_DIRECTORY) &&
+            chd_entry_name_is_default_xbe(
+                entry + XEMU_XDVDFS_ENTRY_NAME_OFFSET, name_length) &&
+            chd_entry_file_is_valid(s, partition_offset, entry)) {
+            return true;
+        }
+
+        entry_size = QEMU_ALIGN_UP(XEMU_XDVDFS_ENTRY_MIN_SIZE + name_length,
+                                   4);
+        if (!entry_size || entry_size > directory_size - entry_offset) {
+            return false;
+        }
+
+        entry_offset += entry_size;
+    }
+
+    return false;
+}
+
+static bool chd_validate_xdvdfs_partition(BDRVCHDState *s,
+                                          uint64_t partition_offset)
+{
+    uint8_t sector[XEMU_XDVDFS_SECTOR_SIZE];
+    uint8_t *root_directory;
+    uint32_t root_sector;
+    uint32_t root_directory_size;
+    uint64_t volume_descriptor_offset;
+    uint64_t root_directory_offset;
+    bool valid;
+
+    if (!chd_sector_to_offset(partition_offset,
+                              XEMU_XDVDFS_VOLUME_DESCRIPTOR_SECTOR,
+                              &volume_descriptor_offset)) {
+        return false;
+    }
+
+    if (!chd_read_exact(s, volume_descriptor_offset, sector,
+                        sizeof(sector))) {
+        return false;
+    }
+
+    if (memcmp(sector, xemu_xdvdfs_magic,
+               sizeof(xemu_xdvdfs_magic) - 1) != 0 ||
+        memcmp(sector + XEMU_XDVDFS_MAGIC_OFFSET, xemu_xdvdfs_magic,
+               sizeof(xemu_xdvdfs_magic) - 1) != 0) {
+        return false;
+    }
+
+    root_sector = ldl_le_p(sector + XEMU_XDVDFS_ROOT_SECTOR_OFFSET);
+    root_directory_size = ldl_le_p(sector + XEMU_XDVDFS_ROOT_SIZE_OFFSET);
+
+    if (!root_sector || !root_directory_size ||
+        root_directory_size > XEMU_XDVDFS_MAX_ROOT_DIRECTORY_SIZE) {
+        return false;
+    }
+
+    if (!chd_sector_to_offset(partition_offset, root_sector,
+                              &root_directory_offset)) {
+        return false;
+    }
+
+    if (!chd_extent_in_image(s, root_directory_offset, root_directory_size)) {
+        return false;
+    }
+
+    root_directory = g_try_malloc(root_directory_size);
+    if (!root_directory) {
+        return false;
+    }
+
+    if (!chd_read_exact(s, root_directory_offset, root_directory,
+                        root_directory_size)) {
+        g_free(root_directory);
+        return false;
+    }
+
+    valid = chd_find_default_xbe_in_tree(s, root_directory,
+                                         root_directory_size, 0, 0,
+                                         partition_offset) ||
+            chd_find_default_xbe_linear(s, root_directory,
+                                        root_directory_size,
+                                        partition_offset);
+
+    g_free(root_directory);
+    return valid;
 }
 
 static void chd_detect_xbox_game_partition(BDRVCHDState *s)
@@ -235,18 +470,11 @@ static void chd_detect_xbox_game_partition(BDRVCHDState *s)
     const uint64_t game_partition_offset =
         (uint64_t)XEMU_REDUMP_GAME_PARTITION_SECTOR *
         XEMU_XDVDFS_SECTOR_SIZE;
-    const uint64_t xiso_volume_descriptor_offset =
-        (uint64_t)XEMU_XDVDFS_VOLUME_DESCRIPTOR_SECTOR *
-        XEMU_XDVDFS_SECTOR_SIZE;
-    const uint64_t redump_volume_descriptor_offset =
-        game_partition_offset + xiso_volume_descriptor_offset;
-
-    if (chd_has_xdvdfs_magic(s, xiso_volume_descriptor_offset)) {
+    if (chd_validate_xdvdfs_partition(s, 0)) {
         return;
     }
 
-    if (game_partition_offset < s->logical_bytes &&
-        chd_has_xdvdfs_magic(s, redump_volume_descriptor_offset)) {
+    if (chd_validate_xdvdfs_partition(s, game_partition_offset)) {
         s->data_offset = game_partition_offset;
         s->visible_bytes = s->logical_bytes - game_partition_offset;
     }
