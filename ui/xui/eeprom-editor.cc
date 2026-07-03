@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <glib/gstdio.h>
 
 #include "viewport-manager.hh"
 #include "../xemu-notifications.h"
@@ -639,6 +640,11 @@ void RestartXemu()
 {
     xemu_settings_save();
 
+    if (!gArgv || !gArgv[0]) {
+        xemu_queue_error_message("Failed to restart xemu: command line arguments are missing.");
+        return;
+    }
+
 #ifdef _WIN32
     _execv(gArgv[0], gArgv);
 #else
@@ -949,13 +955,13 @@ bool MainMenuEepromEditor::Save(std::string &error)
     bool flush_ok = fflush(fd) == 0;
     bool close_ok = fclose(fd) == 0;
     if (written != m_eeprom.size() || !flush_ok || !close_ok) {
-        remove(temp_path.c_str());
+        g_remove(temp_path.c_str());
         error = "Failed to write EEPROM file.";
         return false;
     }
 
-    if (rename(temp_path.c_str(), m_path.c_str()) != 0) {
-        remove(temp_path.c_str());
+    if (g_rename(temp_path.c_str(), m_path.c_str()) != 0) {
+        g_remove(temp_path.c_str());
         error = "Failed to replace EEPROM file.";
         return false;
     }
