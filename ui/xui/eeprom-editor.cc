@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+#include "qemu/osdep.h"
 #include "eeprom-editor.hh"
 
 #include <algorithm>
@@ -25,6 +26,7 @@
 #include <glib/gstdio.h>
 
 #ifdef _WIN32
+#include <io.h>
 #include <process.h>
 #else
 #include <unistd.h>
@@ -32,6 +34,7 @@
 
 #include "viewport-manager.hh"
 #include "../xemu-notifications.h"
+#include "../xemu-settings.h"
 
 extern "C" {
 #include "crypto/random.h"
@@ -372,12 +375,11 @@ template <size_t N>
 bool ChoiceComboRow(const char *id, const char *label, int *index,
                     const Choice (&choices)[N])
 {
-    float row_start = BeginFormRow();
+    BeginFormRow();
     bool changed = ChoiceComboWidget(id, index, choices);
 
     DrawFormLabel();
     ImGui::TextUnformatted(label);
-    (void)row_start;
 
     return changed;
 }
@@ -583,14 +585,20 @@ bool DrawHexInputRow(const char *id, const char *label, char *buffer,
     return false;
 }
 
+int DigitsOnlyFilter(ImGuiInputTextCallbackData *data)
+{
+    return (data->EventChar >= '0' && data->EventChar <= '9') ? 0 : 1;
+}
+
 bool DrawTextInputRow(const char *id, const char *label, char *buffer,
                       size_t buffer_size, ImGuiInputTextFlags flags = 0,
-                      const char *button_label = nullptr)
+                      const char *button_label = nullptr,
+                      ImGuiInputTextCallback callback = nullptr)
 {
     bool button_column = button_label != nullptr;
     float row_start = BeginFormRow();
     SetEditorFieldWidth();
-    ImGui::InputText(id, buffer, buffer_size, flags);
+    ImGui::InputText(id, buffer, buffer_size, flags, callback);
 
     DrawFormLabel();
     ImGui::TextUnformatted(label);
@@ -654,7 +662,29 @@ void RestartXemu()
     }
 
 #ifdef _WIN32
-    _execvp(gArgv[0], gArgv);
+    /* Windows _execvp joins argv into a command line without quoting, so
+     * arguments containing spaces must be quoted here to survive the
+     * round-trip through CommandLineToArgv in the new process. */
+    GPtrArray *args = g_ptr_array_new_with_free_func(g_free);
+    for (char **arg = gArgv; *arg; arg++) {
+        if (strpbrk(*arg, " \t\"")) {
+            GString *quoted = g_string_new("\"");
+            for (const char *c = *arg; *c; c++) {
+                if (*c == '"') {
+                    g_string_append(quoted, "\\\"");
+                } else {
+                    g_string_append_c(quoted, *c);
+                }
+            }
+            g_string_append_c(quoted, '"');
+            g_ptr_array_add(args, g_string_free(quoted, FALSE));
+        } else {
+            g_ptr_array_add(args, g_strdup(*arg));
+        }
+    }
+    g_ptr_array_add(args, nullptr);
+    _execvp(gArgv[0], (char *const *)args->pdata);
+    g_ptr_array_free(args, TRUE);
 #else
     execvp(gArgv[0], gArgv);
 #endif
@@ -961,8 +991,13 @@ bool MainMenuEepromEditor::Save(std::string &error)
 
     size_t written = fwrite(m_eeprom.data(), 1, m_eeprom.size(), fd);
     bool flush_ok = fflush(fd) == 0;
+#ifdef _WIN32
+    bool sync_ok = _commit(_fileno(fd)) == 0;
+#else
+    bool sync_ok = fsync(fileno(fd)) == 0;
+#endif
     bool close_ok = fclose(fd) == 0;
-    if (written != m_eeprom.size() || !flush_ok || !close_ok) {
+    if (written != m_eeprom.size() || !flush_ok || !sync_ok || !close_ok) {
         g_remove(temp_path.c_str());
         error = "Failed to write EEPROM file.";
         return false;
@@ -1111,9 +1146,8 @@ void MainMenuEepromEditor::DrawModal(bool *restart_dirty)
         if (ImGui::BeginTabItem(kTabLabels[1])) {
             if (DrawTextInputRow("##serial", "Serial", m_serial,
                                  sizeof(m_serial),
-                                 ImGuiInputTextFlags_CharsDecimal |
-                                     ImGuiInputTextFlags_CharsNoBlank,
-                                 "Generate##serial")) {
+                                 ImGuiInputTextFlags_CallbackCharFilter,
+                                 "Generate##serial", DigitsOnlyFilter)) {
                 GenerateSerial();
             }
 
