@@ -74,6 +74,12 @@ constexpr uint32_t kAudioKnownMask = 0x00000003 | 0x00010000 | 0x00020000;
 constexpr uint32_t kMiscKnownMask = 0x0000000f;
 constexpr const char *kSurroundWarning =
     "xemu doesn't support surround sound at this time, do not enable this in your eeprom.";
+constexpr float kEditorFieldWidth = 480.0f;
+constexpr float kPasscodeFieldWidth = 96.0f;
+constexpr float kButtonWidth = 120.0f;
+constexpr float kRestartButtonWidth = 150.0f;
+constexpr float kFormLabelWidth = 145.0f;
+constexpr float kGenerateButtonWidth = 86.0f;
 
 struct Choice {
     const char *label;
@@ -162,23 +168,119 @@ const Choice kMovieRatings[] = {
 };
 
 const Choice kPasscodeButtons[] = {
-    { "NONE", 0x0 },
+    { "None", 0x0 },
     { "Up", 0x1 },
     { "Down", 0x2 },
     { "Left", 0x3 },
     { "Right", 0x4 },
-    { "A", 0x5 },
-    { "B", 0x6 },
     { "X", 0x7 },
     { "Y", 0x8 },
-    { "Unknown 9", 0x9 },
-    { "Unknown A", 0xa },
-    { "Left Trigger", 0xb },
-    { "Right Trigger", 0xc },
-    { "Unknown D", 0xd },
-    { "Unknown E", 0xe },
-    { "Unknown F", 0xf },
+    { "L Trigger", 0xb },
+    { "R Trigger", 0xc },
 };
+
+const char *const kTabLabels[] = {
+    "Security",
+    "Factory",
+    "User",
+    "Parental",
+    "Live",
+};
+
+float ScaledWidth(float width)
+{
+    return width * g_viewport_mgr.m_scale;
+}
+
+void SetEditorFieldWidth(float width = kEditorFieldWidth)
+{
+    ImGui::SetNextItemWidth(ScaledWidth(width));
+}
+
+float EepromTabBarWidth()
+{
+    const ImGuiStyle &style = ImGui::GetStyle();
+    float width = 0.0f;
+
+    for (size_t i = 0; i < G_N_ELEMENTS(kTabLabels); i++) {
+        width += ImGui::CalcTextSize(kTabLabels[i]).x +
+                 style.FramePadding.x * 2.0f;
+    }
+
+    width += style.ItemInnerSpacing.x * (G_N_ELEMENTS(kTabLabels) - 1);
+    return width;
+}
+
+void CenterNextItem(float width)
+{
+    float avail = ImGui::GetContentRegionAvail().x;
+
+    if (avail > width) {
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (avail - width) * 0.5f);
+    }
+}
+
+float LabeledItemWidth(const char *label, float item_width)
+{
+    const ImGuiStyle &style = ImGui::GetStyle();
+    const ImVec2 label_size = ImGui::CalcTextSize(label, nullptr, true);
+    float width = ScaledWidth(item_width);
+
+    if (label_size.x > 0.0f) {
+        width += style.ItemInnerSpacing.x + label_size.x;
+    }
+
+    return width;
+}
+
+void CenterLabeledItem(const char *label, float item_width,
+                       float extra_width = 0.0f)
+{
+    CenterNextItem(LabeledItemWidth(label, item_width) + extra_width);
+}
+
+float FormRowWidth()
+{
+    const ImGuiStyle &style = ImGui::GetStyle();
+    return ScaledWidth(kEditorFieldWidth) + style.ItemInnerSpacing.x +
+           ScaledWidth(kFormLabelWidth) + style.ItemSpacing.x +
+           ScaledWidth(kGenerateButtonWidth);
+}
+
+float BeginFormRow()
+{
+    CenterNextItem(FormRowWidth());
+    return ImGui::GetCursorPosX();
+}
+
+void DrawFormLabel()
+{
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    ImGui::AlignTextToFramePadding();
+}
+
+bool DrawFormButton(float row_start, const char *label)
+{
+    const ImGuiStyle &style = ImGui::GetStyle();
+    float button_x = row_start + ScaledWidth(kEditorFieldWidth) +
+                     style.ItemInnerSpacing.x + ScaledWidth(kFormLabelWidth) +
+                     style.ItemSpacing.x;
+
+    ImGui::SameLine(button_x, 0.0f);
+    return ImGui::Button(label, ImVec2(ScaledWidth(kGenerateButtonWidth), 0));
+}
+
+void DrawFullWidthTabLine(float y)
+{
+    ImVec2 window_pos = ImGui::GetWindowPos();
+    ImVec2 region_min = ImGui::GetWindowContentRegionMin();
+    ImVec2 region_max = ImGui::GetWindowContentRegionMax();
+
+    ImGui::GetWindowDrawList()->AddLine(
+        ImVec2(window_pos.x + region_min.x, y),
+        ImVec2(window_pos.x + region_max.x, y),
+        ImGui::GetColorU32(ImGuiCol_Tab), g_viewport_mgr.m_scale);
+}
 
 VideoOutputSupport VideoOutputSupportForStandard(int video_standard)
 {
@@ -221,13 +323,16 @@ uint32_t ChoiceValue(const Choice (&choices)[N], int index)
 }
 
 template <size_t N>
-bool ChoiceCombo(const char *label, int *index, const Choice (&choices)[N])
+bool ChoiceComboWidget(const char *label, int *index,
+                       const Choice (&choices)[N],
+                       float width = kEditorFieldWidth)
 {
     bool changed = false;
     if (*index < 0 || *index >= (int)N) {
         *index = 0;
     }
 
+    SetEditorFieldWidth(width);
     if (ImGui::BeginCombo(label, choices[*index].label)) {
         for (size_t i = 0; i < N; i++) {
             const bool selected = *index == (int)i;
@@ -241,6 +346,30 @@ bool ChoiceCombo(const char *label, int *index, const Choice (&choices)[N])
         }
         ImGui::EndCombo();
     }
+    return changed;
+}
+
+template <size_t N>
+bool ChoiceCombo(const char *label, int *index, const Choice (&choices)[N],
+                 float width = kEditorFieldWidth, bool center = true)
+{
+    if (center) {
+        CenterLabeledItem(label, width);
+    }
+    return ChoiceComboWidget(label, index, choices, width);
+}
+
+template <size_t N>
+bool ChoiceComboRow(const char *id, const char *label, int *index,
+                    const Choice (&choices)[N])
+{
+    float row_start = BeginFormRow();
+    bool changed = ChoiceComboWidget(id, index, choices);
+
+    DrawFormLabel();
+    ImGui::TextUnformatted(label);
+    (void)row_start;
+
     return changed;
 }
 
@@ -424,12 +553,53 @@ bool ParseSerial(const char *text, uint8_t *out, std::string &error)
     return true;
 }
 
-void DrawHexInput(const char *label, char *buffer, size_t buffer_size)
+bool DrawHexInputRow(const char *id, const char *label, char *buffer,
+                     size_t buffer_size, const char *button_label = nullptr)
 {
-    ImGui::InputText(label, buffer, buffer_size,
+    bool button_column = button_label != nullptr;
+    float row_start = BeginFormRow();
+    SetEditorFieldWidth();
+    ImGui::InputText(id, buffer, buffer_size,
                      ImGuiInputTextFlags_CharsHexadecimal |
                          ImGuiInputTextFlags_CharsUppercase |
                          ImGuiInputTextFlags_CharsNoBlank);
+
+    DrawFormLabel();
+    ImGui::TextUnformatted(label);
+
+    if (button_column) {
+        return DrawFormButton(row_start, button_label);
+    }
+
+    return false;
+}
+
+bool DrawTextInputRow(const char *id, const char *label, char *buffer,
+                      size_t buffer_size, ImGuiInputTextFlags flags = 0,
+                      const char *button_label = nullptr)
+{
+    bool button_column = button_label != nullptr;
+    float row_start = BeginFormRow();
+    SetEditorFieldWidth();
+    ImGui::InputText(id, buffer, buffer_size, flags);
+
+    DrawFormLabel();
+    ImGui::TextUnformatted(label);
+
+    if (button_column) {
+        return DrawFormButton(row_start, button_label);
+    }
+
+    return false;
+}
+
+void AlignToFormField()
+{
+    float form_start = (ImGui::GetContentRegionAvail().x - FormRowWidth()) * 0.5f;
+
+    if (form_start > 0.0f) {
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + form_start);
+    }
 }
 
 void FormatIpv4(const uint8_t *data, char *buffer, size_t buffer_size)
@@ -503,6 +673,7 @@ void MainMenuEepromEditor::Open(const char *configured_path)
 bool MainMenuEepromEditor::Load()
 {
     m_loaded = false;
+    m_saved = false;
 
     if (m_path.empty()) {
         SetStatus("No EEPROM path selected.", true);
@@ -767,16 +938,25 @@ bool MainMenuEepromEditor::Save(std::string &error)
         return false;
     }
 
-    FILE *fd = qemu_fopen(m_path.c_str(), "wb");
+    std::string temp_path = m_path + ".tmp";
+    FILE *fd = qemu_fopen(temp_path.c_str(), "wb");
     if (!fd) {
         error = "Failed to open EEPROM file for writing.";
         return false;
     }
 
     size_t written = fwrite(m_eeprom.data(), 1, m_eeprom.size(), fd);
+    bool flush_ok = fflush(fd) == 0;
     bool close_ok = fclose(fd) == 0;
-    if (written != m_eeprom.size() || !close_ok) {
+    if (written != m_eeprom.size() || !flush_ok || !close_ok) {
+        remove(temp_path.c_str());
         error = "Failed to write EEPROM file.";
+        return false;
+    }
+
+    if (rename(temp_path.c_str(), m_path.c_str()) != 0) {
+        remove(temp_path.c_str());
+        error = "Failed to replace EEPROM file.";
         return false;
     }
 
@@ -876,60 +1056,72 @@ void MainMenuEepromEditor::DrawModal(bool *restart_dirty)
         ImGui::BeginDisabled();
     }
 
-    if (ImGui::BeginTabBar("##eeprom_tabs")) {
-        if (ImGui::BeginTabItem("Security")) {
-            ChoiceCombo("Hardware revision", &m_hardware_revision,
-                        kHardwareRevisions);
+    ImGui::PushStyleColor(ImGuiCol_TabActive, ImVec4(0.14f, 0.45f, 0.10f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_TabUnfocusedActive,
+                          ImVec4(0.14f, 0.45f, 0.10f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_TabHovered,
+                          ImVec4(0.20f, 0.55f, 0.12f, 1.0f));
 
-            DrawHexInput("Confounder", m_confounder, sizeof(m_confounder));
-            ImGui::SameLine();
-            if (ImGui::Button("Generate##confounder")) {
+    CenterNextItem(EepromTabBarWidth());
+    float tab_line_y = ImGui::GetCursorScreenPos().y +
+                       ImGui::GetFrameHeight() - 1.0f;
+    if (ImGui::BeginTabBar("##eeprom_tabs")) {
+        DrawFullWidthTabLine(tab_line_y);
+
+        if (ImGui::BeginTabItem(kTabLabels[0])) {
+            ChoiceComboRow("##hardware_revision", "Hardware revision",
+                           &m_hardware_revision, kHardwareRevisions);
+
+            if (DrawHexInputRow("##confounder", "Confounder", m_confounder,
+                                sizeof(m_confounder),
+                                "Generate##confounder")) {
                 GenerateHex(m_confounder, 8);
             }
 
-            DrawHexInput("Hard drive key", m_hdd_key, sizeof(m_hdd_key));
-            ImGui::SameLine();
-            if (ImGui::Button("Generate##hdd_key")) {
+            if (DrawHexInputRow("##hdd_key", "Hard drive key", m_hdd_key,
+                                sizeof(m_hdd_key), "Generate##hdd_key")) {
                 GenerateHex(m_hdd_key, 16);
             }
 
-            ChoiceCombo("Xbox region", &m_xbox_region, kXboxRegions);
+            ChoiceComboRow("##xbox_region", "Xbox region", &m_xbox_region,
+                           kXboxRegions);
             ImGui::EndTabItem();
         }
 
-        if (ImGui::BeginTabItem("Factory")) {
-            ImGui::InputText("Serial", m_serial, sizeof(m_serial),
-                             ImGuiInputTextFlags_CharsDecimal |
-                                 ImGuiInputTextFlags_CharsNoBlank);
-            ImGui::SameLine();
-            if (ImGui::Button("Generate##serial")) {
+        if (ImGui::BeginTabItem(kTabLabels[1])) {
+            if (DrawTextInputRow("##serial", "Serial", m_serial,
+                                 sizeof(m_serial),
+                                 ImGuiInputTextFlags_CharsDecimal |
+                                     ImGuiInputTextFlags_CharsNoBlank,
+                                 "Generate##serial")) {
                 GenerateSerial();
             }
 
-            DrawHexInput("MAC address", m_mac, sizeof(m_mac));
-            ImGui::SameLine();
-            if (ImGui::Button("Generate##mac")) {
+            if (DrawHexInputRow("##mac", "MAC address", m_mac, sizeof(m_mac),
+                                "Generate##mac")) {
                 const uint8_t prefix[3] = { 0x00, 0x50, 0xf2 };
                 GenerateHex(m_mac, 6, prefix, sizeof(prefix));
             }
 
-            DrawHexInput("Online key", m_online_key, sizeof(m_online_key));
-            ImGui::SameLine();
-            if (ImGui::Button("Generate##online_key")) {
+            if (DrawHexInputRow("##online_key", "Online key", m_online_key,
+                                sizeof(m_online_key),
+                                "Generate##online_key")) {
                 GenerateHex(m_online_key, 16);
             }
 
-            ChoiceCombo("Video standard", &m_video_standard,
-                        kVideoStandards);
+            ChoiceComboRow("##factory_video_standard", "Video standard",
+                           &m_video_standard, kVideoStandards);
             ImGui::EndTabItem();
         }
 
-        if (ImGui::BeginTabItem("User")) {
-            ChoiceCombo("Language", &m_language, kLanguages);
-            ChoiceCombo("DVD region", &m_dvd_region, kDvdRegions);
-            ChoiceCombo("Video output", &m_video_standard,
-                        kVideoStandards);
-            ChoiceCombo("Video aspect", &m_video_aspect, kVideoAspects);
+        if (ImGui::BeginTabItem(kTabLabels[2])) {
+            ChoiceComboRow("##language", "Language", &m_language, kLanguages);
+            ChoiceComboRow("##dvd_region", "DVD region", &m_dvd_region,
+                           kDvdRegions);
+            ChoiceComboRow("##video_output", "Video output", &m_video_standard,
+                           kVideoStandards);
+            ChoiceComboRow("##video_aspect", "Video aspect", &m_video_aspect,
+                           kVideoAspects);
 
             const VideoOutputSupport video_support =
                 VideoOutputSupportForStandard(m_video_standard);
@@ -939,8 +1131,10 @@ void MainMenuEepromEditor::DrawModal(bool *restart_dirty)
                 (!video_support.hz60 && m_video_60hz) ||
                 (!video_support.hz50 && m_video_50hz);
 
+            AlignToFormField();
             ImGui::Text("Supported modes for %s",
                         kVideoStandards[m_video_standard].label);
+            AlignToFormField();
             SupportedCheckbox("480p", &m_video_480p,
                               video_support.hd_modes);
             ImGui::SameLine();
@@ -949,81 +1143,111 @@ void MainMenuEepromEditor::DrawModal(bool *restart_dirty)
             ImGui::SameLine();
             SupportedCheckbox("1080i", &m_video_1080i,
                               video_support.hd_modes);
+            AlignToFormField();
             SupportedCheckbox("60 Hz", &m_video_60hz,
                               video_support.hz60);
             ImGui::SameLine();
             SupportedCheckbox("50 Hz", &m_video_50hz,
                               video_support.hz50);
             if (unsupported_video_selected) {
+                AlignToFormField();
                 ImGui::TextColored(
                     ImVec4(1, 0.35f, 0.35f, 1),
                     "Red video modes are not supported by the selected video standard.");
             }
 
-            if (ChoiceCombo("Audio output", &m_audio_output, kAudioOutputs) &&
+            if (ChoiceComboRow("##audio_output", "Audio output",
+                               &m_audio_output, kAudioOutputs) &&
                 ChoiceValue(kAudioOutputs, m_audio_output) == 0x00000002) {
                 SetStatus(kSurroundWarning, true);
             }
             if (ChoiceValue(kAudioOutputs, m_audio_output) == 0x00000002) {
+                AlignToFormField();
                 ImGui::TextColored(ImVec4(1, 0.35f, 0.35f, 1), "%s",
                                    kSurroundWarning);
             }
+            AlignToFormField();
             ImGui::Checkbox("AC3", &m_audio_ac3);
             ImGui::SameLine();
             ImGui::Checkbox("DTS", &m_audio_dts);
 
             ImGui::Separator();
+            AlignToFormField();
             ImGui::Checkbox("6 hour automatic shutdown",
                             &m_misc_auto_off);
+            AlignToFormField();
             ImGui::Checkbox("Disable automatic daylight savings adjustment",
                             &m_misc_disable_dst);
+            AlignToFormField();
             ImGui::Checkbox("Disable automatic Xbox Live sign-in",
                             &m_misc_disable_live_signin);
+            AlignToFormField();
             ImGui::Checkbox("Disable Xbox Live policy on next boot",
                             &m_misc_disable_live_policy);
             ImGui::EndTabItem();
         }
 
-        if (ImGui::BeginTabItem("Parental")) {
-            ChoiceCombo("Max game rating", &m_game_rating, kGameRatings);
-            ChoiceCombo("Max movie rating", &m_movie_rating, kMovieRatings);
+        if (ImGui::BeginTabItem(kTabLabels[3])) {
+            ChoiceComboRow("##game_rating", "Max game rating",
+                           &m_game_rating, kGameRatings);
+            ChoiceComboRow("##movie_rating", "Max movie rating",
+                           &m_movie_rating, kMovieRatings);
 
+            float passcode_row_width =
+                ImGui::CalcTextSize("Passcode").x +
+                ImGui::GetStyle().ItemSpacing.x * 4.0f +
+                ScaledWidth(kPasscodeFieldWidth) * 4.0f;
+            CenterNextItem(passcode_row_width);
             ImGui::Text("Passcode");
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(120 * g_viewport_mgr.m_scale);
-            ChoiceCombo("##passcode0", &m_passcode[0], kPasscodeButtons);
+            ChoiceCombo("##passcode0", &m_passcode[0], kPasscodeButtons,
+                        kPasscodeFieldWidth, false);
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(120 * g_viewport_mgr.m_scale);
-            ChoiceCombo("##passcode1", &m_passcode[1], kPasscodeButtons);
+            ChoiceCombo("##passcode1", &m_passcode[1], kPasscodeButtons,
+                        kPasscodeFieldWidth, false);
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(120 * g_viewport_mgr.m_scale);
-            ChoiceCombo("##passcode2", &m_passcode[2], kPasscodeButtons);
+            ChoiceCombo("##passcode2", &m_passcode[2], kPasscodeButtons,
+                        kPasscodeFieldWidth, false);
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(120 * g_viewport_mgr.m_scale);
-            ChoiceCombo("##passcode3", &m_passcode[3], kPasscodeButtons);
+            ChoiceCombo("##passcode3", &m_passcode[3], kPasscodeButtons,
+                        kPasscodeFieldWidth, false);
             ImGui::EndTabItem();
         }
 
-        if (ImGui::BeginTabItem("Live")) {
+        if (ImGui::BeginTabItem(kTabLabels[4])) {
+            AlignToFormField();
             ImGui::Text("Xbox Live Settings (Deprecated)");
-            ImGui::InputText("IP address", m_live_ip, sizeof(m_live_ip));
-            ImGui::InputText("DNS server", m_live_dns, sizeof(m_live_dns));
-            ImGui::InputText("Gateway", m_live_gateway,
+            DrawTextInputRow("##live_ip", "IP address", m_live_ip,
+                             sizeof(m_live_ip));
+            DrawTextInputRow("##live_dns", "DNS server", m_live_dns,
+                             sizeof(m_live_dns));
+            DrawTextInputRow("##live_gateway", "Gateway", m_live_gateway,
                              sizeof(m_live_gateway));
-            ImGui::InputText("Subnet mask", m_live_subnet,
+            DrawTextInputRow("##live_subnet", "Subnet mask", m_live_subnet,
                              sizeof(m_live_subnet));
             ImGui::EndTabItem();
         }
 
         ImGui::EndTabBar();
     }
+    ImGui::PopStyleColor(3);
 
     if (!m_loaded) {
         ImGui::EndDisabled();
     }
 
     ImGui::Separator();
-    if (ImGui::Button("Reload", ImVec2(120 * g_viewport_mgr.m_scale, 0))) {
+
+    int button_count = m_saved ? 4 : 3;
+    float button_row_width = ScaledWidth(kButtonWidth) * 3.0f +
+                             ImGui::GetStyle().ItemSpacing.x *
+                                 (button_count - 1);
+    if (m_saved) {
+        button_row_width += ScaledWidth(kRestartButtonWidth);
+    }
+    CenterNextItem(button_row_width);
+
+    if (ImGui::Button("Reload", ImVec2(ScaledWidth(kButtonWidth), 0))) {
         Load();
     }
     ImGui::SameLine();
@@ -1031,7 +1255,7 @@ void MainMenuEepromEditor::DrawModal(bool *restart_dirty)
     if (!m_loaded) {
         ImGui::BeginDisabled();
     }
-    if (ImGui::Button("Save", ImVec2(120 * g_viewport_mgr.m_scale, 0))) {
+    if (ImGui::Button("Save", ImVec2(ScaledWidth(kButtonWidth), 0))) {
         std::string error;
         if (Save(error)) {
             SetStatus("EEPROM saved. Restart required to use changes.");
@@ -1051,13 +1275,13 @@ void MainMenuEepromEditor::DrawModal(bool *restart_dirty)
     if (m_saved) {
         ImGui::SameLine();
         if (ImGui::Button("Restart xemu",
-                          ImVec2(150 * g_viewport_mgr.m_scale, 0))) {
+                          ImVec2(ScaledWidth(kRestartButtonWidth), 0))) {
             RestartXemu();
         }
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Close", ImVec2(120 * g_viewport_mgr.m_scale, 0))) {
+    if (ImGui::Button("Close", ImVec2(ScaledWidth(kButtonWidth), 0))) {
         ImGui::CloseCurrentPopup();
     }
 
