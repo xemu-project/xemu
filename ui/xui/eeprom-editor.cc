@@ -19,8 +19,16 @@
 #include "eeprom-editor.hh"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <glib/gstdio.h>
+
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "viewport-manager.hh"
 #include "../xemu-notifications.h"
@@ -1163,9 +1171,12 @@ void MainMenuEepromEditor::DrawModal(bool *restart_dirty)
             }
 
             if (ChoiceComboRow("##audio_output", "Audio output",
-                               &m_audio_output, kAudioOutputs) &&
-                ChoiceValue(kAudioOutputs, m_audio_output) == 0x00000002) {
-                SetStatus(kSurroundWarning, true);
+                               &m_audio_output, kAudioOutputs)) {
+                if (ChoiceValue(kAudioOutputs, m_audio_output) == 0x00000002) {
+                    SetStatus(kSurroundWarning, true);
+                } else if (m_status == kSurroundWarning) {
+                    SetStatus(nullptr);
+                }
             }
             if (ChoiceValue(kAudioOutputs, m_audio_output) == 0x00000002) {
                 AlignToFormField();
