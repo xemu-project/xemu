@@ -654,9 +654,9 @@ void RestartXemu()
     }
 
 #ifdef _WIN32
-    _execv(gArgv[0], gArgv);
+    _execvp(gArgv[0], gArgv);
 #else
-    execv(gArgv[0], gArgv);
+    execvp(gArgv[0], gArgv);
 #endif
 
     xemu_queue_error_message("Failed to restart xemu.");
@@ -1055,6 +1055,12 @@ void MainMenuEepromEditor::DrawModal(bool *restart_dirty)
     bool open = true;
     if (!ImGui::BeginPopupModal("EEPROM Editor", &open,
                                 ImGuiWindowFlags_NoSavedSettings)) {
+        return;
+    }
+
+    if (!open) {
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
         return;
     }
 
