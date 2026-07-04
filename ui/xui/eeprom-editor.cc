@@ -42,6 +42,9 @@ extern "C" {
 #include "util/rc4.h"
 #include "util/sha1.h"
 
+/* Local mirror of XboxEEPROMVersion / xbox_eeprom_generate() from
+ * hw/xbox/eeprom_generation.h. C linkage means no cross-TU type checking,
+ * so the enumerator order below must stay in sync with that header. */
 typedef enum XboxEepromEditorVersion {
     XBOX_EEPROM_EDITOR_VERSION_D,
     XBOX_EEPROM_EDITOR_VERSION_R1,
@@ -54,6 +57,11 @@ bool xbox_eeprom_generate(const char *file, XboxEepromEditorVersion ver);
 
 namespace {
 
+/* EEPROM layout as expected by the retail kernel: a 20-byte keyed SHA1
+ * digest over the security section, the RC4-encrypted security section
+ * (confounder, HDD key, region), then the plaintext factory section
+ * (0x34-0x5f, checksummed at 0x30) and user section (0x64-0xbf,
+ * checksummed at 0x60). */
 constexpr size_t kHashOffset = 0x00;
 constexpr size_t kHashSize = 20;
 constexpr size_t kSecurityOffset = 0x14;
@@ -78,6 +86,8 @@ constexpr size_t kLiveSubnetOffset = 0xb4;
 constexpr size_t kMiscFlagsOffset = 0xb8;
 constexpr size_t kDvdRegionOffset = 0xbc;
 
+/* Masks of the flag bits this editor manages. Saving clears only these,
+ * so any bits we don't understand survive a load/save round trip. */
 constexpr uint32_t kVideoAspectMask = 0x00110000;
 constexpr uint32_t kVideoKnownMask = kVideoAspectMask | 0x00080000 |
                                      0x00020000 | 0x00040000 |
@@ -118,6 +128,9 @@ const Choice kXboxRegions[] = {
     { "Manufacturing / Debug", 0x80000000 },
 };
 
+/* The video standard values embed the refresh-rate flags also used in the
+ * video settings word: 0x00400000 = 60 Hz capable, 0x00800000 = 50 Hz
+ * capable. VideoOutputSupportForStandard must stay consistent with them. */
 const Choice kVideoStandards[] = {
     { "NTSC", 0x00400100 },
     { "NTSC Japan", 0x00400200 },
@@ -294,6 +307,9 @@ void DrawFullWidthTabLine(float y)
         ImGui::GetColorU32(ImGuiCol_Tab), g_viewport_mgr.m_scale);
 }
 
+/* Which output options the dashboard actually offers per video standard:
+ * HD modes and 60 Hz are NTSC features, PAL-I consoles can additionally
+ * toggle PAL-60, and PAL-M uses NTSC timing (60 Hz, no 50 Hz mode). */
 VideoOutputSupport VideoOutputSupportForStandard(int video_standard)
 {
     if (video_standard < 0 ||
@@ -306,8 +322,9 @@ VideoOutputSupport VideoOutputSupportForStandard(int video_standard)
     case 0x00400100: /* NTSC-M */
     case 0x00400200: /* NTSC-J */
         return { true, true, false };
+    case 0x00400400: /* PAL-M, 60 Hz NTSC timing */
+        return { false, true, false };
     case 0x00800300: /* PAL-I */
-    case 0x00400400: /* PAL-M */
     default:
         return { false, true, true };
     }
@@ -422,8 +439,12 @@ void WriteLe32(uint8_t *data, uint32_t value)
     data[3] = (value >> 24) & 0xff;
 }
 
+/* Checksum the kernel uses for the factory and user sections: a 64-bit
+ * carry-folding sum over little-endian 32-bit words, inverted. Must match
+ * xbox_eeprom_crc() in hw/xbox/eeprom_generation.c. */
 uint32_t EepromCrc(const uint8_t *data, size_t len)
 {
+    assert(len % 4 == 0);
     uint32_t high = 0;
     uint32_t low = 0;
 
@@ -437,6 +458,13 @@ uint32_t EepromCrc(const uint8_t *data, size_t len)
     return ~(high + low);
 }
 
+/* The kernel keys its EEPROM hash by starting SHA1 from a precomputed
+ * internal state instead of the standard initialisation vector; the state
+ * pairs differ per kernel version. Each state is the result of hashing one
+ * secret 64-byte block, hence the message bit count starts at 512. The
+ * constants are documented in "The Middle Message" paper:
+ * https://web.archive.org/web/20040618164907/http://www.xbox-linux.org/down/The%20Middle%20Message-1a.pdf
+ */
 void XboxSha1Reset(SHA1Context *ctx, XboxEepromEditorVersion ver, bool first)
 {
     ctx->msg_blk_index = 0;
@@ -483,6 +511,10 @@ void XboxSha1Reset(SHA1Context *ctx, XboxEepromEditorVersion ver, bool first)
     }
 }
 
+/* Keyed hash over the security section: SHA1 with the version's first
+ * state, then the 20-byte digest is hashed again with the second state.
+ * ctx.msg_blk (64 bytes) doubles as scratch for the intermediate digest;
+ * XboxSha1Reset clears the block index before it is read again. */
 void XboxSha1Compute(XboxEepromEditorVersion ver, const uint8_t *data,
                      size_t len, uint8_t *hash)
 {
@@ -631,7 +663,7 @@ bool ParseIpv4(const char *text, uint8_t *out, const char *label,
     unsigned int octets[4];
     char tail;
 
-    if (sscanf(text, "%u.%u.%u.%u%c", &octets[0], &octets[1], &octets[2],
+    if (sscanf(text, "%u.%u.%u.%u %c", &octets[0], &octets[1], &octets[2],
                &octets[3], &tail) != 4) {
         error = std::string(label) + " must be an IPv4 address.";
         return false;
@@ -649,6 +681,7 @@ bool ParseIpv4(const char *text, uint8_t *out, const char *label,
 }
 
 extern "C" {
+extern int gArgc;
 extern char **gArgv;
 }
 
@@ -656,39 +689,93 @@ void RestartXemu()
 {
     xemu_settings_save();
 
-    if (!gArgv || !gArgv[0]) {
+    if (!gArgv || gArgc < 1 || !gArgv[0]) {
         xemu_queue_error_message("Failed to restart xemu: command line arguments are missing.");
         return;
     }
 
-#ifdef _WIN32
-    /* Windows _execvp joins argv into a command line without quoting, so
-     * arguments containing spaces must be quoted here to survive the
-     * round-trip through CommandLineToArgv in the new process. */
-    GPtrArray *args = g_ptr_array_new_with_free_func(g_free);
-    for (char **arg = gArgv; *arg; arg++) {
-        if (strpbrk(*arg, " \t\"")) {
-            GString *quoted = g_string_new("\"");
-            for (const char *c = *arg; *c; c++) {
-                if (*c == '"') {
-                    g_string_append(quoted, "\\\"");
-                } else {
-                    g_string_append_c(quoted, *c);
-                }
-            }
-            g_string_append_c(quoted, '"');
-            g_ptr_array_add(args, g_string_free(quoted, FALSE));
+    /* Startup strips -config_path and its value out of gArgv by nulling the
+     * entries in place, so rebuild the argument list by index instead of
+     * stopping at the first null, and restore the effective config path. */
+    GPtrArray *argv = g_ptr_array_new();
+    bool stripped = false;
+    for (int i = 0; i < gArgc; i++) {
+        if (gArgv[i]) {
+            g_ptr_array_add(argv, gArgv[i]);
         } else {
-            g_ptr_array_add(args, g_strdup(*arg));
+            stripped = true;
         }
     }
-    g_ptr_array_add(args, nullptr);
-    _execvp(gArgv[0], (char *const *)args->pdata);
+    if (stripped) {
+        g_ptr_array_add(argv, (gpointer)"-config_path");
+        g_ptr_array_add(argv, (gpointer)xemu_settings_get_path());
+    }
+    g_ptr_array_add(argv, nullptr);
+
+#ifdef _WIN32
+    /* The narrow CRT exec functions interpret their arguments in the ANSI
+     * code page, which breaks UTF-8 paths, so convert everything to UTF-16
+     * and use _wexecvp. It joins argv into a command line without quoting,
+     * so arguments containing spaces must be quoted here to survive the
+     * round-trip through CommandLineToArgv in the new process. */
+    GPtrArray *args = g_ptr_array_new_with_free_func(g_free);
+    bool converted = true;
+    for (guint n = 0; converted && n + 1 < argv->len; n++) {
+        const char *arg = (const char *)g_ptr_array_index(argv, n);
+        gchar *quoted_arg;
+        if (strpbrk(arg, " \t\"")) {
+            GString *quoted = g_string_new("\"");
+            for (const char *c = arg;; c++) {
+                size_t backslashes = 0;
+                while (*c == '\\') {
+                    backslashes++;
+                    c++;
+                }
+                if (*c == '\0') {
+                    /* Backslashes before the closing quote must be doubled
+                     * so they don't escape it. */
+                    backslashes *= 2;
+                } else if (*c == '"') {
+                    /* Backslashes before a quote must be doubled, and the
+                     * quote itself escaped. */
+                    backslashes = backslashes * 2 + 1;
+                }
+                for (size_t i = 0; i < backslashes; i++) {
+                    g_string_append_c(quoted, '\\');
+                }
+                if (*c == '\0') {
+                    break;
+                }
+                g_string_append_c(quoted, *c);
+            }
+            g_string_append_c(quoted, '"');
+            quoted_arg = g_string_free(quoted, FALSE);
+        } else {
+            quoted_arg = g_strdup(arg);
+        }
+
+        gunichar2 *warg = g_utf8_to_utf16(quoted_arg, -1, NULL, NULL, NULL);
+        g_free(quoted_arg);
+        if (warg) {
+            g_ptr_array_add(args, warg);
+        } else {
+            converted = false;
+        }
+    }
+
+    gunichar2 *wfile = g_utf8_to_utf16(gArgv[0], -1, NULL, NULL, NULL);
+    if (converted && wfile) {
+        g_ptr_array_add(args, nullptr);
+        _wexecvp((const wchar_t *)wfile,
+                 (const wchar_t *const *)args->pdata);
+    }
+    g_free(wfile);
     g_ptr_array_free(args, TRUE);
 #else
-    execvp(gArgv[0], gArgv);
+    execvp(gArgv[0], (char *const *)argv->pdata);
 #endif
 
+    g_ptr_array_free(argv, TRUE);
     xemu_queue_error_message("Failed to restart xemu.");
 }
 
@@ -738,6 +825,7 @@ bool MainMenuEepromEditor::Load()
     }
 
     size_t read = fread(m_eeprom.data(), 1, m_eeprom.size(), fd);
+    /* One extra read to reject files larger than the expected 256 bytes. */
     bool eof = fgetc(fd) == EOF;
     fclose(fd);
 
@@ -765,6 +853,10 @@ bool MainMenuEepromEditor::PopulateFromEeprom()
     uint8_t decrypted[kSecuritySize];
     bool decrypted_ok = false;
 
+    /* The hardware revision is not stored in the EEPROM; detect it by
+     * trial: decrypt the security section with each version's keys (the
+     * RC4 key is the keyed SHA1 of the stored hash) and accept the version
+     * whose decrypted data hashes back to the stored value. */
     for (int i = 0; i < (int)G_N_ELEMENTS(kHardwareRevisions); i++) {
         auto version = (XboxEepromEditorVersion)kHardwareRevisions[i].value;
         uint8_t seed[kHashSize];
@@ -832,6 +924,8 @@ bool MainMenuEepromEditor::PopulateFromEeprom()
     m_movie_rating = ChoiceIndexForValue(
         kMovieRatings, ReadLe32(m_eeprom.data() + kMovieRatingOffset));
 
+    /* The passcode occupies the low 16 bits, one button nibble per digit,
+     * most significant nibble first. */
     uint32_t passcode = ReadLe32(m_eeprom.data() + kPasscodeOffset) & 0xffff;
     for (size_t i = 0; i < G_N_ELEMENTS(m_passcode); i++) {
         uint32_t nibble = (passcode >> ((3 - i) * 4)) & 0xf;
@@ -917,7 +1011,10 @@ bool MainMenuEepromEditor::ApplyToEeprom(std::string &error)
     WriteLe32(m_eeprom.data() + kMovieRatingOffset,
               ChoiceValue(kMovieRatings, m_movie_rating));
 
-    uint32_t passcode = 0;
+    /* Only the passcode nibbles in the low 16 bits are edited; keep
+     * whatever the upper half of the word contains. */
+    uint32_t passcode =
+        ReadLe32(m_eeprom.data() + kPasscodeOffset) & ~0xffffu;
     for (size_t i = 0; i < G_N_ELEMENTS(m_passcode); i++) {
         passcode |= ChoiceValue(kPasscodeButtons, m_passcode[i])
                     << ((3 - i) * 4);
@@ -951,6 +1048,9 @@ bool MainMenuEepromEditor::ApplyToEeprom(std::string &error)
     }
     WriteLe32(m_eeprom.data() + kMiscFlagsOffset, misc);
 
+    /* Checksum ranges the kernel verifies: factory section 0x34-0x5f and
+     * user section 0x64-0xbf. Both must be recomputed after any field
+     * change, so this has to run after all writes above. */
     WriteLe32(m_eeprom.data() + kFactoryChecksumOffset,
               EepromCrc(m_eeprom.data() + kSerialOffset, 0x2c));
     WriteLe32(m_eeprom.data() + kUserChecksumOffset,
@@ -982,6 +1082,10 @@ bool MainMenuEepromEditor::Save(std::string &error)
         return false;
     }
 
+    /* Write to a temporary file, flush and sync it, then rename it over
+     * the original so an interrupted save can't corrupt the EEPROM.
+     * qemu_fopen and g_rename handle UTF-8 paths on Windows, and g_rename
+     * also replaces an existing destination there. */
     std::string temp_path = m_path + ".tmp";
     FILE *fd = qemu_fopen(temp_path.c_str(), "wb");
     if (!fd) {
@@ -1153,6 +1257,7 @@ void MainMenuEepromEditor::DrawModal(bool *restart_dirty)
 
             if (DrawHexInputRow("##mac", "MAC address", m_mac, sizeof(m_mac),
                                 "Generate##mac")) {
+                /* 00:50:F2 is a Microsoft OUI, as used on retail consoles. */
                 const uint8_t prefix[3] = { 0x00, 0x50, 0xf2 };
                 GenerateHex(m_mac, 6, prefix, sizeof(prefix));
             }

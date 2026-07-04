@@ -135,6 +135,8 @@ bool xbox_eeprom_generate(const char *file, XboxEEPROMVersion ver) {
     }
 
     bool success = fwrite(&e, sizeof(e), 1, fd) == 1;
-    fclose(fd);
+    if (fclose(fd) != 0) {
+        success = false;
+    }
     return success;
 }
