@@ -10,6 +10,22 @@
 #include "qemu/bswap.h"
 #include "system/xemu-redump.h"
 
+/*
+ * XDVDFS on-disk layout constants. A Redump ISO is a full disc dump whose
+ * bootable Xbox game filesystem starts at the game-partition sector; a plain
+ * "xiso" instead has that filesystem at sector 0. XDVDFS uses 2048-byte
+ * sectors and begins with a volume descriptor (32 sectors into the
+ * partition) carrying the magic string and the root directory location.
+ *
+ * Directory entry layout (little-endian), min 14 bytes plus the name:
+ *   0x00  uint16  left sibling offset  (in 4-byte units)
+ *   0x02  uint16  right sibling offset (in 4-byte units)
+ *   0x04  uint32  first data sector    (relative to the partition)
+ *   0x08  uint32  data size in bytes
+ *   0x0c  uint8   attributes (bit 0x10 = directory)
+ *   0x0d  uint8   name length
+ *   0x0e  char[]  name (name length bytes, then padded to 4)
+ */
 #define XEMU_XDVDFS_SECTOR_SIZE 2048
 #define XEMU_XDVDFS_VOLUME_DESCRIPTOR_SECTOR 32
 #define XEMU_REDUMP_GAME_PARTITION_SECTOR 0x30600
@@ -21,6 +37,7 @@
 #define XEMU_XDVDFS_ENTRY_OFFSET_SHIFT 2
 #define XEMU_XDVDFS_ENTRY_MAX_DEPTH 1024
 #define XEMU_XDVDFS_ENTRY_DIRECTORY 0x10
+/* Sanity cap so a bogus root size can't trigger a huge allocation. */
 #define XEMU_XDVDFS_MAX_ROOT_DIRECTORY_SIZE (16 * 1024 * 1024)
 
 static const char xemu_xdvdfs_magic[] = "MICROSOFT*XBOX*MEDIA";
@@ -186,10 +203,31 @@ static bool xemu_redump_entry_file_is_valid(uint64_t partition_offset,
     return xemu_redump_extent_in_file(entry_offset, entry_size, file_size);
 }
 
+/*
+ * XDVDFS stores each directory as an on-disk binary tree: every entry holds
+ * 16-bit offsets (in 4-byte units) to its left and right sibling. We walk
+ * the tree looking for a "default.xbe" entry whose data extent lies inside
+ * the image.
+ *
+ * The child offsets come from untrusted image data, so the tree may be
+ * malformed: children can point back at earlier entries, forming cycles or a
+ * DAG whose left/right links converge on shared nodes. Without a bound, such
+ * input makes the recursion explore an exponential number of paths (up to
+ * 2^depth) and hangs the emulator on disc load. Two independent limits keep
+ * the walk finite for any input:
+ *   - depth bounds the recursion (and thus stack usage) to MAX_DEPTH levels;
+ *   - budget bounds the total number of entries visited to the most that can
+ *     physically fit in the directory, so a converging or cyclic tree is
+ *     abandoned instead of being re-expanded over and over.
+ * A well-formed acyclic tree visits each entry at most once and trips
+ * neither limit; if we do bail out, the linear fallback scan still covers
+ * the directory.
+ */
 static bool xemu_redump_find_default_xbe_in_tree(const uint8_t *directory,
                                                  uint32_t directory_size,
                                                  uint32_t entry_offset,
                                                  uint16_t depth,
+                                                 uint32_t *budget,
                                                  uint64_t partition_offset,
                                                  uint64_t file_size)
 {
@@ -203,6 +241,13 @@ static bool xemu_redump_find_default_xbe_in_tree(const uint8_t *directory,
     if (depth > XEMU_XDVDFS_ENTRY_MAX_DEPTH) {
         return false;
     }
+
+    /* Stop once we have visited as many entries as could exist; beyond that
+     * we must be revisiting nodes of a malformed (cyclic/converging) tree. */
+    if (*budget == 0) {
+        return false;
+    }
+    (*budget)--;
 
     if (entry_offset > directory_size ||
         directory_size - entry_offset < XEMU_XDVDFS_ENTRY_MIN_SIZE) {
@@ -230,7 +275,7 @@ static bool xemu_redump_find_default_xbe_in_tree(const uint8_t *directory,
         child_offset = (uint32_t)left_entry_offset <<
                        XEMU_XDVDFS_ENTRY_OFFSET_SHIFT;
         if (xemu_redump_find_default_xbe_in_tree(
-                directory, directory_size, child_offset, depth + 1,
+                directory, directory_size, child_offset, depth + 1, budget,
                 partition_offset, file_size)) {
             return true;
         }
@@ -241,7 +286,7 @@ static bool xemu_redump_find_default_xbe_in_tree(const uint8_t *directory,
         child_offset = (uint32_t)right_entry_offset <<
                        XEMU_XDVDFS_ENTRY_OFFSET_SHIFT;
         if (xemu_redump_find_default_xbe_in_tree(
-                directory, directory_size, child_offset, depth + 1,
+                directory, directory_size, child_offset, depth + 1, budget,
                 partition_offset, file_size)) {
             return true;
         }
@@ -250,6 +295,13 @@ static bool xemu_redump_find_default_xbe_in_tree(const uint8_t *directory,
     return false;
 }
 
+/*
+ * Fallback enumeration that ignores the sibling pointers and walks the
+ * packed entries sequentially, advancing by each entry's padded size. This
+ * cannot loop or overrun: every step consumes at least ENTRY_MIN_SIZE bytes
+ * and stops once fewer than that remain, so the scan is bounded by the
+ * directory size. Used when the tree walk is abandoned as malformed.
+ */
 static bool xemu_redump_find_default_xbe_linear(const uint8_t *directory,
                                                 uint32_t directory_size,
                                                 uint64_t partition_offset,
@@ -347,8 +399,16 @@ static bool xemu_redump_validate_xdvdfs_partition(FILE *file,
         return false;
     }
 
+    /*
+     * Try the binary-tree walk first, capping the total entries it may
+     * visit at the most that can fit in the directory (each entry is at
+     * least ENTRY_MIN_SIZE bytes). If the tree is malformed and we abandon
+     * it, fall back to a linear scan of the packed entries, which is
+     * inherently bounded by the directory size.
+     */
+    uint32_t budget = root_directory_size / XEMU_XDVDFS_ENTRY_MIN_SIZE + 1;
     valid = xemu_redump_find_default_xbe_in_tree(
-                root_directory, root_directory_size, 0, 0,
+                root_directory, root_directory_size, 0, 0, &budget,
                 partition_offset, file_size) ||
             xemu_redump_find_default_xbe_linear(
                 root_directory, root_directory_size, partition_offset,
@@ -358,6 +418,14 @@ static bool xemu_redump_validate_xdvdfs_partition(FILE *file,
     return valid;
 }
 
+/*
+ * Detect whether the image at path is a Redump-style full disc dump that
+ * carries the Xbox game filesystem at the game-partition offset, so the
+ * caller can mount it with that offset. Returns false (and leaves *offset
+ * untouched) for anything else, including plain xiso images whose
+ * filesystem already starts at sector 0 -- those are recognised by their
+ * XDVDFS magic at the sector-0 volume descriptor and left to mount as-is.
+ */
 bool xemu_redump_detect_game_partition(const char *path, uint64_t *offset)
 {
     const uint64_t game_partition_offset =
