@@ -792,10 +792,13 @@ void MainMenuEepromEditor::Open(const char *configured_path)
     const char *path = configured_path;
     if (!path || !path[0]) {
         path = xemu_settings_get_default_eeprom_path();
-        xemu_settings_set_string(&g_config.sys.files.eeprom_path, path);
+        if (path) {
+            xemu_settings_set_string(&g_config.sys.files.eeprom_path, path);
+        }
     }
 
-    m_path = path;
+    /* Load() reports a clean error for an empty path. */
+    m_path = path ? path : "";
     m_saved = false;
     Load();
     m_open_requested = true;
