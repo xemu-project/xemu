@@ -23,6 +23,23 @@
 #define CHD_MAGIC "MComprHD"
 #define CHD_MAGIC_SIZE 8
 
+/*
+ * XDVDFS on-disk layout constants. Once a CHD is decompressed to its logical
+ * image, the bootable Xbox filesystem lives either at offset 0 (a plain xiso)
+ * or at the game-partition sector (a Redump-style full disc dump). XDVDFS
+ * uses 2048-byte sectors and starts with a volume descriptor 32 sectors into
+ * the partition, which carries the magic string and the root directory
+ * location.
+ *
+ * Directory entry layout (little-endian), min 14 bytes plus the name:
+ *   0x00  uint16  left sibling offset  (in 4-byte units)
+ *   0x02  uint16  right sibling offset (in 4-byte units)
+ *   0x04  uint32  first data sector    (relative to the partition)
+ *   0x08  uint32  data size in bytes
+ *   0x0c  uint8   attributes (bit 0x10 = directory)
+ *   0x0d  uint8   name length
+ *   0x0e  char[]  name (name length bytes, then padded to 4)
+ */
 #define XEMU_XDVDFS_SECTOR_SIZE 2048
 #define XEMU_XDVDFS_VOLUME_DESCRIPTOR_SECTOR 32
 #define XEMU_REDUMP_GAME_PARTITION_SECTOR 0x30600
@@ -34,6 +51,7 @@
 #define XEMU_XDVDFS_ENTRY_OFFSET_SHIFT 2
 #define XEMU_XDVDFS_ENTRY_MAX_DEPTH 1024
 #define XEMU_XDVDFS_ENTRY_DIRECTORY 0x10
+/* Sanity cap so a bogus root size can't trigger a huge allocation. */
 #define XEMU_XDVDFS_MAX_ROOT_DIRECTORY_SIZE (16 * 1024 * 1024)
 
 static const char xemu_xdvdfs_magic[] = "MICROSOFT*XBOX*MEDIA";
@@ -50,13 +68,21 @@ typedef struct BDRVCHDState {
     BDRVCHDFile file;
     chd_file *chd;
     const chd_header *header;
-    uint8_t *hunk;
-    uint32_t current_hunk;
-    uint64_t logical_bytes;
-    uint64_t data_offset;
-    uint64_t visible_bytes;
+    uint8_t *hunk;              /* single decompressed hunk cache */
+    uint32_t current_hunk;      /* index cached in hunk; valid iff hunk_valid */
+    bool hunk_valid;            /* separate flag: every uint32 is a valid index */
+    uint64_t logical_bytes;     /* full decompressed image size */
+    uint64_t data_offset;       /* offset added to guest reads (game partition) */
+    uint64_t visible_bytes;     /* size exposed to the guest = logical - offset */
 } BDRVCHDState;
 
+/*
+ * libchdr reads the container through a set of stdio-like callbacks. These
+ * bridge them onto the underlying QEMU BdrvChild so the CHD file itself is
+ * accessed through the block layer (honouring its backing protocol) rather
+ * than a raw FILE*. All offsets are clamped to INT64 range because the block
+ * layer's read/seek take signed 64-bit positions.
+ */
 static uint64_t chd_qemu_fsize(void *opaque)
 {
     BDRVCHDFile *file = opaque;
@@ -176,6 +202,13 @@ static int chd_probe(const uint8_t *buf, int buf_size, const char *filename)
     return 0;
 }
 
+/*
+ * Read bytes from the decompressed logical image. CHD stores data in
+ * fixed-size hunks; we decompress one hunk at a time into s->hunk and copy
+ * out the requested span, looping across hunk boundaries. Reads that extend
+ * past the end of the logical image are zero-filled, matching how the block
+ * layer expects a short image to behave.
+ */
 static int chd_read_bytes(BDRVCHDState *s, uint64_t offset,
                           uint8_t *buf, size_t bytes)
 {
@@ -207,12 +240,16 @@ static int chd_read_bytes(BDRVCHDState *s, uint64_t offset,
             return -EIO;
         }
 
-        if (s->current_hunk != hunk) {
+        /* Decompress the hunk unless it is already cached. hunk_valid must be
+         * checked separately: UINT32_MAX is a legal hunk index, so it cannot
+         * double as an "empty cache" sentinel in current_hunk. */
+        if (!s->hunk_valid || s->current_hunk != hunk) {
             err = chd_read(s->chd, hunk, s->hunk);
             if (err != CHDERR_NONE) {
                 return -EIO;
             }
             s->current_hunk = hunk;
+            s->hunk_valid = true;
         }
 
         hunk_offset = pos % s->header->hunkbytes;
@@ -296,11 +333,32 @@ static bool chd_entry_file_is_valid(BDRVCHDState *s, uint64_t partition_offset,
     return chd_extent_in_image(s, entry_offset, entry_size);
 }
 
+/*
+ * XDVDFS stores each directory as an on-disk binary tree: every entry holds
+ * 16-bit offsets (in 4-byte units) to its left and right sibling. We walk the
+ * tree looking for a "default.xbe" entry whose data extent lies inside the
+ * image, which marks the partition as a bootable Xbox filesystem.
+ *
+ * The child offsets come from untrusted image data, so the tree may be
+ * malformed: children can point back at earlier entries, forming cycles or a
+ * DAG whose left/right links converge on shared nodes. Without a bound, such
+ * input makes the recursion explore an exponential number of paths (up to
+ * 2^depth) and hangs the emulator while opening the image. Two independent
+ * limits keep the walk finite for any input:
+ *   - depth bounds the recursion (and thus stack usage) to MAX_DEPTH levels;
+ *   - budget bounds the total number of entries visited to the most that can
+ *     physically fit in the directory, so a converging or cyclic tree is
+ *     abandoned instead of being re-expanded over and over.
+ * A well-formed acyclic tree visits each entry at most once and trips neither
+ * limit; if we do bail out, the linear fallback scan still covers the
+ * directory.
+ */
 static bool chd_find_default_xbe_in_tree(BDRVCHDState *s,
                                          const uint8_t *directory,
                                          uint32_t directory_size,
                                          uint32_t entry_offset,
                                          uint16_t depth,
+                                         uint32_t *budget,
                                          uint64_t partition_offset)
 {
     const uint8_t *entry;
@@ -313,6 +371,13 @@ static bool chd_find_default_xbe_in_tree(BDRVCHDState *s,
     if (depth > XEMU_XDVDFS_ENTRY_MAX_DEPTH) {
         return false;
     }
+
+    /* Stop once we have visited as many entries as could exist; beyond that
+     * we must be revisiting nodes of a malformed (cyclic/converging) tree. */
+    if (*budget == 0) {
+        return false;
+    }
+    (*budget)--;
 
     if (entry_offset > directory_size ||
         directory_size - entry_offset < XEMU_XDVDFS_ENTRY_MIN_SIZE) {
@@ -340,7 +405,7 @@ static bool chd_find_default_xbe_in_tree(BDRVCHDState *s,
         child_offset = (uint32_t)left_entry_offset <<
                        XEMU_XDVDFS_ENTRY_OFFSET_SHIFT;
         if (chd_find_default_xbe_in_tree(s, directory, directory_size,
-                                         child_offset, depth + 1,
+                                         child_offset, depth + 1, budget,
                                          partition_offset)) {
             return true;
         }
@@ -351,7 +416,7 @@ static bool chd_find_default_xbe_in_tree(BDRVCHDState *s,
         child_offset = (uint32_t)right_entry_offset <<
                        XEMU_XDVDFS_ENTRY_OFFSET_SHIFT;
         if (chd_find_default_xbe_in_tree(s, directory, directory_size,
-                                         child_offset, depth + 1,
+                                         child_offset, depth + 1, budget,
                                          partition_offset)) {
             return true;
         }
@@ -360,6 +425,13 @@ static bool chd_find_default_xbe_in_tree(BDRVCHDState *s,
     return false;
 }
 
+/*
+ * Fallback enumeration that ignores the sibling pointers and walks the packed
+ * entries sequentially, advancing by each entry's padded size. This cannot
+ * loop or overrun: every step consumes at least ENTRY_MIN_SIZE bytes and
+ * stops once fewer than that remain, so it is bounded by the directory size.
+ * Used when the tree walk is abandoned as malformed.
+ */
 static bool chd_find_default_xbe_linear(BDRVCHDState *s,
                                         const uint8_t *directory,
                                         uint32_t directory_size,
@@ -454,8 +526,16 @@ static bool chd_validate_xdvdfs_partition(BDRVCHDState *s,
         return false;
     }
 
+    /*
+     * Try the binary-tree walk first, capping the total entries it may visit
+     * at the most that can fit in the directory (each entry is at least
+     * ENTRY_MIN_SIZE bytes). If the tree is malformed and we abandon it, fall
+     * back to a linear scan of the packed entries, which is inherently
+     * bounded by the directory size.
+     */
+    uint32_t budget = root_directory_size / XEMU_XDVDFS_ENTRY_MIN_SIZE + 1;
     valid = chd_find_default_xbe_in_tree(s, root_directory,
-                                         root_directory_size, 0, 0,
+                                         root_directory_size, 0, 0, &budget,
                                          partition_offset) ||
             chd_find_default_xbe_linear(s, root_directory,
                                         root_directory_size,
@@ -465,6 +545,15 @@ static bool chd_validate_xdvdfs_partition(BDRVCHDState *s,
     return valid;
 }
 
+/*
+ * Decide how to present the decompressed image to the guest. If a valid
+ * XDVDFS filesystem already starts at offset 0 the image is a plain xiso and
+ * is exposed as-is. Otherwise, if one is found at the Redump game-partition
+ * offset, that offset is hidden from the guest: reads are shifted by
+ * data_offset and only the partition-sized tail is made visible, so the guest
+ * sees a bare game disc. If neither matches, the full image is exposed
+ * unchanged.
+ */
 static void chd_detect_xbox_game_partition(BDRVCHDState *s)
 {
     const uint64_t game_partition_offset =
@@ -531,7 +620,7 @@ static int chd_bdrv_open(BlockDriverState *bs, QDict *options, int flags,
 
     s->logical_bytes = s->header->logicalbytes;
     s->visible_bytes = s->logical_bytes;
-    s->current_hunk = UINT32_MAX;
+    s->hunk_valid = false;
     s->hunk = g_try_malloc(s->header->hunkbytes);
     if (!s->hunk) {
         error_setg(errp, "Could not allocate CHD hunk buffer");
