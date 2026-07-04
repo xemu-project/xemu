@@ -21,6 +21,7 @@
 #include <vector>
 #include <memory>
 #include "common.hh"
+#include "eeprom-editor.hh"
 #include "widgets.hh"
 #include "scene.hh"
 #include "scene-components.hh"
@@ -139,6 +140,7 @@ class MainMenuSystemView : public virtual MainMenuTabView
 {
 protected:
     bool m_dirty;
+    MainMenuEepromEditor m_eeprom_editor;
 
 public:
     MainMenuSystemView();
