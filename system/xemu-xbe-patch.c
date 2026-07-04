@@ -75,6 +75,18 @@ typedef struct XemuXbePatchFile {
 static XemuXbePatchState xemu_xbe_patch_state;
 static GMutex xemu_xbe_patch_mutex;
 
+/*
+ * Lock-free fast-path hint for apply_read(), which runs on every block-backend
+ * read of every device. It mirrors "patched_xbes is non-NULL" and is written
+ * only under the mutex. apply_read() may read a stale value in either
+ * direction without harm: a stale 0 at most skips patching for a read that
+ * races the disc-insert commit (before the guest boots), and a stale 1 just
+ * takes the lock and re-checks the authoritative state. Correctness always
+ * comes from the re-check under the mutex; this only avoids the lock in the
+ * common case where no patches are active.
+ */
+static int xemu_xbe_patch_active;
+
 static uint32_t xemu_xbe_patch_ldl_le(const uint8_t *p)
 {
     return p[0] | ((uint32_t)p[1] << 8) |
@@ -116,6 +128,7 @@ static void xemu_xbe_patch_clear_state_locked(void)
     g_clear_pointer(&xemu_xbe_patch_state.current_title_name, g_free);
     g_clear_pointer(&xemu_xbe_patch_state.current_region, g_free);
     g_clear_pointer(&xemu_xbe_patch_state.status, g_free);
+    qatomic_set(&xemu_xbe_patch_active, 0);
 }
 
 static void xemu_xbe_patch_free_commit_values(GPtrArray *patched_xbes,
@@ -159,6 +172,9 @@ static void xemu_xbe_patch_commit(uint64_t generation, BlockBackend *blk,
     xemu_xbe_patch_state.current_region = current_region;
     xemu_xbe_patch_state.status = status;
     xemu_xbe_patch_state.preparing = false;
+    /* Enable the apply_read() fast path only when there is something to splice.
+     * Written last, under the mutex; cleared by clear_state_locked() above. */
+    qatomic_set(&xemu_xbe_patch_active, patched_xbes != NULL);
     g_mutex_unlock(&xemu_xbe_patch_mutex);
 }
 
@@ -1443,6 +1459,14 @@ void xemu_xbe_patch_apply_read(BlockBackend *blk, int64_t offset,
 {
     uint64_t read_start;
     uint64_t read_end;
+
+    /* Fast path: skip the lock entirely when no patches are active, which is
+     * the common case for every read of every block device. The authoritative
+     * state is still re-checked under the mutex below. */
+    if (!qatomic_read(&xemu_xbe_patch_active)) {
+        return;
+    }
+
     g_mutex_lock(&xemu_xbe_patch_mutex);
     if (xemu_xbe_patch_state.preparing ||
         xemu_xbe_patch_state.blk != blk ||
