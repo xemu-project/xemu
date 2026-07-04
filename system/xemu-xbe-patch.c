@@ -16,6 +16,21 @@
 #include "system/block-backend-global-state.h"
 #include "xemu-xbe.h"
 
+/*
+ * This module applies user-supplied byte patches to the XBE executables on a
+ * loaded Xbox disc "on the fly": the disc image itself is never modified.
+ * When a disc is inserted, prepare() locates default.xbe in the XDVDFS
+ * filesystem, hashes it to pick a matching patch profile, reads the target
+ * XBE(s) into memory and applies the profile's patches to those in-memory
+ * copies. Every guest read of the CD backend then has the patched bytes
+ * spliced into the returned buffer by apply_read(), so the guest sees the
+ * patched executable while the on-disk data stays untouched.
+ *
+ * XDVDFS constants below: 2048-byte sectors, a volume descriptor 32 sectors
+ * in carrying the magic string and root directory location. All disc access
+ * here assumes the filesystem starts at block-backend offset 0 (a plain xiso,
+ * or an image already presented at the game-partition offset).
+ */
 #define XEMU_XDVDFS_SECTOR_SIZE 2048
 #define XEMU_XDVDFS_VOLUME_DESCRIPTOR_SECTOR 32
 #define XEMU_XDVDFS_MAGIC_OFFSET 0x7ec
@@ -27,6 +42,14 @@
 
 static const char xemu_xdvdfs_magic[] = "MICROSOFT*XBOX*MEDIA";
 
+/*
+ * Shared state guarded by xemu_xbe_patch_mutex. generation is bumped on every
+ * prepare()/reset(); a prepare() runs its slow disc I/O without the lock and
+ * only commits its result if the generation still matches, so a disc change
+ * that races with an in-flight prepare discards the stale result instead of
+ * publishing patches for the wrong disc. preparing suppresses patching while
+ * prepare() is itself reading the disc.
+ */
 typedef struct XemuXbePatchState {
     BlockBackend *blk;
     GPtrArray *patched_xbes;
@@ -39,6 +62,9 @@ typedef struct XemuXbePatchState {
     bool preparing;
 } XemuXbePatchState;
 
+/* One target XBE read from the disc, with patches already applied to data.
+ * offset/size are in block-backend byte coordinates so apply_read() can splice
+ * data back into overlapping guest reads. */
 typedef struct XemuXbePatchFile {
     char *name;
     uint64_t offset;
@@ -444,6 +470,14 @@ static bool xemu_xbe_patch_read(BlockBackend *blk, uint64_t offset,
     return blk_pread(blk, (int64_t)offset, (int64_t)bytes, buf, 0) == 0;
 }
 
+/*
+ * Recursively search the XDVDFS directory binary tree for target_name. The
+ * left/right child offsets come from untrusted disc data, so the tree may be
+ * cyclic or converging. Three guards keep the search finite and in-bounds:
+ * a per-position visited[] byte array (each entry expanded at most once, so
+ * total work is linear in root_size), a recursion depth cap, and an explicit
+ * self-loop check. Every field read is bounds-checked against root_size.
+ */
 static bool xemu_xbe_patch_find_xbe_entry(const uint8_t *root_dir,
                                           uint32_t root_size,
                                           uint32_t pos,
@@ -555,6 +589,12 @@ static bool xemu_xbe_patch_find_xbe(BlockBackend *blk, const char *target_name,
         goto out;
     }
 
+    /*
+     * Preferred path: walk the directory as a binary tree. If the visited[]
+     * allocation fails we simply skip it and fall through to the linear scan
+     * below, which enumerates the packed entries sequentially and is bounded
+     * by root_size. Either path locates target_name safely.
+     */
     visited = g_try_malloc0(root_size);
     if (visited) {
         found = xemu_xbe_patch_find_xbe_entry(root_dir, root_size, 0,
@@ -612,6 +652,13 @@ void xemu_xbe_patch_refresh_current(void)
     }
 }
 
+/*
+ * Resolve the file offset of the XBE certificate from the header's virtual
+ * addresses. The certificate address is a virtual address; subtracting the
+ * image base gives a file offset. Everything is validated against xbe_size so
+ * the returned offset leaves room for a full xbe_certificate, letting callers
+ * read fixed certificate fields without further bounds checks.
+ */
 static bool xemu_xbe_patch_certificate_offset(const uint8_t *xbe,
                                               size_t xbe_size,
                                               size_t *cert_offset)
@@ -845,6 +892,12 @@ static bool xemu_xbe_patch_apply_direct(uint8_t *xbe, size_t xbe_size,
     return true;
 }
 
+/*
+ * Replace every non-overlapping occurrence of search with replacement (same
+ * length) in the in-memory XBE copy. After a hit the cursor skips past the
+ * replaced span so a replacement that reintroduces the pattern is not matched
+ * again. Bounded by xbe_size; returns whether at least one match was applied.
+ */
 static bool xemu_xbe_patch_apply_search(uint8_t *xbe, size_t xbe_size,
                                         const uint8_t *search,
                                         const uint8_t *replacement,
@@ -1185,6 +1238,14 @@ static bool xemu_xbe_patch_read_file(BlockBackend *blk, const char *name,
     return true;
 }
 
+/*
+ * Locate default.xbe on the freshly inserted disc, identify the game by its
+ * SHA1, and if a matching enabled patch profile exists, read every target XBE
+ * and apply the profile's patch files to in-memory copies. The result is
+ * published atomically via commit(), which drops it if another disc change
+ * bumped the generation meanwhile. All slow disc I/O runs without the mutex
+ * held; only the short book-keeping at start and the commit take the lock.
+ */
 void xemu_xbe_patch_prepare(BlockBackend *blk)
 {
     uint64_t xbe_offset = 0;
@@ -1367,6 +1428,15 @@ void xemu_xbe_patch_prepare(BlockBackend *blk)
                                           selected == 1 ? "" : "s"));
 }
 
+/*
+ * Splice patched XBE bytes into a completed guest read. Called from the block
+ * backend read path for every backend, so it bails out immediately unless the
+ * read is for the CD backend that currently has patches committed. For each
+ * patched XBE it computes the overlap between the read range and the XBE's
+ * on-disc extent (all in block-backend byte coordinates) and overwrites just
+ * that slice of the returned buffer. All deltas are overflow- and
+ * bounds-checked so the copy stays within both file->data and the qiov.
+ */
 void xemu_xbe_patch_apply_read(BlockBackend *blk, int64_t offset,
                                int64_t bytes, QEMUIOVector *qiov,
                                size_t qiov_offset)
