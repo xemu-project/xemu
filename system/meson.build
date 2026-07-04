@@ -5,6 +5,7 @@ specific_ss.add(when: 'CONFIG_SYSTEM_ONLY', if_true: [files(
 
 system_ss.add(files(
   'vl.c',
+  'xemu-xbe-patch.c',
 ), sdl, libpmem, libdaxctl)
 
 system_ss.add(files(

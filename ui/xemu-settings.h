@@ -36,8 +36,10 @@ extern "C" {
 
 #ifdef __cplusplus
 using GamepadMappings = struct config::input::gamepad_mappings;
+using XbePatchProfile = struct config::sys::xbe_patches::profiles;
 #else
 typedef struct gamepad_mappings GamepadMappings;
+typedef struct profiles XbePatchProfile;
 #endif
 
 extern struct config g_config;
@@ -78,6 +80,14 @@ void remove_net_nat_forward_ports(unsigned int index);
 // to the config entry. Returns true if the mapping did not previously exist.
 bool xemu_settings_load_gamepad_mapping(const char *guid,
                                         GamepadMappings **mapping);
+
+bool xemu_settings_get_xbe_patch_profile(const char *xbe_hash,
+                                         XbePatchProfile **profile);
+bool xemu_settings_ensure_xbe_patch_profile(const char *xbe_hash,
+                                            const char *title_id,
+                                            const char *title_name,
+                                            XbePatchProfile **profile);
+bool xemu_settings_remove_xbe_patch_profile(const char *xbe_hash);
 
 // Reset controller mapping to default settings.
 void xemu_settings_reset_controller_mapping(const char *guid);

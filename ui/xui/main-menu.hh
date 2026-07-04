@@ -145,6 +145,15 @@ public:
     void Draw() override;
 };
 
+class MainMenuXbePatchesView : public virtual MainMenuTabView
+{
+protected:
+    bool m_restart_required = false;
+
+public:
+    void Draw() override;
+};
+
 class MainMenuAboutView : public virtual MainMenuTabView
 {
 protected:
@@ -181,6 +190,7 @@ protected:
                                     m_audio_button,
                                     m_network_button,
                                     m_snapshots_button,
+                                    m_xbe_patches_button,
                                     m_system_button,
                                     m_about_button;
     std::vector<MainMenuTabView*>   m_views;
@@ -190,6 +200,7 @@ protected:
     MainMenuAudioView               m_audio_view;
     MainMenuNetworkView             m_network_view;
     MainMenuSnapshotsView           m_snapshots_view;
+    MainMenuXbePatchesView          m_xbe_patches_view;
     MainMenuSystemView              m_system_view;
     MainMenuAboutView               m_about_view;
 

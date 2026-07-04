@@ -40,7 +40,9 @@
 struct config g_config;
 
 static const char *filename = "xemu.toml";
+static const char *xbe_patches_filename = "xbepatches.toml";
 static const char *settings_path;
+static const char *xbe_patches_path;
 static std::string error_msg;
 
 const char *xemu_settings_get_error_message(void)
@@ -104,6 +106,22 @@ const char *xemu_settings_get_path(void)
     return settings_path;
 }
 
+static const char *xemu_settings_get_xbe_patches_path(void)
+{
+    if (xbe_patches_path != NULL) {
+        return xbe_patches_path;
+    }
+
+    const char *settings_path = xemu_settings_get_path();
+    char *settings_dir = g_path_get_dirname(settings_path);
+    xbe_patches_path = g_build_filename(settings_dir, xbe_patches_filename,
+                                        NULL);
+    g_free(settings_dir);
+    fprintf(stderr, "%s: XBE patches config path: %s\n", __func__,
+            xbe_patches_path);
+    return xbe_patches_path;
+}
+
 const char *xemu_settings_get_default_eeprom_path(void)
 {
     static char *eeprom_path = NULL;
@@ -155,6 +173,120 @@ static const char *read_file(FILE *fd)
     return buf;
 }
 
+static CNode *xemu_settings_get_xbe_patches_node(void)
+{
+    return config_tree.child("sys")->child("xbe_patches");
+}
+
+static void xemu_settings_clear_legacy_xbe_patch_slots(void)
+{
+    xemu_settings_set_string(&g_config.sys.xbe_patches.patch_1, "");
+    xemu_settings_set_string(&g_config.sys.xbe_patches.patch_2, "");
+    xemu_settings_set_string(&g_config.sys.xbe_patches.patch_3, "");
+    xemu_settings_set_string(&g_config.sys.xbe_patches.patch_4, "");
+    xemu_settings_set_string(&g_config.sys.xbe_patches.patch_5, "");
+}
+
+static void xemu_settings_reset_xbe_patches_node(CNode *cnode)
+{
+    cnode->reset_to_defaults();
+
+    CNode *profiles = cnode->child("profiles");
+    if (profiles) {
+        profiles->children.clear();
+    }
+}
+
+static bool xemu_settings_load_xbe_patches(void)
+{
+    const char *path = xemu_settings_get_xbe_patches_path();
+    bool success = false;
+
+    if (qemu_access(path, F_OK) == -1) {
+        return true;
+    }
+
+    FILE *fd = qemu_fopen(path, "rb");
+    if (!fd) {
+        error_msg = "Failed to open XBE patches config file for reading. "
+                    "Check permissions.\n";
+        return false;
+    }
+
+    const char *buf = read_file(fd);
+    if (!buf) {
+        error_msg = "Failed to read XBE patches config file.\n";
+        fclose(fd);
+        return false;
+    }
+
+    char *previous_numeric_locale = setlocale(LC_NUMERIC, NULL);
+    if (previous_numeric_locale) {
+        previous_numeric_locale = g_strdup(previous_numeric_locale);
+    }
+
+    setlocale(LC_NUMERIC, "C");
+
+    try {
+        CNode *cnode = xemu_settings_get_xbe_patches_node();
+        cnode->free_allocations(&g_config);
+        xemu_settings_reset_xbe_patches_node(cnode);
+
+        toml::table tbl = toml::parse(buf);
+        if (toml::table *nested_tbl = tbl["xbe_patches"].as_table()) {
+            cnode->update_from_table(*nested_tbl);
+        } else {
+            cnode->update_from_table(tbl);
+        }
+        cnode->store_to_struct(&g_config);
+        success = true;
+    } catch (const toml::parse_error& err) {
+        std::ostringstream oss;
+        oss << "Error parsing XBE patches config file at "
+            << err.source().begin << ":\n"
+            << "    " << err.description() << "\n"
+            << "Please fix the error or delete the file to continue.\n";
+        error_msg = oss.str();
+    }
+    free((char*)buf);
+
+    if (previous_numeric_locale) {
+        setlocale(LC_NUMERIC, previous_numeric_locale);
+        g_free(previous_numeric_locale);
+    }
+
+    fclose(fd);
+    return success;
+}
+
+static void xemu_settings_save_xbe_patches(void)
+{
+    FILE *fd = qemu_fopen(xemu_settings_get_xbe_patches_path(), "wb");
+    if (!fd) {
+        fprintf(stderr, "Failed to open XBE patches config file for writing. "
+                "Check permissions.\n");
+        return;
+    }
+
+    char *previous_numeric_locale = setlocale(LC_NUMERIC, NULL);
+    if (previous_numeric_locale) {
+        previous_numeric_locale = g_strdup(previous_numeric_locale);
+    }
+
+    setlocale(LC_NUMERIC, "C");
+
+    xemu_settings_clear_legacy_xbe_patch_slots();
+    CNode *cnode = xemu_settings_get_xbe_patches_node();
+    cnode->update_from_struct(&g_config);
+    fprintf(fd, "%s", cnode->generate_delta_toml().c_str());
+    fclose(fd);
+
+    if (previous_numeric_locale) {
+        setlocale(LC_NUMERIC, previous_numeric_locale);
+        g_free(previous_numeric_locale);
+    }
+}
+
 bool xemu_settings_load(void)
 {
     const char *settings_path = xemu_settings_get_path();
@@ -203,11 +335,17 @@ bool xemu_settings_load(void)
 
     config_tree.store_to_struct(&g_config);
 
+    if (success) {
+        success = xemu_settings_load_xbe_patches();
+    }
+
     return success;
 }
 
 void xemu_settings_save(void)
 {
+    xemu_settings_save_xbe_patches();
+
     FILE *fd = qemu_fopen(xemu_settings_get_path(), "wb");
     if (!fd) {
         fprintf(stderr, "Failed to open config file for writing. Check permissions.\n");
@@ -226,8 +364,10 @@ void xemu_settings_save(void)
     // xemu_settings_load_gamepad_mapping should have migrated that setting to any connected
     // controller, so we can set it to true (default) now to remove it from the user config.
     g_config.input.allow_vibration = true;
+    xemu_settings_clear_legacy_xbe_patch_slots();
 
     config_tree.update_from_struct(&g_config);
+    xemu_settings_reset_xbe_patches_node(xemu_settings_get_xbe_patches_node());
     fprintf(fd, "%s", config_tree.generate_delta_toml().c_str());
     fclose(fd);
 
@@ -305,6 +445,106 @@ bool xemu_settings_load_gamepad_mapping(const char *guid,
     }
 
     return true;
+}
+
+bool xemu_settings_get_xbe_patch_profile(const char *xbe_hash,
+                                         XbePatchProfile **profile)
+{
+    if (profile) {
+        *profile = NULL;
+    }
+
+    if (!xbe_hash || !xbe_hash[0] || !profile) {
+        return false;
+    }
+
+    for (unsigned int i = 0; i < g_config.sys.xbe_patches.profiles_count;
+         i++) {
+        XbePatchProfile *candidate = &g_config.sys.xbe_patches.profiles[i];
+        if (candidate->xbe_hash && !strcmp(candidate->xbe_hash, xbe_hash)) {
+            *profile = candidate;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool xemu_settings_ensure_xbe_patch_profile(const char *xbe_hash,
+                                            const char *title_id,
+                                            const char *title_name,
+                                            XbePatchProfile **profile)
+{
+    bool changed = false;
+
+    if (!xbe_hash || !xbe_hash[0] || !profile) {
+        return false;
+    }
+
+    if (xemu_settings_get_xbe_patch_profile(xbe_hash, profile)) {
+        if (title_id && title_id[0] &&
+            (!(*profile)->title_id || !(*profile)->title_id[0])) {
+            xemu_settings_set_string(&(*profile)->title_id, title_id);
+            changed = true;
+        }
+        if (title_name && title_name[0] &&
+            (!(*profile)->title_name || !(*profile)->title_name[0])) {
+            xemu_settings_set_string(&(*profile)->title_name, title_name);
+            changed = true;
+        }
+        return changed;
+    }
+
+    CNode *cnode = config_tree.child("sys")
+                              ->child("xbe_patches")
+                              ->child("profiles");
+    cnode->update_from_struct(&g_config);
+    cnode->free_allocations(&g_config);
+
+    cnode->children.push_back(*cnode->array_item_type);
+    CNode *profile_node = &cnode->children.back();
+    profile_node->child("xbe_hash")->set_string(xbe_hash);
+    if (title_id) {
+        profile_node->child("title_id")->set_string(title_id);
+    }
+    if (title_name) {
+        profile_node->child("title_name")->set_string(title_name);
+    }
+
+    cnode->store_to_struct(&g_config);
+
+    *profile =
+        &g_config.sys.xbe_patches
+             .profiles[g_config.sys.xbe_patches.profiles_count - 1];
+
+    return true;
+}
+
+bool xemu_settings_remove_xbe_patch_profile(const char *xbe_hash)
+{
+    if (!xbe_hash || !xbe_hash[0]) {
+        return false;
+    }
+
+    CNode *cnode = config_tree.child("sys")
+                              ->child("xbe_patches")
+                              ->child("profiles");
+    cnode->update_from_struct(&g_config);
+
+    for (unsigned int i = 0; i < cnode->children.size(); i++) {
+        CNode *profile_node = &cnode->children[i];
+        CNode *hash_node = profile_node->child("xbe_hash");
+        if (!hash_node || strcmp(hash_node->string.val.c_str(), xbe_hash)) {
+            continue;
+        }
+
+        cnode->children.erase(cnode->children.begin() + i);
+        cnode->free_allocations(&g_config);
+        cnode->store_to_struct(&g_config);
+        return true;
+    }
+
+    return false;
 }
 
 void xemu_settings_reset_controller_mapping(const char *guid)

@@ -38,6 +38,7 @@
 #include "qobject/qdict.h"
 #include "system/block-backend.h"
 #include "system/blockdev.h"
+#include "system/xemu-xbe-patch.h"
 
 static BlockBackend *qmp_get_blk(const char *blk_name, const char *qdev_id,
                                  Error **errp)
@@ -381,6 +382,7 @@ void qmp_blockdev_change_medium(const char *device,
         error_propagate(errp, err);
         goto fail;
     }
+    xemu_xbe_patch_reset(blk);
 
     qmp_blockdev_insert_anon_medium(blk, medium_bs, &err);
     if (err) {
@@ -388,6 +390,7 @@ void qmp_blockdev_change_medium(const char *device,
         goto fail;
     }
 
+    xemu_xbe_patch_prepare(blk);
     qmp_blockdev_close_tray(device, id, errp);
 
 fail:
@@ -401,7 +404,13 @@ void qmp_eject(const char *device, const char *id,
                bool has_force, bool force, Error **errp)
 {
     Error *local_err = NULL;
+    BlockBackend *blk;
     int rc;
+
+    blk = qmp_get_blk(device, id, errp);
+    if (!blk) {
+        return;
+    }
 
     if (!has_force) {
         force = false;
@@ -415,6 +424,7 @@ void qmp_eject(const char *device, const char *id,
     error_free(local_err);
 
     blockdev_remove_medium(device, id, errp);
+    xemu_xbe_patch_reset(blk);
 }
 
 /* throttling disk I/O limits */

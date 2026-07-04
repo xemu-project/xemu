@@ -27,6 +27,7 @@
 #include "qemu/option.h"
 #include "trace.h"
 #include "migration/misc.h"
+#include "system/xemu-xbe-patch.h"
 
 /* Number of coroutines to reserve per attached device model */
 #define COROUTINE_POOL_RESERVATION 64
@@ -1358,6 +1359,9 @@ blk_co_do_preadv_part(BlockBackend *blk, int64_t offset, int64_t bytes,
     ret = bdrv_co_preadv_part(blk->root, offset, bytes, qiov, qiov_offset,
                               flags);
     bdrv_dec_in_flight(bs);
+    if (ret == 0) {
+        xemu_xbe_patch_apply_read(blk, offset, bytes, qiov, qiov_offset);
+    }
     return ret;
 }
 
