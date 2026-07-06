@@ -390,8 +390,14 @@ void qmp_blockdev_change_medium(const char *device,
         goto fail;
     }
 
-    xemu_xbe_patch_prepare(blk);
     qmp_blockdev_close_tray(device, id, errp);
+
+    /* Prepare XBE patches only after the tray is closed: the patcher reads the
+     * disc through blk_pread(), which requires the block backend to be
+     * available (an open tray reports the device as unavailable and the read
+     * fails). This matches the startup path, where the disc is already settled
+     * before patches are prepared. */
+    xemu_xbe_patch_prepare(blk);
 
 fail:
     /* If the medium has been inserted, the device has its own reference, so
