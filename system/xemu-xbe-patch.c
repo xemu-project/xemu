@@ -425,6 +425,13 @@ static bool xemu_xbe_patch_collect_file_targets(const char *path,
         return false;
     }
 
+    /* Binary IPS/BPS patch files target default.xbe. */
+    if ((contents_len >= 5 && memcmp(contents, "PATCH", 5) == 0) ||
+        (contents_len >= 4 && memcmp(contents, "BPS1", 4) == 0)) {
+        xemu_xbe_patch_add_target_name(targets, "default.xbe");
+        return true;
+    }
+
     lines = g_strsplit(contents, "\n", -1);
     for (int i = 0; lines[i]; i++) {
         char *line = g_strstrip(lines[i]);
@@ -1050,6 +1057,226 @@ static bool xemu_xbe_patch_apply_search_to_scope(GPtrArray *files,
     return true;
 }
 
+/*
+ * Binary patch formats. Xbox graphical/widescreen patches ship as standard
+ * IPS ("PATCH" ... "EOF") or BPS ("BPS1") files rather than the text format
+ * above. Both encode replacement bytes at file offsets in the target XBE, so
+ * they are applied through the same direct-write path against default.xbe.
+ */
+
+static bool xemu_xbe_patch_apply_ips(const uint8_t *data, size_t len,
+                                     GPtrArray *files, GPtrArray *scope,
+                                     const char *target_name, int *applied,
+                                     char **error)
+{
+    size_t pos = 5; /* past "PATCH" */
+    int record = 0;
+
+    while (pos + 3 <= len) {
+        if (data[pos] == 'E' && data[pos + 1] == 'O' && data[pos + 2] == 'F') {
+            if (record == 0) {
+                *error = g_strdup("IPS patch contains no records");
+                return false;
+            }
+            return true; /* optional truncate extension after EOF is ignored */
+        }
+
+        uint32_t offset = ((uint32_t)data[pos] << 16) |
+                          ((uint32_t)data[pos + 1] << 8) | data[pos + 2];
+        pos += 3;
+        if (pos + 2 > len) {
+            break;
+        }
+        uint16_t size = ((uint16_t)data[pos] << 8) | data[pos + 1];
+        pos += 2;
+        record++;
+
+        if (size == 0) {
+            /* RLE record: 2-byte run length + one repeated byte. */
+            if (pos + 3 > len) {
+                break;
+            }
+            uint16_t run = ((uint16_t)data[pos] << 8) | data[pos + 1];
+            uint8_t value = data[pos + 2];
+            pos += 3;
+            if (run == 0) {
+                continue;
+            }
+            g_autofree uint8_t *buf = g_malloc(run);
+            memset(buf, value, run);
+            if (!xemu_xbe_patch_apply_direct_to_scope(
+                    files, scope, target_name, false, offset, buf, run,
+                    record, applied, error)) {
+                return false;
+            }
+        } else {
+            if (pos + size > len) {
+                break;
+            }
+            if (!xemu_xbe_patch_apply_direct_to_scope(
+                    files, scope, target_name, false, offset, data + pos,
+                    size, record, applied, error)) {
+                return false;
+            }
+            pos += size;
+        }
+    }
+
+    *error = g_strdup("IPS patch is truncated or malformed");
+    return false;
+}
+
+/* Decode one BPS variable-length number. Advances *pos; false on overrun. */
+static bool xemu_bps_decode(const uint8_t *data, size_t len, size_t *pos,
+                            uint64_t *out)
+{
+    uint64_t number = 0, shift = 1;
+    while (*pos < len) {
+        uint8_t x = data[(*pos)++];
+        number += (uint64_t)(x & 0x7f) * shift;
+        if (x & 0x80) {
+            *out = number;
+            return true;
+        }
+        shift <<= 7;
+        number += shift;
+    }
+    return false;
+}
+
+static bool xemu_xbe_patch_apply_bps(const uint8_t *data, size_t len,
+                                     GPtrArray *files, const char *target_name,
+                                     int *applied, char **error)
+{
+    if (len < 4 + 12) {
+        *error = g_strdup("BPS patch is too small");
+        return false;
+    }
+
+    /* The BPS source is the primary XBE read from the disc. */
+    XemuXbePatchFile *file = xemu_xbe_patch_file_by_name(files, target_name);
+    if (!file) {
+        *error = g_strdup_printf("target '%s' was not found on the disc",
+                                target_name);
+        return false;
+    }
+
+    size_t pos = 4; /* past "BPS1" */
+    uint64_t source_size = 0, target_size = 0, metadata_size = 0;
+    if (!xemu_bps_decode(data, len, &pos, &source_size) ||
+        !xemu_bps_decode(data, len, &pos, &target_size) ||
+        !xemu_bps_decode(data, len, &pos, &metadata_size)) {
+        *error = g_strdup("BPS header is malformed");
+        return false;
+    }
+    if (metadata_size > len - pos) {
+        *error = g_strdup("BPS metadata size is invalid");
+        return false;
+    }
+    pos += metadata_size;
+
+    if (source_size != file->size) {
+        *error = g_strdup_printf(
+            "BPS patch does not match this XBE (expects %" PRIu64
+            " bytes, disc XBE is %" PRIu64 ")",
+            source_size, (uint64_t)file->size);
+        return false;
+    }
+    if (target_size != source_size) {
+        *error = g_strdup("BPS patch resizes the XBE, which is unsupported");
+        return false;
+    }
+    if (target_size > XEMU_XBE_PATCH_MAX_XBE_SIZE) {
+        *error = g_strdup("BPS target is too large");
+        return false;
+    }
+
+    const uint8_t *source = file->data;
+    g_autofree uint8_t *target = g_malloc0(target_size);
+    uint64_t out = 0, src_rel = 0, tgt_rel = 0;
+    size_t end = len - 12; /* footer = source/target/patch CRC32 */
+
+    while (pos < end) {
+        uint64_t cmd = 0;
+        if (!xemu_bps_decode(data, len, &pos, &cmd)) {
+            *error = g_strdup("BPS command stream is truncated");
+            return false;
+        }
+        uint64_t action = cmd & 3;
+        uint64_t length = (cmd >> 2) + 1;
+        if (length > target_size - out) {
+            *error = g_strdup("BPS command writes past the target");
+            return false;
+        }
+
+        switch (action) {
+        case 0: /* SourceRead */
+            memcpy(target + out, source + out, length);
+            out += length;
+            break;
+        case 1: /* TargetRead */
+            if (pos > end || length > end - pos) {
+                *error = g_strdup("BPS TargetRead exceeds patch data");
+                return false;
+            }
+            memcpy(target + out, data + pos, length);
+            pos += length;
+            out += length;
+            break;
+        case 2: { /* SourceCopy */
+            uint64_t d = 0;
+            if (!xemu_bps_decode(data, len, &pos, &d)) {
+                *error = g_strdup("BPS SourceCopy offset is truncated");
+                return false;
+            }
+            if (d & 1) {
+                src_rel -= d >> 1;
+            } else {
+                src_rel += d >> 1;
+            }
+            if (src_rel > source_size || length > source_size - src_rel) {
+                *error = g_strdup("BPS SourceCopy reads past the source");
+                return false;
+            }
+            memcpy(target + out, source + src_rel, length);
+            src_rel += length;
+            out += length;
+            break;
+        }
+        case 3: { /* TargetCopy (may overlap output; copy byte-by-byte) */
+            uint64_t d = 0;
+            if (!xemu_bps_decode(data, len, &pos, &d)) {
+                *error = g_strdup("BPS TargetCopy offset is truncated");
+                return false;
+            }
+            if (d & 1) {
+                tgt_rel -= d >> 1;
+            } else {
+                tgt_rel += d >> 1;
+            }
+            for (uint64_t k = 0; k < length; k++) {
+                if (tgt_rel >= out) {
+                    *error = g_strdup("BPS TargetCopy reads unwritten data");
+                    return false;
+                }
+                target[out++] = target[tgt_rel++];
+            }
+            break;
+        }
+        }
+    }
+
+    if (out != target_size) {
+        *error = g_strdup("BPS output size mismatch");
+        return false;
+    }
+
+    /* Overwrite the whole in-memory XBE with the reconstructed target. */
+    return xemu_xbe_patch_apply_direct_to_target(files, target_name, 0,
+                                                 target, target_size, 0,
+                                                 applied, error);
+}
+
 static bool xemu_xbe_patch_apply_file(const char *path, GPtrArray *files,
                                       int *applied, char **error)
 {
@@ -1075,6 +1302,18 @@ static bool xemu_xbe_patch_apply_file(const char *path, GPtrArray *files,
     }
 
     scope = g_ptr_array_new_with_free_func(g_free);
+
+    /* Binary IPS/BPS patch files are applied to default.xbe. */
+    if (contents_len >= 5 && memcmp(contents, "PATCH", 5) == 0) {
+        return xemu_xbe_patch_apply_ips((const uint8_t *)contents, contents_len,
+                                        files, scope, "default.xbe", applied,
+                                        error);
+    }
+    if (contents_len >= 4 && memcmp(contents, "BPS1", 4) == 0) {
+        return xemu_xbe_patch_apply_bps((const uint8_t *)contents, contents_len,
+                                        files, "default.xbe", applied, error);
+    }
+
     if (!xemu_xbe_patch_collect_file_targets(path, scope, error)) {
         return false;
     }

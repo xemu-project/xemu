@@ -1689,7 +1689,7 @@ static std::string XbePatchStealString(char *value)
 void MainMenuXbePatchesView::Draw()
 {
     static const SDL_DialogFileFilter xbe_patch_file_filters[] = {
-        { "Jay's Magic Patcher Files (*.JMP)", "JMP;jmp" },
+        { "XBE Patches (*.JMP, *.ips, *.bps)", "JMP;jmp;ips;IPS;bps;BPS" },
         { "All Files", "*" }
     };
 
@@ -1942,7 +1942,7 @@ MainMenuScene::MainMenuScene()
       m_audio_button("Audio", ICON_FA_VOLUME_HIGH),
       m_network_button("Network", ICON_FA_NETWORK_WIRED),
       m_snapshots_button("Snapshots", ICON_FA_CLOCK_ROTATE_LEFT),
-      m_xbe_patches_button("XBE Patches", ICON_FA_FILE),
+      m_xbe_patches_button("XBE Patches", ICON_FA_WRENCH),
       m_system_button("System", ICON_FA_MICROCHIP),
       m_about_button("About", ICON_FA_CIRCLE_INFO)
 {

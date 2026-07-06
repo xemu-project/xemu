@@ -79,6 +79,7 @@
 #include "qemu/bitmap.h"
 #include "qemu/log.h"
 #include "system/blockdev.h"
+#include "system/xemu-xbe-patch.h"
 #include "hw/block/block.h"
 #include "hw/i386/x86.h"
 #include "hw/i386/pc.h"
@@ -2878,6 +2879,11 @@ void qmp_x_exit_preconfig(Error **errp)
     if (!qemu_machine_creation_done(errp)) {
         return;
     }
+
+    /* Apply any configured XBE patches to the disc attached at startup before
+     * the guest boots. Discs inserted later go through change_medium(), which
+     * prepares them itself; the initial -drive disc does not, so do it here. */
+    xemu_xbe_patch_refresh_current();
 
     if (loadvm) {
         RunState state = autostart ? RUN_STATE_RUNNING : runstate_get();
