@@ -365,6 +365,24 @@ sys:
     eeprom_path: string
     hdd_path: string
     dvd_path: string
+  xbe_patches:
+    enabled: bool
+    patch_1: string
+    patch_2: string
+    patch_3: string
+    patch_4: string
+    patch_5: string
+    profiles:
+      type: array
+      items:
+        xbe_hash: string
+        title_id: string
+        title_name: string
+        patch_1: string
+        patch_2: string
+        patch_3: string
+        patch_4: string
+        patch_5: string
 
 perf:
   hard_fpu:

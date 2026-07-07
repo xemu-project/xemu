@@ -39,8 +39,11 @@
 #include "../xemu-net.h"
 #include "../xemu-os-utils.h"
 #include "../xemu-xbe.h"
+#include "system/xemu-xbe-patch.h"
 
 #include "../thirdparty/fatx/fatx.h"
+
+#include <map>
 
 #define DEFAULT_XMU_SIZE 8388608
 
@@ -1575,6 +1578,232 @@ void MainMenuSystemView::Draw()
                });
 }
 
+static const char **XbePatchProfilePath(XbePatchProfile *profile, int index)
+{
+    if (!profile) {
+        return NULL;
+    }
+
+    switch (index) {
+    case 0:
+        return &profile->patch_1;
+    case 1:
+        return &profile->patch_2;
+    case 2:
+        return &profile->patch_3;
+    case 3:
+        return &profile->patch_4;
+    case 4:
+        return &profile->patch_5;
+    default:
+        return NULL;
+    }
+}
+
+static std::map<std::string, std::string> g_xbe_patch_notes_cache;
+
+static void XbePatchClearNotesCache(void)
+{
+    g_xbe_patch_notes_cache.clear();
+}
+
+static std::string XbePatchReadNotes(const char *path)
+{
+    char *contents = NULL;
+    char **lines = NULL;
+    gsize contents_len = 0;
+    GError *err = NULL;
+    std::string notes;
+
+    if (!path || !path[0]) {
+        return "";
+    }
+
+    auto cached = g_xbe_patch_notes_cache.find(path);
+    if (cached != g_xbe_patch_notes_cache.end()) {
+        return cached->second;
+    }
+
+    if (!g_file_get_contents(path, &contents, &contents_len, &err)) {
+        if (err) {
+            g_error_free(err);
+        }
+        g_xbe_patch_notes_cache[path] = "";
+        return "";
+    }
+
+    lines = g_strsplit(contents, "\n", -1);
+    for (int i = 0; lines[i]; i++) {
+        char *line = g_strstrip(lines[i]);
+
+        if (i == 0 && g_str_has_prefix(line, "\xef\xbb\xbf")) {
+            line += 3;
+        }
+
+        if (!g_ascii_strncasecmp(line, "notes=", strlen("notes="))) {
+            notes = line + strlen("notes=");
+            break;
+        }
+    }
+
+    g_strfreev(lines);
+    g_free(contents);
+    g_xbe_patch_notes_cache[path] = notes;
+    return notes;
+}
+
+static bool SetXbePatchProfilePath(const std::string &xbe_hash, int index,
+                                   const char *path)
+{
+    XbePatchProfile *profile = NULL;
+    const char **patch_path;
+
+    if (!xemu_settings_get_xbe_patch_profile(xbe_hash.c_str(), &profile)) {
+        return false;
+    }
+
+    patch_path = XbePatchProfilePath(profile, index);
+    if (!patch_path) {
+        return false;
+    }
+
+    xemu_settings_set_string(patch_path, path);
+    XbePatchClearNotesCache();
+    xemu_settings_save();
+    xemu_xbe_patch_refresh_current();
+    return true;
+}
+
+static std::string XbePatchStealString(char *value)
+{
+    std::string str;
+
+    if (value) {
+        str = value;
+        g_free(value);
+    }
+
+    return str;
+}
+
+void MainMenuXbePatchesView::Draw()
+{
+    static const SDL_DialogFileFilter xbe_patch_file_filters[] = {
+        { "XBE Patches (*.JMP, *.ips, *.bps)", "JMP;jmp;ips;IPS;bps;BPS" },
+        { "All Files", "*" }
+    };
+
+    SectionTitle("XBE Patches");
+    if (Toggle("Enable temporary XBE patches",
+               &g_config.sys.xbe_patches.enabled,
+               "Apply selected XBE patches while reading the disc")) {
+        xemu_settings_save();
+        xemu_xbe_patch_refresh_current();
+        m_restart_required = true;
+    }
+
+    std::string xbe_hash = XbePatchStealString(
+        xemu_xbe_patch_dup_current_hash());
+    if (ImGui::Button("Refresh Loaded Game")) {
+        xemu_xbe_patch_refresh_current();
+        xbe_hash = XbePatchStealString(
+            xemu_xbe_patch_dup_current_hash());
+    }
+
+    std::string status = XbePatchStealString(xemu_xbe_patch_dup_status());
+    std::string title_id = XbePatchStealString(
+        xemu_xbe_patch_dup_current_title_id());
+    std::string title_name = XbePatchStealString(
+        xemu_xbe_patch_dup_current_title_name());
+    std::string region = XbePatchStealString(
+        xemu_xbe_patch_dup_current_region());
+    XbePatchProfile *profile = NULL;
+
+    if (xbe_hash.size()) {
+        xemu_settings_get_xbe_patch_profile(xbe_hash.c_str(), &profile);
+    }
+
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    ImGui::TextWrapped("%s", status.c_str());
+    if (title_name.size()) {
+        ImGui::TextWrapped("Loaded title: %s", title_name.c_str());
+    }
+    if (title_id.size()) {
+        ImGui::Text("Title ID: %s", title_id.c_str());
+    }
+    if (region.size()) {
+        ImGui::Text("Region: %s", region.c_str());
+    }
+    if (xbe_hash.size()) {
+        ImGui::TextWrapped("Profile SHA1 (default.xbe): %s",
+                           xbe_hash.c_str());
+    }
+    ImGui::PopFont();
+
+    if (!xbe_hash.size()) {
+        return;
+    }
+
+    if (!profile) {
+        ImGui::Spacing();
+        if (ImGui::Button("Create Profile for Loaded Game")) {
+            xemu_settings_ensure_xbe_patch_profile(
+                xbe_hash.c_str(),
+                title_id.size() ? title_id.c_str() : NULL,
+                title_name.size() ? title_name.c_str() : NULL, &profile);
+            xemu_settings_save();
+        }
+        if (!profile) {
+            return;
+        }
+    }
+
+    SectionTitle("Patch Profile");
+    for (int i = 0; i < XEMU_XBE_PATCH_MAX_FILES; i++) {
+        char label[32];
+        std::string notes;
+        const char **patch_path = XbePatchProfilePath(profile, i);
+        if (!patch_path) {
+            continue;
+        }
+
+        snprintf(label, sizeof(label), "XBE Patch %d", i + 1);
+        FilePicker(label, *patch_path, xbe_patch_file_filters, 2, false,
+                   [this, xbe_hash, i](const char *path) {
+                       if (SetXbePatchProfilePath(xbe_hash, i, path)) {
+                           m_restart_required = true;
+                       }
+                   });
+        notes = XbePatchReadNotes(*patch_path);
+        if (notes.size()) {
+            ImGui::PushFont(g_font_mgr.m_menu_font_small);
+            ImGui::TextWrapped("Notes: %s", notes.c_str());
+            ImGui::PopFont();
+        }
+    }
+
+    if (m_restart_required) {
+        ImGui::Spacing();
+        ImGui::PushFont(g_font_mgr.m_menu_font_small);
+        ImGui::TextWrapped("Restart the game to apply the selected XBE patches.");
+        ImGui::PopFont();
+        if (ImGui::Button("Restart Game")) {
+            xemu_xbe_patch_refresh_current();
+            ActionReset();
+            m_restart_required = false;
+        }
+    }
+
+    ImGui::Spacing();
+    if (ImGui::Button("Delete Profile")) {
+        if (xemu_settings_remove_xbe_patch_profile(xbe_hash.c_str())) {
+            xemu_settings_save();
+            xemu_xbe_patch_refresh_current();
+            m_restart_required = true;
+        }
+    }
+}
+
 MainMenuAboutView::MainMenuAboutView() : m_config_info_text{ NULL }
 {
 }
@@ -1713,6 +1942,7 @@ MainMenuScene::MainMenuScene()
       m_audio_button("Audio", ICON_FA_VOLUME_HIGH),
       m_network_button("Network", ICON_FA_NETWORK_WIRED),
       m_snapshots_button("Snapshots", ICON_FA_CLOCK_ROTATE_LEFT),
+      m_xbe_patches_button("XBE Patches", ICON_FA_WRENCH),
       m_system_button("System", ICON_FA_MICROCHIP),
       m_about_button("About", ICON_FA_CIRCLE_INFO)
 {
@@ -1724,6 +1954,7 @@ MainMenuScene::MainMenuScene()
     m_tabs.push_back(&m_audio_button);
     m_tabs.push_back(&m_network_button);
     m_tabs.push_back(&m_snapshots_button);
+    m_tabs.push_back(&m_xbe_patches_button);
     m_tabs.push_back(&m_system_button);
     m_tabs.push_back(&m_about_button);
 
@@ -1733,6 +1964,7 @@ MainMenuScene::MainMenuScene()
     m_views.push_back(&m_audio_view);
     m_views.push_back(&m_network_view);
     m_views.push_back(&m_snapshots_view);
+    m_views.push_back(&m_xbe_patches_view);
     m_views.push_back(&m_system_view);
     m_views.push_back(&m_about_view);
 
@@ -1752,12 +1984,12 @@ void MainMenuScene::ShowSnapshots()
 
 void MainMenuScene::ShowSystem()
 {
-    SetNextViewIndexWithFocus(6);
+    SetNextViewIndexWithFocus(7);
 }
 
 void MainMenuScene::ShowAbout()
 {
-    SetNextViewIndexWithFocus(7);
+    SetNextViewIndexWithFocus(8);
 }
 
 void MainMenuScene::SetNextViewIndexWithFocus(int i)
