@@ -926,16 +926,29 @@ static bool xemu_xbe_patch_apply_search(uint8_t *xbe, size_t xbe_size,
                                         const uint8_t *replacement,
                                         size_t size, unsigned int *matches)
 {
+    size_t offset = 0;
+
     if (!size || size > xbe_size) {
         return false;
     }
 
     *matches = 0;
-    for (size_t offset = 0; offset <= xbe_size - size; offset++) {
+    while (offset <= xbe_size - size) {
+        /* Let memchr (vectorized) skip to the next candidate first byte; the
+         * search window is clipped so a hit always leaves `size` bytes for
+         * the full comparison below. */
+        const uint8_t *hit = memchr(xbe + offset, search[0],
+                                    xbe_size - size - offset + 1);
+        if (!hit) {
+            break;
+        }
+        offset = hit - xbe;
         if (!memcmp(xbe + offset, search, size)) {
             memcpy(xbe + offset, replacement, size);
             (*matches)++;
-            offset += size - 1;
+            offset += size;
+        } else {
+            offset++;
         }
     }
 
@@ -1198,7 +1211,9 @@ static bool xemu_xbe_patch_apply_bps(const uint8_t *data, size_t len,
 
     while (pos < end) {
         uint64_t cmd = 0;
-        if (!xemu_bps_decode(data, len, &pos, &cmd)) {
+        /* Decode against end, not len: every varint must sit before the
+         * 12-byte CRC footer, never extend into it. */
+        if (!xemu_bps_decode(data, end, &pos, &cmd)) {
             *error = g_strdup("BPS command stream is truncated");
             return false;
         }
@@ -1225,7 +1240,7 @@ static bool xemu_xbe_patch_apply_bps(const uint8_t *data, size_t len,
             break;
         case 2: { /* SourceCopy */
             uint64_t d = 0;
-            if (!xemu_bps_decode(data, len, &pos, &d)) {
+            if (!xemu_bps_decode(data, end, &pos, &d)) {
                 *error = g_strdup("BPS SourceCopy offset is truncated");
                 return false;
             }
@@ -1245,7 +1260,7 @@ static bool xemu_xbe_patch_apply_bps(const uint8_t *data, size_t len,
         }
         case 3: { /* TargetCopy (may overlap output; copy byte-by-byte) */
             uint64_t d = 0;
-            if (!xemu_bps_decode(data, len, &pos, &d)) {
+            if (!xemu_bps_decode(data, end, &pos, &d)) {
                 *error = g_strdup("BPS TargetCopy offset is truncated");
                 return false;
             }
@@ -1436,7 +1451,7 @@ static bool xemu_xbe_patch_apply_file(const char *path, GPtrArray *files,
 
         if (!xemu_xbe_patch_apply_search_to_scope(
                 files, scope, pending_target, pending_global,
-                pending_search, bytes, bytes_size, i, applied, error)) {
+                pending_search, bytes, bytes_size, i + 1, applied, error)) {
             return false;
         }
 
@@ -1622,8 +1637,16 @@ void xemu_xbe_patch_prepare(BlockBackend *blk)
         const char *target_name = g_ptr_array_index(target_names, i);
         XemuXbePatchFile *file = NULL;
 
-        if (!xemu_xbe_patch_read_file(blk, target_name, &file,
-                                      &patch_error)) {
+        if (xbe && !g_ascii_strcasecmp(target_name, "default.xbe")) {
+            /* Reuse the copy already read for hashing above instead of
+             * pulling the same XBE off the disc a second time. */
+            file = g_new0(XemuXbePatchFile, 1);
+            file->name = g_strdup(target_name);
+            file->offset = xbe_offset;
+            file->size = xbe_size;
+            file->data = g_steal_pointer(&xbe);
+        } else if (!xemu_xbe_patch_read_file(blk, target_name, &file,
+                                             &patch_error)) {
             xemu_xbe_patch_commit(generation, blk, NULL,
                                   g_steal_pointer(&current_hash),
                                   g_steal_pointer(&current_title_id),
