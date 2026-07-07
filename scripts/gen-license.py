@@ -329,6 +329,14 @@ LIBS = [
         submodule=Submodule("subprojects/glslang.wrap"),
     ),
     Lib(
+        "libchdr",
+        "https://github.com/rtissera/libchdr",
+        multi,
+        license_path="licenses/libchdr.license.txt",
+        ships_static=all_platforms,
+        submodule=Submodule("subprojects/libchdr.wrap"),
+    ),
+    Lib(
         "NVIDIA NVAPI",
         "https://github.com/NVIDIA/nvapi",
         mit,

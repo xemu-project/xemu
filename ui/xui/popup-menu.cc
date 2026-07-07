@@ -388,9 +388,15 @@ public:
             for (const auto &file :
                  std::filesystem::directory_iterator(directory)) {
                 const auto &file_path = file.path();
-                if (std::filesystem::is_regular_file(file_path) &&
-                    (file_path.extension() == ".iso" ||
-                     file_path.extension() == ".xiso")) {
+                if (!std::filesystem::is_regular_file(file_path)) {
+                    continue;
+                }
+                // Case-insensitive so uppercase extensions (GAME.ISO,
+                // Game.Chd) show up too, matching how discs load elsewhere.
+                std::string ext = file_path.extension().string();
+                if (!g_ascii_strcasecmp(ext.c_str(), ".iso") ||
+                    !g_ascii_strcasecmp(ext.c_str(), ".xiso") ||
+                    !g_ascii_strcasecmp(ext.c_str(), ".chd")) {
                     sorted_file_names.insert(
                         { file_path.stem().string(), file_path.string() });
                 }
