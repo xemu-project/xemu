@@ -9,6 +9,16 @@ general:
   screenshot_dir: string
   games_dir: string
   skip_boot_anim: bool
+  show_game_library:
+    type: bool
+    default: true
+  game_library_view: integer # 0 = grid, 1 = list
+  game_library_icon_size:
+    type: number
+    default: 140.0
+  game_library_row_size:
+    type: number
+    default: 40.0
   # throttle_io: bool
   last_viewed_menu_index: integer
   user_token: string

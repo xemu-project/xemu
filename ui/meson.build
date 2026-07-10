@@ -21,6 +21,7 @@ subdir('thirdparty')
 
 xemu_ss = ss.source_set()
 xemu_ss.add(files(
+  'xemu-gameinfo.c',
   'xemu-input.c',
   'xemu-monitor.c',
   'xemu-net.c',
@@ -51,6 +52,9 @@ elif host_os == 'windows'
   xemu_ss.add(files('xemu-os-utils-windows.c'))
 elif host_os == 'darwin'
   xemu_ss.add(files('xemu-os-utils-macos.m'))
+endif
+if libchdr.found()
+  xemu_ss.add(libchdr)
 endif
 xemu_ss.add(imgui, implot, stb_image, sdl, opengl, fa, fpng, json, fatx, tomlplusplus, genconfig)
 system_ss.add_all(xemu_ss)

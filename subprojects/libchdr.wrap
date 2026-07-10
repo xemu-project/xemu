@@ -1,0 +1,8 @@
+[wrap-git]
+url = https://github.com/rtissera/libchdr.git
+revision = 04a177ee3cea055d93da2d5839d3413168837c6f
+depth = 1
+patch_directory = libchdr
+
+[provide]
+libchdr = libchdr_dep
