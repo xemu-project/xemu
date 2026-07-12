@@ -34,9 +34,11 @@
 
 #define DRIVER_DUKE "usb-xbox-gamepad"
 #define DRIVER_S "usb-xbox-gamepad-s"
+#define DRIVER_LIGHTGUN "usb-xbox-lightgun"
 
 #define DRIVER_DUKE_DISPLAY_NAME "Xbox Controller"
 #define DRIVER_S_DISPLAY_NAME "Xbox Controller S"
+#define DRIVER_LIGHTGUN_DISPLAY_NAME "Lightgun (EMS TopGun II)"
 
 enum controller_state_buttons_mask {
     CONTROLLER_BUTTON_A          = (1 << 0),
@@ -54,6 +56,9 @@ enum controller_state_buttons_mask {
     CONTROLLER_BUTTON_LSTICK     = (1 << 12),
     CONTROLLER_BUTTON_RSTICK     = (1 << 13),
     CONTROLLER_BUTTON_GUIDE      = (1 << 14), // Extension
+    // Extension: lightgun pointing inside the game display area. Reported
+    // by the usb-xbox-lightgun driver as XID_LIGHTGUN_ONSCREEN (0x2000).
+    CONTROLLER_BUTTON_LIGHTGUN_ONSCREEN = (1 << 15),
 };
 
 #define CONTROLLER_STATE_BUTTON_ID_TO_MASK(x) (1<<x)
@@ -71,6 +76,7 @@ enum controller_state_axis_index {
 enum controller_input_device_type {
     INPUT_DEVICE_SDL_KEYBOARD,
     INPUT_DEVICE_SDL_GAMEPAD,
+    INPUT_DEVICE_RAWINPUT_MOUSE, // HID mouse/lightgun (Raw Input / evdev)
 };
 
 enum peripheral_type { PERIPHERAL_NONE, PERIPHERAL_XMU, PERIPHERAL_TYPE_COUNT };
@@ -103,6 +109,23 @@ typedef struct ControllerState {
     SDL_Joystick       *sdl_joystick;
     SDL_JoystickID      sdl_joystick_id;
     SDL_GUID            sdl_joystick_guid;
+
+    // if type == INPUT_DEVICE_RAWINPUT_MOUSE
+    void     *rawinput_handle;      // Backend handle: Raw Input HANDLE on
+                                    // Windows, EvdevMouse* on Linux
+    char     *rawinput_path;        // Device path (owned): interface path on
+                                    // Windows, /dev/input/eventN on Linux
+    char      rawinput_guid[16];    // Stable pseudo-GUID for settings ("mouse:xxxxxxxx")
+    uint32_t  rawinput_buttons;     // XEMU_RAWINPUT_BUTTON_* bits
+    int32_t   rawinput_client_x;    // Last aim position, window client pixels
+    int32_t   rawinput_client_y;
+    bool      rawinput_has_abs;     // Device reports absolute positions (e.g. Sinden)
+    float     rawinput_smooth_nx;   // Filtered aim, normalized [-1, 1]
+    float     rawinput_smooth_ny;
+    float     rawinput_smooth_dx;   // Filtered aim velocity (units/s)
+    float     rawinput_smooth_dy;
+    uint64_t  rawinput_smooth_ts;   // Timestamp (ns) of last filter step
+    bool      rawinput_smooth_valid;
 
     enum peripheral_type peripheral_types[2];
     void *peripherals[2];
@@ -145,6 +168,11 @@ void xemu_save_peripheral_settings(int player_index, int peripheral_index,
 void xemu_input_set_test_mode(int enabled);
 int xemu_input_get_test_mode(void);
 void xemu_input_reset_input_mapping(ControllerState *state);
+
+// Game display rectangle in window pixels, updated each frame by the
+// renderer. Used to map lightgun/mouse positions to aim coordinates.
+void xemu_input_set_game_display_rect(int x, int y, int w, int h);
+void xemu_input_get_game_display_rect(int *x, int *y, int *w, int *h);
 
 #ifdef __cplusplus
 }

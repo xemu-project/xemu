@@ -30,11 +30,14 @@
 
 #include "xemu-input.h"
 #include "xemu-notifications.h"
+#include "xemu-rawinput.h"
 #include "xemu-settings.h"
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "system/blockdev.h"
+
+SDL_Window *xemu_get_window(void); // ui/xemu.c
 
 // #define DEBUG_INPUT
 
@@ -88,6 +91,26 @@ static void xemu_input_print_controller_state(ControllerState *state)
 ControllerStateList available_controllers =
     QTAILQ_HEAD_INITIALIZER(available_controllers);
 ControllerState *bound_controllers[4] = { NULL, NULL, NULL, NULL };
+
+// Game display rectangle in window pixels, updated each frame by the
+// renderer. Used to map lightgun/mouse positions to aim coordinates.
+static int game_display_rect[4]; // x, y, w, h
+
+void xemu_input_set_game_display_rect(int x, int y, int w, int h)
+{
+    game_display_rect[0] = x;
+    game_display_rect[1] = y;
+    game_display_rect[2] = w;
+    game_display_rect[3] = h;
+}
+
+void xemu_input_get_game_display_rect(int *x, int *y, int *w, int *h)
+{
+    *x = game_display_rect[0];
+    *y = game_display_rect[1];
+    *w = game_display_rect[2];
+    *h = game_display_rect[3];
+}
 const char *bound_drivers[4] = { DRIVER_DUKE, DRIVER_DUKE, DRIVER_DUKE,
                                  DRIVER_DUKE };
 int test_mode;
@@ -254,6 +277,8 @@ static const char *get_bound_driver(int port)
         return DRIVER_DUKE;
     if (strcmp(driver, DRIVER_S) == 0)
         return DRIVER_S;
+    if (strcmp(driver, DRIVER_LIGHTGUN) == 0)
+        return DRIVER_LIGHTGUN;
 
     return DRIVER_DUKE;
 }
@@ -308,6 +333,9 @@ void xemu_input_init(void)
     }
 
     QTAILQ_INSERT_TAIL(&available_controllers, new_con, entry);
+
+    // Enumerate HID mice/lightguns (Raw Input on Windows, evdev on Linux)
+    xemu_rawinput_init(xemu_get_window());
 }
 
 int xemu_input_get_controller_default_bind_port(ControllerState *state, int start)
@@ -317,10 +345,22 @@ int xemu_input_get_controller_default_bind_port(ControllerState *state, int star
         SDL_GUIDToString(state->sdl_joystick_guid, guid, sizeof(guid));
     } else if (state->type == INPUT_DEVICE_SDL_KEYBOARD) {
         snprintf(guid, sizeof(guid), "keyboard");
+    } else if (state->type == INPUT_DEVICE_RAWINPUT_MOUSE) {
+        snprintf(guid, sizeof(guid), "%s", state->rawinput_guid);
     }
 
     for (int i = start; i < 4; i++) {
-        if (strcmp(guid, *port_index_to_settings_key_map[i]) == 0) {
+        const char *saved = *port_index_to_settings_key_map[i];
+        if (strcmp(guid, saved) == 0) {
+            return i;
+        }
+        // Frontends (e.g. Batocera's configgen) can address a mouse or
+        // lightgun by its device node instead of the hashed pseudo-GUID:
+        // port1 = "evdev:/dev/input/event5"
+        if (state->type == INPUT_DEVICE_RAWINPUT_MOUSE &&
+            state->rawinput_path != NULL &&
+            strncmp(saved, "evdev:", 6) == 0 &&
+            strcmp(saved + 6, state->rawinput_path) == 0) {
             return i;
         }
     }
@@ -491,6 +531,8 @@ void xemu_input_update_controller(ControllerState *state)
         xemu_input_update_sdl_kbd_controller_state(state);
     } else if (state->type == INPUT_DEVICE_SDL_GAMEPAD) {
         xemu_input_update_sdl_controller_state(state);
+    } else if (state->type == INPUT_DEVICE_RAWINPUT_MOUSE) {
+        xemu_rawinput_update_controller_state(state);
     }
 
     state->last_input_updated_ts = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
@@ -498,6 +540,8 @@ void xemu_input_update_controller(ControllerState *state)
 
 void xemu_input_update_controllers(void)
 {
+    xemu_rawinput_process_pending();
+
     ControllerState *iter;
     QTAILQ_FOREACH(iter, &available_controllers, entry) {
         xemu_input_update_controller(iter);
@@ -692,6 +736,9 @@ void xemu_input_bind(int index, ControllerState *state, int save)
                 SDL_GUIDToString(state->sdl_joystick_guid, guid_buf, sizeof(guid_buf));
             } else if (state->type == INPUT_DEVICE_SDL_KEYBOARD) {
                 snprintf(guid_buf, sizeof(guid_buf), "keyboard");
+            } else if (state->type == INPUT_DEVICE_RAWINPUT_MOUSE) {
+                snprintf(guid_buf, sizeof(guid_buf), "%s",
+                         state->rawinput_guid);
             }
         }
         xemu_settings_set_string(port_index_to_settings_key_map[index], guid_buf);

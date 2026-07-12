@@ -290,10 +290,12 @@ void xemu_hud_update(void)
         } else if (ImGui::IsKeyPressed(ImGuiKey_F2)) {
             g_scene_mgr.PushScene(g_popup_menu);
         } else if (menu_button ||
-                   (ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
+                   (!g_config.input.disable_rclick_menu &&
+                    ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
                     !ImGui::IsAnyItemFocused() && !ImGui::IsAnyItemHovered())) {
             g_scene_mgr.PushScene(g_popup_menu);
-        } else if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        } else if (!g_config.input.disable_dblclick_fullscreen &&
+                   ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
             xemu_toggle_fullscreen();
         }
 
