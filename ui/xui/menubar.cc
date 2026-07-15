@@ -26,6 +26,7 @@
 #include "debug.hh"
 #include "actions.hh"
 #include "compat.hh"
+#include "gamelist.hh"
 #include "update.hh"
 #include "../xemu-os-utils.h"
 
@@ -49,6 +50,10 @@ void ProcessKeyboardShortcuts(void)
 
     if (IsShortcutKeyPressed(ImGuiKey_O)) {
         ActionLoadDisc();
+    }
+
+    if (IsShortcutKeyPressed(ImGuiKey_G)) {
+        game_list_window.is_open = !game_list_window.is_open;
     }
 
     if (IsShortcutKeyPressed(ImGuiKey_P)) {
@@ -141,6 +146,8 @@ void ShowMainMenu()
 
             if (ImGui::MenuItem("Eject Disc", SHORTCUT_MENU_TEXT(E))) ActionEjectDisc();
             if (ImGui::MenuItem("Load Disc...", SHORTCUT_MENU_TEXT(O))) ActionLoadDisc();
+            ImGui::MenuItem("Game Library...", SHORTCUT_MENU_TEXT(G),
+                            &game_list_window.is_open);
 
             ImGui::Separator();
 

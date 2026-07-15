@@ -342,6 +342,8 @@ option('bochs', type: 'feature', value: 'auto',
        description: 'bochs image format support')
 option('cloop', type: 'feature', value: 'auto',
        description: 'cloop image format support')
+option('chd', type: 'feature', value: 'enabled',
+       description: 'CHD image format support')
 option('dmg', type: 'feature', value: 'auto',
        description: 'dmg image format support')
 option('qcow1', type: 'feature', value: 'auto',

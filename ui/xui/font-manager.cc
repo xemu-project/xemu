@@ -48,9 +48,38 @@ void FontManager::Rebuild()
         m_default_font = io.Fonts->AddFontFromMemoryTTF(
             (void *)Roboto_Medium_data, Roboto_Medium_size,
             16.0f * scale, &config);
+        {
+            // Merge Font Awesome icons into the default font so icon glyphs
+            // are available in regular widgets (e.g. the game library).
+            ImFontConfig icons;
+            icons.FontDataOwnedByAtlas = false;
+            icons.RasterizerDensity = pixel_density;
+            icons.MergeMode = true;
+            icons.GlyphOffset = ImVec2(0, -1.0f * scale);
+            static const ImWchar icon_ranges[] = { ICON_MIN_FA, ICON_MAX_FA,
+                                                   0 };
+            io.Fonts->AddFontFromMemoryTTF(
+                (void *)font_awesome_6_1_1_solid_min_data,
+                font_awesome_6_1_1_solid_min_size, 13.0f * scale, &icons,
+                icon_ranges);
+        }
         m_menu_font_small = io.Fonts->AddFontFromMemoryTTF(
             (void *)RobotoCondensed_Regular_data, RobotoCondensed_Regular_size,
             22.0f * scale, &config);
+        {
+            // Same for the small menu font (section headers, toolbars).
+            ImFontConfig icons;
+            icons.FontDataOwnedByAtlas = false;
+            icons.RasterizerDensity = pixel_density;
+            icons.MergeMode = true;
+            icons.GlyphOffset = ImVec2(0, -1.5f * scale);
+            static const ImWchar icon_ranges[] = { ICON_MIN_FA, ICON_MAX_FA,
+                                                   0 };
+            io.Fonts->AddFontFromMemoryTTF(
+                (void *)font_awesome_6_1_1_solid_min_data,
+                font_awesome_6_1_1_solid_min_size, 16.0f * scale, &icons,
+                icon_ranges);
+        }
     }
     {
         ImFontConfig config;
@@ -72,6 +101,21 @@ void FontManager::Rebuild()
         m_menu_font_medium = io.Fonts->AddFontFromMemoryTTF(
             (void *)RobotoCondensed_Regular_data, RobotoCondensed_Regular_size,
             26.0f * scale, &config);
+        {
+            // Merge Font Awesome icons into the medium menu font (used e.g.
+            // for the game library heading).
+            ImFontConfig icons;
+            icons.FontDataOwnedByAtlas = false;
+            icons.RasterizerDensity = pixel_density;
+            icons.MergeMode = true;
+            icons.GlyphOffset = ImVec2(0, -1.5f * scale);
+            static const ImWchar icon_ranges[] = { ICON_MIN_FA, ICON_MAX_FA,
+                                                   0 };
+            io.Fonts->AddFontFromMemoryTTF(
+                (void *)font_awesome_6_1_1_solid_min_data,
+                font_awesome_6_1_1_solid_min_size, 19.0f * scale, &icons,
+                icon_ranges);
+        }
         m_menu_font = io.Fonts->AddFontFromMemoryTTF(
             (void *)RobotoCondensed_Regular_data, RobotoCondensed_Regular_size,
             34.0f * scale, &config);

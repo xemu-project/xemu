@@ -50,6 +50,7 @@
 #include "welcome.hh"
 #include "menubar.hh"
 #include "compat.hh"
+#include "gamelist.hh"
 #if defined(_WIN32)
 #include "update.hh"
 #endif
@@ -157,6 +158,15 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     InitializeStyle();
     g_main_menu.SetNextViewIndex(g_config.general.last_viewed_menu_index);
     first_boot_window.is_open = g_config.general.show_welcome;
+
+    // Show the game library on startup when enabled and not greeting a
+    // first-time user, and hold the machine paused until the user decides
+    // what to boot. With the library disabled, xemu boots as it always did.
+    game_list_window.is_open =
+        g_config.general.show_game_library && !first_boot_window.is_open;
+    if (game_list_window.is_open) {
+        game_list_window.HoldVMAtBoot();
+    }
 }
 
 void xemu_hud_cleanup(void)
@@ -311,6 +321,7 @@ void xemu_hud_update(void)
     apu_window.Draw();
     video_window.Draw();
     compatibility_reporter_window.Draw();
+    game_list_window.Draw();
 #if defined(_WIN32)
     update_window.Draw();
 #endif

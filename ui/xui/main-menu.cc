@@ -71,6 +71,8 @@ void MainMenuGeneralView::Draw()
     SectionTitle("Miscellaneous");
     Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
            "Skip the full Xbox boot animation sequence");
+    Toggle("Show game library on startup", &g_config.general.show_game_library,
+           "Disable to boot immediately as usual");
     FilePicker("Screenshot output directory", g_config.general.screenshot_dir,
                nullptr, 0, true, [](const char *path) {
                    xemu_settings_set_string(&g_config.general.screenshot_dir, path);
