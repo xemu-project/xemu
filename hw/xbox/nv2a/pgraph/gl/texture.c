@@ -488,6 +488,38 @@ static void upload_gl_texture(GLenum gl_target,
                         8 : 16;
                 unsigned int physical_width = (width + 3) & ~3,
                              physical_height = (height + 3) & ~3;
+
+                /*
+                 * The host is required to support S3TC (asserted at renderer
+                 * init), so hand the DXT blocks straight to GL when no border
+                 * fixup is needed. This skips the CPU decompress entirely and
+                 * uploads 4-8x less data, which matters a great deal when a
+                 * title streams in many textures in one frame.
+                 *
+                 * This must not be decided per level: mixing compressed and
+                 * uncompressed internal formats across the mip chain makes
+                 * the texture incomplete and it samples as black. The border
+                 * fixup depends only on the texture, not the level, so either
+                 * every level takes this path or none does. Levels smaller
+                 * than a 4x4 block are fine to upload compressed; imageSize
+                 * is computed from the block-aligned size.
+                 */
+                bool needs_border_fixup =
+                    s.cubemap && adjusted_width != s.width;
+                if (!needs_border_fixup) {
+                    unsigned int image_size = (physical_width / 4) *
+                                              (physical_height / 4) *
+                                              block_size;
+                    glCompressedTexImage2D(gl_target, level,
+                                           f.gl_internal_format,
+                                           width, height, 0,
+                                           image_size, texture_data);
+                    texture_data += image_size;
+                    width /= 2;
+                    height /= 2;
+                    continue;
+                }
+
                 uint8_t *converted = s3tc_decompress_2d(
                     gl_internal_format_to_s3tc_enum(f.gl_internal_format),
                     texture_data, width, height);
