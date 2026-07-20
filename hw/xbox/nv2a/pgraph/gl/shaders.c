@@ -252,6 +252,7 @@ static void generate_shaders(PGRAPHGLState *r, ShaderBinding *binding)
 }
 
 static const char *shader_gl_vendor = NULL;
+static const char *shader_gl_version = NULL;
 
 static void shader_create_cache_folder(void)
 {
@@ -384,10 +385,12 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
     char *shader_path = shader_get_binary_path(shader_bin_dir, hash);
     char *cached_xemu_version = NULL;
     char *cached_gl_vendor = NULL;
+    char *cached_gl_version = NULL;
     void *program_buffer = NULL;
 
     uint64_t cached_xemu_version_len;
     uint64_t gl_vendor_len;
+    uint64_t gl_version_len;
     GLenum program_binary_format;
     ShaderState state;
     size_t shader_size;
@@ -434,6 +437,15 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
         goto error;
     }
 
+    READ_OR_ERR(&gl_version_len, sizeof(gl_version_len));
+
+    cached_gl_version = g_malloc(gl_version_len);
+    READ_OR_ERR(cached_gl_version, gl_version_len);
+    if (strcmp(cached_gl_version, shader_gl_version) != 0) {
+        fclose(shader_file);
+        goto error;
+    }
+
     READ_OR_ERR(&program_binary_format, sizeof(program_binary_format));
     READ_OR_ERR(&state, sizeof(state));
     READ_OR_ERR(&shader_size, sizeof(shader_size));
@@ -447,6 +459,7 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
     g_free(shader_path);
     g_free(cached_xemu_version);
     g_free(cached_gl_vendor);
+    g_free(cached_gl_version);
 
     qemu_mutex_lock(&r->shader_cache_lock);
     LruNode *node = lru_lookup(&r->shader_cache, hash, &state);
@@ -472,6 +485,7 @@ error:
     g_free(program_buffer);
     g_free(cached_xemu_version);
     g_free(cached_gl_vendor);
+    g_free(cached_gl_version);
 }
 
 static void *shader_reload_lru_from_disk(void *arg)
@@ -543,6 +557,9 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     if (!shader_gl_vendor) {
         shader_gl_vendor = (const char *) glGetString(GL_VENDOR);
     }
+    if (!shader_gl_version) {
+        shader_gl_version = (const char *) glGetString(GL_VERSION);
+    }
 
     shader_create_cache_folder();
 
@@ -605,6 +622,11 @@ static void *shader_write_to_disk(void *arg)
         gl_vendor_len = (uint64_t) (strlen(shader_gl_vendor) + 1);
     }
 
+    static uint64_t gl_version_len;
+    if (gl_version_len == 0) {
+        gl_version_len = (uint64_t) (strlen(shader_gl_version) + 1);
+    }
+
     static uint64_t xemu_version_len = 0;
     if (xemu_version_len == 0) {
         xemu_version_len = (uint64_t) (strlen(xemu_version) + 1);
@@ -633,6 +655,9 @@ static void *shader_write_to_disk(void *arg)
 
     WRITE_OR_ERR(&gl_vendor_len, sizeof(gl_vendor_len));
     WRITE_OR_ERR(shader_gl_vendor, gl_vendor_len);
+
+    WRITE_OR_ERR(&gl_version_len, sizeof(gl_version_len));
+    WRITE_OR_ERR(shader_gl_version, gl_version_len);
 
     WRITE_OR_ERR(&binding->program_format, sizeof(binding->program_format));
     WRITE_OR_ERR(&binding->state, sizeof(binding->state));
