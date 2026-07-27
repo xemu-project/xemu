@@ -22,6 +22,9 @@
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "qemu/main-loop.h"
 
+#define NV2A_PRAMIN_SIZE 0x100000
+#define NV2A_PRAMIN_BLOCK_SIZE 16
+
 void nv2a_update_irq(NV2AState *d)
 {
     /* PFIFO */
@@ -53,14 +56,85 @@ void nv2a_update_irq(NV2AState *d)
     }
 }
 
+/*
+ * RAMIN occupies the final MiB of VRAM. Its 16-byte blocks are exposed in
+ * reverse order while byte order within each block is unchanged.
+ */
+static hwaddr nv2a_pramin_to_vram(NV2AState *d, hwaddr addr)
+{
+    hwaddr vram_size = memory_region_size(d->vram);
+
+    assert(addr < NV2A_PRAMIN_SIZE);
+    assert(vram_size >= NV2A_PRAMIN_SIZE);
+
+    return vram_size - NV2A_PRAMIN_BLOCK_SIZE -
+           (addr & ~(NV2A_PRAMIN_BLOCK_SIZE - 1)) +
+           (addr & (NV2A_PRAMIN_BLOCK_SIZE - 1));
+}
+
+static uint64_t nv2a_pramin_read(void *opaque, hwaddr addr, unsigned size)
+{
+    NV2AState *d = opaque;
+    uint64_t value = 0;
+
+    assert(addr + size <= NV2A_PRAMIN_SIZE);
+    for (unsigned i = 0; i < size; i++) {
+        hwaddr vram_addr = nv2a_pramin_to_vram(d, addr + i);
+        value |= (uint64_t)d->vram_ptr[vram_addr] << (i * 8);
+    }
+
+    return value;
+}
+
+static void nv2a_pramin_write(void *opaque, hwaddr addr, uint64_t value,
+                              unsigned size)
+{
+    NV2AState *d = opaque;
+    hwaddr first;
+    hwaddr last;
+
+    assert(addr + size <= NV2A_PRAMIN_SIZE);
+    first = nv2a_pramin_to_vram(d, addr);
+    last = nv2a_pramin_to_vram(d, addr + size - 1);
+
+    for (unsigned i = 0; i < size; i++) {
+        hwaddr vram_addr = nv2a_pramin_to_vram(d, addr + i);
+        d->vram_ptr[vram_addr] = value >> (i * 8);
+    }
+
+    memory_region_set_dirty(d->vram, MIN(first, last),
+                            MAX(first, last) - MIN(first, last) + 1);
+}
+
+static const MemoryRegionOps nv2a_pramin_ops = {
+    .read = nv2a_pramin_read,
+    .write = nv2a_pramin_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 1,
+        .max_access_size = 4,
+        .unaligned = true,
+    },
+    .impl = {
+        .min_access_size = 1,
+        .max_access_size = 4,
+        .unaligned = true,
+    },
+};
+
+uint32_t nv2a_pramin_read32(NV2AState *d, hwaddr addr)
+{
+    assert((addr & 3) == 0);
+    return ldl_le_p(d->vram_ptr + nv2a_pramin_to_vram(d, addr));
+}
+
 DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address)
 {
     assert(dma_obj_address < memory_region_size(&d->ramin));
 
-    uint32_t *dma_obj = (uint32_t *)(d->ramin_ptr + dma_obj_address);
-    uint32_t flags = ldl_le_p(dma_obj);
-    uint32_t limit = ldl_le_p(dma_obj + 1);
-    uint32_t frame = ldl_le_p(dma_obj + 2);
+    uint32_t flags = nv2a_pramin_read32(d, dma_obj_address);
+    uint32_t limit = nv2a_pramin_read32(d, dma_obj_address + 4);
+    uint32_t frame = nv2a_pramin_read32(d, dma_obj_address + 8);
 
     return (DMAObject){
         .dma_class  = GET_MASK(flags, NV_DMA_CLASS),
@@ -209,24 +283,17 @@ static void nv2a_init_memory(NV2AState *d, MemoryRegion *ram)
 {
     /* xbox is UMA - vram *is* ram */
     d->vram = ram;
+    d->vram_ptr = memory_region_get_ram_ptr(d->vram);
 
-     /* PCI exposed vram */
+    /* PCI exposed vram */
     memory_region_init_alias(&d->vram_pci, OBJECT(d), "nv2a-vram-pci", d->vram,
                              0, memory_region_size(d->vram));
     pci_register_bar(PCI_DEVICE(d), 1, PCI_BASE_ADDRESS_MEM_PREFETCH, &d->vram_pci);
 
 
-    /* RAMIN - should be in vram somewhere, but not quite sure where atm */
-    memory_region_init_ram(&d->ramin, OBJECT(d), "nv2a-ramin", 0x100000, &error_fatal);
-    /* memory_region_init_alias(&d->ramin, "nv2a-ramin", &d->vram,
-                         memory_region_size(d->vram) - 0x100000,
-                         0x100000); */
-
+    memory_region_init_io(&d->ramin, OBJECT(d), &nv2a_pramin_ops, d,
+                          "nv2a-ramin", NV2A_PRAMIN_SIZE);
     memory_region_add_subregion(&d->mmio, 0x700000, &d->ramin);
-
-
-    d->vram_ptr = memory_region_get_ram_ptr(d->vram);
-    d->ramin_ptr = memory_region_get_ram_ptr(&d->ramin);
 
     memory_region_set_log(d->vram, true, DIRTY_MEMORY_NV2A);
     memory_region_set_log(d->vram, true, DIRTY_MEMORY_NV2A_TEX);
