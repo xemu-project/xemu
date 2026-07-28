@@ -111,34 +111,61 @@ static void pgraph_null_surface_update(NV2AState *d, bool upload,
 {
 }
 
+static bool pgraph_null_have_overlapping_dirty_surfaces(NV2AState *d,
+                                                        hwaddr start,
+                                                        hwaddr size)
+{
+    return false;
+}
+
+static void pgraph_null_download_overlapping_surfaces_trigger(NV2AState *d,
+                                                              hwaddr start,
+                                                              hwaddr size)
+{
+}
+
+static void pgraph_null_download_overlapping_surfaces_wait(NV2AState *d)
+{
+}
+
 static void pgraph_null_init(NV2AState *d, Error **errp)
 {
     PGRAPHState *pg = &d->pgraph;
     pg->null_renderer_state = NULL;
 }
 
-static PGRAPHRenderer pgraph_null_renderer = {
-    .type = CONFIG_DISPLAY_RENDERER_NULL,
-    .name = "Null",
-    .ops = {
-        .init = pgraph_null_init,
-        .clear_report_value = pgraph_null_clear_report_value,
-        .clear_surface = pgraph_null_clear_surface,
-        .draw_begin = pgraph_null_draw_begin,
-        .draw_end = pgraph_null_draw_end,
-        .flip_stall = pgraph_null_flip_stall,
-        .flush_draw = pgraph_null_flush_draw,
-        .get_report = pgraph_null_get_report,
-        .image_blit = pgraph_null_image_blit,
-        .pre_savevm_trigger = pgraph_null_pre_savevm_trigger,
-        .pre_savevm_wait = pgraph_null_pre_savevm_wait,
-        .pre_shutdown_trigger = pgraph_null_pre_shutdown_trigger,
-        .pre_shutdown_wait = pgraph_null_pre_shutdown_wait,
-        .process_pending = pgraph_null_process_pending,
-        .process_pending_reports = pgraph_null_process_pending_reports,
-        .surface_update = pgraph_null_surface_update,
-    }
-};
+static PGRAPHRenderer
+    pgraph_null_renderer = { .type = CONFIG_DISPLAY_RENDERER_NULL,
+                             .name = "Null",
+                             .ops = {
+                                 .init = pgraph_null_init,
+                                 .clear_report_value =
+                                     pgraph_null_clear_report_value,
+                                 .clear_surface = pgraph_null_clear_surface,
+                                 .draw_begin = pgraph_null_draw_begin,
+                                 .draw_end = pgraph_null_draw_end,
+                                 .flip_stall = pgraph_null_flip_stall,
+                                 .flush_draw = pgraph_null_flush_draw,
+                                 .get_report = pgraph_null_get_report,
+                                 .image_blit = pgraph_null_image_blit,
+                                 .pre_savevm_trigger =
+                                     pgraph_null_pre_savevm_trigger,
+                                 .pre_savevm_wait = pgraph_null_pre_savevm_wait,
+                                 .pre_shutdown_trigger =
+                                     pgraph_null_pre_shutdown_trigger,
+                                 .pre_shutdown_wait =
+                                     pgraph_null_pre_shutdown_wait,
+                                 .process_pending = pgraph_null_process_pending,
+                                 .process_pending_reports =
+                                     pgraph_null_process_pending_reports,
+                                 .surface_update = pgraph_null_surface_update,
+                                 .have_overlapping_dirty_surfaces =
+                                     pgraph_null_have_overlapping_dirty_surfaces,
+                                 .download_overlapping_surfaces_trigger =
+                                     pgraph_null_download_overlapping_surfaces_trigger,
+                                 .download_overlapping_surfaces_wait =
+                                     pgraph_null_download_overlapping_surfaces_wait,
+                             } };
 
 static void __attribute__((constructor)) register_renderer(void)
 {
