@@ -796,13 +796,16 @@ static void create_surface_image(PGRAPHState *pg, SurfaceBinding *surface)
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
     };
 
-    VK_CHECK(vmaCreateImage(r->allocator, &image_create_info,
-                            &alloc_create_info, &surface->image,
-                            &surface->allocation, NULL));
+    VK_CHECK_FRIENDLY(vmaCreateImage(r->allocator, &image_create_info,
+                                     &alloc_create_info, &surface->image,
+                                     &surface->allocation, NULL),
+                      "Likely out of video memory");
 
-    VK_CHECK(vmaCreateImage(r->allocator, &image_create_info,
-                            &alloc_create_info, &surface->image_scratch,
-                            &surface->allocation_scratch, NULL));
+    VK_CHECK_FRIENDLY(vmaCreateImage(r->allocator, &image_create_info,
+                                     &alloc_create_info,
+                                     &surface->image_scratch,
+                                     &surface->allocation_scratch, NULL),
+                      "Likely out of video memory");
     surface->image_scratch_current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
     VkImageViewCreateInfo image_view_create_info = {

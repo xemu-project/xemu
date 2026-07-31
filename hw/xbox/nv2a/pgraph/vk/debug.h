@@ -40,20 +40,42 @@ extern int nv2a_vk_dgroup_indent;
         nv2a_vk_dgroup_indent++;                        \
     } while (0)
 
-#define NV2A_VK_DGROUP_END(...)             \
-    do {                                    \
-        nv2a_vk_dgroup_indent--;            \
-        assert(nv2a_vk_dgroup_indent >= 0); \
+#define NV2A_VK_DGROUP_END(...)                        \
+    do {                                               \
+        nv2a_vk_dgroup_indent--;                       \
+        NV2A_ASSERT_FATAL(nv2a_vk_dgroup_indent >= 0); \
     } while (0)
 
-#define VK_CHECK(x)                                           \
-    do {                                                      \
-        VkResult vk_result = (x);                             \
-        if (vk_result != VK_SUCCESS) {                        \
-            fprintf(stderr, "vk_result = %d\n", vk_result);   \
-        }                                                     \
-        assert(vk_result == VK_SUCCESS && "vk check failed"); \
+#define VK_CHECK(x)                                                          \
+    do {                                                                     \
+        VkResult vk_result = (x);                                            \
+        if (vk_result != VK_SUCCESS) {                                       \
+            fprintf(stderr, "vk_result = %d\n", vk_result);                  \
+            nv2a_log_fatal_error(                                            \
+                "vk check failed: vk_result = %d\nat %s:%d\n", vk_result,    \
+                __FILE__, __LINE__);                                         \
+            assert((x) &&                                                    \
+                   "A fatal error occurred. Check the xemu fatal error log " \
+                   "in your home directory for details.");                   \
+            exit(127);                                                       \
+        }                                                                    \
     } while (0)
+
+#define VK_CHECK_FRIENDLY(x, msg)                                            \
+    do {                                                                     \
+        VkResult vk_result = (x);                                            \
+        if (vk_result != VK_SUCCESS) {                                       \
+            fprintf(stderr, "vk_result = %d\n", vk_result);                  \
+            nv2a_log_fatal_error(                                            \
+                "%s\nvk check failed: vk_result = %d\nat %s:%d\n", msg,      \
+                vk_result, __FILE__, __LINE__);                              \
+            assert((x) && msg &&                                             \
+                   "A fatal error occurred. Check the xemu fatal error log " \
+                   "in your home directory for details.");                   \
+            exit(127);                                                       \
+        }                                                                    \
+    } while (0)
+
 
 void pgraph_vk_debug_frame_terminator(void);
 
