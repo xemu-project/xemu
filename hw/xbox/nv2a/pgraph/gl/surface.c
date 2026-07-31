@@ -632,6 +632,42 @@ void pgraph_gl_surface_download_if_dirty(NV2AState *d,
     }
 }
 
+unsigned int pgraph_gl_mark_surfaces_in_range_for_upload(NV2AState *d,
+                                                         hwaddr start,
+                                                         hwaddr size)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
+
+    SurfaceBinding *surface;
+
+    unsigned int num_marked = 0;
+    QTAILQ_FOREACH (surface, &r->surfaces, entry) {
+        if (check_surface_overlaps_range(surface, start, size)) {
+            surface->upload_pending = true;
+            ++num_marked;
+        }
+    }
+
+    return num_marked;
+}
+
+
+void pgraph_gl_download_surfaces_in_range_if_dirty(PGRAPHState *pg,
+                                                   hwaddr start, hwaddr size)
+{
+    PGRAPHGLState *r = pg->gl_renderer_state;
+
+    SurfaceBinding *surface;
+
+    QTAILQ_FOREACH (surface, &r->surfaces, entry) {
+        if (check_surface_overlaps_range(surface, start, size)) {
+            pgraph_gl_surface_download_if_dirty(
+                container_of(pg, NV2AState, pgraph), surface);
+        }
+    }
+}
+
 static void bind_current_surface(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
