@@ -183,6 +183,42 @@ void ide_atapi_cmd_ok(IDEState *s)
     ide_bus_set_irq(s->bus);
 }
 
+/*
+ * Defer the read completion interrupt to approximate drive latency.
+ * Instant completion appears to expose a loader race in some titles,
+ * e.g. Rayman Arena hanging between races (xemu-project/xemu#1443).
+ */
+#define ATAPI_COMPLETION_DELAY_US 5000
+
+static QEMUTimer *atapi_completion_timer;
+static IDEState *atapi_completion_pending;
+
+static void atapi_deferred_completion_cb(void *opaque)
+{
+    IDEState *s = atapi_completion_pending;
+
+    if (!s) {
+        return;
+    }
+    atapi_completion_pending = NULL;
+    s->status = READY_STAT | SEEK_STAT;
+    s->nsector = (s->nsector & ~7) | ATAPI_INT_REASON_IO | ATAPI_INT_REASON_CD;
+    ide_bus_set_irq(s->bus);
+}
+
+static void atapi_defer_completion(IDEState *s)
+{
+    if (!atapi_completion_timer) {
+        atapi_completion_timer = timer_new_us(
+            QEMU_CLOCK_VIRTUAL, atapi_deferred_completion_cb, NULL);
+    }
+    /* keep BSY visible to the guest until the timer fires */
+    s->status = READY_STAT | SEEK_STAT | BUSY_STAT;
+    atapi_completion_pending = s;
+    timer_mod(atapi_completion_timer,
+              qemu_clock_get_us(QEMU_CLOCK_VIRTUAL) + ATAPI_COMPLETION_DELAY_US);
+}
+
 void ide_atapi_cmd_error(IDEState *s, int sense_key, int asc)
 {
     trace_ide_atapi_cmd_error(s, sense_key, asc);
@@ -383,9 +419,7 @@ static void ide_atapi_cmd_read_dma_cb(void *opaque, int ret)
     }
 
     if (s->packet_transfer_size <= 0) {
-        s->status = READY_STAT | SEEK_STAT;
-        s->nsector = (s->nsector & ~7) | ATAPI_INT_REASON_IO | ATAPI_INT_REASON_CD;
-        ide_bus_set_irq(s->bus);
+        atapi_defer_completion(s);
         goto eot;
     }
 
