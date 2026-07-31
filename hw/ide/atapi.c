@@ -187,6 +187,7 @@ void ide_atapi_cmd_ok(IDEState *s)
  * Defer the read completion interrupt to approximate drive latency.
  * Instant completion appears to expose a loader race in some titles,
  * e.g. Rayman Arena hanging between races (xemu-project/xemu#1443).
+ * Define to 0 to restore instant completion.
  */
 #define ATAPI_COMPLETION_DELAY_US 5000
 
@@ -419,7 +420,14 @@ static void ide_atapi_cmd_read_dma_cb(void *opaque, int ret)
     }
 
     if (s->packet_transfer_size <= 0) {
-        atapi_defer_completion(s);
+        if (ATAPI_COMPLETION_DELAY_US > 0) {
+            atapi_defer_completion(s);
+        } else {
+            s->status = READY_STAT | SEEK_STAT;
+            s->nsector =
+                (s->nsector & ~7) | ATAPI_INT_REASON_IO | ATAPI_INT_REASON_CD;
+            ide_bus_set_irq(s->bus);
+        }
         goto eot;
     }
 
