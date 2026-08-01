@@ -293,8 +293,12 @@ static void set_full_screen(struct xemu_console *scon, bool set)
                 int num_modes = 0;
                 modes = SDL_GetFullscreenDisplayModes(display, &num_modes);
                 if (modes && num_modes > 0) {
-                    // First mode is the highest resolution, typically the native resolution
-                    mode = modes[0];
+                    // Use configured fullscreen resolution index, defaulting to 0 (highest resolution)
+                    int mode_index = g_config.display.window.fullscreen_resolution;
+                    if (mode_index < 0 || mode_index >= num_modes) {
+                        mode_index = 0; // Fallback to highest resolution
+                    }
+                    mode = modes[mode_index];
                 }
             }
             if (mode) {
