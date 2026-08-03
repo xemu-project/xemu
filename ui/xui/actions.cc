@@ -38,7 +38,7 @@ void ActionEjectDisc(void)
 void ActionLoadDisc(void)
 {
     static const SDL_DialogFileFilter filters[] = {
-        { "Disc Image Files (*.iso, *.xiso)", "iso;xiso" },
+        { "Disc Image Files (*.cci, *.chd, *.iso, *.xiso)", "cci;chd;iso;xiso" },
         { "All Files", "*" }
     };
     const char *default_path = g_config.sys.files.dvd_path;
