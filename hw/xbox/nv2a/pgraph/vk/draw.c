@@ -19,6 +19,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/fast-hash.h"
+#include "ui/xemu-settings.h"
 #include "renderer.h"
 #include <math.h>
 
@@ -121,19 +122,70 @@ static bool pipeline_cache_entry_compare(Lru *lru, LruNode *node,
     return memcmp(&snode->key, key, sizeof(PipelineKey));
 }
 
+static char *get_pipeline_cache_path(void)
+{
+    const char *base = xemu_settings_get_base_path();
+    if (!base) {
+        return NULL;
+    }
+    return g_build_filename(base, "pipeline_cache.bin", NULL);
+}
+
+static bool pipeline_cache_saved;
+static void save_pipeline_cache(PGRAPHState *pg);
+
+static void save_pipeline_cache_atexit(void)
+{
+    if (g_nv2a) {
+        save_pipeline_cache(&g_nv2a->pgraph);
+    }
+}
+
 static void init_pipeline_cache(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    void *cache_data = NULL;
+    size_t cache_size = 0;
+
+    char *cache_path = get_pipeline_cache_path();
+    if (cache_path) {
+        FILE *f = fopen(cache_path, "rb");
+        if (f) {
+            fseek(f, 0, SEEK_END);
+            long file_size = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            if (file_size > 16) {
+                cache_data = g_malloc(file_size);
+                if (fread(cache_data, 1, file_size, f) == (size_t)file_size) {
+                    cache_size = file_size;
+                } else {
+                    g_free(cache_data);
+                    cache_data = NULL;
+                }
+            }
+            fclose(f);
+        }
+        g_free(cache_path);
+    }
+
     VkPipelineCacheCreateInfo cache_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
         .flags = 0,
-        .initialDataSize = 0,
-        .pInitialData = NULL,
+        .initialDataSize = cache_size,
+        .pInitialData = cache_data,
         .pNext = NULL,
     };
-    VK_CHECK(vkCreatePipelineCache(r->device, &cache_info, NULL,
-                                   &r->vk_pipeline_cache));
+    VkResult result = vkCreatePipelineCache(r->device, &cache_info, NULL,
+                                            &r->vk_pipeline_cache);
+    g_free(cache_data);
+
+    if (result != VK_SUCCESS) {
+        cache_info.initialDataSize = 0;
+        cache_info.pInitialData = NULL;
+        VK_CHECK(vkCreatePipelineCache(r->device, &cache_info, NULL,
+                                       &r->vk_pipeline_cache));
+    }
 
     const size_t pipeline_cache_size = 2048;
     lru_init(&r->pipeline_cache);
@@ -147,11 +199,57 @@ static void init_pipeline_cache(PGRAPHState *pg)
     r->pipeline_cache.init_node = pipeline_cache_entry_init;
     r->pipeline_cache.compare_nodes = pipeline_cache_entry_compare;
     r->pipeline_cache.post_node_evict = pipeline_cache_entry_post_evict;
+
+    if (!pipeline_cache_saved) {
+        atexit(save_pipeline_cache_atexit);
+    }
+}
+
+static void save_pipeline_cache(PGRAPHState *pg)
+{
+    if (pipeline_cache_saved) {
+        return;
+    }
+
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    if (!r || !r->device || !r->vk_pipeline_cache) {
+        return;
+    }
+
+    char *cache_path = get_pipeline_cache_path();
+    if (!cache_path) {
+        return;
+    }
+
+    size_t cache_size = 0;
+    VkResult result = vkGetPipelineCacheData(r->device, r->vk_pipeline_cache,
+                                             &cache_size, NULL);
+    if (result != VK_SUCCESS || cache_size <= 16) {
+        g_free(cache_path);
+        return;
+    }
+
+    void *cache_data = g_malloc(cache_size);
+    result = vkGetPipelineCacheData(r->device, r->vk_pipeline_cache,
+                                    &cache_size, cache_data);
+    if (result == VK_SUCCESS) {
+        FILE *f = fopen(cache_path, "wb");
+        if (f) {
+            size_t written = fwrite(cache_data, 1, cache_size, f);
+            if (fclose(f) == 0 && written == cache_size) {
+                pipeline_cache_saved = true;
+            }
+        }
+    }
+    g_free(cache_data);
+    g_free(cache_path);
 }
 
 static void finalize_pipeline_cache(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+
+    save_pipeline_cache(pg);
 
     lru_flush(&r->pipeline_cache);
     g_free(r->pipeline_cache_entries);
