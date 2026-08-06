@@ -38,7 +38,7 @@ static void libcurl_cleanup(void)
     g_free(xemu_user_agent);
 }
 
-static bool ensure_libcurl_initialized(Error **errp)
+bool ensure_libcurl_initialized(Error **errp)
 {
     if (!libcurl_init_called) {
         CURLcode res = curl_global_init(CURL_GLOBAL_ALL);
