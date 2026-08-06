@@ -1,0 +1,785 @@
+<svg 
+  viewBox="15 15 120 120">
+  <style>
+    .Border {
+      fill: black;
+      stroke: red;
+      stroke-width: 1.5;
+      stroke-miterlimit: 0;
+    }
+    .Btn {
+      fill: blue;
+      stroke: red;
+      stroke-width: .8;
+      stroke-miterlimit: 0;
+    }
+    .BtnLabel {
+      fill: red;
+      font: bold 2px sans-serif;
+      text-anchor: middle;
+    }
+    .Label {
+      fill: red;
+      text-anchor: middle;
+    }
+  </style>
+  <g
+    id="Red border">
+    <path
+      id="Red border path"
+      fill="none"
+      stroke="red"
+      stroke-width="1"
+      d="m 0,0
+         l 0,150
+         l 150,0
+         l 0,-150
+         l -150,0"/>
+  </g>
+  <g
+    id="DVD remote">
+    <path
+      class="Border"
+      id="DVD border"
+      d="m 40,20
+         l -20,0
+         l 0,95
+         l 40,0
+         l 0,-95
+         l -20,0"/>
+    <text x="40" y="24" class="Label" font-size="3px" id="DVD label">DVD</text>
+    <text x="40" y="26" class="BtnLabel" id="DVD DISPLAY label">DISPLAY</text>
+    <path
+      class="Btn"
+      id="DVD DISPLAY"
+      d="m 40,27
+         l -4,0
+         l 0,4
+         l 8,0
+         l 0,-4
+         l -4,0"/>
+    <text x="30" y="34" class="BtnLabel" id="DVD REVERSE label">REVERSE</text>
+    <text x="40" y="34" class="BtnLabel" id="DVD PLAY label">PLAY</text>
+    <text x="50" y="34" class="BtnLabel" id="DVD FORWARD label">FORWARD</text>
+    <path
+      class="Btn"
+      id="DVD REVERSE"
+      d="m 30,35
+         l -4,0
+         l 0,4
+         l 8,0
+         l 0,-4
+         l -4,0"/>
+    <path
+      class="Btn"
+      id="DVD PLAY"
+      d="m 40,35
+         l -4,0
+         l 0,4
+         l 8,0
+         l 0,-4
+         l -4,0"/>
+    <path
+      class="Btn"
+      id="DVD FORWARD"
+      d="m 50,35
+         l -4,0
+         l 0,4
+         l 8,0
+         l 0,-4
+         l -4,0"/>
+    <text x="28" y="42" class="BtnLabel" id="DVD SKIP- label">SKIP-</text>
+    <text x="36" y="42" class="BtnLabel" id="DVD STOP label">STOP</text>
+    <text x="44" y="42" class="BtnLabel" id="DVD PAUSE label">PAUSE</text>
+    <text x="52" y="42" class="BtnLabel" id="DVD SKIP+ label">SKIP+</text>
+    <path
+      class="Btn"
+      id="DVD SKIP-"
+      d="m 28,43
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD STOP"
+      d="m 36,43
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD PAUSE"
+      d="m 44,43
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD SKIP+"
+      d="m 52,43
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <text x="28" y="50" class="BtnLabel" id="DVD TITLE label">TITLE</text>
+    <text x="52" y="50" class="BtnLabel" id="DVD INFO label">INFO</text>
+    <path
+      class="Btn"
+      id="DVD TITLE"
+      d="m 28,51
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD INFO"
+      d="m 52,51
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD UP"
+      d="m 40,55
+         l 4,0
+         l -4,-4
+         l -4,4
+         l 4,0"/>
+    <path
+      class="Btn"
+      id="DVD LEFT"
+      d="m 34,60
+         l 0,-2
+         l -8,2
+         l 8,2
+         l 0,-2"/>
+    <text x="40" y="57.3" class="BtnLabel" id="DVD SELECT label">SELECT</text>
+    <path
+      class="Btn"
+      id="DVD SELECT"
+      d="m 40,58
+         l -4,0
+         l 0,4
+         l 8,0
+         l 0,-4
+         l -4,0"/>
+    <path
+      class="Btn"
+      id="DVD RIGHT"
+      d="m 46,60
+         l 0,-2
+         l 8,2
+         l -8,2
+         l 0,-2"/>
+    <path
+      class="Btn"
+      id="DVD DOWN"
+      d="m 40,65
+         l 4,0
+         l -4,4
+         l -4,-4
+         l 4,0"/>
+    <path
+      class="Btn"
+      id="DVD MENU"
+      d="m 28,65
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD BACK"
+      d="m 52,65
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <text x="28" y="71.5" class="BtnLabel" id="DVD MENU label">MENU</text>
+    <text x="52" y="71.5" class="BtnLabel" id="DVD BACK label">BACK</text>
+    <path
+      class="Btn"
+      id="DVD 1"
+      d="m 30,73
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD 2"
+      d="m 40,73
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD 3"
+      d="m 50,73
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD 4"
+      d="m 30,80
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD 5"
+      d="m 40,80
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD 6"
+      d="m 50,80
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD 7"
+      d="m 30,87
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD 8"
+      d="m 40,87
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD 9"
+      d="m 50,87
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="DVD 0"
+      d="m 40,94
+         l -2,0
+         l 0,4
+         l 4,0
+         l 0,-4
+         l -2,0"/>
+    <text x="26" y="75" class="BtnLabel" id="DVD 1 label">1</text>
+    <text x="36" y="75" class="BtnLabel" id="DVD 2 label">2</text>
+    <text x="46" y="75" class="BtnLabel" id="DVD 3 label">3</text>
+    <text x="26" y="82" class="BtnLabel" id="DVD 4 label">4</text>
+    <text x="36" y="82" class="BtnLabel" id="DVD 5 label">5</text>
+    <text x="46" y="82" class="BtnLabel" id="DVD 6 label">6</text>
+    <text x="26" y="89" class="BtnLabel" id="DVD 7 label">7</text>
+    <text x="36" y="89" class="BtnLabel" id="DVD 8 label">8</text>
+    <text x="46" y="89" class="BtnLabel" id="DVD 9 label">9</text>
+    <text x="36" y="96" class="BtnLabel" id="DVD 0 label">0</text>
+    <text x="40" y="107" class="Label" font-size="9px" id="DVD X label">X</text>
+    <text x="40" y="110" class="Label" font-size="3px" id="DVD XBOX label">XBOX</text>
+  </g>
+  
+  <g
+    id="Media Center remote">
+    <path
+      class="Border"
+      id="MCE border"
+      d="m 110,20
+         l -20,0
+         l 0,110
+         l 41,0
+         l 0,-110
+         l -21,0"/>
+    <path
+      class="Btn"
+      id="MCE POWER"
+      d="m 126,23
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE MY TV"
+      d="m 97,29
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE MY Music"
+      d="m 105,26
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE MY Pictures"
+      d="m 115,26
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE MY Videos"
+      d="m 123,29
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <text x="126.5" y="25.1" class="BtnLabel" id="MCE Power label">⏻</text>
+    <text x="97.5" y="28.2" class="BtnLabel" id="MCE My TV label">My TV</text>
+    <text x="104.5" y="25.2" class="BtnLabel" id="MCE My Music label">My Music</text>
+    <text x="116.5" y="25.2" class="BtnLabel" id="MCE My Pictures label">My Pictures</text>
+    <text x="123.5" y="28.2" class="BtnLabel" id="MCE My Videos label">My Videos</text>
+    <path
+      class="Btn"
+      id="MCE STOP"
+      d="m 110,32
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE RECORD"
+      d="m 103,34
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE PAUSE"
+      d="m 117,34
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <text x="110.5" y="31" class="BtnLabel" id="MCE STOP label">STOP</text>
+    <text x="103.5" y="33" class="BtnLabel" id="MCE RECORD label">REC</text>
+    <text x="117.5" y="33" class="BtnLabel" id="MCE PAUSE label">PAUSE</text>
+    <path
+      class="Btn"
+      id="MCE REW"
+      d="m 96,34
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE FWD"
+      d="m 124,34
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <text x="96.5" y="39.2" class="BtnLabel" id="MCE REW label">REW</text>
+    <text x="124.5" y="39.2" class="BtnLabel" id="MCE FWD label">FWD</text>
+    <path
+      class="Btn"
+      id="MCE REPLAY"
+      d="m 103,39
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE PLAY"
+      d="m 110,37
+         l -2,0
+         l 0,5
+         l 5,0
+         l 0,-5
+         l -3,0"/>
+    <path
+      class="Btn"
+      id="MCE SKIP"
+      d="m 117,39
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <text x="103.5" y="44.2" class="BtnLabel" id="MCE REPLAY label">REPLAY</text>
+    <text x="110.5" y="40.2" class="BtnLabel" id="MCE PLAY icon">▶</text>
+    <text x="117.5" y="44.2" class="BtnLabel" id="MCE SKIP label">SKIP</text>
+    <path
+      class="Btn"
+      id="MCE BACK"
+      d="m 97,45
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE MORE"
+      d="m 123,45
+         l -1,0
+         l 0,3
+         l 3,0
+         l 0,-3
+         l -2,0"/>
+    <text x="97.5" y="50.2" class="BtnLabel" id="MCE BACK label">BACK</text>
+    <text x="123.5" y="50.2" class="BtnLabel" id="MCE MORE label">MORE</text>
+    <path
+      class="Btn"
+      stroke-width="2"
+      id="MCE UP"
+      d="m 110,49
+         l 4,0
+         l -3.5,-3
+         l -3.5,3
+         l 3,0"/>
+    <path
+      class="Btn"
+      id="MCE LEFT"
+      d="m 105,53
+         l 0,-2
+         l -7,1.6
+         l 7,1.6
+         l 0,-2"/>
+    <path
+      class="Btn"
+      id="MCE OK"
+      d="m 110,51
+         l 4,0
+         l 0,3
+         l -7,0
+         l 0,-3
+         l 3,0"/>
+    <path
+      class="Btn"
+      id="MCE RIGHT"
+      d="m 116,53
+         l 0,-2
+         l 7,1.5
+         l -7,1.5
+         l 0,-2"/>
+    <path
+      class="Btn"
+      id="MCE DOWN"
+      d="m 110,56
+         l 4,0
+         l -3.5,3
+         l -3.5,-3
+         l 3,0"/>
+    <text x="110.5" y="53.3" class="BtnLabel" id="MCE OK label">OK</text>
+    <text x="110.5" y="61.2" class="BtnLabel" id="MCE START label">START</text>
+    <path
+      class="Btn"
+      id="MCE VOL UP"
+      d="m 98,59
+         l 4,0
+         l 0,3
+         l -7,0
+         l 0,-3
+         l 3,0"/>
+    <path
+      class="Btn"
+      id="MCE START"
+      d="m 110,62
+         l 4,0
+         l 0,3
+         l -7,0
+         l 0,-3
+         l 3,0"/>
+    <path
+      class="Btn"
+      id="MCE CH UP"
+      d="m 122,59
+         l 4,0
+         l 0,3
+         l -7,0
+         l 0,-3
+         l 3,0"/>
+    <path
+      class="Btn"
+      id="MCE VOL DOWN"
+      d="m 100,65
+         l 4,0
+         l 0,3
+         l -7,0
+         l 0,-3
+         l 3,0"/>
+    <path
+      class="Btn"
+      id="MCE MUTE"
+      d="m 110,68
+         l 4,0
+         l 0,3
+         l -7,0
+         l 0,-3
+         l 3,0"/>
+    <path
+      class="Btn"
+      id="MCE CH DOWN"
+      d="m 120,65
+         l 4,0
+         l 0,3
+         l -7,0
+         l 0,-3
+         l 3,0"/>
+    <text x="99.5" y="64.2" class="BtnLabel" id="MCE VOL label">VOL</text>
+    <text x="110.5" y="67.2" class="BtnLabel" id="MCE MUTE label">MUTE</text>
+    <text x="121.5" y="64.2" class="BtnLabel" id="MCE CH label">CH/PG</text>
+    <text x="98.5" y="61.3" class="Label" font-size="3px" id="MCE VOL+ label">+</text>
+    <text x="122.5" y="61.3" class="Label" font-size="3px" id="MCE CH+ label">+</text>
+    <text x="100.5" y="67.3" class="Label" font-size="3px" id="MCE VOL- label">-</text>
+    <text x="120.5" y="67.3" class="Label" font-size="3px" id="MCE CH- label">-</text>
+    <text x="98" y="71" class="BtnLabel" id="MCE RECORDED TV label">RECORDED</text>
+    <text x="98" y="73" class="BtnLabel" id="MCE RECORDED TV2 label">TV</text>
+    <text x="106" y="74" class="BtnLabel" id="MCE GUIDE label">GUIDE</text>
+    <text x="115" y="74" class="BtnLabel" id="MCE LIVE TV label">LIVE TV</text>
+    <text x="123" y="71" class="BtnLabel" id="MCE DVD MENU label">DVD</text>
+    <text x="123" y="73" class="BtnLabel" id="MCE DVD MENU2 label">MENU</text>
+    <path
+      class="Btn"
+      id="MCE RECORDED TV"
+      d="m 98,74
+         l -2,0
+         l 0,3
+         l 4,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE GUIDE"
+      d="m 106,75
+         l -2,0
+         l 0,3
+         l 4,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE LIVE TV"
+      d="m 115,75
+         l -2,0
+         l 0,3
+         l 4,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE DVD MENU"
+      d="m 123,74
+         l -2,0
+         l 0,3
+         l 4,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE 1"
+      d="m 100,81
+         l -2,0
+         l 0,3
+         l 5,0
+         l 0,-3
+         l -3,0"/>
+    <path
+      class="Btn"
+      id="MCE 2"
+      d="m 110,81
+         l -2,0
+         l 0,3
+         l 5,0
+         l 0,-3
+         l -3,0"/>
+    <path
+      class="Btn"
+      id="MCE 3"
+      d="m 120,81
+         l -2,0
+         l 0,3
+         l 5,0
+         l 0,-3
+         l -3,0"/>
+    <path
+      class="Btn"
+      id="MCE 4"
+      d="m 100,87
+         l -2,0
+         l 0,3
+         l 5,0
+         l 0,-3
+         l -3,0"/>
+    <path
+      class="Btn"
+      id="MCE 5"
+      d="m 110,87
+         l -2,0
+         l 0,3
+         l 5,0
+         l 0,-3
+         l -3,0"/>
+    <path
+      class="Btn"
+      id="MCE 6"
+      d="m 120,87
+         l -2,0
+         l 0,3
+         l 5,0
+         l 0,-3
+         l -3,0"/>
+    <path
+      class="Btn"
+      id="MCE 7"
+      d="m 100,93
+         l -2,0
+         l 0,3
+         l 5,0
+         l 0,-3
+         l -3,0"/>
+    <path
+      class="Btn"
+      id="MCE 8"
+      d="m 110,93
+         l -2,0
+         l 0,3
+         l 5,0
+         l 0,-3
+         l -3,0"/>
+    <path
+      class="Btn"
+      id="MCE 9"
+      d="m 120,93
+         l -2,0
+         l 0,3
+         l 5,0
+         l 0,-3
+         l -3,0"/>
+    <path
+      class="Btn"
+      id="MCE *"
+      d="m 100,99
+         l -2,0
+         l 0,3
+         l 5,0
+         l 0,-3
+         l -3,0"/>
+    <path
+      class="Btn"
+      id="MCE 0"
+      d="m 110,99
+         l -2,0
+         l 0,3
+         l 5,0
+         l 0,-3
+         l -3,0"/>
+    <path
+      class="Btn"
+      id="MCE #"
+      d="m 120,99
+         l -2,0
+         l 0,3
+         l 5,0
+         l 0,-3
+         l -3,0"/>
+    <text x="110.5" y="80.2" class="BtnLabel" id="MCE 1 label">ABC</text>
+    <text x="120.5" y="80.2" class="BtnLabel" id="MCE 1 label">DEF</text>
+    <text x="100.5" y="83.2" class="BtnLabel" id="MCE 1 label">1</text>
+    <text x="110.5" y="83.2" class="BtnLabel" id="MCE 2 label">2</text>
+    <text x="120.5" y="83.2" class="BtnLabel" id="MCE 3 label">3</text>
+    <text x="100.5" y="86.2" class="BtnLabel" id="MCE 1 label">GHI</text>
+    <text x="110.5" y="86.2" class="BtnLabel" id="MCE 1 label">JKL</text>
+    <text x="120.5" y="86.2" class="BtnLabel" id="MCE 1 label">MNO</text>
+    <text x="100.5" y="89.2" class="BtnLabel" id="MCE 4 label">4</text>
+    <text x="110.5" y="89.2" class="BtnLabel" id="MCE 5 label">5</text>
+    <text x="120.5" y="89.2" class="BtnLabel" id="MCE 6 label">6</text>
+    <text x="100.5" y="92.2" class="BtnLabel" id="MCE 1 label">PQRS</text>
+    <text x="110.5" y="92.2" class="BtnLabel" id="MCE 1 label">TUV</text>
+    <text x="120.5" y="92.2" class="BtnLabel" id="MCE 1 label">WXYZ</text>
+    <text x="100.5" y="95.2" class="BtnLabel" id="MCE 7 label">7</text>
+    <text x="110.5" y="95.2" class="BtnLabel" id="MCE 8 label">8</text>
+    <text x="120.5" y="95.2" class="BtnLabel" id="MCE 9 label">9</text>
+    <text x="110.5" y="98.2" class="BtnLabel" id="MCE 1 label">⌴</text>
+    <text x="100.5" y="101.2" class="BtnLabel" id="MCE * label">*</text>
+    <text x="110.5" y="101.2" class="BtnLabel" id="MCE 0 label">0</text>
+    <text x="120.5" y="101.2" class="BtnLabel" id="MCE # label">#</text>
+    <text x="105.5" y="105" class="BtnLabel" id="MCE CLEAR label">CLEAR</text>
+    <text x="115.5" y="105" class="BtnLabel" id="MCE ENTER label">ENTER</text>
+    <path
+      class="Btn"
+      id="MCE CLEAR"
+      d="m 106,106
+         l -2,0
+         l 0,3
+         l 4,0
+         l 0,-3
+         l -2,0"/>
+    <path
+      class="Btn"
+      id="MCE ENTER"
+      d="m 115,106
+         l -2,0
+         l 0,3
+         l 4,0
+         l 0,-3
+         l -2,0"/>
+    <text x="110.5" y="115" class="Label" font-size="3px" id="MCE XBOX label">XBOX</text>
+    <path
+      class="Btn"
+      id="MCE ENTER"
+      d="m 110,116
+         l -2,0
+         l 0,3
+         l 5,0
+         l 0,-3
+         l -3,0"/>
+  </g>
+</svg>
