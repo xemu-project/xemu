@@ -457,3 +457,80 @@ change.
   do you want me to first squeeze what I can out of the existing OpenGL path?
 - Where does MoltenVK come from: install the **Vulkan SDK for macOS** (ships
   MoltenVK + loader) vs. a Homebrew `molten-vk`? Affects bundling/licensing.
+
+---
+
+# 🔥 CPU / heat / smoothness campaign — resume point (2026-06-30)
+
+Renderer (Vulkan/MoltenVK) shipped and Halo 2 is playable & smooth. This phase
+attacked CPU usage / laptop heat / audio, then smoothness.
+
+## Done & committed (git log, newest first)
+- **SSE compare → native ARM FP** (`2cc06d9`) and **SSE arithmetic → native**
+  (`c9064fd`). Biggest CPU win: eliminated ~76% of the softfloat-SSE slice
+  (the hottest reducible chunk of the guest core). Gated by the existing
+  `perf.hard_fpu` config (was a no-op on Apple Silicon before this — hard x87
+  is x86-only; SSE is plain IEEE binary32/64 so it's correct on ARM).
+  - `target/i386/tcg/fpu_helper.c`: `x86_use_hard_sse`, `sse_hard_active()`
+    (native only when host-default FP env: round-nearest, no FTZ/DAZ),
+    `sse_add/sub/mul/div{32,64}`, `sse_cmp{32,64}`, and `x86_sse_hard_selftest()`
+    (startup bit-exactness check vs softfloat incl. denormals/NaN/inf; disables
+    hard SSE on any mismatch → fail-safe).
+  - `target/i386/ops_sse.h`: `FPU_ADD/SUB/MUL/DIV` + `FPU_CMPQ/FPU_CMPS` route
+    through the above. min/max/cvt LEFT on softfloat (trickier semantics).
+  - `target/i386/tcg/translate.c` (`tcg_x86_init`): sets `x86_use_hard_sse`
+    from `g_config.perf.hard_fpu`, runs selftest. `xemu-settings.h` include
+    moved out to `#ifdef XBOX`.
+  - Verified in-game: no glitches; selftest passes.
+- **TB jump cache 12→14 bits** (`78bbf1f`) — cut dispatch thrashing.
+- **Audio**: softfloat/address_space elimination in vp.c, QoS thread priority,
+  monitor.c buffer headroom (`03ecb5b` etc.) — crackle-under-load resolved.
+- **NV2A vertex dirty-tracking granularity** — fewer spurious GPU flushes.
+
+## Attempted & abandoned (don't repeat)
+- **NEON vectorization of packed SSE** — clang won't emit `.4s`/`.2d`: SSE regs
+  are stored as integer lanes (float32=uint32) forcing GPR round-trips, and
+  dest can alias src. Would need hand-written `arm_neon.h` intrinsics for ~4%
+  of one core. Not worth it; reverted.
+- **TLB size bump** (CPU_TLB_DYN_DEFAULT/MIN) — FAILED. softmmu misses are
+  COMPULSORY (Halo 2 streams textures/vertices → dirty-tracking flushes TLB →
+  refill regardless of size). Confirmed via profile; reverted. Do not retry.
+
+## Profile reality (the ~2 pinned cores)
+- **TCG guest exec** (~1 core): softmmu refill ~20% (compulsory), TB dispatch
+  ~24% (inherent C++ vtables), x87 softfloat ~10% (precision-risky on ARM),
+  SSE now mostly native.
+- **NV2A pgraph/pfifo** (~1 core): ~630 draws/frame, well-optimized already
+  (89% pipeline binds / 61% shader binds correctly skipped).
+- **Render/present thread**: idle-waiting — NOT a cost.
+
+## ▶ NEXT: NV2A `pg->lock` contention (smoothness, not heat)
+The guest CPU thread blocks on `pg->lock` whenever Halo 2 touches an NV2A
+register, because `pfifo_thread` holds that lock across the *entire*
+`pgraph_method` — including the draw's GPU submit/wait. The two hot threads
+can't run in parallel during draws → hitches.
+- `hw/xbox/nv2a/pgraph/pgraph.c`: `pgraph_read` L47 (`pg->lock`),
+  `pgraph_write` L90-91 (`pfifo.lock`+`pg->lock`).
+- `hw/xbox/nv2a/pfifo.c` L224-232: holds `pg->lock` around `pgraph_method`
+  (maintainer note `// TODO: this is fucked`).
+- Two locks: `pg->lock` (registers) vs `pg->renderer_lock` (GPU state).
+- **Fix approach:** `pgraph_vk_finish` (`vk/draw.c:1213`) does the long
+  `vkQueueSubmit`+`vkWaitForFences` and reads NO registers during the wait →
+  drop `pg->lock` around just the fence wait so the guest can interleave. Draw
+  *setup* reads many `pgraph_reg_r`, so keep the lock there.
+- **RISK: HIGH** (races / lock-ordering). Go incremental, test heavily for
+  hangs/corruption. This is a *feel* win (kills hitches), not a heat win (the
+  blocked time is sleep).
+
+## Future heat (user still wants more)
+Remaining heat is inherent or high-risk. The only real lever left is reducing
+TLB flushes / reworking the dirty-memory tracking in core QEMU softmmu —
+deep and correctness-critical. Otherwise we're at the safe floor.
+
+## Ops cheatsheet
+- Build: `ninja -C build qemu-system-i386`
+- Repackage into .app (after raw `cp` breaks dylib paths): `/tmp/repackage_xemu.sh`
+  (recreate if gone: cp binary → dylibbundler → fix `/opt/local` refs in exe
+  AND bundled libs → codesign).
+- Launch w/ stderr + profiler: `XEMU_NV2A_PROFILE=300 ./dist/xemu.app/Contents/MacOS/xemu 2>/tmp/x.txt &`
+- Profile: `sample <pid> 8 -f /tmp/cpuN.txt`; kill xemu after to manage heat.
