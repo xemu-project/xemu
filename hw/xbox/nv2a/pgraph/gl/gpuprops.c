@@ -353,10 +353,11 @@ void pgraph_gl_determine_gpu_properties(void)
 
     uint8_t *pixels = render_geom_shader_triangles(width, height);
     if (pixels == NULL) {
-        fprintf(stderr,
-                "GL geometry shader probe unavailable; using defaults\n");
+        fprintf(stderr, "GL geometry shader probe failed\n");
+        pgraph_gl_gpu_properties.valid = false;
         return;
     }
+    pgraph_gl_gpu_properties.valid = true;
 
     determine_triangle_winding_order(pixels, width, height,
                                      &pgraph_gl_gpu_properties);

@@ -97,6 +97,7 @@ typedef struct BetaState {
 } BetaState;
 
 typedef struct GPUProperties {
+    bool valid;
     struct {
         short tri;
         short tri_strip0;
