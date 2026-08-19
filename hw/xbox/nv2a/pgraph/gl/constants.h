@@ -230,6 +230,14 @@ static const ColorFormatInfo kelvin_color_format_gl_map[66] = {
         {2, false, GL_RG8, GL_RG, GL_UNSIGNED_BYTE,
          {GL_GREEN, GL_RED, GL_RED, GL_GREEN}},
 
+    /* D3DFMT_V16U16: two signed 16-bit channels (bump/normal du,dv). Loaded as a
+     * true signed-normalized texture (R = low short, G = high short) so the GPU
+     * interpolates the signed values directly -- loading unsigned and re-signing
+     * in the shader produces interpolation artifacts across the sign boundary. */
+    [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_V16U16] =
+        {4, false, GL_RG16_SNORM, GL_RG, GL_SHORT,
+         {GL_RED, GL_GREEN, GL_ZERO, GL_ONE}},
+
     [NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8] =
         {2, true, GL_RGBA8,  GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV},
     [NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_YB8CR8YA8CB8] =
