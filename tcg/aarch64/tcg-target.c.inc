@@ -458,6 +458,15 @@ typedef enum {
     I3312_LDRVQ     = 0x3c000000 | 3 << 22 | 0 << 30,
     I3312_STRVQ     = 0x3c000000 | 2 << 22 | 0 << 30,
 
+    I3308_LDAPRB    = 0x38bfc000,
+    I3308_LDAPRH    = 0x78bfc000,
+    I3308_LDAPRW    = 0xb8bfc000,
+    I3308_LDAPRX    = 0xf8bfc000,
+    I3308_STLRB     = 0x089ffc00,
+    I3308_STLRH     = 0x489ffc00,
+    I3308_STLRW     = 0x889ffc00,
+    I3308_STLRX     = 0xc89ffc00,
+
     I3312_TO_I3310  = 0x00200800,
     I3312_TO_I3313  = 0x01000000,
 
@@ -1612,7 +1621,13 @@ static bool tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
     }
 
     tcg_out_ld_helper_args(s, lb, &ldst_helper_param);
+    if (tcg_qemu_tso_lowering) {
+        tcg_out_mb(s, TCG_MO_ALL);
+    }
     tcg_out_call_int(s, qemu_ld_helpers[opc & MO_SIZE]);
+    if (tcg_qemu_tso_lowering) {
+        tcg_out_mb(s, TCG_MO_ALL);
+    }
     tcg_out_ld_helper_ret(s, lb, false, &ldst_helper_param);
     tcg_out_goto(s, lb->raddr);
     return true;
@@ -1627,7 +1642,13 @@ static bool tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
     }
 
     tcg_out_st_helper_args(s, lb, &ldst_helper_param);
+    if (tcg_qemu_tso_lowering) {
+        tcg_out_mb(s, TCG_MO_ALL);
+    }
     tcg_out_call_int(s, qemu_st_helpers[opc & MO_SIZE]);
+    if (tcg_qemu_tso_lowering) {
+        tcg_out_mb(s, TCG_MO_ALL);
+    }
     tcg_out_goto(s, lb->raddr);
     return true;
 }
@@ -1749,9 +1770,99 @@ static TCGLabelQemuLdst *prepare_host_addr(TCGContext *s, HostAddress *h,
     return ldst;
 }
 
+static TCGReg compose_ordered_addr(TCGContext *s, HostAddress h)
+{
+    if (h.index == TCG_REG_XZR) {
+        return h.base;
+    }
+    if (h.index_ext == TCG_TYPE_I32) {
+        tcg_out_insn(s, 3501, ADD, TCG_TYPE_I64, TCG_REG_TMP2, h.base,
+                     h.index, MO_32, 0);
+    } else {
+        tcg_out_insn(s, 3502, ADD, 1, TCG_REG_TMP2, h.base, h.index);
+    }
+    return TCG_REG_TMP2;
+}
+
+static void tcg_out_qemu_ld_ordered(TCGContext *s, MemOp memop, TCGType ext,
+                                    TCGReg data_r, HostAddress h)
+{
+    TCGReg a = compose_ordered_addr(s, h);
+    MemOp size = memop & MO_SIZE;
+    static const AArch64Insn ldapr[4] = {
+        I3308_LDAPRB, I3308_LDAPRH, I3308_LDAPRW, I3308_LDAPRX,
+    };
+    static const AArch64Insn ldr[4] = {
+        I3312_LDRB, I3312_LDRH, I3312_LDRW, I3312_LDRX,
+    };
+
+    if (size == MO_8) {
+        tcg_out32(s, ldapr[MO_8] | a << 5 | data_r);
+    } else {
+        tcg_insn_unit *br_unal, *br_join;
+
+        tcg_out_logicali(s, I3404_ANDSI, 0, TCG_REG_XZR, a,
+                         (1 << size) - 1);
+        br_unal = s->code_ptr;
+        tcg_out_insn(s, 3202, B_C, TCG_COND_NE, 0);
+
+        tcg_out32(s, ldapr[size] | a << 5 | data_r);
+        br_join = s->code_ptr;
+        tcg_out32(s, I3206_B);
+
+        reloc_pc19(br_unal, tcg_splitwx_to_rx(s->code_ptr));
+        tcg_out_ldst_r(s, ldr[size], data_r, a, TCG_TYPE_I64, TCG_REG_XZR);
+        tcg_out_mb(s, TCG_MO_LD_LD | TCG_MO_LD_ST);
+        reloc_pc26(br_join, tcg_splitwx_to_rx(s->code_ptr));
+    }
+
+    if (memop & MO_SIGN) {
+        tcg_out_sxt(s, (ext || size == MO_32) ? TCG_TYPE_I64 : TCG_TYPE_I32,
+                    size, data_r, data_r);
+    }
+}
+
+static void tcg_out_qemu_st_ordered(TCGContext *s, MemOp memop,
+                                    TCGReg data_r, HostAddress h)
+{
+    TCGReg a = compose_ordered_addr(s, h);
+    MemOp size = memop & MO_SIZE;
+    static const AArch64Insn stlr[4] = {
+        I3308_STLRB, I3308_STLRH, I3308_STLRW, I3308_STLRX,
+    };
+    static const AArch64Insn str[4] = {
+        I3312_STRB, I3312_STRH, I3312_STRW, I3312_STRX,
+    };
+
+    if (size == MO_8) {
+        tcg_out32(s, stlr[MO_8] | a << 5 | data_r);
+        return;
+    }
+
+    tcg_insn_unit *br_unal, *br_join;
+
+    tcg_out_logicali(s, I3404_ANDSI, 0, TCG_REG_XZR, a, (1 << size) - 1);
+    br_unal = s->code_ptr;
+    tcg_out_insn(s, 3202, B_C, TCG_COND_NE, 0);
+
+    tcg_out32(s, stlr[size] | a << 5 | data_r);
+    br_join = s->code_ptr;
+    tcg_out32(s, I3206_B);
+
+    reloc_pc19(br_unal, tcg_splitwx_to_rx(s->code_ptr));
+    tcg_out_mb(s, TCG_MO_ALL);
+    tcg_out_ldst_r(s, str[size], data_r, a, TCG_TYPE_I64, TCG_REG_XZR);
+    reloc_pc26(br_join, tcg_splitwx_to_rx(s->code_ptr));
+}
+
 static void tcg_out_qemu_ld_direct(TCGContext *s, MemOp memop, TCGType ext,
                                    TCGReg data_r, HostAddress h)
 {
+    if (tcg_qemu_tso_lowering) {
+        tcg_out_qemu_ld_ordered(s, memop, ext, data_r, h);
+        return;
+    }
+
     switch (memop & MO_SSIZE) {
     case MO_UB:
         tcg_out_ldst_r(s, I3312_LDRB, data_r, h.base, h.index_ext, h.index);
@@ -1784,6 +1895,11 @@ static void tcg_out_qemu_ld_direct(TCGContext *s, MemOp memop, TCGType ext,
 static void tcg_out_qemu_st_direct(TCGContext *s, MemOp memop,
                                    TCGReg data_r, HostAddress h)
 {
+    if (tcg_qemu_tso_lowering) {
+        tcg_out_qemu_st_ordered(s, memop, data_r, h);
+        return;
+    }
+
     switch (memop & MO_SIZE) {
     case MO_8:
         tcg_out_ldst_r(s, I3312_STRB, data_r, h.base, h.index_ext, h.index);
@@ -1853,6 +1969,10 @@ static void tcg_out_qemu_ldst_i128(TCGContext *s, TCGReg datalo, TCGReg datahi,
     bool use_pair;
 
     ldst = prepare_host_addr(s, &h, addr_reg, oi, is_ld);
+
+    if (tcg_qemu_tso_lowering && !is_ld) {
+        tcg_out_mb(s, TCG_MO_ALL);
+    }
 
     /* Compose the final address, as LDP/STP have no indexing. */
     if (h.index == TCG_REG_XZR) {
@@ -1936,6 +2056,10 @@ static void tcg_out_qemu_ldst_i128(TCGContext *s, TCGReg datalo, TCGReg datahi,
         } else {
             tcg_out_insn(s, 3314, STP, datalo, datahi, base, 0, 1, 0);
         }
+    }
+
+    if (tcg_qemu_tso_lowering && is_ld) {
+        tcg_out_mb(s, TCG_MO_ALL);
     }
 
     if (ldst) {

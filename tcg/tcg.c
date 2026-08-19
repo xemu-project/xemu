@@ -249,6 +249,7 @@ bool tcg_use_softmmu;
 
 TCGContext tcg_init_ctx;
 __thread TCGContext *tcg_ctx;
+bool tcg_qemu_tso_lowering;
 
 TCGContext **tcg_ctxs;
 unsigned int tcg_cur_ctxs;
