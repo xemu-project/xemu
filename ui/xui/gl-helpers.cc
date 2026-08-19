@@ -293,6 +293,19 @@ void main() {
     glAttachShader(s->prog, frag);
     glBindFragDataLocation(s->prog, 0, "out_Color");
     glLinkProgram(s->prog);
+
+    GLint link_status;
+    glGetProgramiv(s->prog, GL_LINK_STATUS, &link_status);
+    if (link_status != GL_TRUE) {
+        char link_err[1024];
+        glGetProgramInfoLog(s->prog, sizeof(link_err), NULL, link_err);
+        fprintf(stderr,
+                "NewDecalShader: shader program link failed: %s\n"
+                "--- vertex source ---\n%s\n"
+                "--- fragment source ---\n%s\n",
+                link_err, vert_src, frag_src ? frag_src : "(null)");
+        assert(!"NewDecalShader: shader program link failed");
+    }
     glUseProgram(s->prog);
 
     // Flag shaders for deletion when program is deleted
