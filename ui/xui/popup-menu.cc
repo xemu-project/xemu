@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+#include "i18n.hh"
 #include "ui/xemu-notifications.h"
 #include <string>
 #include <vector>
