@@ -39,9 +39,13 @@ block_ss.add(files(
   'throttle.c',
   'throttle-groups.c',
   'write-threshold.c',
-  'cci.c',
-  'lz4.c',
 ), zstd, zlib)
+
+# CCI (compressed Xbox disc container) support. The format reader/writer lives
+# in the standalone libCCI project (which bundles LZ4); block/cci.c is a thin
+# QEMU block-driver adapter over it.
+libcci = subproject('libcci')
+block_ss.add(files('cci.c'), libcci.get_variable('libcci_dep'))
 
 system_ss.add(when: 'CONFIG_TCG', if_true: files('blkreplay.c'))
 system_ss.add(files('block-ram-registrar.c'))
