@@ -1,0 +1,70 @@
+name: Validate Issue Template Completeness
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate issue body
+        id: validate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body.toLowerCase();
+
+            // required phrases
+            const required = [
+              "### description",
+              "### steps to reproduce",
+              "### expected behavior"
+            ];
+
+            // placeholder rejection phrases
+            const placeholders = [
+              "fill this out",
+              "no description provided"
+            ];
+
+            let missing = false;
+
+            // Check for missing sections
+            for (const section of required) {
+              if (!body.includes(section)) {
+                missing = true;
+              }
+            }
+
+            // Check for placeholder text
+            for (const p of placeholders) {
+              if (body.includes(p)) {
+                missing = true;
+              }
+            }
+
+            return { missing };
+
+      - name: Close issue if invalid
+        if: steps.validate.outputs.missing == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "This issue was closed because the required template was not fully completed. Please fill out all sections of the xemu issue templates."
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: "closed"
+            });
