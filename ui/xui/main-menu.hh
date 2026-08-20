@@ -60,6 +60,10 @@ public:
     bool ConsumeRebindEvent(SDL_Event *event);
     bool IsInputRebinding();
     void Draw() override;
+    void DrawExpansionSlotOptions(int active);
+    void DrawExpansionSlotOptions(int active, int expansion_slot_index);
+    void DrawXmuSettings(int active, int expansion_slot_index);
+    void DrawXblcSettings(int active, int expansion_slot_index);
     void Hide() override;
     void PopulateTableController(ControllerState *state);
 };
