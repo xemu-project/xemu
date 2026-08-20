@@ -523,10 +523,9 @@ static RAMHTEntry ramht_lookup(NV2AState *d, uint32_t handle)
 
     assert(ramht_address + hash * 8 < memory_region_size(&d->ramin));
 
-    uint8_t *entry_ptr = d->ramin_ptr + ramht_address + hash * 8;
-
-    uint32_t entry_handle = ldl_le_p((uint32_t*)entry_ptr);
-    uint32_t entry_context = ldl_le_p((uint32_t*)(entry_ptr + 4));
+    uint32_t entry_handle = nv2a_pramin_read32(d, ramht_address + hash * 8);
+    uint32_t entry_context =
+        nv2a_pramin_read32(d, ramht_address + hash * 8 + 4);
 
     return (RAMHTEntry){
         .handle = entry_handle,

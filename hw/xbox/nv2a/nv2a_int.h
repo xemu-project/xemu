@@ -83,7 +83,6 @@ typedef struct NV2AState {
     MemoryRegion vram_pci;
     uint8_t *vram_ptr;
     MemoryRegion ramin;
-    uint8_t *ramin_ptr;
 
     MemoryRegion mmio;
     MemoryRegion block_mmio[NV_NUM_BLOCKS];
@@ -210,6 +209,7 @@ DEFINE_PROTO(user)
 
 DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address);
 void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len);
+uint32_t nv2a_pramin_read32(NV2AState *d, hwaddr addr);
 
 /**
  * Clips an image blit to fit into a GPU tile it overlaps.
