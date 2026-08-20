@@ -17,6 +17,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/fast-hash.h"
+#include "xemu-version.h"
 #include "ui/xemu-settings.h"
 #include "renderer.h"
 
@@ -140,9 +142,80 @@ void pgraph_vk_finalize_glsl_compiler(void)
     glslang_finalize_process();
 }
 
+#define SPIRV_MAGIC 0x07230203u
+
+static uint64_t spirv_cache_key(glslang_stage_t stage, const char *glsl_source)
+{
+    g_autofree char *material =
+        g_strdup_printf("%s|%d|%d|%s", xemu_version, (int)stage,
+                        g_config.display.vulkan.debug_shaders ? 1 : 0,
+                        glsl_source);
+    return fast_hash((const uint8_t *)material, strlen(material));
+}
+
+static char *spirv_cache_dir(uint64_t hash)
+{
+    return g_strdup_printf("%sspirv%c%04x", xemu_settings_get_base_path(),
+                           G_DIR_SEPARATOR, (uint32_t)(hash >> 48));
+}
+
+static char *spirv_cache_file(const char *dir, uint64_t hash)
+{
+    return g_strdup_printf("%s%c%012" PRIx64, dir, G_DIR_SEPARATOR,
+                           hash & ~((uint64_t)0xffff << 48));
+}
+
+static GByteArray *spirv_cache_load(uint64_t hash)
+{
+    g_autofree char *dir = spirv_cache_dir(hash);
+    g_autofree char *path = spirv_cache_file(dir, hash);
+    g_autofree gchar *data = NULL;
+    gsize size = 0;
+    uint32_t magic;
+
+    if (!g_file_get_contents(path, &data, &size, NULL)) {
+        return NULL;
+    }
+    if (size < sizeof(magic) || (size % sizeof(uint32_t)) != 0) {
+        return NULL;
+    }
+
+    memcpy(&magic, data, sizeof(magic));
+    if (magic != SPIRV_MAGIC) {
+        return NULL;
+    }
+
+    GByteArray *spirv = g_byte_array_sized_new(size);
+    g_byte_array_append(spirv, (const guint8 *)data, size);
+    return spirv;
+}
+
+static void spirv_cache_store(uint64_t hash, GByteArray *spirv)
+{
+    g_autofree char *dir = spirv_cache_dir(hash);
+
+    if (g_mkdir_with_parents(dir, 0755) != 0) {
+        return;
+    }
+
+    g_autofree char *path = spirv_cache_file(dir, hash);
+    g_file_set_contents(path, (const char *)spirv->data, spirv->len, NULL);
+}
+
 GByteArray *pgraph_vk_compile_glsl_to_spv(glslang_stage_t stage,
                                           const char *glsl_source)
 {
+    const bool use_cache = g_config.perf.cache_shaders;
+    uint64_t hash = 0;
+
+    if (use_cache) {
+        hash = spirv_cache_key(stage, glsl_source);
+        GByteArray *cached = spirv_cache_load(hash);
+        if (cached) {
+            return cached;
+        }
+    }
+
     const glslang_input_t input = {
         .language = GLSLANG_SOURCE_GLSL,
         .stage = stage,
@@ -239,7 +312,13 @@ GByteArray *pgraph_vk_compile_glsl_to_spv(glslang_stage_t stage,
     glslang_program_delete(program);
     glslang_shader_delete(shader);
 
-    return g_byte_array_new_take(data, num_program_bytes);
+    GByteArray *spirv = g_byte_array_new_take(data, num_program_bytes);
+
+    if (use_cache) {
+        spirv_cache_store(hash, spirv);
+    }
+
+    return spirv;
 }
 
 VkShaderModule pgraph_vk_create_shader_module_from_spv(PGRAPHVkState *r, GByteArray *spv)
