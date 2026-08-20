@@ -90,7 +90,30 @@ ControllerStateList available_controllers =
 ControllerState *bound_controllers[4] = { NULL, NULL, NULL, NULL };
 const char *bound_drivers[4] = { DRIVER_DUKE, DRIVER_DUKE, DRIVER_DUKE,
                                  DRIVER_DUKE };
+// A simple USB HID device (usb-kbd / usb-mouse) attached directly to a player
+// port, if any. This occupies the same daughterboard port as a controller
+// would, so a port has either a controller or a HID device, never both. The
+// specific driver in use is tracked in bound_drivers[].
+static DeviceState *bound_hid_devices[4] = { NULL, NULL, NULL, NULL };
 int test_mode;
+
+// Host keyboard dedicated to the keyboard-as-controller (0 = all keyboards).
+// When set, controller key state is tracked per-device from events (rather than
+// the merged SDL keyboard state) so a second keyboard can drive the guest.
+static SDL_KeyboardID controller_kbd_id;
+static bool controller_kbd_scancodes[SDL_SCANCODE_COUNT];
+// Host keyboard that types into the emulated guest usb-kbd (0 = all keyboards).
+static SDL_KeyboardID guest_kbd_id;
+
+// Per-device keyboard routing needs SDL to attribute key events to a specific
+// device. On Windows the default message-loop path reports which == 0 for every
+// key, so enable low-latency raw keyboard input whenever a specific keyboard is
+// selected. (The hint is ignored on other platforms.)
+static void xemu_input_update_raw_keyboard_hint(void)
+{
+    bool need_raw = (controller_kbd_id != 0) || (guest_kbd_id != 0);
+    SDL_SetHint(SDL_HINT_WINDOWS_RAW_KEYBOARD, need_raw ? "1" : "0");
+}
 
 static const char **port_index_to_settings_key_map[] = {
     &g_config.input.bindings.port1,
@@ -254,11 +277,44 @@ static const char *get_bound_driver(int port)
         return DRIVER_DUKE;
     if (strcmp(driver, DRIVER_S) == 0)
         return DRIVER_S;
+    if (strcmp(driver, DRIVER_KBD) == 0)
+        return DRIVER_KBD;
+    if (strcmp(driver, DRIVER_MOUSE) == 0)
+        return DRIVER_MOUSE;
+    if (strcmp(driver, DRIVER_TABLET) == 0)
+        return DRIVER_TABLET;
 
     return DRIVER_DUKE;
 }
 
+bool xemu_input_driver_is_hid(const char *driver)
+{
+    return driver != NULL && (strcmp(driver, DRIVER_KBD) == 0 ||
+                              strcmp(driver, DRIVER_MOUSE) == 0 ||
+                              strcmp(driver, DRIVER_TABLET) == 0);
+}
+
 static const int port_map[4] = { 3, 4, 1, 2 };
+
+static SDL_KeyboardID resolve_kbd_id_by_name(const char *name)
+{
+    if (name == NULL || name[0] == '\0') {
+        return 0;
+    }
+
+    int count = 0;
+    SDL_KeyboardID *ids = SDL_GetKeyboards(&count);
+    SDL_KeyboardID found = 0;
+    for (int i = 0; ids && i < count; i++) {
+        const char *n = SDL_GetKeyboardNameForID(ids[i]);
+        if (n && strcmp(n, name) == 0) {
+            found = ids[i];
+            break;
+        }
+    }
+    SDL_free(ids);
+    return found;
+}
 
 void xemu_input_init(void)
 {
@@ -297,9 +353,24 @@ void xemu_input_init(void)
     bound_drivers[2] = get_bound_driver(2);
     bound_drivers[3] = get_bound_driver(3);
 
+    // Restore any ports configured to emulate a USB HID device (keyboard/mouse)
+    for (int i = 0; i < 4; i++) {
+        if (xemu_input_driver_is_hid(bound_drivers[i])) {
+            xemu_input_attach_hid(i, bound_drivers[i], 0);
+        }
+    }
+
+    // Restore the host keyboards dedicated to the controller and to the guest
+    // usb-kbd, if configured, and enable raw keyboard input if either is set.
+    controller_kbd_id =
+        resolve_kbd_id_by_name(g_config.input.bindings.keyboard_device);
+    guest_kbd_id =
+        resolve_kbd_id_by_name(g_config.input.bindings.guest_keyboard_device);
+    xemu_input_update_raw_keyboard_hint();
+
     // Check to see if we should auto-bind the keyboard
     int port = xemu_input_get_controller_default_bind_port(new_con, 0);
-    if (port >= 0) {
+    if (port >= 0 && !xemu_input_port_has_hid(port)) {
         xemu_input_bind(port, new_con, 0);
         char buf[128];
         snprintf(buf, sizeof(buf), "Connected '%s' to port %d", new_con->name, port+1);
@@ -348,6 +419,19 @@ void xemu_save_peripheral_settings(int player_index, int peripheral_index,
 
 void xemu_input_process_sdl_events(const SDL_Event *event)
 {
+    // Track key state for a keyboard dedicated to the controller. When no
+    // specific keyboard is selected (id 0) the controller reads the merged
+    // SDL keyboard state instead, so this bookkeeping is skipped.
+    if (controller_kbd_id != 0 &&
+        (event->type == SDL_EVENT_KEY_DOWN ||
+         event->type == SDL_EVENT_KEY_UP)) {
+        if (event->key.which == controller_kbd_id &&
+            event->key.scancode < SDL_SCANCODE_COUNT) {
+            controller_kbd_scancodes[event->key.scancode] =
+                (event->type == SDL_EVENT_KEY_DOWN);
+        }
+    }
+
     if (event->type == SDL_EVENT_GAMEPAD_ADDED) {
         DPRINTF("Controller Added: %d\n", event->gdevice.which);
 
@@ -402,7 +486,8 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
             if (port < 0) {
                 // No (additional) default mappings
                 break;
-            } else if (!xemu_input_get_bound(port)) {
+            } else if (!xemu_input_get_bound(port) &&
+                       !xemu_input_port_has_hid(port)) {
                 xemu_input_bind(port, new_con, 0);
                 did_bind = true;
                 break;
@@ -415,7 +500,8 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         // Try to bind to any open port, and if so remember the binding
         if (!did_bind && g_config.input.auto_bind) {
             for (port = 0; port < 4; port++) {
-                if (!xemu_input_get_bound(port)) {
+                if (!xemu_input_get_bound(port) &&
+                    !xemu_input_port_has_hid(port)) {
                     xemu_input_bind(port, new_con, 1);
                     did_bind = true;
                     break;
@@ -512,7 +598,10 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
     state->buttons = 0;
     memset(state->axis, 0, sizeof(state->axis));
 
-    const bool *kbd = SDL_GetKeyboardState(NULL);
+    // Use per-device key state when a specific host keyboard is dedicated to the
+    // controller; otherwise fall back to the merged keyboard state.
+    const bool *kbd = (controller_kbd_id != 0) ? controller_kbd_scancodes
+                                               : SDL_GetKeyboardState(NULL);
 
 #define KBD_STATE(btn) \
     (kbd[g_config.input.keyboard_controller_scancode_map.btn])
@@ -701,6 +790,13 @@ void xemu_input_bind(int index, ControllerState *state, int save)
 
     // Bind new controller
     if (state) {
+        // A controller and a HID device share the same daughterboard port, so
+        // detach any keyboard/mouse emulated on this port before plugging in the
+        // hub. The bind below persists the port state, so don't save here.
+        if (bound_hid_devices[index]) {
+            xemu_input_detach_hid(index, 0);
+        }
+
         if (state->bound >= 0) {
             // Device was already bound to another port. Unbind it.
             xemu_input_bind(state->bound, NULL, 1);
@@ -751,6 +847,168 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         object_unref(OBJECT(dev));
 
         state->device = usbhub_dev;
+    }
+}
+
+bool xemu_input_port_has_hid(int index)
+{
+    assert(index >= 0 && index < 4);
+    return bound_hid_devices[index] != NULL;
+}
+
+bool xemu_input_relative_mouse_present(void)
+{
+    for (int i = 0; i < 4; i++) {
+        if (bound_hid_devices[i] != NULL &&
+            strcmp(bound_drivers[i], DRIVER_MOUSE) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+SDL_KeyboardID xemu_input_get_controller_kbd_id(void)
+{
+    return controller_kbd_id;
+}
+
+void xemu_input_set_controller_kbd_id(SDL_KeyboardID id, int save)
+{
+    if (id != controller_kbd_id) {
+        controller_kbd_id = id;
+        // Start from a clean per-device state; keys held on the old device must
+        // not remain latched on the controller.
+        memset(controller_kbd_scancodes, 0, sizeof(controller_kbd_scancodes));
+    }
+    xemu_input_update_raw_keyboard_hint();
+
+    if (save) {
+        const char *name = "";
+        if (id != 0) {
+            const char *n = SDL_GetKeyboardNameForID(id);
+            if (n) {
+                name = n;
+            }
+        }
+        xemu_settings_set_string(&g_config.input.bindings.keyboard_device, name);
+    }
+}
+
+bool xemu_input_key_is_controller_only(SDL_KeyboardID which)
+{
+    return controller_kbd_id != 0 && which == controller_kbd_id;
+}
+
+SDL_KeyboardID xemu_input_get_guest_kbd_id(void)
+{
+    return guest_kbd_id;
+}
+
+void xemu_input_set_guest_kbd_id(SDL_KeyboardID id, int save)
+{
+    guest_kbd_id = id;
+    xemu_input_update_raw_keyboard_hint();
+
+    if (save) {
+        const char *name = "";
+        if (id != 0) {
+            const char *n = SDL_GetKeyboardNameForID(id);
+            if (n) {
+                name = n;
+            }
+        }
+        xemu_settings_set_string(&g_config.input.bindings.guest_keyboard_device,
+                                 name);
+    }
+}
+
+bool xemu_input_key_is_for_guest(SDL_KeyboardID which)
+{
+    // A keyboard dedicated to the controller never types into the guest.
+    if (xemu_input_key_is_controller_only(which)) {
+        return false;
+    }
+    // Otherwise, honor the guest keyboard selection (0 = all keyboards).
+    return guest_kbd_id == 0 || which == guest_kbd_id;
+}
+
+void xemu_input_attach_hid(int index, const char *driver, int save)
+{
+    assert(index >= 0 && index < 4);
+    assert(xemu_input_driver_is_hid(driver));
+
+    // A controller and a HID device cannot share a port. Unbind any controller
+    // (and its peripherals) currently occupying this port. This function saves
+    // the resulting port state below, so don't persist the intermediate unbind.
+    if (bound_controllers[index]) {
+        xemu_input_bind(index, NULL, 0);
+    }
+
+    // If a different HID device is already here (e.g. switching keyboard->mouse)
+    // remove it first so the port is free.
+    if (bound_hid_devices[index] &&
+        strcmp(bound_drivers[index], driver) != 0) {
+        qdev_unplug(bound_hid_devices[index], &error_abort);
+        object_unref(OBJECT(bound_hid_devices[index]));
+        bound_hid_devices[index] = NULL;
+    }
+
+    if (bound_hid_devices[index] == NULL) {
+        char *tmp;
+
+        // Create the HID device, plugged directly into this player's port on
+        // the root hub daughterboard.
+        QDict *qdict = qdict_new();
+        qdict_put_str(qdict, "driver", driver);
+
+        static int id_counter = 0;
+        tmp = g_strdup_printf("hid_%d", id_counter++);
+        qdict_put_str(qdict, "id", tmp);
+        g_free(tmp);
+
+        tmp = g_strdup_printf("1.%d", port_map[index]);
+        qdict_put_str(qdict, "port", tmp);
+        g_free(tmp);
+
+        QemuOpts *opts = qemu_opts_from_qdict(qemu_find_opts("device"), qdict,
+                                              &error_abort);
+        DeviceState *dev = qdev_device_add(opts, &error_abort);
+        assert(dev);
+
+        qobject_unref(qdict);
+
+        bound_hid_devices[index] = dev;
+    }
+
+    bound_drivers[index] = driver;
+
+    if (save) {
+        // A HID device has no host input-device binding of its own; clear any
+        // stored controller binding for this port so nothing auto-binds here.
+        xemu_settings_set_string(port_index_to_settings_key_map[index], "");
+        xemu_settings_set_string(port_index_to_driver_settings_key_map[index],
+                                 driver);
+    }
+}
+
+void xemu_input_detach_hid(int index, int save)
+{
+    assert(index >= 0 && index < 4);
+
+    if (bound_hid_devices[index]) {
+        qdev_unplug(bound_hid_devices[index], &error_abort);
+        object_unref(OBJECT(bound_hid_devices[index]));
+        bound_hid_devices[index] = NULL;
+    }
+
+    // Fall back to a controller driver so the port is ready for a controller.
+    if (xemu_input_driver_is_hid(bound_drivers[index])) {
+        bound_drivers[index] = DRIVER_DUKE;
+    }
+
+    if (save) {
+        xemu_settings_set_string(port_index_to_driver_settings_key_map[index],
+                                 bound_drivers[index]);
     }
 }
 

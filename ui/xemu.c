@@ -207,6 +207,33 @@ static void show_cursor(struct xemu_console *scon)
 
 static void grab_start(struct xemu_console *scon)
 {
+    if (!scon || !qemu_console_is_graphic(scon->dcl.con)) {
+        return;
+    }
+
+    // Absolute pointers (e.g. usb-tablet) don't need grabbing: xemu's absolute
+    // path already forwards motion and buttons with a free cursor. Only a
+    // relative pointer (usb-mouse) needs to capture the host cursor to deliver
+    // relative motion and button events to the guest.
+    if (qemu_input_is_absolute(scon->dcl.con) || absolute_enabled) {
+        return;
+    }
+
+    // Only capture the host cursor when there is a relative mouse to feed.
+    // Otherwise (no mouse attached, the common case) a click would needlessly
+    // hide and trap the cursor.
+    if (!xemu_input_relative_mouse_present()) {
+        return;
+    }
+
+    // Don't enter grab state unless the window has input focus (SDL caveat).
+    if (!(SDL_GetWindowFlags(scon->real_window) & SDL_WINDOW_INPUT_FOCUS)) {
+        return;
+    }
+
+    hide_cursor(scon); // hides the host cursor and enables relative mouse mode
+    SDL_SetWindowMouseGrab(scon->real_window, true);
+    gui_grab = 1;
 }
 
 static void grab_end(struct xemu_console *scon)
@@ -331,6 +358,25 @@ int xemu_is_fullscreen(void)
     return gui_fullscreen;
 }
 
+int xemu_mouse_input_to_guest(void)
+{
+    struct xemu_console *scon = &scon_list[0];
+
+    // Absolute pointer (usb-tablet): the guest pointer tracks the host cursor
+    // whenever the window is focused, so host clicks belong to the guest.
+    if (qemu_input_is_absolute(scon->dcl.con) || absolute_enabled) {
+        return 1;
+    }
+
+    // Relative pointer (usb-mouse): the guest only receives input while the
+    // host cursor is grabbed.
+    if (gui_grab && xemu_input_relative_mouse_present()) {
+        return 1;
+    }
+
+    return 0;
+}
+
 static int get_mod_state(void)
 {
     SDL_Keymod mod = SDL_GetModState();
@@ -348,6 +394,11 @@ static int get_mod_state(void)
 static void process_key(struct xemu_console *scon, SDL_KeyboardEvent *ev)
 {
     int qcode;
+
+    // Only deliver to the guest usb-kbd if this keyboard is selected for it.
+    if (!xemu_input_key_is_for_guest(ev->which)) {
+        return;
+    }
 
     if (ev->scancode >= qemu_input_map_usb_to_qcode_len) {
         return;
@@ -901,10 +952,14 @@ static void poll_events(struct xemu_console *scon)
         switch (ev->type) {
         case SDL_EVENT_KEY_DOWN:
             if (kbd) break;
+            // A keyboard dedicated to the controller must not type into the
+            // guest or trigger UI hotkeys.
+            if (xemu_input_key_is_controller_only(ev->key.which)) break;
             handle_keydown(ev);
             break;
         case SDL_EVENT_KEY_UP:
             if (kbd) break;
+            if (xemu_input_key_is_controller_only(ev->key.which)) break;
             handle_keyup(ev);
             break;
         case SDL_EVENT_QUIT:
