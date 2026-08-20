@@ -19,6 +19,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/fast-hash.h"
+#include "ui/xemu-settings.h"
 #include "renderer.h"
 #include <math.h>
 
@@ -121,15 +122,94 @@ static bool pipeline_cache_entry_compare(Lru *lru, LruNode *node,
     return memcmp(&snode->key, key, sizeof(PipelineKey));
 }
 
+static bool pipeline_cache_live;
+static bool pipeline_cache_atexit_registered;
+
+static char *pipeline_cache_path(void)
+{
+    return g_build_filename(xemu_settings_get_base_path(),
+                            "vk_pipeline_cache.bin", NULL);
+}
+
+static bool pipeline_cache_data_is_usable(PGRAPHVkState *r,
+                                          const uint8_t *data, size_t size)
+{
+    if (size < 16 + VK_UUID_SIZE) {
+        return false;
+    }
+
+    uint32_t header_size, header_version, vendor_id, device_id;
+    memcpy(&header_size, data, sizeof(header_size));
+    memcpy(&header_version, data + 4, sizeof(header_version));
+    memcpy(&vendor_id, data + 8, sizeof(vendor_id));
+    memcpy(&device_id, data + 12, sizeof(device_id));
+
+    return header_size <= size &&
+           header_version == VK_PIPELINE_CACHE_HEADER_VERSION_ONE &&
+           vendor_id == r->device_props.vendorID &&
+           device_id == r->device_props.deviceID &&
+           !memcmp(data + 16, r->device_props.pipelineCacheUUID, VK_UUID_SIZE);
+}
+
+static void save_pipeline_cache(PGRAPHVkState *r);
+
+static void save_pipeline_cache_atexit(void)
+{
+    if (!pipeline_cache_live || !g_nv2a) {
+        return;
+    }
+
+    PGRAPHVkState *r = g_nv2a->pgraph.vk_renderer_state;
+    if (r && r->device && r->vk_pipeline_cache) {
+        save_pipeline_cache(r);
+    }
+}
+
+static void save_pipeline_cache(PGRAPHVkState *r)
+{
+    size_t size = 0;
+
+    if (!g_config.perf.cache_shaders) {
+        return;
+    }
+
+    if (vkGetPipelineCacheData(r->device, r->vk_pipeline_cache, &size, NULL) !=
+            VK_SUCCESS ||
+        size == 0) {
+        return;
+    }
+
+    g_autofree uint8_t *data = g_malloc(size);
+    if (vkGetPipelineCacheData(r->device, r->vk_pipeline_cache, &size, data) !=
+        VK_SUCCESS) {
+        return;
+    }
+
+    g_autofree char *path = pipeline_cache_path();
+    g_file_set_contents(path, (const char *)data, size, NULL);
+}
+
 static void init_pipeline_cache(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    g_autofree char *cache_path = pipeline_cache_path();
+    g_autofree gchar *cache_data = NULL;
+    gsize cache_size = 0;
+
+    if (!g_config.perf.cache_shaders ||
+        !g_file_get_contents(cache_path, &cache_data, &cache_size, NULL) ||
+        !pipeline_cache_data_is_usable(r, (const uint8_t *)cache_data,
+                                       cache_size)) {
+        g_clear_pointer(&cache_data, g_free);
+        cache_size = 0;
+    }
+
     VkPipelineCacheCreateInfo cache_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
         .flags = 0,
-        .initialDataSize = 0,
-        .pInitialData = NULL,
+        .initialDataSize = cache_size,
+        .pInitialData = cache_size ? cache_data : NULL,
         .pNext = NULL,
     };
     VK_CHECK(vkCreatePipelineCache(r->device, &cache_info, NULL,
@@ -147,6 +227,12 @@ static void init_pipeline_cache(PGRAPHState *pg)
     r->pipeline_cache.init_node = pipeline_cache_entry_init;
     r->pipeline_cache.compare_nodes = pipeline_cache_entry_compare;
     r->pipeline_cache.post_node_evict = pipeline_cache_entry_post_evict;
+
+    pipeline_cache_live = true;
+    if (!pipeline_cache_atexit_registered) {
+        atexit(save_pipeline_cache_atexit);
+        pipeline_cache_atexit_registered = true;
+    }
 }
 
 static void finalize_pipeline_cache(PGRAPHState *pg)
@@ -157,6 +243,8 @@ static void finalize_pipeline_cache(PGRAPHState *pg)
     g_free(r->pipeline_cache_entries);
     r->pipeline_cache_entries = NULL;
 
+    save_pipeline_cache(r);
+    pipeline_cache_live = false;
     vkDestroyPipelineCache(r->device, r->vk_pipeline_cache, NULL);
 }
 
