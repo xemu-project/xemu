@@ -207,7 +207,7 @@ DecalShader *NewDecalShader(enum ShaderType type)
     s->time = 0;
 
     const char *vert_src = R"(
-#version 150 core
+#version 140
 uniform bool in_FlipY;
 uniform vec4 in_ScaleOffset;
 uniform vec4 in_TexScaleOffset;
@@ -235,12 +235,13 @@ void main() {
     // )";
 
     const char *image_gamma_frag_src = R"(
-#version 400 core
+#version 140
 uniform sampler2D tex;
 uniform uint palette[256];
 float gamma_ch(int ch, float col)
 {
-    return float(bitfieldExtract(palette[uint(col * 255.0)], ch*8, 8)) / 255.0;
+    uint packed = palette[uint(col * 255.0)];
+    return float((packed >> uint(ch * 8)) & 0xFFu) / 255.0;
 }
 
 vec4 gamma(vec4 col)
@@ -261,7 +262,7 @@ void main() {
     // - Blue is a lazy alpha removal for now
     // - Alpha channel passed through
     const char *mask_frag_src = R"(
-#version 150 core
+#version 140
 uniform sampler2D tex;
 uniform vec4 in_ColorPrimary;
 uniform vec4 in_ColorSecondary;
