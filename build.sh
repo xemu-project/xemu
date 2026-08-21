@@ -56,6 +56,12 @@ package_macos() {
       done
     done
 
+    # dylibbundler adds LC_RPATH entries the build already carries; dyld
+    # refuses to launch a binary with duplicates. Keep exactly one.
+    while [ "$(otool -l "$exe_path" | grep -c "path @executable_path/${lib_rpath}/")" -gt 1 ]; do
+      install_name_tool -delete_rpath "@executable_path/${lib_rpath}/" "$exe_path"
+    done
+
     # Copy in runtime resources
     mkdir -p dist/xemu.app/Contents/Resources
 
@@ -106,11 +112,10 @@ package_macos() {
 ICDJSON
             sed -i '' "s/__ARCH__/${target_arch}/g" "${vk_icd_dest}/MoltenVK_icd.json"
 
-            # Set VK_ICD_FILENAMES in Info.plist so the Vulkan loader finds MoltenVK.
-            # Note: LSEnvironment values are resolved relative to /, so we cannot
-            # use @executable_path here. The programmatic setenv in instance.c
-            # handles the Finder launch case; this is a fallback for edge cases.
-            plutil -replace LSEnvironment -json "{\"VK_DRIVER_FILES\": \"../Resources/vulkan/icd.d/MoltenVK_icd.json\"}" dist/xemu.app/Contents/Info.plist
+            # No LSEnvironment fallback: its values resolve relative to the
+            # launch CWD ('/' for Finder), so any path it could carry is
+            # broken there — and a set-but-broken VK_DRIVER_FILES would mask
+            # the correct path instance.c computes at runtime.
         else
             echo "Warning: MoltenVK/Vulkan loader not found, Vulkan renderer will not be available"
         fi

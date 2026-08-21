@@ -161,27 +161,40 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
     VkResult result;
 
 #if defined(__APPLE__)
-    // Set VK_ICD_FILENAMES so the Vulkan loader finds the bundled MoltenVK ICD
-    // when launched from Finder (where env vars from terminal are not inherited).
-    // The 0 flag means don't overwrite if already set (e.g. from terminal).
+    // Point the Vulkan loader at the bundled MoltenVK ICD so app-bundle
+    // launches work without a terminal environment. An existing
+    // VK_DRIVER_FILES/VK_ICD_FILENAMES is respected only if it names a
+    // file that exists (a list containing ':' is trusted as-is) — a stale
+    // or relative value, e.g. resolved against Finder's CWD of '/', would
+    // otherwise leave the loader driverless and instance creation failing
+    // with VK_ERROR_INCOMPATIBLE_DRIVER.
     {
-        char exe_path[PATH_MAX];
-        uint32_t exe_path_size = sizeof(exe_path);
-        if (_NSGetExecutablePath(exe_path, &exe_path_size) == 0) {
-            char real_path[PATH_MAX];
-            if (realpath(exe_path, real_path)) {
-                char *dir = g_path_get_dirname(real_path);
-                char *icd_path = g_build_filename(
-                    dir, "..", "Resources", "vulkan", "icd.d",
-                    "MoltenVK_icd.json", NULL);
-                char *icd_real = realpath(icd_path, NULL);
-                if (icd_real) {
-                    setenv("VK_ICD_FILENAMES", icd_real, 0);
-                    setenv("VK_DRIVER_FILES", icd_real, 0);
-                    free(icd_real);
+        const char *cur = getenv("VK_DRIVER_FILES");
+        if (!cur || !cur[0]) {
+            cur = getenv("VK_ICD_FILENAMES");
+        }
+        bool cur_valid = cur && cur[0] &&
+                         (strchr(cur, ':') != NULL ||
+                          g_file_test(cur, G_FILE_TEST_EXISTS));
+        if (!cur_valid) {
+            char exe_path[PATH_MAX];
+            uint32_t exe_path_size = sizeof(exe_path);
+            if (_NSGetExecutablePath(exe_path, &exe_path_size) == 0) {
+                char real_path[PATH_MAX];
+                if (realpath(exe_path, real_path)) {
+                    char *dir = g_path_get_dirname(real_path);
+                    char *icd_path = g_build_filename(
+                        dir, "..", "Resources", "vulkan", "icd.d",
+                        "MoltenVK_icd.json", NULL);
+                    char *icd_real = realpath(icd_path, NULL);
+                    if (icd_real) {
+                        setenv("VK_ICD_FILENAMES", icd_real, 1);
+                        setenv("VK_DRIVER_FILES", icd_real, 1);
+                        free(icd_real);
+                    }
+                    g_free(icd_path);
+                    g_free(dir);
                 }
-                g_free(icd_path);
-                g_free(dir);
             }
         }
     }
