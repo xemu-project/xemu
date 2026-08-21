@@ -879,6 +879,7 @@ static unsigned int vk_format_texel_size(VkFormat format)
     case VK_FORMAT_A4R4G4B4_UNORM_PACK16:   return 2;
     case VK_FORMAT_R16_UNORM:               return 2;
     case VK_FORMAT_R8G8B8_SNORM:            return 3;
+    case VK_FORMAT_R16G16_SNORM:            return 4;
     case VK_FORMAT_B8G8R8A8_UNORM:          return 4;
     case VK_FORMAT_R8G8B8A8_UNORM:          return 4;
     case VK_FORMAT_R32_UINT:                return 4;
