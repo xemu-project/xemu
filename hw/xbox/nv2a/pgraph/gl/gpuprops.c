@@ -25,7 +25,7 @@
 static GPUProperties pgraph_gl_gpu_properties;
 
 static const char *vertex_shader_source =
-    "#version 400\n"
+    PROBE_GLSL_VERSION_DIRECTIVE
     "out vec3 v_fragColor;\n"
     "\n"
     "vec2 positions[11] = vec2[](\n"
@@ -62,7 +62,7 @@ static const char *vertex_shader_source =
     "}\n";
 
 static const char *geometry_shader_source =
-    "#version 400\n"
+    PROBE_GLSL_VERSION_DIRECTIVE
     "layout(triangles) in;\n"
     "layout(triangle_strip, max_vertices = 3) out;\n"
     "out vec3 fragColor;\n"
@@ -87,7 +87,7 @@ static const char *geometry_shader_source =
     "}\n";
 
 static const char *fragment_shader_source =
-    "#version 400\n"
+    PROBE_GLSL_VERSION_DIRECTIVE
     "out vec4 outColor;\n"
     "in vec3 fragColor;\n"
     "\n"

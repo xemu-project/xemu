@@ -49,7 +49,7 @@ static void pgraph_gl_init(NV2AState *d, Error **errp)
     if (!pgraph_gl_get_gpu_properties()->valid) {
         error_setg(errp,
                    "OpenGL renderer unavailable: GPU capability probe failed "
-                   "(OpenGL 4.0 support is required)");
+                   "(OpenGL " PROBE_GL_VERSION_STRING " support is required)");
         return;
     }
 
