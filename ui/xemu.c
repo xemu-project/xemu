@@ -669,13 +669,21 @@ static void xb_surface_gl_create_texture(DisplaySurface *surface)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 }
 
-static void xb_surface_gl_destroy_texture(DisplaySurface *surface)
+static void xb_surface_gl_destroy_texture(GLuint texture, DisplaySurface *surface)
 {
-    if (!surface || !surface->texture) {
+    if (!texture) {
         return;
     }
-    glDeleteTextures(1, &surface->texture);
-    surface->texture = 0;
+
+    glDeleteTextures(1, &texture);
+
+    // It is possible that the surface that was used during the call to
+    // xb_surface_gl_create_texture has been overwritten by the vsync thread.
+    // Both paths are guarded by the main loop lock so a trivial check before
+    // clearing the texture name is sufficient.
+    if (surface->texture == texture) {
+        surface->texture = 0;
+    }
 }
 
 static bool xb_console_gl_check_format(DisplayChangeListener *dcl,
@@ -855,7 +863,7 @@ static void gl_render_frame(struct xemu_console *scon)
 
     if (release_surface_texture) {
         xemu_main_loop_lock();
-        xb_surface_gl_destroy_texture(scon->surface);
+        xb_surface_gl_destroy_texture(tex, scon->surface);
         xemu_main_loop_unlock();
     }
 
