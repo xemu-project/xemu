@@ -17,12 +17,158 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
+#include "qemu/fast-hash.h"
 #include "ui/xemu-settings.h"
 #include "renderer.h"
 
 #include <assert.h>
 #include <glslang/Include/glslang_c_interface.h>
 #include <stdio.h>
+
+#define SPIRV_CACHE_VERSION 1
+#define SPIRV_CACHE_MAGIC   0x53505643 /* 'SPVC' */
+
+typedef struct SpirvCacheEntry {
+    uint64_t hash;
+    uint32_t spirv_len;
+    uint8_t *spirv_data;
+} SpirvCacheEntry;
+
+static GHashTable *spirv_cache;
+static bool spirv_cache_dirty;
+
+static char *get_spirv_cache_path(void)
+{
+    const char *base = xemu_settings_get_base_path();
+    if (!base) {
+        return NULL;
+    }
+    return g_build_filename(base, "spirv_cache.bin", NULL);
+}
+
+static void spirv_cache_entry_free(gpointer data)
+{
+    SpirvCacheEntry *entry = data;
+    g_free(entry->spirv_data);
+    g_free(entry);
+}
+
+static void load_spirv_cache(void)
+{
+    spirv_cache = g_hash_table_new_full(g_int64_hash, g_int64_equal,
+                                        NULL, spirv_cache_entry_free);
+    if (!g_config.perf.cache_shaders) {
+        return;
+    }
+
+    char *path = get_spirv_cache_path();
+    if (!path) {
+        return;
+    }
+
+    FILE *f = fopen(path, "rb");
+    g_free(path);
+    if (!f) {
+        return;
+    }
+
+    uint32_t magic, version, count;
+    if (fread(&magic, 4, 1, f) != 1 || magic != SPIRV_CACHE_MAGIC ||
+        fread(&version, 4, 1, f) != 1 || version != SPIRV_CACHE_VERSION ||
+        fread(&count, 4, 1, f) != 1) {
+        fclose(f);
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; i++) {
+        uint64_t hash;
+        uint32_t spirv_len;
+        if (fread(&hash, 8, 1, f) != 1 ||
+            fread(&spirv_len, 4, 1, f) != 1 ||
+            spirv_len == 0 || spirv_len > 1024 * 1024) {
+            break;
+        }
+
+        SpirvCacheEntry *entry = g_malloc(sizeof(SpirvCacheEntry));
+        entry->hash = hash;
+        entry->spirv_len = spirv_len;
+        entry->spirv_data = g_malloc(spirv_len);
+        if (fread(entry->spirv_data, 1, spirv_len, f) != spirv_len) {
+            g_free(entry->spirv_data);
+            g_free(entry);
+            break;
+        }
+
+        g_hash_table_insert(spirv_cache, &entry->hash, entry);
+    }
+
+    fclose(f);
+}
+
+static void save_spirv_cache(void)
+{
+    if (!spirv_cache || !spirv_cache_dirty || !g_config.perf.cache_shaders) {
+        return;
+    }
+
+    char *path = get_spirv_cache_path();
+    if (!path) {
+        return;
+    }
+
+    uint32_t magic = SPIRV_CACHE_MAGIC;
+    uint32_t version = SPIRV_CACHE_VERSION;
+    uint32_t count = g_hash_table_size(spirv_cache);
+
+    GByteArray *buf = g_byte_array_new();
+    g_byte_array_append(buf, (const uint8_t *)&magic, 4);
+    g_byte_array_append(buf, (const uint8_t *)&version, 4);
+    g_byte_array_append(buf, (const uint8_t *)&count, 4);
+
+    GHashTableIter iter;
+    gpointer key, value;
+    g_hash_table_iter_init(&iter, spirv_cache);
+    while (g_hash_table_iter_next(&iter, &key, &value)) {
+        SpirvCacheEntry *entry = value;
+        g_byte_array_append(buf, (const uint8_t *)&entry->hash, 8);
+        g_byte_array_append(buf, (const uint8_t *)&entry->spirv_len, 4);
+        g_byte_array_append(buf, entry->spirv_data, entry->spirv_len);
+    }
+
+    /* Atomic write (temp file + rename) so a crash mid-save cannot
+     * clobber an existing good cache with a truncated one. */
+    if (g_file_set_contents(path, (const char *)buf->data, buf->len, NULL)) {
+        spirv_cache_dirty = false;
+    }
+
+    g_byte_array_unref(buf);
+    g_free(path);
+}
+
+static GByteArray *spirv_cache_lookup(const char *glsl)
+{
+    uint64_t hash = fast_hash((const uint8_t *)glsl, strlen(glsl));
+    SpirvCacheEntry *entry = g_hash_table_lookup(spirv_cache, &hash);
+    if (entry) {
+        GByteArray *arr = g_byte_array_sized_new(entry->spirv_len);
+        g_byte_array_append(arr, entry->spirv_data, entry->spirv_len);
+        return arr;
+    }
+    return NULL;
+}
+
+static void spirv_cache_insert(const char *glsl, GByteArray *spirv)
+{
+    uint64_t hash = fast_hash((const uint8_t *)glsl, strlen(glsl));
+    SpirvCacheEntry *entry = g_malloc(sizeof(SpirvCacheEntry));
+    entry->hash = hash;
+    entry->spirv_len = spirv->len;
+    entry->spirv_data = g_malloc(spirv->len);
+    memcpy(entry->spirv_data, spirv->data, spirv->len);
+    g_hash_table_insert(spirv_cache, &entry->hash, entry);
+    spirv_cache_dirty = true;
+}
 
 static const glslang_resource_t
     resource_limits = { .max_lights = 32,
@@ -130,13 +276,25 @@ static const glslang_resource_t
                             .general_constant_matrix_vector_indexing = 1,
                         } };
 
+static bool spirv_atexit_registered;
+
 void pgraph_vk_init_glsl_compiler(void)
 {
     glslang_initialize_process();
+    load_spirv_cache();
+    if (!spirv_atexit_registered) {
+        atexit(save_spirv_cache);
+        spirv_atexit_registered = true;
+    }
 }
 
 void pgraph_vk_finalize_glsl_compiler(void)
 {
+    save_spirv_cache();
+    if (spirv_cache) {
+        g_hash_table_destroy(spirv_cache);
+        spirv_cache = NULL;
+    }
     glslang_finalize_process();
 }
 
@@ -370,8 +528,12 @@ ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
     ShaderModuleInfo *info = g_malloc0(sizeof(*info));
     info->refcnt = 0;
     info->glsl = strdup(glsl);
-    info->spirv = pgraph_vk_compile_glsl_to_spv(
-        vk_shader_stage_to_glslang_stage(stage), glsl);
+    info->spirv = spirv_cache_lookup(glsl);
+    if (!info->spirv) {
+        info->spirv = pgraph_vk_compile_glsl_to_spv(
+            vk_shader_stage_to_glslang_stage(stage), glsl);
+        spirv_cache_insert(glsl, info->spirv);
+    }
     info->module = pgraph_vk_create_shader_module_from_spv(r, info->spirv);
     init_layout_from_spv(info);
     return info;
