@@ -75,7 +75,7 @@ void helper_rdtsc(CPUX86State *env)
     env->regs[R_EDX] = (uint32_t)(val >> 32);
 }
 
-G_NORETURN void helper_rdpmc(CPUX86State *env)
+void helper_rdpmc(CPUX86State *env)
 {
     if (((env->cr[4] & CR4_PCE_MASK) == 0 ) &&
         ((env->hflags & HF_CPL_MASK) != 0)) {
@@ -83,9 +83,16 @@ G_NORETURN void helper_rdpmc(CPUX86State *env)
     }
     cpu_svm_check_intercept_param(env, SVM_EXIT_RDPMC, 0, GETPC());
 
-    /* currently unimplemented */
-    qemu_log_mask(LOG_UNIMP, "x86: unimplemented rdpmc\n");
-    raise_exception_err(env, EXCP06_ILLOP, 0);
+    /*
+     * No performance-monitoring counters are emulated. Mirror the policy the
+     * WHPX accelerator uses for unsupported MSRs (return 0) rather than
+     * raising #UD: rdpmc never faults with an illegal-instruction on real
+     * hardware, and stubbing it lets guests that read the Pentium III PMCs
+     * (e.g. the FastCPU XDK sample) run instead of crashing.
+     */
+    qemu_log_mask(LOG_UNIMP, "x86: unimplemented rdpmc, returning 0\n");
+    env->regs[R_EAX] = 0;
+    env->regs[R_EDX] = 0;
 }
 
 G_NORETURN void helper_pause(CPUX86State *env)
