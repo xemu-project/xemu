@@ -132,6 +132,10 @@ static char *get_pipeline_cache_path(void)
 }
 
 static bool pipeline_cache_saved;
+/* Whether init ran with perf.cache_shaders enabled. Saving is gated on
+ * this so enabling the setting mid-session cannot overwrite a full
+ * on-disk cache with only this session's pipelines. */
+static bool pipeline_cache_loaded;
 static void save_pipeline_cache(PGRAPHState *pg);
 
 static void save_pipeline_cache_atexit(void)
@@ -148,6 +152,9 @@ static void init_pipeline_cache(PGRAPHState *pg)
     void *cache_data = NULL;
     size_t cache_size = 0;
 
+    if (g_config.perf.cache_shaders) {
+        pipeline_cache_loaded = true;
+    }
     char *cache_path =
         g_config.perf.cache_shaders ? get_pipeline_cache_path() : NULL;
     if (cache_path) {
@@ -208,7 +215,8 @@ static void init_pipeline_cache(PGRAPHState *pg)
 
 static void save_pipeline_cache(PGRAPHState *pg)
 {
-    if (pipeline_cache_saved || !g_config.perf.cache_shaders) {
+    if (pipeline_cache_saved || !pipeline_cache_loaded ||
+        !g_config.perf.cache_shaders) {
         return;
     }
 

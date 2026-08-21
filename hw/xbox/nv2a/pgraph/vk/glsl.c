@@ -26,8 +26,9 @@
 #include <glslang/Include/glslang_c_interface.h>
 #include <stdio.h>
 
-#define SPIRV_CACHE_VERSION 1
+#define SPIRV_CACHE_VERSION 2
 #define SPIRV_CACHE_MAGIC   0x53505643 /* 'SPVC' */
+#define SPIRV_MAGIC_WORD    0x07230203
 
 typedef struct SpirvCacheEntry {
     uint64_t hash;
@@ -37,6 +38,13 @@ typedef struct SpirvCacheEntry {
 
 static GHashTable *spirv_cache;
 static bool spirv_cache_dirty;
+/* Whether load ran with perf.cache_shaders enabled. Saving is gated on
+ * this so enabling the setting mid-session cannot overwrite a full
+ * on-disk cache with only this session's entries. */
+static bool spirv_cache_loaded;
+/* Shader compilation runs on the render thread; the atexit save runs on
+ * the main thread while the render thread may still be compiling. */
+static GMutex spirv_cache_lock;
 
 static char *get_spirv_cache_path(void)
 {
@@ -61,6 +69,7 @@ static void load_spirv_cache(void)
     if (!g_config.perf.cache_shaders) {
         return;
     }
+    spirv_cache_loaded = true;
 
     char *path = get_spirv_cache_path();
     if (!path) {
@@ -81,12 +90,16 @@ static void load_spirv_cache(void)
         return;
     }
 
+    bool corrupt = false;
     for (uint32_t i = 0; i < count; i++) {
-        uint64_t hash;
+        uint64_t hash, payload_hash;
         uint32_t spirv_len;
         if (fread(&hash, 8, 1, f) != 1 ||
             fread(&spirv_len, 4, 1, f) != 1 ||
-            spirv_len == 0 || spirv_len > 1024 * 1024) {
+            fread(&payload_hash, 8, 1, f) != 1 ||
+            spirv_len == 0 || spirv_len > 1024 * 1024 ||
+            spirv_len % 4 != 0) {
+            corrupt = true;
             break;
         }
 
@@ -94,21 +107,37 @@ static void load_spirv_cache(void)
         entry->hash = hash;
         entry->spirv_len = spirv_len;
         entry->spirv_data = g_malloc(spirv_len);
-        if (fread(entry->spirv_data, 1, spirv_len, f) != spirv_len) {
+        if (fread(entry->spirv_data, 1, spirv_len, f) != spirv_len ||
+            fast_hash(entry->spirv_data, spirv_len) != payload_hash ||
+            *(uint32_t *)entry->spirv_data != SPIRV_MAGIC_WORD) {
             g_free(entry->spirv_data);
             g_free(entry);
+            corrupt = true;
             break;
         }
 
-        g_hash_table_insert(spirv_cache, &entry->hash, entry);
+        g_hash_table_replace(spirv_cache, &entry->hash, entry);
     }
 
     fclose(f);
+
+    if (corrupt) {
+        /* Self-heal: discard the damaged file (validated entries stay in
+         * memory) and rewrite it on exit rather than crashing every boot
+         * on the same bad blob. */
+        char *bad = get_spirv_cache_path();
+        if (bad) {
+            remove(bad);
+            g_free(bad);
+        }
+        spirv_cache_dirty = true;
+    }
 }
 
 static void save_spirv_cache(void)
 {
-    if (!spirv_cache || !spirv_cache_dirty || !g_config.perf.cache_shaders) {
+    if (!spirv_cache || !spirv_cache_dirty || !spirv_cache_loaded ||
+        !g_config.perf.cache_shaders) {
         return;
     }
 
@@ -116,6 +145,8 @@ static void save_spirv_cache(void)
     if (!path) {
         return;
     }
+
+    g_mutex_lock(&spirv_cache_lock);
 
     uint32_t magic = SPIRV_CACHE_MAGIC;
     uint32_t version = SPIRV_CACHE_VERSION;
@@ -131,8 +162,10 @@ static void save_spirv_cache(void)
     g_hash_table_iter_init(&iter, spirv_cache);
     while (g_hash_table_iter_next(&iter, &key, &value)) {
         SpirvCacheEntry *entry = value;
+        uint64_t payload_hash = fast_hash(entry->spirv_data, entry->spirv_len);
         g_byte_array_append(buf, (const uint8_t *)&entry->hash, 8);
         g_byte_array_append(buf, (const uint8_t *)&entry->spirv_len, 4);
+        g_byte_array_append(buf, (const uint8_t *)&payload_hash, 8);
         g_byte_array_append(buf, entry->spirv_data, entry->spirv_len);
     }
 
@@ -142,6 +175,8 @@ static void save_spirv_cache(void)
         spirv_cache_dirty = false;
     }
 
+    g_mutex_unlock(&spirv_cache_lock);
+
     g_byte_array_unref(buf);
     g_free(path);
 }
@@ -149,13 +184,15 @@ static void save_spirv_cache(void)
 static GByteArray *spirv_cache_lookup(const char *glsl)
 {
     uint64_t hash = fast_hash((const uint8_t *)glsl, strlen(glsl));
+    g_mutex_lock(&spirv_cache_lock);
     SpirvCacheEntry *entry = g_hash_table_lookup(spirv_cache, &hash);
+    GByteArray *arr = NULL;
     if (entry) {
-        GByteArray *arr = g_byte_array_sized_new(entry->spirv_len);
+        arr = g_byte_array_sized_new(entry->spirv_len);
         g_byte_array_append(arr, entry->spirv_data, entry->spirv_len);
-        return arr;
     }
-    return NULL;
+    g_mutex_unlock(&spirv_cache_lock);
+    return arr;
 }
 
 static void spirv_cache_insert(const char *glsl, GByteArray *spirv)
@@ -166,8 +203,10 @@ static void spirv_cache_insert(const char *glsl, GByteArray *spirv)
     entry->spirv_len = spirv->len;
     entry->spirv_data = g_malloc(spirv->len);
     memcpy(entry->spirv_data, spirv->data, spirv->len);
-    g_hash_table_insert(spirv_cache, &entry->hash, entry);
+    g_mutex_lock(&spirv_cache_lock);
+    g_hash_table_replace(spirv_cache, &entry->hash, entry);
     spirv_cache_dirty = true;
+    g_mutex_unlock(&spirv_cache_lock);
 }
 
 static const glslang_resource_t
@@ -291,10 +330,12 @@ void pgraph_vk_init_glsl_compiler(void)
 void pgraph_vk_finalize_glsl_compiler(void)
 {
     save_spirv_cache();
+    g_mutex_lock(&spirv_cache_lock);
     if (spirv_cache) {
         g_hash_table_destroy(spirv_cache);
         spirv_cache = NULL;
     }
+    g_mutex_unlock(&spirv_cache_lock);
     glslang_finalize_process();
 }
 
