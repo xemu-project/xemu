@@ -2392,9 +2392,12 @@ if host_os == 'windows'
 elif host_os == 'linux'
   vulkan = dependency('vulkan')
 elif host_os == 'darwin'
+  # The macOS nv2a code depends unconditionally on the Vulkan renderer
+  # (pgraph.c includes vk/renderer.h under __APPLE__), so a loader or
+  # MoltenVK must be present — fail at configure time, not mid-build.
   vulkan = dependency('vulkan', required: false)
   if not vulkan.found()
-    vulkan = dependency('MoltenVK', required: false)
+    vulkan = dependency('MoltenVK')
   endif
 endif
 
