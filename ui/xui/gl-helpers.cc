@@ -240,8 +240,8 @@ uniform sampler2D tex;
 uniform uint palette[256];
 float gamma_ch(int ch, float col)
 {
-    uint packed = palette[uint(col * 255.0)];
-    return float((packed >> uint(ch * 8)) & 0xFFu) / 255.0;
+    uint entry = palette[uint(col * 255.0)];
+    return float((entry >> uint(ch * 8)) & 0xFFu) / 255.0;
 }
 
 vec4 gamma(vec4 col)
