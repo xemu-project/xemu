@@ -57,15 +57,46 @@ static void create_buffer(PGRAPHState *pg, StorageBuffer *buffer)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    VkBufferCreateInfo buffer_create_info = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = buffer->buffer_size,
-        .usage = buffer->usage,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    };
-    VK_CHECK(vmaCreateBuffer(r->allocator, &buffer_create_info,
-                             &buffer->alloc_info, &buffer->buffer,
-                             &buffer->allocation, NULL));
+    const VkDeviceSize min_size = 8 * 1024 * 1024;
+    VkDeviceSize size = buffer->buffer_size;
+    VkResult result;
+
+    for (;;) {
+        VkBufferCreateInfo buffer_create_info = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = size,
+            .usage = buffer->usage,
+            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        };
+
+        result = vmaCreateBuffer(r->allocator, &buffer_create_info,
+                                 &buffer->alloc_info, &buffer->buffer,
+                                 &buffer->allocation, NULL);
+        if (result == VK_SUCCESS) {
+            buffer->buffer_size = size;
+            break;
+        }
+        if (result != VK_ERROR_OUT_OF_DEVICE_MEMORY &&
+            result != VK_ERROR_OUT_OF_HOST_MEMORY) {
+            break;
+        }
+        if (size <= min_size) {
+            break;
+        }
+
+        size /= 2;
+        fprintf(stderr,
+                "Buffer allocation (usage 0x%x) short of memory, retrying at "
+                "%zu MiB\n",
+                buffer->usage, (size_t)(size / (1024 * 1024)));
+    }
+
+    if (result != VK_SUCCESS) {
+        fprintf(stderr,
+                "Failed to allocate %zu MiB buffer (usage 0x%x): vk_result %d\n",
+                (size_t)(size / (1024 * 1024)), buffer->usage, result);
+    }
+    VK_CHECK(result);
 }
 
 static void destroy_buffer(PGRAPHState *pg, StorageBuffer *buffer)
