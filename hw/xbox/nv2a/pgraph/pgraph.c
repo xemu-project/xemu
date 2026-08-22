@@ -44,6 +44,28 @@ uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
     NV2AState *d = (NV2AState *)opaque;
     PGRAPHState *pg = &d->pgraph;
 
+    /*
+     * Lock-free fast path for the GPU fence register the guest busy-polls.
+     * The Xbox D3D runtime polls NV_PGRAPH_PATT_COLOR0 for its fence value;
+     * taking pg->lock for each poll convoys with the FIFO puller, which
+     * needs the same lock to advance the fence being polled for. A
+     * momentarily stale read is what real hardware gives a CPU polling an
+     * asynchronously updated register. The write side is serialized: the
+     * fence method runs under pg->lock, and guest MMIO writes to this
+     * register are issued by the same single vCPU that polls it.
+     */
+    if (size == 4 && addr == NV_PGRAPH_PATT_COLOR0) {
+        uint64_t fr = qatomic_read(&pg->regs_[NV_PGRAPH_PATT_COLOR0]);
+        /*
+         * Pairs with the smp_wmb at the fence write site in pgraph_method,
+         * so that the pgraph effects preceding the fence are visible once
+         * the new fence value is.
+         */
+        smp_rmb();
+        nv2a_reg_log_read(NV_PGRAPH, addr, size, fr);
+        return fr;
+    }
+
     qemu_mutex_lock(&pg->lock);
 
     uint64_t r = 0;
@@ -702,7 +724,14 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
     case NV_CONTEXT_PATTERN: {
         switch (method) {
         case NV044_SET_MONOCHROME_COLOR0:
-            pgraph_reg_w(pg, NV_PGRAPH_PATT_COLOR0, parameter);
+            /*
+             * Xbox D3D GPU fence value, busy-polled by the guest CPU; see
+             * the lock-free read path in pgraph_read. The barrier orders
+             * the pgraph effects of preceding methods before the fence
+             * store becomes visible to the polling vCPU.
+             */
+            smp_wmb();
+            pgraph_reg_w_atomic(pg, NV_PGRAPH_PATT_COLOR0, parameter);
             break;
         default:
             goto unhandled;
