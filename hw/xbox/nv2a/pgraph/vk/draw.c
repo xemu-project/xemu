@@ -1896,6 +1896,13 @@ static void get_size_and_count_for_format(VkFormat fmt, size_t *size, size_t *co
     *count = table[fmt].count;
 }
 
+enum VertexConvert {
+    VTX_CONVERT_NONE,
+    VTX_CONVERT_WIDEN3_U8,
+    VTX_CONVERT_WIDEN3_S16,
+    VTX_CONVERT_S16_TO_F32,
+};
+
 typedef struct VertexBufferRemap {
     uint16_t attributes;
     size_t buffer_space_required;
@@ -1903,8 +1910,46 @@ typedef struct VertexBufferRemap {
         VkDeviceAddress offset;
         VkDeviceSize old_stride;
         VkDeviceSize new_stride;
+        VkDeviceSize read_size;
+        enum VertexConvert convert;
     } map[NV2A_VERTEXSHADER_ATTRIBUTES];
 } VertexBufferRemap;
+
+static bool format_supported_for_vertex_buffer(PGRAPHVkState *r, VkFormat fmt)
+{
+    VkFormatProperties props;
+
+    vkGetPhysicalDeviceFormatProperties(r->physical_device, fmt, &props);
+    return (props.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) != 0;
+}
+
+static VkFormat substitute_vertex_format(VkFormat fmt,
+                                         enum VertexConvert *convert)
+{
+    switch (fmt) {
+    case VK_FORMAT_R8G8B8_UNORM:
+        *convert = VTX_CONVERT_WIDEN3_U8;
+        return VK_FORMAT_R8G8B8A8_UNORM;
+    case VK_FORMAT_R16G16B16_SNORM:
+        *convert = VTX_CONVERT_WIDEN3_S16;
+        return VK_FORMAT_R16G16B16A16_SNORM;
+    case VK_FORMAT_R16_SSCALED:
+        *convert = VTX_CONVERT_S16_TO_F32;
+        return VK_FORMAT_R32_SFLOAT;
+    case VK_FORMAT_R16G16_SSCALED:
+        *convert = VTX_CONVERT_S16_TO_F32;
+        return VK_FORMAT_R32G32_SFLOAT;
+    case VK_FORMAT_R16G16B16_SSCALED:
+        *convert = VTX_CONVERT_S16_TO_F32;
+        return VK_FORMAT_R32G32B32_SFLOAT;
+    case VK_FORMAT_R16G16B16A16_SSCALED:
+        *convert = VTX_CONVERT_S16_TO_F32;
+        return VK_FORMAT_R32G32B32A32_SFLOAT;
+    default:
+        *convert = VTX_CONVERT_NONE;
+        return VK_FORMAT_UNDEFINED;
+    }
+}
 
 static VertexBufferRemap remap_unaligned_attributes(PGRAPHState *pg,
                                                     uint32_t num_vertices)
@@ -1933,14 +1978,35 @@ static VertexBufferRemap remap_unaligned_attributes(PGRAPHState *pg,
             (r->vertex_attribute_offsets[attr_id] % element_size == 0);
         bool stride_valid = (desc->stride % element_size == 0);
 
-        if (offset_valid && stride_valid) {
+        enum VertexConvert convert = VTX_CONVERT_NONE;
+        VkFormat substitute = VK_FORMAT_UNDEFINED;
+
+        if (!format_supported_for_vertex_buffer(r, attr->format)) {
+            substitute = substitute_vertex_format(attr->format, &convert);
+        }
+
+        if (offset_valid && stride_valid && substitute == VK_FORMAT_UNDEFINED) {
             continue;
+        }
+
+        size_t read_size = element_size * element_count;
+        size_t write_size = read_size;
+
+        if (substitute != VK_FORMAT_UNDEFINED) {
+            size_t sub_size, sub_count;
+
+            get_size_and_count_for_format(substitute, &sub_size, &sub_count);
+            write_size = sub_size * sub_count;
+            element_size = sub_size;
+            attr->format = substitute;
         }
 
         remap.attributes |= 1 << attr_id;
         remap.map[attr_id].offset = ROUND_UP(output_offset, element_size);
         remap.map[attr_id].old_stride = desc->stride;
-        remap.map[attr_id].new_stride = element_size * element_count;
+        remap.map[attr_id].new_stride = write_size;
+        remap.map[attr_id].read_size = read_size;
+        remap.map[attr_id].convert = convert;
 
         // fprintf(stderr,
         //         "attr %02d remapped: "
@@ -2018,6 +2084,42 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
                            (size_t)start_vertex * new_stride;
         uint8_t *in_ptr = d->vram_ptr + r->vertex_attribute_offsets[attr_id] +
                           (size_t)start_vertex * old_stride;
+
+        if (remap.map[attr_id].convert != VTX_CONVERT_NONE) {
+            size_t read_size = remap.map[attr_id].read_size;
+
+            for (uint32_t vertex_id = 0; vertex_id < copy_count; vertex_id++) {
+                switch (remap.map[attr_id].convert) {
+                case VTX_CONVERT_WIDEN3_U8:
+                    memcpy(out_ptr, in_ptr, 3);
+                    out_ptr[3] = 0xff;
+                    break;
+                case VTX_CONVERT_WIDEN3_S16: {
+                    int16_t w = INT16_MAX;
+
+                    memcpy(out_ptr, in_ptr, 6);
+                    memcpy(out_ptr + 6, &w, sizeof(w));
+                    break;
+                }
+                case VTX_CONVERT_S16_TO_F32:
+                    for (size_t i = 0; i < read_size / 2; i++) {
+                        int16_t v;
+                        float f;
+
+                        memcpy(&v, in_ptr + i * 2, sizeof(v));
+                        f = (float)v;
+                        memcpy(out_ptr + i * 4, &f, sizeof(f));
+                    }
+                    break;
+                default:
+                    break;
+                }
+                out_ptr += new_stride;
+                in_ptr += old_stride;
+            }
+            r->vertex_attribute_offsets[attr_id] = attr_buffer_offset;
+            continue;
+        }
 
         switch (new_stride) {
         case 4:
