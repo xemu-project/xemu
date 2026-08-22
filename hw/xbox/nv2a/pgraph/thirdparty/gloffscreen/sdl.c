@@ -48,28 +48,48 @@ GloContext *glo_context_create(void)
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
-    // Initialize rendering context
-    SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-    SDL_GL_SetAttribute(
-        SDL_GL_CONTEXT_PROFILE_MASK,
-        SDL_GL_CONTEXT_PROFILE_CORE);
+    static const struct {
+        int major, minor;
+    } versions[] = { { 4, 0 }, { 3, 1 } };
 
-    // Create main window
-    context->window = SDL_CreateWindow(
-        "SDL Offscreen Window",
-        640, 480,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+    context->window = NULL;
+    context->gl_context = NULL;
+
+    for (unsigned i = 0; i < sizeof(versions) / sizeof(versions[0]); i++) {
+        SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, versions[i].major);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, versions[i].minor);
+        SDL_GL_SetAttribute(
+            SDL_GL_CONTEXT_PROFILE_MASK,
+            SDL_GL_CONTEXT_PROFILE_CORE);
+
+        context->window = SDL_CreateWindow(
+            "SDL Offscreen Window",
+            640, 480,
+            SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+        if (context->window == NULL) {
+            continue;
+        }
+
+        context->gl_context = SDL_GL_CreateContext(context->window);
+        if (context->gl_context != NULL) {
+            break;
+        }
+
+        SDL_DestroyWindow(context->window);
+        context->window = NULL;
+    }
+
     if (context->window == NULL) {
-        fprintf(stderr, "%s: Failed to create window\n", __func__);
+        fprintf(stderr, "%s: Failed to create window: %s\n", __func__,
+                SDL_GetError());
         SDL_Quit();
         exit(1);
     }
 
-    context->gl_context = SDL_GL_CreateContext(context->window);
     if (context->gl_context == NULL) {
-        fprintf(stderr, "%s: Failed to create GL context\n", __func__);
+        fprintf(stderr, "%s: Failed to create GL context: %s\n", __func__,
+                SDL_GetError());
         SDL_DestroyWindow(context->window);
         SDL_Quit();
         exit(1);
