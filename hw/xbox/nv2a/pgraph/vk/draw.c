@@ -1971,6 +1971,16 @@ static VertexBufferRemap remap_unaligned_attributes(PGRAPHState *pg,
     return remap;
 }
 
+#define COPY_REMAPPED_ATTRS(n)                                    \
+    do {                                                          \
+        for (uint32_t vertex_id = 0; vertex_id < num_vertices;    \
+             vertex_id++) {                                       \
+            memcpy(out_ptr, in_ptr, (n));                         \
+            out_ptr += (n);                                       \
+            in_ptr += old_stride;                                 \
+        }                                                         \
+    } while (0)
+
 static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
                                                       VertexBufferRemap remap,
                                                       uint32_t start_vertex,
@@ -2005,10 +2015,29 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
         uint8_t *out_ptr = buffer->mapped + attr_buffer_offset;
         uint8_t *in_ptr = d->vram_ptr + r->vertex_attribute_offsets[attr_id];
 
-        for (int vertex_id = 0; vertex_id < num_vertices; vertex_id++) {
-            memcpy(out_ptr, in_ptr, remap.map[attr_id].new_stride);
-            out_ptr += remap.map[attr_id].new_stride;
-            in_ptr += remap.map[attr_id].old_stride;
+        size_t new_stride = remap.map[attr_id].new_stride;
+        size_t old_stride = remap.map[attr_id].old_stride;
+
+        switch (new_stride) {
+        case 4:
+            COPY_REMAPPED_ATTRS(4);
+            break;
+        case 8:
+            COPY_REMAPPED_ATTRS(8);
+            break;
+        case 12:
+            COPY_REMAPPED_ATTRS(12);
+            break;
+        case 16:
+            COPY_REMAPPED_ATTRS(16);
+            break;
+        default:
+            for (uint32_t vertex_id = 0; vertex_id < num_vertices; vertex_id++) {
+                memcpy(out_ptr, in_ptr, new_stride);
+                out_ptr += new_stride;
+                in_ptr += old_stride;
+            }
+            break;
         }
 
         r->vertex_attribute_offsets[attr_id] = attr_buffer_offset;
