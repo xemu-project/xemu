@@ -46,6 +46,13 @@ static void pgraph_gl_init(NV2AState *d, Error **errp)
 {
     PGRAPHState *pg = &d->pgraph;
 
+    if (!pgraph_gl_get_gpu_properties()->valid) {
+        error_setg(errp,
+                   "OpenGL renderer unavailable: GPU capability probe failed "
+                   "(OpenGL " PROBE_GL_VERSION_STRING " support is required)");
+        return;
+    }
+
     pg->gl_renderer_state = g_malloc0(sizeof(*pg->gl_renderer_state));
     PGRAPHGLState *r = pg->gl_renderer_state;
 
