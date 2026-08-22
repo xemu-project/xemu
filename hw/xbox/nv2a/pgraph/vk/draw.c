@@ -1973,7 +1973,7 @@ static VertexBufferRemap remap_unaligned_attributes(PGRAPHState *pg,
 
 #define COPY_REMAPPED_ATTRS(n)                                    \
     do {                                                          \
-        for (uint32_t vertex_id = 0; vertex_id < num_vertices;    \
+        for (uint32_t vertex_id = 0; vertex_id < copy_count;      \
              vertex_id++) {                                       \
             memcpy(out_ptr, in_ptr, (n));                         \
             out_ptr += (n);                                       \
@@ -1999,8 +1999,6 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
 
     // FIXME: SIMD memcpy
     // FIXME: Caching
-    // FIXME: Account for only what is drawn
-    assert(start_vertex == 0);
     assert(buffer->mapped);
 
     // Copy vertex data
@@ -2012,11 +2010,14 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
         VkDeviceSize attr_buffer_offset =
             buffer->buffer_offset + remap.map[attr_id].offset;
 
-        uint8_t *out_ptr = buffer->mapped + attr_buffer_offset;
-        uint8_t *in_ptr = d->vram_ptr + r->vertex_attribute_offsets[attr_id];
-
         size_t new_stride = remap.map[attr_id].new_stride;
         size_t old_stride = remap.map[attr_id].old_stride;
+        uint32_t copy_count = num_vertices - start_vertex;
+
+        uint8_t *out_ptr = buffer->mapped + attr_buffer_offset +
+                           (size_t)start_vertex * new_stride;
+        uint8_t *in_ptr = d->vram_ptr + r->vertex_attribute_offsets[attr_id] +
+                          (size_t)start_vertex * old_stride;
 
         switch (new_stride) {
         case 4:
@@ -2032,7 +2033,7 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
             COPY_REMAPPED_ATTRS(16);
             break;
         default:
-            for (uint32_t vertex_id = 0; vertex_id < num_vertices; vertex_id++) {
+            for (uint32_t vertex_id = 0; vertex_id < copy_count; vertex_id++) {
                 memcpy(out_ptr, in_ptr, new_stride);
                 out_ptr += new_stride;
                 in_ptr += old_stride;
@@ -2080,7 +2081,8 @@ void pgraph_vk_flush_draw(NV2AState *d)
         VertexBufferRemap remap = remap_unaligned_attributes(pg, max_element);
 
         begin_pre_draw(pg);
-        copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element);
+        copy_remapped_attributes_to_inline_buffer(pg, remap, min_element,
+                                                  max_element);
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
                                      "Draw Arrays");
         begin_draw(pg);
@@ -2120,7 +2122,8 @@ void pgraph_vk_flush_draw(NV2AState *d)
         VertexBufferRemap remap = remap_unaligned_attributes(pg, max_element + 1);
 
         begin_pre_draw(pg);
-        copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element + 1);
+        copy_remapped_attributes_to_inline_buffer(pg, remap, min_element,
+                                                  max_element + 1);
         VkDeviceSize buffer_offset = pgraph_vk_update_index_buffer(
             pg, pg->inline_elements, index_data_size);
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
