@@ -23,6 +23,8 @@ xemu_ss.add(files(
   'widgets.cc',
 ))
 
+# xemu RAW Cheat Engine / Memory / Debugger extensions live in their own subtree.
+subdir('debug-tools')
 if host_os == 'windows'
   xemu_ss.add(files('update.cc'))
 endif

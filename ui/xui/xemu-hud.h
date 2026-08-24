@@ -47,6 +47,8 @@ void xemu_hud_render(void);
 void xemu_hud_process_sdl_events(SDL_Event *event);
 void xemu_hud_should_capture_kbd_mouse(int *kbd, int *mouse);
 void xemu_hud_set_framebuffer_texture(GLuint tex, bool flip);
+int xemu_hud_is_detached_window_id(SDL_WindowID window_id);
+void xemu_hud_render_playback_only(void);
 
 #ifdef __cplusplus
 }

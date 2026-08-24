@@ -800,7 +800,7 @@ static void report_stats(void)
  * Renders the main interface. Usually called from the main thread,
  * but may sometimes be called from another thread.
  */
-static void gl_render_frame(struct xemu_console *scon)
+static void gl_render_frame_common(struct xemu_console *scon, bool playback_only)
 {
     static bool rendering;
     if (qatomic_xchg(&rendering, true) || qatomic_read(&qemu_exiting)) {
@@ -847,10 +847,16 @@ static void gl_render_frame(struct xemu_console *scon)
      * possible lengthy blocking (for vsync).
      */
     xemu_main_loop_lock();
-    xemu_hud_update();
+    if (playback_only) {
+        xemu_hud_render_playback_only();
+    } else {
+        xemu_hud_update();
+    }
     xemu_main_loop_unlock();
 
-    xemu_hud_render();
+    if (!playback_only) {
+        xemu_hud_render();
+    }
     glFinish();
 
     if (release_surface_texture) {
@@ -870,14 +876,43 @@ static void gl_render_frame(struct xemu_console *scon)
 #endif
 }
 
+static void gl_render_frame(struct xemu_console *scon)
+{
+    gl_render_frame_common(scon, false);
+}
+
+static void gl_render_playback_frame(struct xemu_console *scon)
+{
+    gl_render_frame_common(scon, true);
+}
+
 static bool event_watch_callback(void *userdata, SDL_Event *event)
 {
     struct xemu_console *scon = (struct xemu_console *)userdata;
 
-    if (event->type == SDL_EVENT_WINDOW_EXPOSED ||
-        event->type == SDL_EVENT_WINDOW_RESIZED) {
+    /* Preserve the historical full redraw for expose/resize events owned by
+     * the console window registered with this watch. */
+    if ((event->type == SDL_EVENT_WINDOW_EXPOSED ||
+         event->type == SDL_EVENT_WINDOW_RESIZED) &&
+        scon->real_window &&
+        event->window.windowID == SDL_GetWindowID(scon->real_window)) {
         gl_render_frame(scon);
+        return true; // Ignored
     }
+
+#if defined(_WIN32)
+    /* Win32 enters a modal move/resize loop while a detached debugger window
+     * is being dragged. SDL's event pump can therefore stall xemu's normal
+     * render loop. Present only the guest framebuffer from the event watch so
+     * playback stays live without re-entering ImGui, Debug Tools, Cheat Engine
+     * Tick, Inject, or breakpoint processing from the modal callback. */
+    if ((event->type == SDL_EVENT_WINDOW_MOVED ||
+         event->type == SDL_EVENT_WINDOW_RESIZED ||
+         event->type == SDL_EVENT_WINDOW_EXPOSED) &&
+        xemu_hud_is_detached_window_id(event->window.windowID)) {
+        gl_render_playback_frame(scon);
+    }
+#endif
 
     return true; // Ignored
 }

@@ -47,9 +47,14 @@
 #include "notifications.hh"
 #include "monitor.hh"
 #include "debug.hh"
+#include "debug-tools/detached-tools.hh"
 #include "welcome.hh"
 #include "menubar.hh"
 #include "compat.hh"
+#include "debug-tools/cheat-engine.hh"
+#include "debug-tools/current-game.hh"
+#include "debug-tools/guest-kernel-rpc.hh"
+#include "debug-tools/memory-tools.hh"
 #if defined(_WIN32)
 #include "update.hh"
 #endif
@@ -147,6 +152,7 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     ImGui_ImplSDL3_InitForOpenGL(window, sdl_gl_context);
     ImGui_ImplOpenGL3_Init("#version 150");
     ImPlot::CreateContext();
+    detached_tools_init(window, sdl_gl_context);
 
 #if defined(_WIN32)
     if (!g_config.general.show_welcome && g_config.general.updates.check) {
@@ -161,6 +167,7 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
 
 void xemu_hud_cleanup(void)
 {
+    detached_tools_cleanup();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
@@ -173,6 +180,9 @@ void xemu_hud_process_sdl_events(SDL_Event *event)
         return;
     }
 
+    if (detached_tools_process_sdl_event(event)) {
+        return;
+    }
     ImGui_ImplSDL3_ProcessEvent(event);
 }
 
@@ -187,6 +197,27 @@ void xemu_hud_set_framebuffer_texture(GLuint tex, bool flip)
 {
     g_tex = tex;
     g_flip_req = flip;
+}
+
+int xemu_hud_is_detached_window_id(SDL_WindowID window_id)
+{
+    return detached_tools_owns_window_id(window_id) ? 1 : 0;
+}
+
+void xemu_hud_render_playback_only(void)
+{
+    if (first_boot_window.is_open) {
+        return;
+    }
+
+    int width = 0;
+    int height = 0;
+    SDL_GetWindowSizeInPixels(xemu_get_window(), &width, &height);
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    RenderFramebuffer(g_tex, width, height, g_flip_req);
 }
 
 void xemu_hud_update(void)
@@ -306,6 +337,10 @@ void xemu_hud_update(void)
         }
     }
 
+    guest_kernel_rpc_manager.Tick();
+    current_game_manager.Refresh();
+    cheat_engine_window.Tick();
+
     first_boot_window.Draw();
     monitor_window.Draw();
     apu_window.Draw();
@@ -318,6 +353,11 @@ void xemu_hud_update(void)
     if (!first_boot_window.is_open) notification_manager.Draw();
     g_snapshot_mgr.Draw();
 
+    // Build the detached Debug Tools frames after the main UI has had a
+    // chance to toggle them from the Debug menu. The helper restores the main
+    // ImGui/OpenGL contexts before returning.
+    detached_tools_build_frames();
+
     // static bool show_demo = true;
     // if (show_demo) ImGui::ShowDemoWindow(&show_demo);
 }
@@ -326,6 +366,10 @@ void xemu_hud_render()
 {
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    // Render and swap the independent Debug Tools windows,
+    // then restore the emulator's main OpenGL/ImGui contexts.
+    detached_tools_render_frames();
 
     if (g_vsync != g_config.display.window.vsync) {
         g_vsync = g_config.display.window.vsync;
