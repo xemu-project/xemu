@@ -32,6 +32,7 @@
 #include <winerror.h>
 
 #include "whpx-internal.h"
+#include "../../../ui/xui/debug-tools/backend/whpx-debug.h"
 #include "whpx-accel-ops.h"
 
 #include <winhvplatform.h>
@@ -1358,7 +1359,7 @@ static int whpx_first_vcpu_starting(CPUState *cpu)
     }
 
     uint64_t exception_mask;
-    if (whpx->step_pending ||
+    if (whpx->step_pending || xemu_whpx_watchpoints_active(cpu) ||
         (whpx->breakpoints.breakpoints &&
          whpx->breakpoints.breakpoints->used)) {
         /*
@@ -1724,7 +1725,12 @@ static int whpx_vcpu_run(CPUState *cpu)
             }
         }
 
-        if (exclusive_step_mode != WHPX_STEP_NONE || cpu->singlestep_enabled) {
+        if (exclusive_step_mode != WHPX_STEP_NONE || cpu->singlestep_enabled ||
+            xemu_whpx_user_step_pending()) {
+            /* The explicit xemu debugger one-shot is intentionally checked
+             * independently from CPUState::singlestep_enabled.  This keeps
+             * Step Into reliable while WHPX's own breakpoint step-over is
+             * active or if generic debugger state changes during resume. */
             whpx_vcpu_configure_single_stepping(cpu, true, NULL);
         }
 
@@ -1739,7 +1745,8 @@ static int whpx_vcpu_run(CPUState *cpu)
             break;
         }
 
-        if (exclusive_step_mode != WHPX_STEP_NONE || cpu->singlestep_enabled) {
+        if (exclusive_step_mode != WHPX_STEP_NONE || cpu->singlestep_enabled ||
+            xemu_whpx_user_step_pending()) {
             whpx_vcpu_configure_single_stepping(cpu,
                 false,
                 &vcpu->exit_ctx.VpContext.Rflags);
@@ -1989,22 +1996,15 @@ static int whpx_vcpu_run(CPUState *cpu)
         case WHvRunVpExitReasonException:
             whpx_get_registers(cpu);
 
-            if ((vcpu->exit_ctx.VpException.ExceptionType ==
-                 WHvX64ExceptionTypeDebugTrapOrFault) &&
-                (vcpu->exit_ctx.VpException.InstructionByteCount >= 1) &&
-                (vcpu->exit_ctx.VpException.InstructionBytes[0] ==
-                 whpx_breakpoint_instruction)) {
-                /* Stopped at a software breakpoint. */
-                cpu->exception_index = EXCP_DEBUG;
-            } else if ((vcpu->exit_ctx.VpException.ExceptionType ==
-                        WHvX64ExceptionTypeDebugTrapOrFault) &&
-                       !cpu->singlestep_enabled) {
-                /*
-                 * Just finished stepping over a breakpoint, but the
-                 * gdb does not expect us to do single-stepping.
-                 * Don't do anything special.
-                 */
-                cpu->exception_index = EXCP_INTERRUPT;
+            if (vcpu->exit_ctx.VpException.ExceptionType ==
+                WHvX64ExceptionTypeDebugTrapOrFault) {
+                int is_execute_breakpoint =
+                    vcpu->exit_ctx.VpException.InstructionByteCount >= 1 &&
+                    vcpu->exit_ctx.VpException.InstructionBytes[0] ==
+                        whpx_breakpoint_instruction;
+
+                cpu->exception_index = xemu_whpx_debug_exception_index(
+                    cpu, is_execute_breakpoint);
             } else {
                 /* Another exception or debug event. Report it to GDB. */
                 cpu->exception_index = EXCP_DEBUG;
@@ -2114,6 +2114,12 @@ void whpx_cpu_synchronize_pre_loadvm(CPUState *cpu)
 static void whpx_pre_resume_vm(AccelState *as, bool step_pending)
 {
     whpx_global.step_pending = step_pending;
+
+    /* vm_prepare_start(true) is used by both QEMU's normal debugger and the
+     * embedded xemu Step Into path.  Mirror that request into debug-tools so
+     * the WHPX run loop can distinguish an explicit user step from its own
+     * invisible execute-breakpoint step-over. */
+    xemu_whpx_set_user_step_pending(step_pending);
 }
 
 /*

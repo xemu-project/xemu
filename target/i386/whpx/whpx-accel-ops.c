@@ -14,10 +14,10 @@
 #include "accel/accel-cpu-ops.h"
 #include "system/cpus.h"
 #include "qemu/guest-random.h"
-
 #include "system/whpx.h"
 #include "whpx-internal.h"
 #include "whpx-accel-ops.h"
+#include "../../../ui/xui/debug-tools/backend/whpx-debug.h"
 
 static void *whpx_cpu_thread_fn(void *arg)
 {
@@ -94,6 +94,9 @@ static void whpx_accel_ops_class_init(ObjectClass *oc, const void *data)
     ops->synchronize_post_init = whpx_cpu_synchronize_post_init;
     ops->synchronize_state = whpx_cpu_synchronize_state;
     ops->synchronize_pre_loadvm = whpx_cpu_synchronize_pre_loadvm;
+
+    /* xemu debug-tools: register WHPX guest-debug hooks. */
+    xemu_debug_register_whpx_ops(ops);
 }
 
 static const TypeInfo whpx_accel_ops_type = {
