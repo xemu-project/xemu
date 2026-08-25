@@ -271,6 +271,17 @@ void xemu_input_init(void)
         exit(1);
     }
 
+    if (g_config.input.gamecontrollerdb_path && strlen(g_config.input.gamecontrollerdb_path) > 0) {
+        int count = SDL_AddGamepadMappingsFromFile(g_config.input.gamecontrollerdb_path);
+        if (count > 0) {
+            fprintf(stderr, "Loaded %d custom gamepad mapping(s) from '%s'\n",
+                    count, g_config.input.gamecontrollerdb_path);
+        } else if (count < 0) {
+            fprintf(stderr, "Failed to load gamepad mappings from '%s': %s\n",
+                    g_config.input.gamecontrollerdb_path, SDL_GetError());
+        }
+    }
+
     // Create the keyboard input (always first)
     ControllerState *new_con = malloc(sizeof(ControllerState));
     memset(new_con, 0, sizeof(ControllerState));
