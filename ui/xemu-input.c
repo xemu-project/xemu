@@ -476,6 +476,20 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         }
     } else if (event->type == SDL_EVENT_GAMEPAD_REMAPPED) {
         DPRINTF("Controller Remapped: %d\n", event->gdevice.which);
+    } else if (event->type == SDL_EVENT_JOYSTICK_ADDED) {
+        if (!SDL_IsGamepad(event->jdevice.which)) {
+            const char *name = SDL_GetJoystickNameForID(event->jdevice.which);
+            SDL_GUID guid = SDL_GetJoystickGUIDForID(event->jdevice.which);
+            char guid_buf[35] = { 0 };
+            SDL_GUIDToString(guid, guid_buf, sizeof(guid_buf));
+            fprintf(
+                stderr,
+                "Input: Detected unmapped joystick '%s' (GUID: %s, ID: %u). "
+                "This device is not recognized as a gamepad by SDL and "
+                "requires an SDL gamepad mapping to work with xemu.\n",
+                name ? name : "Unknown", guid_buf,
+                (unsigned int)event->jdevice.which);
+        }
     }
 }
 
