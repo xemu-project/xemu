@@ -39,12 +39,12 @@ void nv2a_update_irq(NV2AState *d)
     }
 
     /* PGRAPH */
-    if (d->pgraph.pending_interrupts & d->pgraph.enabled_interrupts) {
+    if (qatomic_read(&d->pgraph.pending_interrupts) &
+        qatomic_read(&d->pgraph.enabled_interrupts)) {
         d->pmc.pending_interrupts |= NV_PMC_INTR_0_PGRAPH;
     } else {
         d->pmc.pending_interrupts &= ~NV_PMC_INTR_0_PGRAPH;
     }
-
     /* PTIMER */
     if (d->ptimer.pending_interrupts & d->ptimer.enabled_interrupts) {
         d->pmc.pending_interrupts |= NV_PMC_INTR_0_PTIMER;
@@ -320,9 +320,9 @@ static void nv2a_reset(NV2AState *d)
     /* seems to start in color mode */
     d->vga.msr = VGA_MIS_COLOR;
 
-    d->pgraph.waiting_for_nop = false;
+    qatomic_set(&d->pgraph.waiting_for_nop, false);
     d->pgraph.waiting_for_flip = false;
-    d->pgraph.waiting_for_context_switch = false;
+    qatomic_set(&d->pgraph.waiting_for_context_switch, false);
 
     d->pmc.pending_interrupts = 0;
     d->pfifo.pending_interrupts = 0;
@@ -557,7 +557,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(ptimer.enabled_interrupts, NV2AState),
         VMSTATE_UINT32(ptimer.numerator, NV2AState),
         VMSTATE_UINT32(ptimer.denominator, NV2AState),
-        VMSTATE_UNUSED(4),
+        VMSTATE_UINT32(ptimer.alarm_time, NV2AState),
         VMSTATE_UINT32_ARRAY(pfb.regs, NV2AState, 0x1000),
         VMSTATE_UINT32(pcrtc.pending_interrupts, NV2AState),
         VMSTATE_UINT32(pcrtc.enabled_interrupts, NV2AState),
@@ -572,9 +572,8 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_BOOL(pgraph.waiting_for_nop, NV2AState),
         VMSTATE_UNUSED(1),
         VMSTATE_BOOL(pgraph.waiting_for_context_switch, NV2AState),
-        VMSTATE_UINT64_V(ptimer.alarm_time, NV2AState, 4),
-        VMSTATE_UINT64_V(ptimer.time_offset, NV2AState, 4),
-        VMSTATE_TIMER_V(ptimer.timer, NV2AState, 4),
+        VMSTATE_UINT32(ptimer.alarm_time_high, NV2AState),
+        VMSTATE_UINT64(ptimer.time_offset, NV2AState),
         VMSTATE_END_OF_LIST()
     },
 };

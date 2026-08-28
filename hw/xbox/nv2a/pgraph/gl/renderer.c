@@ -127,6 +127,7 @@ static void pgraph_gl_process_pending(NV2AState *d)
         qatomic_read(&d->pgraph.flush_pending) ||
         qatomic_read(&r->shader_cache_writeback_pending)) {
         qemu_mutex_unlock(&d->pfifo.lock);
+        pgraph_wait_for_cpu_mmio_readers(&d->pgraph);
         qemu_mutex_lock(&d->pgraph.lock);
         if (qatomic_read(&r->downloads_pending)) {
             pgraph_gl_process_pending_downloads(d);
