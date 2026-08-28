@@ -21,6 +21,7 @@
 #include "common.hh"
 #include "data/controller_mask.png.h"
 #include "data/controller_mask_s.png.h"
+#include "data/arcade_stick_mask.png.h"
 #include "data/logo_sdf.png.h"
 #include "data/xemu_64x64.png.h"
 #include "data/xmu_mask.png.h"
@@ -34,7 +35,8 @@
 #include "ui/shader/xemu-logo-frag.h"
 
 Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
-GLuint g_controller_duke_tex, g_controller_s_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
+GLuint g_controller_duke_tex, g_controller_s_tex, g_arcade_stick_tex, 
+       g_logo_tex, g_icon_tex, g_xmu_tex;
 
 enum class ShaderType {
     Blit,
@@ -425,6 +427,11 @@ static const struct rect tex_items[] = {
     { 0, 0, 512, 512 } // obj_xmu
 };
 
+static const struct rect arcade_stick_tex_items[] = {
+    { 0, 183, 467, 329 }, // obj_controller
+    { 0, 0, 60, 60 } // obj_stick
+};
+
 enum tex_item_names {
     obj_controller,
     obj_lstick,
@@ -444,6 +451,8 @@ void InitCustomRendering(void)
         LoadTextureFromMemory(controller_mask_data, controller_mask_size);
     g_controller_s_tex =
         LoadTextureFromMemory(controller_mask_s_data, controller_mask_s_size);
+    g_arcade_stick_tex =
+        LoadTextureFromMemory(arcade_stick_mask_data, arcade_stick_mask_size);
     g_decal_shader = NewDecalShader(ShaderType::Mask);
     controller_fbo = new Fbo(512, 512);
 
@@ -793,12 +802,112 @@ static void RenderControllerS(float frame_x, float frame_y, uint32_t primary_col
     glUseProgram(0);
 }
 
+void RenderArcadeStick(float frame_x, float frame_y, uint32_t primary_color,
+                      uint32_t secondary_color, ControllerState *state)
+{
+    // Location within the controller texture of masked button locations,
+    // relative to the origin of the controller
+    const struct rect stick_ctr = { 116, 161, 0, 0 };
+    const struct rect buttons[12] = {
+        { 216, 126, 37, 39 }, // A
+        { 224, 182, 37, 39 }, // B
+        { 271, 206, 37, 39 }, // X
+        { 322, 200, 37, 39 }, // Y
+        { 0, 0, 0, 0 }, // D-Left
+        { 0, 0, 0, 0 }, // D-Up
+        { 0, 0, 0, 0 }, // D-Right
+        { 0, 0, 0, 0 }, // D-Down
+        { 378, 280, 21, 23 }, // Back
+        { 402, 280, 21, 23 }, // Start
+        { 118, 225, 21, 23 }, // White
+        { 141, 225, 21, 23 }, // Black
+    };
+
+    const struct rect triggers[2] = {
+        { 70, 225, 21, 23 }, // L
+        { 93, 225, 21, 23 } // R
+    };
+
+    frame_x += 5;
+
+    glUseProgram(g_decal_shader->prog);
+    glBindVertexArray(g_decal_shader->vao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_arcade_stick_tex);
+
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_ONE, GL_ZERO);
+
+    // Render controller texture
+    RenderDecal(g_decal_shader, frame_x + 0, frame_y + 0,
+                arcade_stick_tex_items[obj_controller].w,
+                arcade_stick_tex_items[obj_controller].h,
+                arcade_stick_tex_items[obj_controller].x,
+                arcade_stick_tex_items[obj_controller].y,
+                arcade_stick_tex_items[obj_controller].w,
+                arcade_stick_tex_items[obj_controller].h, primary_color,
+                secondary_color, 0);
+
+    glBlendFunc(GL_ONE_MINUS_DST_ALPHA,
+                GL_ONE); // Blend with controller cutouts
+
+    // The controller has alpha cutouts where the buttons are. Draw a surface
+    // behind the buttons if they are activated
+    for (int i = 0; i < 12; i++) {
+        if (state->buttons & (1 << i)) {
+            RenderDecal(g_decal_shader, frame_x + buttons[i].x,
+                        frame_y + buttons[i].y, buttons[i].w, buttons[i].h, 0,
+                        0, 1, 1, 0, 0, primary_color + 0xff);
+        }
+    }
+
+    // Render trigger bars
+    float ltrig = state->axis[CONTROLLER_AXIS_LTRIG] / 32767.0;
+    float rtrig = state->axis[CONTROLLER_AXIS_RTRIG] / 32767.0;
+    if (ltrig > 0.5) {
+        RenderDecal(g_decal_shader, frame_x + triggers[0].x,
+                    frame_y + triggers[0].y, triggers[0].w, triggers[0].h, 0, 0,
+                    1, 1, 0, 0, primary_color + 0xff);
+    }
+    if (rtrig > 0.5) {
+        RenderDecal(g_decal_shader, frame_x + triggers[1].x,
+                    frame_y + triggers[1].y, triggers[1].w, triggers[1].h, 0, 0,
+                    1, 1, 0, 0, primary_color + 0xff);
+    }
+
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Blend with controller
+
+    // Render left thumbstick
+    float w = arcade_stick_tex_items[obj_lstick].w;
+    float h = arcade_stick_tex_items[obj_lstick].h;
+    float c_x = frame_x + stick_ctr.x;
+    float c_y = frame_y + stick_ctr.y;
+    float stick_x = (float)state->axis[CONTROLLER_AXIS_LSTICK_X] / 32768.0;
+    float stick_y = (float)state->axis[CONTROLLER_AXIS_LSTICK_Y] / 32768.0;
+    RenderDecal(
+        g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * stick_x),
+        (int)(c_y - h / 2.0f + 10.0f * stick_y), w, h,
+        arcade_stick_tex_items[obj_lstick].x,
+        arcade_stick_tex_items[obj_lstick].y, w, h,
+        (state->buttons & CONTROLLER_BUTTON_LSTICK) ? secondary_color :
+                                                         primary_color,
+        (state->buttons & CONTROLLER_BUTTON_LSTICK) ? primary_color :
+                                                         secondary_color,
+        0);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
 void RenderController(float frame_x, float frame_y, uint32_t primary_color,
                       uint32_t secondary_color, ControllerState *state)
 {
     if (strcmp(bound_drivers[state->bound], DRIVER_S) == 0)
         RenderControllerS(frame_x, frame_y, primary_color, secondary_color,
                           state);
+    else if (strcmp(bound_drivers[state->bound], DRIVER_ARCADE_STICK) == 0)
+        RenderArcadeStick(frame_x, frame_y, primary_color, secondary_color,
+                         state);
     else if (strcmp(bound_drivers[state->bound], DRIVER_DUKE) == 0)
         RenderDukeController(frame_x, frame_y, primary_color, secondary_color,
                              state);
