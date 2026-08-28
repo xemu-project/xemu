@@ -53,6 +53,7 @@
 
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
+#include "hw/xbox/nv2a/debug_gl.h"
 #include "ui/xemu-notifications.h"
 
 #include <stb_image.h>
@@ -824,7 +825,7 @@ static void gl_render_frame(struct xemu_console *scon)
      */
     GLuint tex = nv2a_get_framebuffer_surface();
 
-    assert(glGetError() == GL_NO_ERROR);
+    ASSERT_NO_GL_ERROR();
 
     if (tex == 0) {
         xemu_main_loop_lock();
@@ -861,7 +862,7 @@ static void gl_render_frame(struct xemu_console *scon)
 
     nv2a_release_framebuffer_surface();
     SDL_GL_SwapWindow(scon->real_window);
-    assert(glGetError() == GL_NO_ERROR);
+    ASSERT_NO_GL_ERROR();
 
     qatomic_set(&rendering, false);
 
