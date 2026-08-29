@@ -139,6 +139,32 @@ typedef struct PGRAPHState {
     QemuMutex lock;
     QemuMutex renderer_lock;
 
+    /*
+     * PGRAPH interrupt control state must remain independently serviceable
+     * while the renderer owns the primary PGRAPH mutex.  This side lock only
+     * protects the coupled pending/wait-state updates; it is never held across
+     * renderer work.
+     */
+    QemuMutex interrupt_lock;
+
+    /*
+     * Flip buffer index state (NV_PGRAPH_SURFACE READ_3D/WRITE_3D/MODULO_3D)
+     * must remain updateable by the guest VSYNC path while the renderer owns
+     * the primary PGRAPH mutex. This side lock protects read-modify-write
+     * updates to that single register only and is never held across rendering.
+     */
+    QemuMutex surface_lock;
+
+    /*
+     * v3.02 CPU MMIO reader handoff. CPU PGRAPH reads can otherwise be
+     * starved when PFIFO repeatedly releases and immediately reacquires the
+     * primary PGRAPH mutex. This small side lock/condition tracks CPU readers
+     * that must be allowed through before PFIFO takes another turn.
+     */
+    QemuMutex cpu_mmio_reader_lock;
+    QemuCond cpu_mmio_reader_cond;
+    unsigned int cpu_mmio_readers_waiting;
+
     uint32_t pending_interrupts;
     uint32_t enabled_interrupts;
 
@@ -271,6 +297,37 @@ typedef struct PGRAPHState {
         PGRAPHVkState *vk_renderer_state;
     };
 } PGRAPHState;
+
+/*
+ * CPU-MMIO/PFIFO handoff helpers. These deliberately use a mutex separate
+ * from the primary PGRAPH lock so PFIFO can sleep without owning PGRAPH.
+ */
+static inline void pgraph_cpu_mmio_reader_begin(PGRAPHState *pg)
+{
+    qemu_mutex_lock(&pg->cpu_mmio_reader_lock);
+    pg->cpu_mmio_readers_waiting++;
+    qemu_mutex_unlock(&pg->cpu_mmio_reader_lock);
+}
+
+static inline void pgraph_cpu_mmio_reader_end(PGRAPHState *pg)
+{
+    qemu_mutex_lock(&pg->cpu_mmio_reader_lock);
+    assert(pg->cpu_mmio_readers_waiting > 0);
+    pg->cpu_mmio_readers_waiting--;
+    if (pg->cpu_mmio_readers_waiting == 0) {
+        qemu_cond_broadcast(&pg->cpu_mmio_reader_cond);
+    }
+    qemu_mutex_unlock(&pg->cpu_mmio_reader_lock);
+}
+
+static inline void pgraph_wait_for_cpu_mmio_readers(PGRAPHState *pg)
+{
+    qemu_mutex_lock(&pg->cpu_mmio_reader_lock);
+    while (pg->cpu_mmio_readers_waiting != 0) {
+        qemu_cond_wait(&pg->cpu_mmio_reader_cond, &pg->cpu_mmio_reader_lock);
+    }
+    qemu_mutex_unlock(&pg->cpu_mmio_reader_lock);
+}
 
 void pgraph_init(NV2AState *d);
 void pgraph_init_thread(NV2AState *d);

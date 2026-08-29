@@ -39,21 +39,116 @@
 
 NV2AState *g_nv2a;
 
+/*
+ * NV_PGRAPH_SURFACE contains the 3D flip producer/consumer indices. The guest
+ * advances READ_3D from its VSYNC path, which must not be forced to wait behind
+ * an unrelated host OpenGL draw. All read-modify-write updates to this register
+ * use surface_lock, while readers can take an atomic snapshot.
+ */
+static inline uint32_t pgraph_surface_read(PGRAPHState *pg)
+{
+    return qatomic_read(&pg->regs_[NV_PGRAPH_SURFACE]);
+}
+
+static inline void pgraph_surface_write_locked(PGRAPHState *pg, uint32_t value)
+{
+    uint32_t old = qatomic_read(&pg->regs_[NV_PGRAPH_SURFACE]);
+    if (old != value) {
+        set_bit_atomic(NV_PGRAPH_SURFACE / sizeof(uint32_t), pg->regs_dirty);
+    }
+    qatomic_set(&pg->regs_[NV_PGRAPH_SURFACE], value);
+}
+
+static inline void pgraph_surface_set_mask_locked(PGRAPHState *pg,
+                                                   uint32_t mask,
+                                                   uint32_t value)
+{
+    uint32_t surface = pgraph_surface_read(pg);
+    SET_MASK(surface, mask, value);
+    pgraph_surface_write_locked(pg, surface);
+}
+
+/*
+ * Wake PFIFO without making the guest wait on pfifo.lock. Marking fifo_kick
+ * first means an already-active PFIFO thread will not go back to sleep. A short
+ * trylock loop covers the tiny check-to-sleep window so a sleeping PFIFO still
+ * receives the normal condition-variable wake while its mutex is held.
+ */
+static inline void pgraph_pfifo_kick_nonblocking(NV2AState *d)
+{
+    qatomic_set(&d->pfifo.fifo_kick, true);
+
+    for (unsigned int i = 0; i < 64; i++) {
+        if (qemu_mutex_trylock(&d->pfifo.lock) == 0) {
+            pfifo_kick(d);
+            qemu_mutex_unlock(&d->pfifo.lock);
+            return;
+        }
+        cpu_relax();
+    }
+}
+
 uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
     PGRAPHState *pg = &d->pgraph;
 
+    /*
+     * Ordinary PGRAPH MMIO reads are simple snapshots of pg->regs_[].
+     * Do not serialize those reads behind the primary PGRAPH mutex: PFIFO
+     * can legitimately hold that mutex while a host OpenGL draw blocks for
+     * tens of milliseconds, which would prevent the guest CPU from reaching
+     * an interrupt handler even when PTIMER itself fired on time.
+     *
+     * This uses the same qatomic_read() pattern already used by PFIFO for
+     * NV_PGRAPH_FIFO. Stateful/special reads remain on the synchronized path
+     * below.
+     */
+    switch (addr) {
+    case NV_PGRAPH_INTR: {
+        uint64_t r = qatomic_read(&pg->pending_interrupts);
+        nv2a_reg_log_read(NV_PGRAPH, addr, size, r);
+        return r;
+    }
+    case NV_PGRAPH_INTR_EN: {
+        uint64_t r = qatomic_read(&pg->enabled_interrupts);
+        nv2a_reg_log_read(NV_PGRAPH, addr, size, r);
+        return r;
+    }
+    case NV_PGRAPH_RDI_DATA:
+        break;
+    default: {
+        assert(addr % 4 == 0);
+        uint64_t r = qatomic_read(&pg->regs_[addr]);
+        nv2a_reg_log_read(NV_PGRAPH, addr, size, r);
+        return r;
+    }
+    }
+
+    /*
+     * A CPU PGRAPH MMIO read can block here while PFIFO owns the PGRAPH
+     * mutex during a long host OpenGL draw. Do not hold BQL while waiting
+     * for PGRAPH, otherwise the QEMU main loop cannot reacquire BQL to
+     * dispatch timers such as NV2A PTIMER.
+     *
+     * Preserve the caller's BQL state because pgraph_read() is not limited
+     * to callers that necessarily own BQL.
+     */
+    bool had_bql = bql_locked();
+    if (had_bql) {
+        /*
+         * Mark this CPU MMIO reader before dropping BQL. PFIFO checks this
+         * handoff state before taking another PGRAPH turn, preventing a
+         * queued CPU read from losing the mutex over and over.
+         */
+        pgraph_cpu_mmio_reader_begin(pg);
+        bql_unlock();
+    }
+
     qemu_mutex_lock(&pg->lock);
 
     uint64_t r = 0;
     switch (addr) {
-    case NV_PGRAPH_INTR:
-        r = pg->pending_interrupts;
-        break;
-    case NV_PGRAPH_INTR_EN:
-        r = pg->enabled_interrupts;
-        break;
     case NV_PGRAPH_RDI_DATA: {
         unsigned int select = PG_GET_MASK(NV_PGRAPH_RDI_INDEX,
                                        NV_PGRAPH_RDI_INDEX_SELECT);
@@ -76,6 +171,20 @@ uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
 
     qemu_mutex_unlock(&pg->lock);
 
+    /*
+     * Release PGRAPH before restoring BQL. Reacquiring BQL while holding
+     * PGRAPH would introduce the opposite PGRAPH -> BQL lock ordering and
+     * could deadlock against code that acquires them in the other order.
+     */
+    if (had_bql) {
+        /*
+         * Publish completion only after PGRAPH is unlocked. PFIFO may then
+         * resume while this vCPU independently reacquires BQL.
+         */
+        pgraph_cpu_mmio_reader_end(pg);
+        bql_lock();
+    }
+
     nv2a_reg_log_read(NV_PGRAPH, addr, size, r);
     return r;
 }
@@ -87,35 +196,142 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
     nv2a_reg_log_write(NV_PGRAPH, addr, size, val);
 
+    /*
+     * NV_PGRAPH_FIFO is cross-thread control state already consumed by PFIFO
+     * with qatomic_read(). Do not serialize this write behind renderer-owned
+     * PGRAPH work: Def Jam can otherwise hold BQL for tens of milliseconds
+     * while the vCPU waits for an unrelated host OpenGL operation.
+     *
+     * Keep the PFIFO mutex around the update/kick and preserve the existing
+     * dirty-register bookkeeping, but deliberately avoid the primary PGRAPH
+     * mutex for this register.
+     */
+    if (addr == NV_PGRAPH_FIFO) {
+        bool had_bql = bql_locked();
+        if (had_bql) {
+            /*
+             * Reuse the v3.02 MMIO handoff (legacy helper name says reader)
+             * so PFIFO gives this CPU access a turn before resuming.
+             */
+            pgraph_cpu_mmio_reader_begin(pg);
+            bql_unlock();
+        }
+
+        qemu_mutex_lock(&d->pfifo.lock);
+
+        uint32_t old = qatomic_read(&pg->regs_[NV_PGRAPH_FIFO]);
+        uint32_t value = (uint32_t)val;
+        if (old != value) {
+            set_bit_atomic(NV_PGRAPH_FIFO / sizeof(uint32_t),
+                           pg->regs_dirty);
+        }
+        qatomic_set(&pg->regs_[NV_PGRAPH_FIFO], value);
+        pfifo_kick(d);
+
+        qemu_mutex_unlock(&d->pfifo.lock);
+
+        if (had_bql) {
+            pgraph_cpu_mmio_reader_end(pg);
+            bql_lock();
+        }
+        return;
+    }
+
+    /*
+     * NV_PGRAPH_INTR is an interrupt-acknowledge control register.  The guest
+     * must be able to clear it even while the renderer is blocked inside a
+     * long host draw with the primary PGRAPH mutex held.  Serializing this
+     * write behind renderer work can delay the guest's unrelated PTIMER IRQ
+     * handling by tens of milliseconds.
+     *
+     * pending_interrupts and the two PFIFO wait flags are coupled state, so
+     * update them under the small interrupt_lock rather than the renderer
+     * PGRAPH lock.  Drop BQL before either side lock/PFIFO lock can block.
+     */
+    if (addr == NV_PGRAPH_INTR) {
+        bool had_bql = bql_locked();
+        if (had_bql) {
+            bql_unlock();
+        }
+
+        qemu_mutex_lock(&pg->interrupt_lock);
+
+        uint32_t clear_mask = ~(uint32_t)val;
+        uint32_t pending =
+            qatomic_fetch_and(&pg->pending_interrupts, clear_mask) & clear_mask;
+
+        if (!(pending & NV_PGRAPH_INTR_ERROR)) {
+            qatomic_set(&pg->waiting_for_nop, false);
+        }
+        if (!(pending & NV_PGRAPH_INTR_CONTEXT_SWITCH)) {
+            qatomic_set(&pg->waiting_for_context_switch, false);
+        }
+
+        qemu_mutex_unlock(&pg->interrupt_lock);
+
+        qemu_mutex_lock(&d->pfifo.lock);
+        pfifo_kick(d);
+        qemu_mutex_unlock(&d->pfifo.lock);
+
+        if (had_bql) {
+            bql_lock();
+        }
+        return;
+    }
+
+    /*
+     * NV_PGRAPH_INCREMENT advances the consumer side of the 3D flip ring. In
+     * Def Jam this write is issued from timing-sensitive guest code and can
+     * arrive while PFIFO is blocked for tens of milliseconds in host OpenGL.
+     * It only needs to update NV_PGRAPH_SURFACE.READ_3D and wake PFIFO; neither
+     * operation should wait for the renderer-owned primary PGRAPH mutex.
+     */
+    if (addr == NV_PGRAPH_INCREMENT) {
+        bool had_bql = bql_locked();
+        if (had_bql) {
+            bql_unlock();
+        }
+
+        if (val & NV_PGRAPH_INCREMENT_READ_3D) {
+            qemu_mutex_lock(&pg->surface_lock);
+
+            uint32_t surface = pgraph_surface_read(pg);
+            uint32_t read = GET_MASK(surface, NV_PGRAPH_SURFACE_READ_3D);
+            uint32_t modulo = GET_MASK(surface, NV_PGRAPH_SURFACE_MODULO_3D);
+
+            SET_MASK(surface, NV_PGRAPH_SURFACE_READ_3D,
+                     (read + 1) % modulo);
+            pgraph_surface_write_locked(pg, surface);
+
+            qemu_mutex_unlock(&pg->surface_lock);
+
+            nv2a_profile_increment();
+            pgraph_pfifo_kick_nonblocking(d);
+        }
+
+        if (had_bql) {
+            bql_lock();
+        }
+        return;
+    }
+
+    /*
+     * Remaining PGRAPH writes are stateful and stay serialized, but they must
+     * not hold BQL while waiting for PFIFO/PGRAPH. This mirrors the v3.01
+     * synchronized-read fix and extends the v3.02 fairness handoff to writes.
+     */
+    bool had_bql = bql_locked();
+    if (had_bql) {
+        pgraph_cpu_mmio_reader_begin(pg);
+        bql_unlock();
+    }
+
     qemu_mutex_lock(&d->pfifo.lock); // FIXME: Factor out fifo lock here
     qemu_mutex_lock(&pg->lock);
 
     switch (addr) {
-    case NV_PGRAPH_INTR:
-        pg->pending_interrupts &= ~val;
-
-        if (!(pg->pending_interrupts & NV_PGRAPH_INTR_ERROR)) {
-            pg->waiting_for_nop = false;
-        }
-        if (!(pg->pending_interrupts & NV_PGRAPH_INTR_CONTEXT_SWITCH)) {
-            pg->waiting_for_context_switch = false;
-        }
-        pfifo_kick(d);
-        break;
     case NV_PGRAPH_INTR_EN:
-        pg->enabled_interrupts = val;
-        break;
-    case NV_PGRAPH_INCREMENT:
-        if (val & NV_PGRAPH_INCREMENT_READ_3D) {
-            PG_SET_MASK(NV_PGRAPH_SURFACE,
-                     NV_PGRAPH_SURFACE_READ_3D,
-                     (PG_GET_MASK(NV_PGRAPH_SURFACE,
-                              NV_PGRAPH_SURFACE_READ_3D)+1)
-                        % PG_GET_MASK(NV_PGRAPH_SURFACE,
-                                   NV_PGRAPH_SURFACE_MODULO_3D) );
-            nv2a_profile_increment();
-            pfifo_kick(d);
-        }
+        qatomic_set(&pg->enabled_interrupts, (uint32_t)val);
         break;
     case NV_PGRAPH_RDI_DATA: {
         unsigned int select = PG_GET_MASK(NV_PGRAPH_RDI_INDEX,
@@ -161,6 +377,11 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
         break;
     }
+    case NV_PGRAPH_SURFACE:
+        qemu_mutex_lock(&pg->surface_lock);
+        pgraph_surface_write_locked(pg, (uint32_t)val);
+        qemu_mutex_unlock(&pg->surface_lock);
+        break;
     default:
         pgraph_reg_w(pg, addr, val);
         break;
@@ -175,6 +396,15 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
     qemu_mutex_unlock(&pg->lock);
     qemu_mutex_unlock(&d->pfifo.lock);
+
+    if (had_bql) {
+        /*
+         * Publish completion only after both device locks are released. PFIFO
+         * may resume while this vCPU independently reacquires BQL.
+         */
+        pgraph_cpu_mmio_reader_end(pg);
+        bql_lock();
+    }
 }
 
 void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
@@ -197,10 +427,13 @@ void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
         assert(!PG_GET_MASK(NV_PGRAPH_DEBUG_3,
                             NV_PGRAPH_DEBUG_3_HW_CONTEXT_SWITCH));
 
-        pg->waiting_for_context_switch = true;
+        qemu_mutex_lock(&pg->interrupt_lock);
+        qatomic_set(&pg->waiting_for_context_switch, true);
+        qatomic_or(&pg->pending_interrupts, NV_PGRAPH_INTR_CONTEXT_SWITCH);
+        qemu_mutex_unlock(&pg->interrupt_lock);
+
         qemu_mutex_unlock(&pg->lock);
         bql_lock();
-        pg->pending_interrupts |= NV_PGRAPH_INTR_CONTEXT_SWITCH;
         nv2a_update_irq(d);
         bql_unlock();
         qemu_mutex_lock(&pg->lock);
@@ -222,6 +455,11 @@ void pgraph_init(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     qemu_mutex_init(&pg->lock);
     qemu_mutex_init(&pg->renderer_lock);
+    qemu_mutex_init(&pg->interrupt_lock);
+    qemu_mutex_init(&pg->surface_lock);
+    qemu_mutex_init(&pg->cpu_mmio_reader_lock);
+    qemu_cond_init(&pg->cpu_mmio_reader_cond);
+    pg->cpu_mmio_readers_waiting = 0;
     qemu_event_init(&pg->sync_complete, false);
     qemu_event_init(&pg->flush_complete, false);
     qemu_cond_init(&pg->framebuffer_released);
@@ -351,6 +589,8 @@ void pgraph_destroy(PGRAPHState *pg)
        pg->renderer->ops.finalize(d);
     }
 
+    qemu_mutex_destroy(&pg->surface_lock);
+    qemu_mutex_destroy(&pg->interrupt_lock);
     qemu_mutex_destroy(&pg->lock);
 }
 
@@ -835,7 +1075,7 @@ DEF_METHOD(NV097, NO_OPERATION)
     unsigned channel_id =
         PG_GET_MASK(NV_PGRAPH_CTX_USER, NV_PGRAPH_CTX_USER_CHID);
 
-    assert(!(pg->pending_interrupts & NV_PGRAPH_INTR_ERROR));
+    assert(!(qatomic_read(&pg->pending_interrupts) & NV_PGRAPH_INTR_ERROR));
 
     PG_SET_MASK(NV_PGRAPH_TRAPPED_ADDR, NV_PGRAPH_TRAPPED_ADDR_CHID,
              channel_id);
@@ -846,8 +1086,10 @@ DEF_METHOD(NV097, NO_OPERATION)
     pgraph_reg_w(pg, NV_PGRAPH_TRAPPED_DATA_LOW, parameter);
     pgraph_reg_w(pg, NV_PGRAPH_NSOURCE,
                  NV_PGRAPH_NSOURCE_NOTIFICATION); /* TODO: check this */
-    pg->pending_interrupts |= NV_PGRAPH_INTR_ERROR;
-    pg->waiting_for_nop = true;
+    qemu_mutex_lock(&pg->interrupt_lock);
+    qatomic_set(&pg->waiting_for_nop, true);
+    qatomic_or(&pg->pending_interrupts, NV_PGRAPH_INTR_ERROR);
+    qemu_mutex_unlock(&pg->interrupt_lock);
 
     qemu_mutex_unlock(&pg->lock);
     bql_lock();
@@ -863,36 +1105,39 @@ DEF_METHOD(NV097, WAIT_FOR_IDLE)
 
 DEF_METHOD(NV097, SET_FLIP_READ)
 {
-    PG_SET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_READ_3D,
-             parameter);
+    qemu_mutex_lock(&pg->surface_lock);
+    pgraph_surface_set_mask_locked(pg, NV_PGRAPH_SURFACE_READ_3D, parameter);
+    qemu_mutex_unlock(&pg->surface_lock);
 }
 
 DEF_METHOD(NV097, SET_FLIP_WRITE)
 {
-    PG_SET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_WRITE_3D,
-             parameter);
+    qemu_mutex_lock(&pg->surface_lock);
+    pgraph_surface_set_mask_locked(pg, NV_PGRAPH_SURFACE_WRITE_3D, parameter);
+    qemu_mutex_unlock(&pg->surface_lock);
 }
 
 DEF_METHOD(NV097, SET_FLIP_MODULO)
 {
-    PG_SET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_MODULO_3D,
-             parameter);
+    qemu_mutex_lock(&pg->surface_lock);
+    pgraph_surface_set_mask_locked(pg, NV_PGRAPH_SURFACE_MODULO_3D, parameter);
+    qemu_mutex_unlock(&pg->surface_lock);
 }
 
 DEF_METHOD(NV097, FLIP_INCREMENT_WRITE)
 {
-    uint32_t old =
-        PG_GET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_WRITE_3D);
+    qemu_mutex_lock(&pg->surface_lock);
 
-    PG_SET_MASK(NV_PGRAPH_SURFACE,
-             NV_PGRAPH_SURFACE_WRITE_3D,
-             (PG_GET_MASK(NV_PGRAPH_SURFACE,
-                      NV_PGRAPH_SURFACE_WRITE_3D)+1)
-                % PG_GET_MASK(NV_PGRAPH_SURFACE,
-                           NV_PGRAPH_SURFACE_MODULO_3D) );
+    uint32_t surface = pgraph_surface_read(pg);
+    uint32_t old = GET_MASK(surface, NV_PGRAPH_SURFACE_WRITE_3D);
+    uint32_t modulo = GET_MASK(surface, NV_PGRAPH_SURFACE_MODULO_3D);
 
-    uint32_t new =
-        PG_GET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_WRITE_3D);
+    SET_MASK(surface, NV_PGRAPH_SURFACE_WRITE_3D, (old + 1) % modulo);
+    pgraph_surface_write_locked(pg, surface);
+
+    uint32_t new = GET_MASK(surface, NV_PGRAPH_SURFACE_WRITE_3D);
+
+    qemu_mutex_unlock(&pg->surface_lock);
 
     trace_nv2a_pgraph_flip_increment_write(old, new);
     pg->frame_time++;
