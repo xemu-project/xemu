@@ -479,8 +479,207 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
     }
 }
 
+typedef struct XemuInputHostPollEntry {
+    ControllerState *state;
+    SDL_Gamepad *sdl_gamepad;
+    SDL_JoystickID sdl_joystick_id;
+
+    SDL_GamepadButton button_mapping[15];
+    SDL_GamepadAxis axis_mapping[CONTROLLER_AXIS__COUNT];
+    bool invert_axis[CONTROLLER_AXIS__COUNT];
+
+    uint16_t buttons;
+    int16_t axis[CONTROLLER_AXIS__COUNT];
+    int64_t sampled_ts;
+    bool sampled;
+} XemuInputHostPollEntry;
+
+struct XemuInputHostPollBatch {
+    size_t count;
+    XemuInputHostPollEntry entries[];
+};
+
+static void xemu_input_host_poll_copy_mapping(XemuInputHostPollEntry *entry,
+                                               ControllerState *state)
+{
+    entry->button_mapping[0] = state->controller_map->controller_mapping.a;
+    entry->button_mapping[1] = state->controller_map->controller_mapping.b;
+    entry->button_mapping[2] = state->controller_map->controller_mapping.x;
+    entry->button_mapping[3] = state->controller_map->controller_mapping.y;
+    entry->button_mapping[4] = state->controller_map->controller_mapping.dpad_left;
+    entry->button_mapping[5] = state->controller_map->controller_mapping.dpad_up;
+    entry->button_mapping[6] = state->controller_map->controller_mapping.dpad_right;
+    entry->button_mapping[7] = state->controller_map->controller_mapping.dpad_down;
+    entry->button_mapping[8] = state->controller_map->controller_mapping.back;
+    entry->button_mapping[9] = state->controller_map->controller_mapping.start;
+    entry->button_mapping[10] = state->controller_map->controller_mapping.lshoulder;
+    entry->button_mapping[11] = state->controller_map->controller_mapping.rshoulder;
+    entry->button_mapping[12] = state->controller_map->controller_mapping.lstick_btn;
+    entry->button_mapping[13] = state->controller_map->controller_mapping.rstick_btn;
+    entry->button_mapping[14] = state->controller_map->controller_mapping.guide;
+
+    entry->axis_mapping[CONTROLLER_AXIS_LTRIG] =
+        state->controller_map->controller_mapping.axis_trigger_left;
+    entry->axis_mapping[CONTROLLER_AXIS_RTRIG] =
+        state->controller_map->controller_mapping.axis_trigger_right;
+    entry->axis_mapping[CONTROLLER_AXIS_LSTICK_X] =
+        state->controller_map->controller_mapping.axis_left_x;
+    entry->axis_mapping[CONTROLLER_AXIS_LSTICK_Y] =
+        state->controller_map->controller_mapping.axis_left_y;
+    entry->axis_mapping[CONTROLLER_AXIS_RSTICK_X] =
+        state->controller_map->controller_mapping.axis_right_x;
+    entry->axis_mapping[CONTROLLER_AXIS_RSTICK_Y] =
+        state->controller_map->controller_mapping.axis_right_y;
+
+    entry->invert_axis[CONTROLLER_AXIS_LSTICK_X] =
+        state->controller_map->controller_mapping.invert_axis_left_x;
+    entry->invert_axis[CONTROLLER_AXIS_LSTICK_Y] =
+        !state->controller_map->controller_mapping.invert_axis_left_y;
+    entry->invert_axis[CONTROLLER_AXIS_RSTICK_X] =
+        state->controller_map->controller_mapping.invert_axis_right_x;
+    entry->invert_axis[CONTROLLER_AXIS_RSTICK_Y] =
+        !state->controller_map->controller_mapping.invert_axis_right_y;
+}
+
+XemuInputHostPollBatch *xemu_input_host_poll_prepare(void)
+{
+    const int64_t now = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+    size_t count = 0;
+    ControllerState *iter;
+
+    QTAILQ_FOREACH(iter, &available_controllers, entry) {
+        if (iter->type != INPUT_DEVICE_SDL_GAMEPAD ||
+            iter->sdl_gamepad == NULL || iter->controller_map == NULL) {
+            continue;
+        }
+        if (ABS(now - iter->last_input_updated_ts) <
+            XEMU_INPUT_MIN_INPUT_UPDATE_INTERVAL_US) {
+            continue;
+        }
+        count++;
+    }
+
+    XemuInputHostPollBatch *batch = g_malloc0(
+        sizeof(*batch) + count * sizeof(batch->entries[0]));
+    batch->count = count;
+
+    size_t index = 0;
+    QTAILQ_FOREACH(iter, &available_controllers, entry) {
+        if (iter->type != INPUT_DEVICE_SDL_GAMEPAD ||
+            iter->sdl_gamepad == NULL || iter->controller_map == NULL) {
+            continue;
+        }
+        if (ABS(now - iter->last_input_updated_ts) <
+            XEMU_INPUT_MIN_INPUT_UPDATE_INTERVAL_US) {
+            continue;
+        }
+
+        XemuInputHostPollEntry *entry = &batch->entries[index++];
+        entry->state = iter;
+        entry->sdl_gamepad = iter->sdl_gamepad;
+        entry->sdl_joystick_id = iter->sdl_joystick_id;
+        xemu_input_host_poll_copy_mapping(entry, iter);
+    }
+    assert(index == count);
+    return batch;
+}
+
+void xemu_input_host_poll_sample(XemuInputHostPollBatch *batch)
+{
+    if (batch == NULL) {
+        return;
+    }
+
+    for (size_t i = 0; i < batch->count; i++) {
+        XemuInputHostPollEntry *entry = &batch->entries[i];
+        uint16_t buttons = 0;
+        int16_t axis[CONTROLLER_AXIS__COUNT] = { 0 };
+
+        /* Potentially blocking SDL getters run only while the BQL is free. */
+        for (int button = 0; button < 15; button++) {
+            if (SDL_GetGamepadButton(entry->sdl_gamepad,
+                                     entry->button_mapping[button])) {
+                buttons |= (uint16_t)(1u << button);
+            }
+        }
+        for (int axis_index = 0; axis_index < CONTROLLER_AXIS__COUNT;
+             axis_index++) {
+            axis[axis_index] = SDL_GetGamepadAxis(
+                entry->sdl_gamepad, entry->axis_mapping[axis_index]);
+        }
+
+        for (int axis_index = CONTROLLER_AXIS_LSTICK_X;
+             axis_index <= CONTROLLER_AXIS_RSTICK_Y; axis_index++) {
+            if (entry->invert_axis[axis_index]) {
+                axis[axis_index] = -1 - axis[axis_index];
+            }
+        }
+
+        entry->buttons = buttons;
+        memcpy(entry->axis, axis, sizeof(entry->axis));
+        entry->sampled_ts = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+        entry->sampled = true;
+    }
+}
+
+static ControllerState *xemu_input_host_poll_find_live_state(
+    const XemuInputHostPollEntry *entry)
+{
+    ControllerState *iter;
+    QTAILQ_FOREACH(iter, &available_controllers, entry) {
+        if (iter != entry->state) {
+            continue;
+        }
+        if (iter->type != INPUT_DEVICE_SDL_GAMEPAD ||
+            iter->sdl_gamepad != entry->sdl_gamepad ||
+            iter->sdl_joystick_id != entry->sdl_joystick_id) {
+            return NULL;
+        }
+        return iter;
+    }
+    return NULL;
+}
+
+void xemu_input_host_poll_commit(XemuInputHostPollBatch *batch)
+{
+    if (batch == NULL) {
+        return;
+    }
+
+    for (size_t i = 0; i < batch->count; i++) {
+        XemuInputHostPollEntry *entry = &batch->entries[i];
+        if (!entry->sampled) {
+            continue;
+        }
+
+        ControllerState *state = xemu_input_host_poll_find_live_state(entry);
+        if (state == NULL) {
+            continue;
+        }
+
+        state->buttons = entry->buttons;
+        memcpy(state->axis, entry->axis, sizeof(state->axis));
+        state->last_input_updated_ts = entry->sampled_ts;
+    }
+}
+
+void xemu_input_host_poll_free(XemuInputHostPollBatch *batch)
+{
+    g_free(batch);
+}
+
 void xemu_input_update_controller(ControllerState *state)
 {
+    if (state->type == INPUT_DEVICE_SDL_GAMEPAD) {
+        /*
+         * SDL gamepads are sampled by xemu_input_host_poll_sample() with the
+         * BQL released and committed by xemu_input_host_poll_commit(). Keep
+         * this path cache-only so callers cannot synchronously poll SDL while
+         * holding the BQL.
+         */
+        return;
+    }
+
     int64_t now = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
     if (ABS(now - state->last_input_updated_ts) <
         XEMU_INPUT_MIN_INPUT_UPDATE_INTERVAL_US) {
@@ -489,8 +688,6 @@ void xemu_input_update_controller(ControllerState *state)
 
     if (state->type == INPUT_DEVICE_SDL_KEYBOARD) {
         xemu_input_update_sdl_kbd_controller_state(state);
-    } else if (state->type == INPUT_DEVICE_SDL_GAMEPAD) {
-        xemu_input_update_sdl_controller_state(state);
     }
 
     state->last_input_updated_ts = qemu_clock_get_us(QEMU_CLOCK_REALTIME);

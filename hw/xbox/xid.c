@@ -61,7 +61,12 @@ void update_input(USBXIDGamepadState *s)
 
     ControllerState *state = xemu_input_get_bound(s->device_index);
     assert(state);
-    xemu_input_update_controller(state);
+
+    /*
+     * Host SDL gamepad state is sampled by the UI thread with the BQL
+     * released and committed to ControllerState before XID consumes it.
+     * Do not synchronously poll SDL from this guest USB/OHCI transaction.
+     */
 
     const int button_map_analog[6][2] = {
         { GAMEPAD_A,     CONTROLLER_BUTTON_A     },

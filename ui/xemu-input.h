@@ -126,6 +126,19 @@ extern int *g_keyboard_scancode_map[25];
 
 void xemu_input_init(void);
 void xemu_input_process_sdl_events(const SDL_Event *event); // SDL_EVENT_GAMEPAD_ADDED, SDL_EVENT_GAMEPAD_REMOVED
+
+typedef struct XemuInputHostPollBatch XemuInputHostPollBatch;
+
+/*
+ * SDL gamepad sampling is split from cache commit so potentially blocking
+ * SDL_GetGamepadButton/Axis calls run on the UI thread with the BQL released.
+ * prepare/commit must run while the main-loop/BQL lock is held.
+ */
+XemuInputHostPollBatch *xemu_input_host_poll_prepare(void);
+void xemu_input_host_poll_sample(XemuInputHostPollBatch *batch);
+void xemu_input_host_poll_commit(XemuInputHostPollBatch *batch);
+void xemu_input_host_poll_free(XemuInputHostPollBatch *batch);
+
 void xemu_input_update_controllers(void);
 void xemu_input_update_controller(ControllerState *state);
 void xemu_input_update_sdl_kbd_controller_state(ControllerState *state);
