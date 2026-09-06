@@ -1400,6 +1400,34 @@ static bool check_textures_dirty(PGRAPHState *pg)
     return false;
 }
 
+static bool check_bound_texture_memory_dirty(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        if (!pgraph_is_texture_enabled(pg, i)) {
+            continue;
+        }
+
+        TextureBinding *binding = r->texture_bindings[i];
+        if (!binding || binding == &r->dummy_texture) {
+            continue;
+        }
+
+        if (binding->possibly_dirty ||
+            check_texture_possibly_dirty(
+                d, binding->key.texture_vram_offset,
+                binding->key.texture_length,
+                binding->key.palette_vram_offset,
+                binding->key.palette_length)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static void update_timestamps(PGRAPHVkState *r)
 {
     for (int i = 0; i < ARRAY_SIZE(r->texture_bindings); i++) {
@@ -1416,12 +1444,12 @@ void pgraph_vk_bind_textures(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    // FIXME: Check for modifications on bind fastpath (CPU hook)
     // FIXME: Mark textures that are sourced from surfaces so we can track them
 
     r->texture_bindings_changed = false;
 
-    if (!check_textures_dirty(pg)) {
+    if (!check_textures_dirty(pg) &&
+        !check_bound_texture_memory_dirty(d)) {
         NV2A_VK_DPRINTF("Not dirty");
         NV2A_VK_DGROUP_END();
         update_timestamps(r);
