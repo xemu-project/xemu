@@ -19,6 +19,41 @@
 
 #include "renderer.h"
 
+/*
+ * Sustained mixed inline-vertex tests found 8 MiB to be the smallest initial
+ * pair with lower final allocation and no measurable loss versus 4, 16, or
+ * 32 MiB. Later growth uses the exact required size; Vulkan does not require
+ * whole-MiB buffer sizes.
+ */
+static const size_t BUFFER_VERTEX_INLINE_INITIAL_SIZE = 8 * MiB;
+
+static bool buffer_is_persistently_mapped(int index)
+{
+    switch (index) {
+    case BUFFER_VERTEX_RAM:
+    case BUFFER_INDEX_STAGING:
+    case BUFFER_VERTEX_INLINE_STAGING:
+    case BUFFER_UNIFORM_STAGING:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static int paired_buffer_index(int index)
+{
+    switch (index) {
+    case BUFFER_INDEX_STAGING:
+        return BUFFER_INDEX;
+    case BUFFER_VERTEX_INLINE_STAGING:
+        return BUFFER_VERTEX_INLINE;
+    case BUFFER_UNIFORM_STAGING:
+        return BUFFER_UNIFORM;
+    default:
+        return -1;
+    }
+}
+
 static void create_buffer(PGRAPHState *pg, StorageBuffer *buffer)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -41,6 +76,62 @@ static void destroy_buffer(PGRAPHState *pg, StorageBuffer *buffer)
     vmaDestroyBuffer(r->allocator, buffer->buffer, buffer->allocation);
     buffer->buffer = VK_NULL_HANDLE;
     buffer->allocation = VK_NULL_HANDLE;
+}
+
+static void resize_buffer(PGRAPHState *pg, int index, size_t size)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    StorageBuffer *buffer = &r->storage_buffers[index];
+
+    assert(!r->in_command_buffer);
+    assert(!r->in_aux_command_buffer);
+
+    if (buffer->mapped) {
+        vmaUnmapMemory(r->allocator, buffer->allocation);
+        buffer->mapped = NULL;
+    }
+
+    destroy_buffer(pg, buffer);
+    buffer->buffer_offset = 0;
+    buffer->buffer_size = size;
+    create_buffer(pg, buffer);
+
+    if (buffer_is_persistently_mapped(index)) {
+        VK_CHECK(vmaMapMemory(r->allocator, buffer->allocation,
+                              (void **)&buffer->mapped));
+    }
+}
+
+void pgraph_vk_ensure_buffer_pair_capacity(PGRAPHState *pg, int index,
+                                           size_t required_size)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    int paired_index = paired_buffer_index(index);
+
+    assert(required_size);
+    assert(paired_index >= 0);
+    assert(!r->in_command_buffer);
+    assert(!r->in_aux_command_buffer);
+
+    StorageBuffer *buffer = &r->storage_buffers[index];
+    StorageBuffer *paired = &r->storage_buffers[paired_index];
+    if (buffer->buffer != VK_NULL_HANDLE &&
+        paired->buffer != VK_NULL_HANDLE &&
+        buffer->buffer_size >= required_size &&
+        paired->buffer_size >= required_size) {
+        return;
+    }
+
+    size_t new_size = MAX(buffer->buffer_size, paired->buffer_size);
+    new_size = MAX(new_size, BUFFER_VERTEX_INLINE_INITIAL_SIZE);
+    new_size = MAX(new_size, required_size);
+
+    if (buffer->buffer == VK_NULL_HANDLE || buffer->buffer_size < new_size) {
+        resize_buffer(pg, index, new_size);
+    }
+    if (paired->buffer == VK_NULL_HANDLE || paired->buffer_size < new_size) {
+        resize_buffer(pg, paired_index, new_size);
+    }
 }
 
 void pgraph_vk_init_buffers(NV2AState *d)
@@ -114,8 +205,7 @@ void pgraph_vk_init_buffers(NV2AState *d)
         .alloc_info = device_alloc_create_info,
         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        .buffer_size = NV2A_VERTEXSHADER_ATTRIBUTES * NV2A_MAX_BATCH_LENGTH *
-                       4 * sizeof(float) * 10,
+        .buffer_size = BUFFER_VERTEX_INLINE_INITIAL_SIZE,
     };
 
     r->storage_buffers[BUFFER_VERTEX_INLINE_STAGING] = (StorageBuffer){
@@ -171,13 +261,29 @@ void pgraph_vk_finalize_buffers(NV2AState *d)
     r->uploaded_bitmap = NULL;
 }
 
+VkDeviceSize pgraph_vk_buffer_required_size(PGRAPHState *pg, int index,
+                                            VkDeviceSize size,
+                                            VkDeviceAddress alignment)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    StorageBuffer *b = &r->storage_buffers[index];
+    VkDeviceSize aligned_offset;
+
+    assert(alignment);
+    aligned_offset = ROUND_UP(b->buffer_offset, alignment);
+    assert(aligned_offset >= b->buffer_offset);
+    assert(size <= UINT64_MAX - aligned_offset);
+    return aligned_offset + size;
+}
+
 bool pgraph_vk_buffer_has_space_for(PGRAPHState *pg, int index,
                                     VkDeviceSize size,
                                     VkDeviceAddress alignment)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     StorageBuffer *b = &r->storage_buffers[index];
-    return (ROUND_UP(b->buffer_offset, alignment) + size) <= b->buffer_size;
+    return pgraph_vk_buffer_required_size(pg, index, size, alignment) <=
+           b->buffer_size;
 }
 
 VkDeviceSize pgraph_vk_append_to_buffer(PGRAPHState *pg, int index, void **data,

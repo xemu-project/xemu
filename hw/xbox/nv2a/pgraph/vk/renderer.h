@@ -474,6 +474,11 @@ void pgraph_vk_finalize_buffers(NV2AState *d);
 bool pgraph_vk_buffer_has_space_for(PGRAPHState *pg, int index,
                                     VkDeviceSize size,
                                     VkDeviceAddress alignment);
+VkDeviceSize pgraph_vk_buffer_required_size(PGRAPHState *pg, int index,
+                                            VkDeviceSize size,
+                                            VkDeviceAddress alignment);
+void pgraph_vk_ensure_buffer_pair_capacity(PGRAPHState *pg, int index,
+                                           size_t required_size);
 VkDeviceSize pgraph_vk_append_to_buffer(PGRAPHState *pg, int index, void **data,
                                         VkDeviceSize *sizes, size_t count,
                                         VkDeviceAddress alignment);
