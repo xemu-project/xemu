@@ -169,10 +169,18 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
     bool compute_needs_finish = (use_compute_to_convert_depth_stencil_format &&
                                  pgraph_vk_compute_needs_finish(r));
 
-    if (r->in_command_buffer &&
-        surface->draw_time >= r->command_buffer_start_time) {
+    bool legacy_finish_required =
+        r->in_command_buffer &&
+        surface->draw_time >= r->command_buffer_start_time;
+    bool fold_into_active_command_buffer =
+        r->in_command_buffer &&
+        surface->draw_time > r->command_buffer_start_time && surface->color &&
+        !use_compute_to_convert_depth_stencil_format;
+
+    if (legacy_finish_required &&
+        !fold_into_active_command_buffer) {
         pgraph_vk_finish(pg, VK_FINISH_REASON_SURFACE_DOWN);
-    } else if (compute_needs_finish) {
+    } else if (!fold_into_active_command_buffer && compute_needs_finish) {
         pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);
     }
 
@@ -199,7 +207,11 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                  scaled_height = surface->height;
     pgraph_apply_scaling_factor(pg, &scaled_width, &scaled_height);
 
-    VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
+    VkCommandBuffer cmd = fold_into_active_command_buffer ?
+                              pgraph_vk_begin_nondraw_commands(pg) :
+                              pgraph_vk_begin_single_time_commands(pg);
+    assert(!fold_into_active_command_buffer ||
+           (r->in_command_buffer && cmd == r->command_buffer));
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_RED, __func__);
 
     pgraph_vk_transition_image_layout(
@@ -444,7 +456,14 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
 
     nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_1);
     pgraph_vk_end_debug_marker(r, cmd);
-    pgraph_vk_end_single_time_commands(pg, cmd);
+    if (fold_into_active_command_buffer) {
+        pgraph_vk_end_nondraw_commands(pg, cmd);
+        assert(r->in_command_buffer);
+        pgraph_vk_finish(pg, VK_FINISH_REASON_SURFACE_DOWN);
+    } else {
+        assert(cmd == r->aux_command_buffer);
+        pgraph_vk_end_single_time_commands(pg, cmd);
+    }
 
     void *mapped_memory_ptr = NULL;
     VK_CHECK(vmaMapMemory(r->allocator,
