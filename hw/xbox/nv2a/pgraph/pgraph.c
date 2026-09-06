@@ -24,6 +24,7 @@
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "ui/xemu-notifications.h"
 #include "ui/xemu-settings.h"
+#include "inline-elements.h"
 #include "util.h"
 #include "swizzle.h"
 #include "nv2a_vsh_emulator.h"
@@ -514,13 +515,33 @@ static const struct {
 #undef DEF_METHOD_CASE_4_OFFSET
 #undef DEF_METHOD_CASE_4
 
+static bool pgraph_method_trace_enabled(void)
+{
+    return trace_event_get_state_backends(TRACE_NV2A_PGRAPH_METHOD) ||
+           trace_event_get_state_backends(TRACE_NV2A_PGRAPH_METHOD_ABBREV);
+}
+
 static void pgraph_method_log(unsigned int subchannel,
                               unsigned int graphics_class,
                               unsigned int method, uint32_t parameter)
 {
-    const char *method_name = "?";
     static unsigned int last = 0;
     static unsigned int count = 0;
+    static bool tracing = false;
+
+    bool enabled = pgraph_method_trace_enabled();
+    if (!enabled) {
+        tracing = false;
+        return;
+    }
+
+    if (!tracing) {
+        last = 0;
+        count = 0;
+        tracing = true;
+    }
+
+    const char *method_name = "?";
 
     if (last == NV097_ARRAY_ELEMENT16 && method != last) {
         method_name = "NV097_ARRAY_ELEMENT16";
@@ -577,9 +598,39 @@ static void pgraph_method_inc(MethodFunc handler, uint32_t end,
     *num_words_consumed = count;
 }
 
+static void pgraph_expand_draw_arrays(NV2AState *d);
+static bool pgraph_method_array_bulk(NV2AState *d, PGRAPHState *pg,
+                                     unsigned int method,
+                                     uint32_t *parameters,
+                                     size_t num_words_available);
+
 static void pgraph_method_non_inc(MethodFunc handler, METHOD_HANDLER_ARG_DECL)
 {
-    if (inc) {
+    bool array_packet = method == NV097_ARRAY_ELEMENT16 ||
+                        method == NV097_ARRAY_ELEMENT32 ||
+                        method == NV097_INLINE_ARRAY;
+
+    if (array_packet) {
+        PGRAPHInlinePacketMode mode = pgraph_inline_packet_mode(
+            inc, pgraph_method_trace_enabled());
+
+        switch (mode) {
+        case PGRAPH_INLINE_PACKET_SCALAR_INCREMENTING:
+            handler(METHOD_HANDLER_ARGS);
+            return;
+        case PGRAPH_INLINE_PACKET_SCALAR_TRACE:
+            break;
+        case PGRAPH_INLINE_PACKET_BULK:
+            if (pgraph_method_array_bulk(d, pg, method, parameters,
+                                         num_words_available)) {
+                *num_words_consumed = num_words_available;
+                return;
+            }
+            break;
+        default:
+            g_assert_not_reached();
+        }
+    } else if (inc) {
         handler(METHOD_HANDLER_ARGS);
         return;
     }
@@ -2676,6 +2727,56 @@ static void pgraph_expand_draw_arrays(NV2AState *d)
     pgraph_reset_draw_arrays(pg);
 }
 
+static bool pgraph_method_array_bulk(NV2AState *d, PGRAPHState *pg,
+                                     unsigned int method,
+                                     uint32_t *parameters,
+                                     size_t num_words_available)
+{
+    size_t values_per_word = method == NV097_ARRAY_ELEMENT16 ? 2 : 1;
+    unsigned int *length;
+    uint32_t *destination;
+
+    pgraph_check_within_begin_end_block(pg);
+
+    if (method == NV097_INLINE_ARRAY) {
+        length = &pg->inline_array_length;
+        destination = pg->inline_array;
+    } else if (method == NV097_ARRAY_ELEMENT16 ||
+               method == NV097_ARRAY_ELEMENT32) {
+        if (pg->draw_arrays_length) {
+            pgraph_expand_draw_arrays(d);
+        }
+        length = &pg->inline_elements_length;
+        destination = pg->inline_elements;
+    } else {
+        return false;
+    }
+
+    /*
+     * Preflight the whole packet before mutating the destination. In
+     * particular, ARRAY_ELEMENT16 writes two values for every input word.
+     */
+    assert(pgraph_inline_packet_fits(*length, num_words_available,
+                                     values_per_word,
+                                     NV2A_MAX_BATCH_LENGTH));
+
+    size_t output_length = *length;
+    if (method == NV097_ARRAY_ELEMENT16) {
+        for (size_t i = 0; i < num_words_available; i++) {
+            uint32_t value = ldl_le_p(parameters + i);
+            pgraph_inline_element16_store(destination + output_length, value);
+            output_length += 2;
+        }
+    } else {
+        for (size_t i = 0; i < num_words_available; i++) {
+            destination[output_length++] = ldl_le_p(parameters + i);
+        }
+    }
+
+    *length = output_length;
+    return true;
+}
+
 void pgraph_check_within_begin_end_block(PGRAPHState *pg)
 {
     if (pg->primitive_mode == PRIM_TYPE_INVALID) {
@@ -2691,9 +2792,11 @@ DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT16)
         pgraph_expand_draw_arrays(d);
     }
 
-    assert(pg->inline_elements_length < NV2A_MAX_BATCH_LENGTH);
-    pg->inline_elements[pg->inline_elements_length++] = parameter & 0xFFFF;
-    pg->inline_elements[pg->inline_elements_length++] = parameter >> 16;
+    assert(pgraph_inline_packet_fits(pg->inline_elements_length, 1, 2,
+                                     NV2A_MAX_BATCH_LENGTH));
+    pgraph_inline_element16_store(
+        pg->inline_elements + pg->inline_elements_length, parameter);
+    pg->inline_elements_length += 2;
 }
 
 DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT32)
