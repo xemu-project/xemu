@@ -90,6 +90,7 @@ static void pgraph_vk_flush(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
 
     pgraph_vk_finish(pg, VK_FINISH_REASON_FLUSH);
+    pgraph_vk_invalidate_blend_constants(pg);
     pgraph_vk_surface_flush(d);
     pgraph_vk_mark_textures_possibly_dirty(d, 0, memory_region_size(d->vram));
     pgraph_vk_update_vertex_ram_buffer(&d->pgraph, 0, d->vram_ptr,

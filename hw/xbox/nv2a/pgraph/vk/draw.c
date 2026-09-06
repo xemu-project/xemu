@@ -623,20 +623,51 @@ static bool check_render_pass_dirty(PGRAPHState *pg)
                   sizeof(state)) != 0;
 }
 
+static uint32_t blend_factor_constant_component_mask(VkBlendFactor factor)
+{
+    if (factor == VK_BLEND_FACTOR_CONSTANT_COLOR ||
+        factor == VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR) {
+        return UINT32_MAX;
+    }
+    if (factor == VK_BLEND_FACTOR_CONSTANT_ALPHA ||
+        factor == VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA) {
+        return 0xff000000;
+    }
+    return 0;
+}
+
+static uint32_t pipeline_dynamic_blend_constant_mask(PGRAPHState *pg)
+{
+    uint32_t blend = pgraph_reg_r(pg, NV_PGRAPH_BLEND);
+    if (!(blend & NV_PGRAPH_BLEND_EN)) {
+        return 0;
+    }
+
+    uint32_t sfactor = GET_MASK(blend, NV_PGRAPH_BLEND_SFACTOR);
+    uint32_t dfactor = GET_MASK(blend, NV_PGRAPH_BLEND_DFACTOR);
+    assert(sfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
+    assert(dfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
+    return blend_factor_constant_component_mask(
+               pgraph_blend_factor_vk_map[sfactor]) |
+           blend_factor_constant_component_mask(
+               pgraph_blend_factor_vk_map[dfactor]);
+}
+
 // Quickly check for any state changes that would require more analysis
 static bool check_pipeline_dirty(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    if (!r->pipeline_binding || r->shader_bindings_changed ||
+    if (!r->pipeline_binding || r->pipeline_binding->key.clear ||
+        r->shader_bindings_changed ||
         r->texture_bindings_changed || check_render_pass_dirty(pg)) {
         return true;
     }
 
     const unsigned int regs[] = {
-        NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,  NV_PGRAPH_CONTROL_0,
-        NV_PGRAPH_CONTROL_1,   NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
-        NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
+        NV_PGRAPH_BLEND,       NV_PGRAPH_CONTROL_0,   NV_PGRAPH_CONTROL_1,
+        NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,   NV_PGRAPH_SETUPRASTER,
+        NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
     };
 
     for (int i = 0; i < ARRAY_SIZE(regs); i++) {
@@ -679,9 +710,9 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
     // FIXME: Register masking
     // FIXME: Use more dynamic state updates
     const int regs[] = {
-        NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,  NV_PGRAPH_CONTROL_0,
-        NV_PGRAPH_CONTROL_1,   NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
-        NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
+        NV_PGRAPH_BLEND,       NV_PGRAPH_CONTROL_0,   NV_PGRAPH_CONTROL_1,
+        NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,   NV_PGRAPH_SETUPRASTER,
+        NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
     };
     assert(ARRAY_SIZE(regs) == ARRAY_SIZE(key->regs));
     for (int i = 0; i < ARRAY_SIZE(regs); i++) {
@@ -878,7 +909,7 @@ static void create_pipeline(PGRAPHState *pg)
         .colorWriteMask = write_mask,
     };
 
-    float blend_constant[4] = { 0, 0, 0, 0 };
+    uint32_t dynamic_blend_constant_mask = 0;
 
     if (pgraph_reg_r(pg, NV_PGRAPH_BLEND) & NV_PGRAPH_BLEND_EN) {
         color_blend_attachment.blendEnable = VK_TRUE;
@@ -907,8 +938,10 @@ static void create_pipeline(PGRAPHState *pg)
         color_blend_attachment.alphaBlendOp =
             pgraph_blend_equation_vk_map[equation];
 
-        uint32_t blend_color = pgraph_reg_r(pg, NV_PGRAPH_BLENDCOLOR);
-        pgraph_argb_pack32_to_rgba_float(blend_color, blend_constant);
+        if (r->color_binding) {
+            dynamic_blend_constant_mask =
+                pipeline_dynamic_blend_constant_mask(pg);
+        }
     }
 
     VkPipelineColorBlendStateCreateInfo color_blending = {
@@ -917,15 +950,14 @@ static void create_pipeline(PGRAPHState *pg)
         .logicOp = VK_LOGIC_OP_COPY,
         .attachmentCount = r->color_binding ? 1 : 0,
         .pAttachments = r->color_binding ? &color_blend_attachment : NULL,
-        .blendConstants[0] = blend_constant[0],
-        .blendConstants[1] = blend_constant[1],
-        .blendConstants[2] = blend_constant[2],
-        .blendConstants[3] = blend_constant[3],
     };
 
-    VkDynamicState dynamic_states[3] = { VK_DYNAMIC_STATE_VIEWPORT,
+    VkDynamicState dynamic_states[4] = { VK_DYNAMIC_STATE_VIEWPORT,
                                          VK_DYNAMIC_STATE_SCISSOR };
     int num_dynamic_states = 2;
+    if (dynamic_blend_constant_mask != 0) {
+        dynamic_states[num_dynamic_states++] = VK_DYNAMIC_STATE_BLEND_CONSTANTS;
+    }
 
     snode->has_dynamic_line_width =
         (r->enabled_physical_device_features.wideLines == VK_TRUE) &&
@@ -1012,6 +1044,7 @@ static void create_pipeline(PGRAPHState *pg)
     snode->layout = layout;
     snode->render_pass = pipeline_create_info.renderPass;
     snode->draw_time = pg->draw_time;
+    snode->dynamic_blend_constant_mask = dynamic_blend_constant_mask;
 
     r->pipeline_binding = snode;
     r->pipeline_binding_changed = true;
@@ -1306,6 +1339,7 @@ void pgraph_vk_begin_command_buffer(PGRAPHState *pg)
     };
     VK_CHECK(vkBeginCommandBuffer(r->command_buffer,
                                   &command_buffer_begin_info));
+    pgraph_vk_invalidate_blend_constants(pg);
     r->command_buffer_start_time = pg->draw_time;
     r->in_command_buffer = true;
 }
@@ -1403,6 +1437,33 @@ static float clamp_line_width_to_device_limits(PGRAPHState *pg, float width)
     return fminf(fmaxf(min_width, width), max_width);
 }
 
+void pgraph_vk_invalidate_blend_constants(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    pgraph_vk_blend_constants_cache_invalidate(&r->blend_constants);
+}
+
+static void update_blend_constants(PGRAPHState *pg,
+                                   uint32_t relevant_component_mask)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    uint32_t guest_color = pgraph_reg_r(pg, NV_PGRAPH_BLENDCOLOR);
+
+    if (!pgraph_vk_blend_constants_cache_update(
+            &r->blend_constants, guest_color, relevant_component_mask)) {
+        return;
+    }
+
+    if (pgraph_vk_blend_constants_cache_needs_pack(&r->blend_constants,
+                                                   guest_color)) {
+        pgraph_argb_pack32_to_rgba_float(
+            guest_color, r->blend_constants.packed_color);
+    }
+    vkCmdSetBlendConstants(r->command_buffer,
+                           r->blend_constants.packed_color);
+}
+
 static void begin_draw(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -1439,6 +1500,9 @@ static void begin_draw(PGRAPHState *pg)
         nv2a_profile_inc_counter(NV2A_PROF_PIPELINE_BIND);
         vkCmdBindPipeline(r->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           r->pipeline_binding->pipeline);
+        pgraph_vk_blend_constants_cache_pipeline_bound(
+            &r->blend_constants,
+            r->pipeline_binding->dynamic_blend_constant_mask != 0);
         r->pipeline_binding->draw_time = pg->draw_time;
 
         unsigned int vp_width = pg->surface_binding_dim.width,
@@ -1483,6 +1547,16 @@ static void begin_draw(PGRAPHState *pg)
     }
 
     if (!pg->clearing) {
+        /*
+         * Blend color is dynamic and may change without a pipeline bind.
+         * The cache is scoped to this command buffer and invalidated by the
+         * partial-clear path when it overwrites the Vulkan dynamic state.
+         */
+        if (r->pipeline_binding->dynamic_blend_constant_mask != 0) {
+            update_blend_constants(
+                pg, r->pipeline_binding->dynamic_blend_constant_mask);
+        }
+
         bind_descriptor_sets(pg);
         push_vertex_attr_values(pg);
     }
@@ -1730,6 +1804,7 @@ void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter)
             pgraph_get_clear_color(pg, blend_constants);
             vkCmdSetScissor(r->command_buffer, 0, 1, &clear_rect.rect);
             vkCmdSetBlendConstants(r->command_buffer, blend_constants);
+            pgraph_vk_invalidate_blend_constants(pg);
             vkCmdDraw(r->command_buffer, 3, 1, 0, 0);
         }
     }
