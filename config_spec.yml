@@ -55,6 +55,44 @@ input:
   auto_bind:
     type: bool
     default: true
+  # Keep mouse clicks away from UI shortcuts while using a mouse/lightgun
+  disable_dblclick_fullscreen:
+    type: bool
+    default: false
+  disable_rclick_menu:
+    type: bool
+    default: false
+  # Lightgun aim feel: smoothing tames hand/camera jitter (0 = raw),
+  # sensitivity scales aim range around the screen center (1.0 = 1:1)
+  lightgun_smoothing:
+    type: number
+    default: 0.2
+  lightgun_sensitivity:
+    type: number
+    default: 1.0
+  # Optional custom bindings for lightgun ports. Empty = default mouse
+  # mapping (LEFT=trigger/A, RIGHT=B, MIDDLE=Start, X1=Back, X2=X).
+  # Formats: "mouse:<hash>:<left|right|middle|x1|x2>",
+  # "mouse:<hash>:k<input-event code>" (raw device key, e.g. Linux guns)
+  # or "key:<SDL key name>"
+  lightgun_mapping:
+    trigger: string
+    b: string
+    x: string
+    start: string
+    back: string
+    dpad_up: string
+    dpad_down: string
+    dpad_left: string
+    dpad_right: string
+    y: string
+    white: string
+    black: string
+    lstick: string
+    rstick: string
+    ltrig: string
+    rtrig: string
+    guide: string
   # Deprecated: use 'enable_rumble' on the controller mapping settings instead
   allow_vibration:
     type: bool
