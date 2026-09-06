@@ -435,6 +435,19 @@ static int nv2a_pre_load(void *opaque)
 static int nv2a_post_load(void *opaque, int version_id)
 {
     NV2AState *d = opaque;
+
+    /*
+     * Host renderer allocations are not part of VMState. Ensure that the
+     * restored guest constants are copied to the active Vulkan allocation.
+     */
+    pgraph_uniform_dirty_rows_invalidate(
+        d->pgraph.vsh_constants_dirty, NV2A_VERTEXSHADER_CONSTANTS);
+    pgraph_uniform_dirty_rows_invalidate(d->pgraph.ltctxa_dirty,
+                                         NV2A_LTCTXA_COUNT);
+    pgraph_uniform_dirty_rows_invalidate(d->pgraph.ltctxb_dirty,
+                                         NV2A_LTCTXB_COUNT);
+    pgraph_uniform_dirty_rows_invalidate(d->pgraph.ltc1_dirty,
+                                         NV2A_LTC1_COUNT);
     qatomic_set(&d->pgraph.flush_pending, true);
     nv2a_unlock_fifo(d);
     return 0;

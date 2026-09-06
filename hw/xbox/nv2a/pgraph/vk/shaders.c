@@ -425,19 +425,55 @@ static ShaderBinding *get_shader_binding_for_state(PGRAPHVkState *r,
     return binding;
 }
 
-static void apply_uniform_updates(ShaderUniformLayout *layout,
+static bool apply_uniform_updates(ShaderUniformLayout *layout,
                                   const UniformInfo *info, int *locs,
                                   void *values, size_t count)
 {
+    bool changed = false;
+
     for (int i = 0; i < count; i++) {
         if (locs[i] != -1) {
-            uniform_copy(layout, locs[i], (char*)values + info[i].val_offs,
-                         4, (info[i].size * info[i].count) / 4);
+            changed |= uniform_copy(layout, locs[i],
+                                    (char *)values + info[i].val_offs, 4,
+                                    (info[i].size * info[i].count) / 4);
         }
     }
+
+    return changed;
 }
 
-// FIXME: Dirty tracking
+static bool update_uniform_rows(ShaderUniformLayout *layout, int loc,
+                                uint32_t values[][4], bool dirty[],
+                                unsigned int row_count, bool full_update)
+{
+    /*
+     * Every source-array writer marks its row dirty. A binding change still
+     * needs a full copy because the selected layout may hold another binding's
+     * previous values.
+     */
+    if (loc == -1) {
+        memset(dirty, 0, row_count * sizeof(*dirty));
+        return false;
+    }
+
+    if (full_update) {
+        bool changed = uniform_copy(layout, loc, values, sizeof(uint32_t),
+                                    row_count * 4);
+        memset(dirty, 0, row_count * sizeof(*dirty));
+        return changed;
+    }
+
+    bool changed = false;
+    for (unsigned int row = 0; row < row_count; row++) {
+        if (dirty[row]) {
+            changed |= uniform_copy_array_element(
+                layout, loc, row, values[row], sizeof(uint32_t));
+            dirty[row] = false;
+        }
+    }
+    return changed;
+}
+
 static void update_shader_uniforms(PGRAPHState *pg)
 {
     NV2A_VK_DGROUP_BEGIN("%s", __func__);
@@ -447,15 +483,36 @@ static void update_shader_uniforms(PGRAPHState *pg)
 
     assert(r->shader_binding);
     ShaderBinding *binding = r->shader_binding;
-    ShaderUniformLayout *layouts[] = { &binding->vsh.module_info->uniforms,
-                                       &binding->psh.module_info->uniforms };
-
     VshUniformValues vsh_values;
+    VshUniformLocs vsh_uniform_locs;
+    memcpy(vsh_uniform_locs, binding->vsh.uniform_locs,
+           sizeof(vsh_uniform_locs));
+    vsh_uniform_locs[VshUniform_c] = -1;
+    vsh_uniform_locs[VshUniform_ltctxa] = -1;
+    vsh_uniform_locs[VshUniform_ltctxb] = -1;
+    vsh_uniform_locs[VshUniform_ltc1] = -1;
     pgraph_glsl_set_vsh_uniform_values(pg, &binding->state.vsh,
-                                  binding->vsh.uniform_locs, &vsh_values);
-    apply_uniform_updates(&binding->vsh.module_info->uniforms, VshUniformInfo,
-                          binding->vsh.uniform_locs, &vsh_values,
-                          VshUniform__COUNT);
+                                       vsh_uniform_locs, &vsh_values);
+    bool changed = apply_uniform_updates(&binding->vsh.module_info->uniforms,
+                                         VshUniformInfo, vsh_uniform_locs,
+                                         &vsh_values, VshUniform__COUNT);
+    ShaderUniformLayout *vsh_layout = &binding->vsh.module_info->uniforms;
+
+    /* Every writer marks its row dirty. A binding change still needs a full
+     * copy because the shared layout may hold another binding's values. */
+    changed |= update_uniform_rows(
+        vsh_layout, binding->vsh.uniform_locs[VshUniform_c],
+        pg->vsh_constants, pg->vsh_constants_dirty,
+        NV2A_VERTEXSHADER_CONSTANTS, r->shader_bindings_changed);
+    changed |= update_uniform_rows(
+        vsh_layout, binding->vsh.uniform_locs[VshUniform_ltctxa], pg->ltctxa,
+        pg->ltctxa_dirty, NV2A_LTCTXA_COUNT, r->shader_bindings_changed);
+    changed |= update_uniform_rows(
+        vsh_layout, binding->vsh.uniform_locs[VshUniform_ltctxb], pg->ltctxb,
+        pg->ltctxb_dirty, NV2A_LTCTXB_COUNT, r->shader_bindings_changed);
+    changed |= update_uniform_rows(
+        vsh_layout, binding->vsh.uniform_locs[VshUniform_ltc1], pg->ltc1,
+        pg->ltc1_dirty, NV2A_LTC1_COUNT, r->shader_bindings_changed);
 
     PshUniformValues psh_values;
     pgraph_glsl_set_psh_uniform_values(pg, binding->psh.uniform_locs,
@@ -474,16 +531,12 @@ static void update_shader_uniforms(PGRAPHState *pg)
 
         psh_values.texScale[i] = scale;
     }
-    apply_uniform_updates(&binding->psh.module_info->uniforms, PshUniformInfo,
-                          binding->psh.uniform_locs, &psh_values,
-                          PshUniform__COUNT);
+    changed |= apply_uniform_updates(&binding->psh.module_info->uniforms,
+                                     PshUniformInfo,
+                                     binding->psh.uniform_locs, &psh_values,
+                                     PshUniform__COUNT);
 
-    for (int i = 0; i < ARRAY_SIZE(layouts); i++) {
-        uint64_t hash =
-            fast_hash(layouts[i]->allocation, layouts[i]->total_size);
-        r->uniforms_changed |= (hash != r->uniform_buffer_hashes[i]);
-        r->uniform_buffer_hashes[i] = hash;
-    }
+    r->uniforms_changed |= changed || r->shader_bindings_changed;
 
     nv2a_profile_inc_counter(r->uniforms_changed ?
                                  NV2A_PROF_SHADER_UBO_DIRTY :
