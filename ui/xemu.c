@@ -940,8 +940,18 @@ static void poll_events(struct xemu_console *scon)
     }
 
     xemu_main_loop_lock();
+    XemuInputHostPollBatch *host_input_batch =
+        xemu_input_host_poll_prepare();
+    xemu_main_loop_unlock();
+
+    xemu_input_host_poll_sample(host_input_batch);
+
+    xemu_main_loop_lock();
+    xemu_input_host_poll_commit(host_input_batch);
     xemu_input_update_controllers();
     xemu_main_loop_unlock();
+
+    xemu_input_host_poll_free(host_input_batch);
 }
 
 static void display_very_early_init(DisplayOptions *o)
