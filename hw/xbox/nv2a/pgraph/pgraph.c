@@ -2753,11 +2753,28 @@ DEF_METHOD(NV097, DRAW_ARRAYS)
     pg->draw_arrays_prevent_connect = false;
 }
 
-DEF_METHOD_NON_INC(NV097, INLINE_ARRAY)
+/* Defined without the NON_INC wrapper on purpose: bulk vertex data would
+ * otherwise pay a dispatch-loop iteration per word. Consume the whole run
+ * at once instead. */
+DEF_METHOD(NV097, INLINE_ARRAY)
 {
     pgraph_check_within_begin_end_block(pg);
     assert(pg->inline_array_length < NV2A_MAX_BATCH_LENGTH);
-    pg->inline_array[pg->inline_array_length++] = parameter;
+
+    if (inc) {
+        pg->inline_array[pg->inline_array_length++] = parameter;
+        return;
+    }
+
+    size_t count = MIN(num_words_available,
+                       (size_t)NV2A_MAX_BATCH_LENGTH -
+                           (size_t)pg->inline_array_length);
+    for (size_t i = 0; i < count; i++) {
+        pg->inline_array[pg->inline_array_length + i] =
+            ldl_le_p(parameters + i);
+    }
+    pg->inline_array_length += count;
+    *num_words_consumed = count;
 }
 
 DEF_METHOD_INC(NV097, SET_EYE_VECTOR)
