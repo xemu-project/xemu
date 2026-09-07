@@ -114,15 +114,20 @@ static inline bool is_alarm_reached(uint64_t reg_now, uint64_t alarm_time)
     return !ptimer_alarm_distance(reg_now, alarm_time);
 }
 
-static inline uint64_t advance_alarm_epoch(uint64_t reg_time)
+static inline uint64_t get_next_alarm_time(uint64_t reg_now, uint64_t alarm_val)
 {
-    return (reg_time + (1ULL << 32)) & PTIMER_REG_TIME_MASK;
+    uint32_t now_low = PTIMER_REG_TIME_GET_TIME_0(reg_now);
+    uint32_t val_low = alarm_val & ALARM_MASK;
+    uint64_t target = (reg_now & ~PTIMER_REG_TIME_LOW_MASK) | val_low;
+    if (val_low <= (now_low & ALARM_MASK)) {
+        target += 1ULL << 32;
+    }
+    return target & PTIMER_REG_TIME_MASK;
 }
 
 static void schedule_qemu_timer(NV2AState *d)
 {
-    if (!(d->ptimer.enabled_interrupts & NV_PTIMER_INTR_0_ALARM) ||
-        !d->ptimer.alarm_time) {
+    if (!(d->ptimer.enabled_interrupts & NV_PTIMER_INTR_0_ALARM)) {
         timer_del(&d->ptimer.timer);
         return;
     }
@@ -133,7 +138,8 @@ static void schedule_qemu_timer(NV2AState *d)
 
     if (!diff_reg_time) {
         d->ptimer.pending_interrupts |= NV_PTIMER_INTR_0_ALARM;
-        d->ptimer.alarm_time = advance_alarm_epoch(d->ptimer.alarm_time);
+        d->ptimer.alarm_time =
+            get_next_alarm_time(reg_now, d->ptimer.alarm_time);
         nv2a_update_irq(d);
         diff_reg_time = ptimer_alarm_distance(reg_now, d->ptimer.alarm_time);
     }
@@ -153,7 +159,8 @@ static void ptimer_alarm_fired(void *opaque)
 
     if (is_alarm_reached(reg_now, d->ptimer.alarm_time)) {
         d->ptimer.pending_interrupts |= NV_PTIMER_INTR_0_ALARM;
-        d->ptimer.alarm_time = advance_alarm_epoch(d->ptimer.alarm_time);
+        d->ptimer.alarm_time =
+            get_next_alarm_time(reg_now, d->ptimer.alarm_time);
         nv2a_update_irq(d);
     }
 
@@ -166,19 +173,17 @@ uint64_t ptimer_read(void *opaque, hwaddr addr, unsigned int size)
 
     uint64_t r = 0;
     switch (addr) {
-    case NV_PTIMER_INTR_0:
-        if (d->ptimer.alarm_time) {
-            uint64_t reg_now = get_reg_time(d);
-            if (is_alarm_reached(reg_now, d->ptimer.alarm_time)) {
-                d->ptimer.pending_interrupts |= NV_PTIMER_INTR_0_ALARM;
-                d->ptimer.alarm_time =
-                    advance_alarm_epoch(d->ptimer.alarm_time);
-                nv2a_update_irq(d);
-                schedule_qemu_timer(d);
-            }
+    case NV_PTIMER_INTR_0: {
+        uint64_t reg_now = get_reg_time(d);
+        if (is_alarm_reached(reg_now, d->ptimer.alarm_time)) {
+            d->ptimer.pending_interrupts |= NV_PTIMER_INTR_0_ALARM;
+            d->ptimer.alarm_time =
+                get_next_alarm_time(reg_now, d->ptimer.alarm_time);
+            nv2a_update_irq(d);
+            schedule_qemu_timer(d);
         }
         r = d->ptimer.pending_interrupts;
-        break;
+    } break;
     case NV_PTIMER_INTR_EN_0:
         r = d->ptimer.enabled_interrupts;
         break;
@@ -220,15 +225,15 @@ void ptimer_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         break;
     case NV_PTIMER_INTR_EN_0:
         d->ptimer.enabled_interrupts = val;
-        if ((val & NV_PTIMER_INTR_0_ALARM) && d->ptimer.alarm_time) {
+        if (val & NV_PTIMER_INTR_0_ALARM) {
             uint64_t reg_now = get_reg_time(d);
             if (is_alarm_reached(reg_now, d->ptimer.alarm_time)) {
                 d->ptimer.pending_interrupts |= NV_PTIMER_INTR_0_ALARM;
                 d->ptimer.alarm_time =
-                    advance_alarm_epoch(d->ptimer.alarm_time);
+                    get_next_alarm_time(reg_now, d->ptimer.alarm_time);
             }
             schedule_qemu_timer(d);
-        } else if (!(val & NV_PTIMER_INTR_0_ALARM)) {
+        } else {
             timer_del(&d->ptimer.timer);
         }
         nv2a_update_irq(d);
@@ -247,13 +252,7 @@ void ptimer_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         break;
     case NV_PTIMER_ALARM_0: {
         uint64_t reg_now = get_reg_time(d);
-        uint32_t now_low = PTIMER_REG_TIME_GET_TIME_0(reg_now);
-        uint32_t val_low = val & ALARM_MASK;
-        uint64_t target = (reg_now & ~PTIMER_REG_TIME_LOW_MASK) | val_low;
-        if (val_low <= (now_low & ALARM_MASK)) {
-            target = advance_alarm_epoch(target);
-        }
-        d->ptimer.alarm_time = target & PTIMER_REG_TIME_MASK;
+        d->ptimer.alarm_time = get_next_alarm_time(reg_now, val);
         schedule_qemu_timer(d);
     } break;
     case NV_PTIMER_TIME_0: {
