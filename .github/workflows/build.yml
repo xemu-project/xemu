@@ -76,3 +76,8 @@ jobs:
     uses: ./.github/workflows/build-windows.yml
     with:
       pkg_version: ${{ needs.source.outputs.pkg_version }}
+
+  test:
+    name: Unit tests
+    needs: source
+    uses: ./.github/workflows/build-tests.yml
