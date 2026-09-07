@@ -59,7 +59,7 @@ void AutoUpdateWindow::Draw()
 {
     if (!is_open) return;
     ImGui::SetNextWindowContentSize(ImVec2(550.0f*g_viewport_mgr.m_scale, 0.0f));
-    if (!ImGui::Begin("Update", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (!ImGui::Begin(_("Update"), &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         return;
     }
@@ -90,8 +90,8 @@ void AutoUpdateWindow::Draw()
     if (updater.is_update_available()) {
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
-        ImGui::Text("Current version: %s", xemu_version);
-        ImGui::Text("Latest version: %s", updater.get_release_version().c_str());
+        ImGui::Text(_("Current version: %s"), xemu_version);
+        ImGui::Text(_("Latest version: %s"), updater.get_release_version().c_str());
 
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y));
 
@@ -115,20 +115,20 @@ void AutoUpdateWindow::Draw()
     ImGui::SetCursorPosX(ImGui::GetWindowWidth()-bw);
 
     if (updater.is_checking_for_update() || updater.is_updating()) {
-        if (ImGui::Button("Cancel", ImVec2(w, 0))) {
+        if (ImGui::Button(_("Cancel"), ImVec2(w, 0))) {
             updater.cancel();
         }
     } else {
         if (updater.is_pending_restart()) {
-            if (ImGui::Button("Restart", ImVec2(w, 0))) {
+            if (ImGui::Button(_("Restart"), ImVec2(w, 0))) {
                 updater.restart_to_updated();
             }
         } else if (updater.is_update_available()) {
-            if (ImGui::Button("Update", ImVec2(w, 0))) {
+            if (ImGui::Button(_("Update"), ImVec2(w, 0))) {
                 updater.update();
             }
         } else {
-            if (ImGui::Button("Check for Update", ImVec2(w, 0))) {
+            if (ImGui::Button(_("Check for Update"), ImVec2(w, 0))) {
                 updater.check_for_update();
             }
         }
