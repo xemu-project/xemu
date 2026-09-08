@@ -126,8 +126,8 @@ static void test_alarm_sweep_non_unit_ratio(void)
 
 /*
  * Set an alarm and advance time until it is reached, then trigger a timer
- * reschedule via a NUMERATOR write. Verify that the rescheduled timer delta is
- * strictly greater than zero, the pending interrupt is set, and IRQ is raised.
+ * reschedule via a NUMERATOR write. Verify that the alarm fires immediately,
+ * IRQ is raised, and the timer is rescheduled for the next 2^32-tick epoch.
  */
 static void test_nonzero_delta_reschedule_numerator(void)
 {
@@ -145,7 +145,7 @@ static void test_nonzero_delta_reschedule_numerator(void)
 
     int64_t reschedule_delta = last_timer_mod_expire - mock_virtual_time_ns;
     g_assert_true(mock_timer_active);
-    g_assert_cmpint(reschedule_delta, >, 0);
+    g_assert_cmpint(reschedule_delta, ==, 575218741);
     g_assert_cmphex(state.ptimer.pending_interrupts & NV_PTIMER_INTR_0_ALARM,
                     ==, NV_PTIMER_INTR_0_ALARM);
     g_assert_true(mock_irq_raised);
@@ -153,9 +153,8 @@ static void test_nonzero_delta_reschedule_numerator(void)
 
 /*
  * Set an alarm and advance time until it is reached, then trigger a timer
- * reschedule via a DENOMINATOR write. Verify that the rescheduled timer delta
- * is strictly greater than zero, the pending interrupt is set, and IRQ is
- * raised.
+ * reschedule via a DENOMINATOR write. Verify that the alarm fires immediately,
+ * IRQ is raised, and the timer is rescheduled for the next 2^32-tick epoch.
  */
 static void test_nonzero_delta_reschedule_denominator(void)
 {
@@ -173,7 +172,7 @@ static void test_nonzero_delta_reschedule_denominator(void)
 
     int64_t reschedule_delta = last_timer_mod_expire - mock_virtual_time_ns;
     g_assert_true(mock_timer_active);
-    g_assert_cmpint(reschedule_delta, >, 0);
+    g_assert_cmpint(reschedule_delta, ==, 75218739);
     g_assert_cmphex(state.ptimer.pending_interrupts & NV_PTIMER_INTR_0_ALARM,
                     ==, NV_PTIMER_INTR_0_ALARM);
     g_assert_true(mock_irq_raised);
@@ -181,8 +180,8 @@ static void test_nonzero_delta_reschedule_denominator(void)
 
 /*
  * Set an alarm and advance time until it is reached, then trigger a timer
- * reschedule via a TIME_0 write. Verify that the rescheduled timer delta is
- * strictly greater than zero, the pending interrupt is set, and IRQ is raised.
+ * reschedule via a TIME_0 write. Verify that the alarm fires immediately,
+ * IRQ is raised, and the timer is rescheduled for the next 2^32-tick epoch.
  */
 static void test_nonzero_delta_reschedule_time_0(void)
 {
@@ -201,7 +200,35 @@ static void test_nonzero_delta_reschedule_time_0(void)
 
     int64_t reschedule_delta = last_timer_mod_expire - mock_virtual_time_ns;
     g_assert_true(mock_timer_active);
-    g_assert_cmpint(reschedule_delta, >, 0);
+    g_assert_cmpint(reschedule_delta, ==, 575218741);
+    g_assert_cmphex(state.ptimer.pending_interrupts & NV_PTIMER_INTR_0_ALARM,
+                    ==, NV_PTIMER_INTR_0_ALARM);
+    g_assert_true(mock_irq_raised);
+}
+
+/*
+ * Set an alarm and advance time until it is reached, then trigger a timer
+ * reschedule via a TIME_1 write. Verify that the alarm fires immediately,
+ * IRQ is raised, and the timer is rescheduled for the next 2^32-tick epoch.
+ */
+static void test_nonzero_delta_reschedule_time_1(void)
+{
+    NV2AState state;
+    setup_ptimer_state(&state);
+
+    uint32_t t0 = (uint32_t)ptimer_read(&state, NV_PTIMER_TIME_0, 4);
+    uint32_t target_alarm = (t0 + (1 << 5)) & 0xffffffe0;
+    PTIMER_WRITE(NV_PTIMER_ALARM_0, target_alarm);
+
+    PTIMER_ENABLE_INTERRUPT_EXPECT_CLEARED();
+
+    mock_virtual_time_ns += 100;
+    uint32_t current_time1 = (uint32_t)ptimer_read(&state, NV_PTIMER_TIME_1, 4);
+    PTIMER_WRITE(NV_PTIMER_TIME_1, current_time1);
+
+    int64_t reschedule_delta = last_timer_mod_expire - mock_virtual_time_ns;
+    g_assert_true(mock_timer_active);
+    g_assert_cmpint(reschedule_delta, ==, 575218741);
     g_assert_cmphex(state.ptimer.pending_interrupts & NV_PTIMER_INTR_0_ALARM,
                     ==, NV_PTIMER_INTR_0_ALARM);
     g_assert_true(mock_irq_raised);
@@ -258,6 +285,77 @@ static void test_interrupt_clear_alarm(void)
     PTIMER_CLEAR_INTERRUPT();
     g_assert_cmphex(state.ptimer.pending_interrupts & NV_PTIMER_INTR_0_ALARM,
                     ==, 0);
+    g_assert_false(mock_irq_raised);
+}
+
+/*
+ * Verify that writing NV_PTIMER_NUMERATOR while the timer is inactive does not
+ * activate or schedule the timer.
+ */
+static void test_inactive_timer_write_numerator(void)
+{
+    NV2AState state;
+    setup_ptimer_state(&state);
+
+    PTIMER_WRITE(NV_PTIMER_INTR_EN_0, 0);
+    g_assert_false(mock_timer_active);
+
+    PTIMER_WRITE(NV_PTIMER_NUMERATOR, 2);
+    g_assert_false(mock_timer_active);
+    g_assert_false(mock_irq_raised);
+}
+
+/*
+ * Verify that writing NV_PTIMER_DENOMINATOR while the timer is inactive does
+ * not activate or schedule the timer.
+ */
+static void test_inactive_timer_write_denominator(void)
+{
+    NV2AState state;
+    setup_ptimer_state(&state);
+
+    PTIMER_WRITE(NV_PTIMER_INTR_EN_0, 0);
+    g_assert_false(mock_timer_active);
+
+    PTIMER_WRITE(NV_PTIMER_DENOMINATOR, 2);
+    g_assert_false(mock_timer_active);
+    g_assert_false(mock_irq_raised);
+}
+
+/*
+ * Verify that writing NV_PTIMER_TIME_0 while the timer is inactive does not
+ * activate or schedule the timer.
+ */
+static void test_inactive_timer_write_time_0(void)
+{
+    NV2AState state;
+    setup_ptimer_state(&state);
+
+    PTIMER_WRITE(NV_PTIMER_INTR_EN_0, 0);
+    g_assert_false(mock_timer_active);
+
+    uint32_t t0 = (uint32_t)ptimer_read(&state, NV_PTIMER_TIME_0, 4);
+    PTIMER_WRITE(NV_PTIMER_TIME_0, t0 + 100);
+    g_assert_false(mock_timer_active);
+    g_assert_false(mock_irq_raised);
+}
+
+/*
+ * Verify that writing NV_PTIMER_TIME_1 while the timer is inactive does not
+ * activate or schedule the timer.
+ */
+static void test_inactive_timer_write_time_1(void)
+{
+    NV2AState state;
+    setup_ptimer_state(&state);
+
+    PTIMER_WRITE(NV_PTIMER_INTR_EN_0, 0);
+    g_assert_false(mock_timer_active);
+
+    uint32_t t1 = (uint32_t)ptimer_read(&state, NV_PTIMER_TIME_1, 4);
+    PTIMER_WRITE(NV_PTIMER_TIME_1, t1 + 1);
+    g_assert_false(mock_timer_active);
+    g_assert_false(mock_irq_raised);
 }
 
 
@@ -460,6 +558,16 @@ int main(int argc, char **argv)
                     test_nonzero_delta_reschedule_denominator);
     g_test_add_func("/xbox/nv2a/ptimer/nonzero_delta_reschedule_time_0",
                     test_nonzero_delta_reschedule_time_0);
+    g_test_add_func("/xbox/nv2a/ptimer/nonzero_delta_reschedule_time_1",
+                    test_nonzero_delta_reschedule_time_1);
+    g_test_add_func("/xbox/nv2a/ptimer/inactive_timer_write_numerator",
+                    test_inactive_timer_write_numerator);
+    g_test_add_func("/xbox/nv2a/ptimer/inactive_timer_write_denominator",
+                    test_inactive_timer_write_denominator);
+    g_test_add_func("/xbox/nv2a/ptimer/inactive_timer_write_time_0",
+                    test_inactive_timer_write_time_0);
+    g_test_add_func("/xbox/nv2a/ptimer/inactive_timer_write_time_1",
+                    test_inactive_timer_write_time_1);
     g_test_add_func("/xbox/nv2a/ptimer/interrupt_write_zero_does_not_clear",
                     test_interrupt_write_zero_does_not_clear);
     g_test_add_func("/xbox/nv2a/ptimer/interrupt_clear_alarm",
