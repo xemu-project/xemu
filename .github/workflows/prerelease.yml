@@ -18,3 +18,12 @@ jobs:
       ref: ${{ github.sha }}
       tag: pre-release
       pre-release: true
+
+  update_pgraph_results:
+    name: Update PGRAPH test results
+    if: github.repository_owner == 'xemu-project'
+    needs: release
+    uses: ./.github/workflows/update-pgraph-results.yml
+    with:
+      tag: pre-release
+    secrets: inherit

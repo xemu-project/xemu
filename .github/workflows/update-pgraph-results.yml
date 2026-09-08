@@ -1,0 +1,65 @@
+name: Update PGRAPH test Results
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag"
+        required: true
+        type: string
+      pgraph_tag:
+        description: "nxdk_pgraph_tests release tag"
+        required: false
+        type: string
+        default: "latest"
+      branch_name:
+        description: "Target branch name for results"
+        required: false
+        type: string
+        default: ""
+      repo:
+        description: "Target repository"
+        required: false
+        type: string
+        default: ""
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to test (e.g. pre-release, v0.8.35, or latest)"
+        required: true
+        type: string
+        default: "pre-release"
+      pgraph_tag:
+        description: "nxdk_pgraph_tests release tag to test against (default: latest)"
+        required: false
+        type: string
+        default: "latest"
+      branch_name:
+        description: "Target branch name for results (defaults to results/xemu-<tag>)"
+        required: false
+        type: string
+        default: ""
+      repo:
+        description: "Target repository (defaults to PGRAPH_RESULTS_REPO or xemu-project/xemu-nxdk_pgraph_tests_results)"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  trigger_results:
+    name: Trigger PGRAPH release tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger PGRAPH Release Tests
+        uses: benc-uk/workflow-dispatch@31e2b3319479a63f0ab15bf800eff9e913504e26 # v1.3.2
+        with:
+          workflow: run_xemu_release_tests.yml
+          repo: ${{ inputs.repo || vars.PGRAPH_RESULTS_REPO || 'xemu-project/xemu-nxdk_pgraph_tests_results' }}
+          token: ${{ secrets.PGRAPH_RESULTS_TOKEN || secrets.XEMU_ROBOT_TOKEN || secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          ref: main
+          inputs: |
+            {
+              "xemu_tag": "${{ inputs.tag }}",
+              "pgraph_tag": "${{ inputs.pgraph_tag || 'latest' }}",
+              "branch_name": "${{ inputs.branch_name || '' }}"
+            }
