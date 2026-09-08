@@ -130,6 +130,25 @@ static const glslang_resource_t
                             .general_constant_matrix_vector_indexing = 1,
                         } };
 
+static glslang_target_client_version_t g_client_version =
+    GLSLANG_TARGET_VULKAN_1_1;
+static glslang_target_language_version_t g_target_spv =
+    GLSLANG_TARGET_SPV_1_3;
+
+void pgraph_vk_set_glsl_target(uint32_t device_api_version)
+{
+    if (device_api_version >= VK_API_VERSION_1_3) {
+        g_client_version = GLSLANG_TARGET_VULKAN_1_3;
+        g_target_spv = GLSLANG_TARGET_SPV_1_6;
+    } else if (device_api_version >= VK_API_VERSION_1_2) {
+        g_client_version = GLSLANG_TARGET_VULKAN_1_2;
+        g_target_spv = GLSLANG_TARGET_SPV_1_5;
+    } else {
+        g_client_version = GLSLANG_TARGET_VULKAN_1_1;
+        g_target_spv = GLSLANG_TARGET_SPV_1_3;
+    }
+}
+
 void pgraph_vk_init_glsl_compiler(void)
 {
     glslang_initialize_process();
@@ -147,9 +166,9 @@ GByteArray *pgraph_vk_compile_glsl_to_spv(glslang_stage_t stage,
         .language = GLSLANG_SOURCE_GLSL,
         .stage = stage,
         .client = GLSLANG_CLIENT_VULKAN,
-        .client_version = GLSLANG_TARGET_VULKAN_1_3,
+        .client_version = g_client_version,
         .target_language = GLSLANG_TARGET_SPV,
-        .target_language_version = GLSLANG_TARGET_SPV_1_6,
+        .target_language_version = g_target_spv,
         .code = glsl_source,
         .default_version = 460,
         .default_profile = GLSLANG_NO_PROFILE,
