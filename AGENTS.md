@@ -10,7 +10,7 @@ All contributions must strictly comply with the guidelines defined in [CONTRIBUT
 
 ---
 
-## 2. Mandatory Agent Declarations & Watermarks
+## 2. Mandatory Agent Declarations
 
 When submitting code or opening a pull request generated with or assisted by an agent:
 
@@ -47,6 +47,5 @@ Before finalizing any commit or pull request, ensure:
 - [ ] Commit message uses `<subsystem>: <short description>` followed by a detailed explanatory body.
 - [ ] `clang-format` is applied to new files, and existing code style is respected.
 - [ ] No unrelated formatting or refactoring changes are included.
-- [ ] The watermark comment with `porperly` is present in at least one modified or added file.
 - [ ] The pull request description includes the agent/model declaration.
 - [ ] Existing open pull requests have been searched to avoid duplicating work.
