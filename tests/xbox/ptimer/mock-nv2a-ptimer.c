@@ -8,14 +8,14 @@
 int64_t mock_virtual_time_ns = 1000000000LL;
 int64_t last_timer_mod_expire = -1;
 bool mock_timer_active = false;
-int irq_update_count = 0;
+bool mock_irq_raised = false;
 
 void mock_ptimer_reset(void)
 {
     mock_virtual_time_ns = 1000000000LL;
     last_timer_mod_expire = -1;
     mock_timer_active = false;
-    irq_update_count = 0;
+    mock_irq_raised = false;
 }
 
 int64_t qemu_clock_get_ns(QEMUClockType type)
@@ -23,9 +23,8 @@ int64_t qemu_clock_get_ns(QEMUClockType type)
     return mock_virtual_time_ns;
 }
 
-void timer_init_full(QEMUTimer *ts,
-                     QEMUTimerListGroup *timer_list_group, QEMUClockType type,
-                     int scale, int attributes,
+void timer_init_full(QEMUTimer *ts, QEMUTimerListGroup *timer_list_group,
+                     QEMUClockType type, int scale, int attributes,
                      QEMUTimerCB *cb, void *opaque)
 {
     ts->cb = cb;
@@ -54,7 +53,9 @@ bool timer_pending(const QEMUTimer *ts)
 
 void nv2a_update_irq(NV2AState *d)
 {
-    irq_update_count++;
+    g_assert_nonnull(d);
+    mock_irq_raised =
+        (d->ptimer.pending_interrupts & d->ptimer.enabled_interrupts) != 0;
 }
 
-const NV2ABlockInfo blocktable[NV_NUM_BLOCKS] = {0};
+const NV2ABlockInfo blocktable[NV_NUM_BLOCKS] = { 0 };

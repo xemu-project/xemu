@@ -11,7 +11,7 @@
 extern int64_t mock_virtual_time_ns;
 extern int64_t last_timer_mod_expire;
 extern bool mock_timer_active;
-extern int irq_update_count;
+extern bool mock_irq_raised;
 
 void mock_ptimer_reset(void);
 
