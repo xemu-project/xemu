@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/nlohmann/json
-revision = 359f98d14065bf4e53eeb274f5987fd08f16e5bf
+revision = 55f93686c01528224f448c19128836e7df245f72
 depth = 1
 
 [provide]
