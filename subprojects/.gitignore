@@ -38,6 +38,6 @@ implot
 genconfig
 curl-*
 json-*
-SDL3-*
+sdl3
 /dsp56300/*
 !/dsp56300/meson.build
