@@ -480,6 +480,8 @@ extern bool tcg_use_softmmu;
 #endif
 
 extern __thread TCGContext *tcg_ctx;
+
+extern bool tcg_qemu_tso_lowering;
 extern const void *tcg_code_gen_epilogue;
 extern uintptr_t tcg_splitwx_diff;
 extern TCGv_env tcg_env;
