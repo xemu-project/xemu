@@ -40,7 +40,7 @@ jobs:
               subprojects/glslang.wrap \
               subprojects/imgui.wrap \
               subprojects/implot.wrap \
-              subprojects/json.wrap \
+              subprojects/nlohmann_json.wrap \
               subprojects/nv2a_vsh_cpu.wrap \
               subprojects/sdl3.wrap \
               subprojects/SPIRV-Reflect.wrap \
