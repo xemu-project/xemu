@@ -84,6 +84,32 @@ static void jit_write_peripheral(void *opaque, uint32_t address, uint32_t value)
     write_peripheral((DSPState *)opaque, address, value);
 }
 
+void dsp_jit_get_stats(DSPState *dsp, uint64_t *compiles, uint64_t *compile_ns,
+                       uint64_t *compile_ns_worst,
+                       uint64_t *invalidations, uint64_t *cache_hits,
+                       uint64_t *retained, uint64_t *block_entries,
+                       uint64_t *code_bytes)
+{
+    Dsp56300JitStats st;
+    dsp56300_get_jit_stats(jit_be(dsp)->jit, &st);
+    *compiles = st.compiles;
+    *compile_ns = st.compile_ns;
+    *compile_ns_worst = st.compile_ns_worst;
+    *invalidations = st.invalidations;
+    *cache_hits = st.cache_hits;
+    *retained = st.retained;
+    *block_entries = st.block_entries;
+    *code_bytes = st.code_bytes;
+}
+
+/* Per-start-PC block-entry histogram from the library's JIT profiler. The
+ * first call is what enables profiling, so a caller wanting a steady-state
+ * window issues one early and throws the file away. */
+void dsp_jit_dump_block_profile(DSPState *dsp, const char *path)
+{
+    dsp56300_dump_profile(jit_be(dsp)->jit, path);
+}
+
 /* EP on-chip Y data ROM (Y:$0800-$0FFF). Read-only: writes are ignored, as on
  * hardware. Only mapped for the EP core (the GP has no such ROM). */
 static uint32_t jit_read_yrom(void *opaque, uint32_t address)
@@ -139,6 +165,25 @@ static void dsp_jit_bootstrap(DSPState *dsp)
         }
     }
     dsp56300_invalidate_cache(be->jit);
+}
+
+static void dsp_jit_get_registers(DSPState *dsp, uint32_t out[64])
+{
+    Dsp56300State ss;
+
+    dsp56300_get_state(jit_be(dsp)->jit, &ss);
+    memcpy(out, ss.registers, 64 * sizeof(uint32_t));
+}
+
+static void dsp_jit_get_pc_sp(DSPState *dsp, uint32_t *pc, uint32_t *sp,
+                              uint32_t ssh[16])
+{
+    Dsp56300State ss;
+
+    dsp56300_get_state(jit_be(dsp)->jit, &ss);
+    *pc = ss.pc;
+    *sp = ss.registers[DSP56300_REG_SP];
+    memcpy(ssh, ss.stack[0], 16 * sizeof(uint32_t));
 }
 
 static uint32_t dsp_jit_read_memory(DSPState *dsp, char space, uint32_t addr)
@@ -423,6 +468,8 @@ const DSPOps jit_dsp_ops = {
     .run = dsp_jit_run,
     .bootstrap = dsp_jit_bootstrap,
     .start_frame = dsp_start_frame_impl,
+    .get_registers = dsp_jit_get_registers,
+    .get_pc_sp = dsp_jit_get_pc_sp,
     .read_memory = dsp_jit_read_memory,
     .write_memory = dsp_jit_write_memory,
     .get_halt_requested = dsp_jit_get_halt_requested,

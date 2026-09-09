@@ -24,6 +24,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/atomic.h"
 #include "dsp_internal.h"
 #include "trace.h"
 
@@ -72,16 +73,30 @@ uint32_t read_peripheral(DSPState *dsp, uint32_t address)
     return v;
 }
 
+/* Incremented from whichever thread is running the core: two writers. */
+uint64_t g_dsp_gp_halts, g_dsp_ep_halts;
+
 void write_peripheral(DSPState *dsp, uint32_t address, uint32_t value)
 {
     switch (address) {
     case 0xFFFFC4:
         if (value & 1) {
+            /* Frame-complete: the program's own stop. Counted so
+             * the scheduler trace report can tell an idling core from one cut off
+             * at its cycle budget. */
+            if (dsp->is_gp) {
+                qatomic_add(&g_dsp_gp_halts, 1);
+            } else {
+                qatomic_add(&g_dsp_ep_halts, 1);
+            }
             dsp_set_halt_requested(dsp, true);
             dsp->halted_since_reset = true;
         }
         break;
     case 0xFFFFC5:
+        if (!dsp->is_gp && value == 0x80) {
+            mcpx_apu_ep_snapshot_on_eol_clear(dsp);
+        }
         dsp->interrupts &= ~value;
         if (value & INTERRUPT_START_FRAME) {
             /* The program consumed one start; one still owed stays visible
@@ -205,6 +220,17 @@ void dsp_start_frame(DSPState *dsp)
         g_gp_frame_count++;
     }
     dsp->ops->start_frame(dsp);
+}
+
+void dsp_get_registers(DSPState *dsp, uint32_t out[64])
+{
+    dsp->ops->get_registers(dsp, out);
+}
+
+void dsp_get_pc_sp(DSPState *dsp, uint32_t *pc, uint32_t *sp,
+                   uint32_t ssh[16])
+{
+    dsp->ops->get_pc_sp(dsp, pc, sp, ssh);
 }
 
 uint32_t dsp_read_memory(DSPState *dsp, char space, uint32_t address)

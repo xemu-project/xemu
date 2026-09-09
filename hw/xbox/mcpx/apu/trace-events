@@ -8,3 +8,9 @@ mcpx_apu_reg_write(uint32_t addr, unsigned int size, uint64_t val) "addr 0x%"PRI
 # dsp/gp_ep.c
 mcpx_apu_dsp_sge(uint64_t sge_base, const char *dir, uint32_t off, uint64_t len, uint32_t phys) "sge 0x%"PRIx64" %s off 0x%06"PRIx32" len 0x%"PRIx64" phys 0x%08"PRIx32
 mcpx_apu_dsp_fifo(const char *core, const char *dir, unsigned int index, uint32_t base, uint32_t end, uint32_t cur, uint64_t len) "%s %s #%u base 0x%06"PRIx32" end 0x%06"PRIx32" cur 0x%06"PRIx32" len 0x%"PRIx64
+mcpx_apu_dsp_sched(const char *report) "%s"
+mcpx_apu_dsp_sched_ep_worker(uint64_t wall_us, uint64_t cpu_us) "ep worker in dsp_run: wall %"PRIu64" us cpu %"PRIu64" us"
+mcpx_apu_dsp_sched_jit_burst(uint64_t worst_frame_us, uint64_t worst_frame_compiles, uint64_t compile_frames, uint64_t frames, uint64_t gp_worst_us, uint64_t ep_worst_us) "worst frame %"PRIu64" us (%"PRIu64" compiles), frames w/compiles %"PRIu64"/%"PRIu64", worst single compile ever gp=%"PRIu64" us ep=%"PRIu64" us"
+mcpx_apu_dsp_sched_ep_stall(uint64_t distinct, uint64_t samples, uint64_t dropped, const char *top) "EP unhalted at %"PRIu64" distinct PCs over %"PRIu64" samples (%"PRIu64" dropped); top:%s"
+mcpx_apu_dsp_block_profile(const char *path) "dumped to %s"
+mcpx_apu_ep_snapshot(const char *path, uint32_t div, uint32_t pc, uint32_t sp) "wrote %s at div=%"PRIu32" pc=0x%04"PRIx32" sp=%"PRIu32

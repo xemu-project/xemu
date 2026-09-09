@@ -142,10 +142,13 @@ typedef struct MCPXAPUState {
     } monitor;
 } MCPXAPUState;
 
+extern uint64_t g_apu_guest_locks;
+
 /* Take the APU lock from a guest-side accessor (MMIO, voice lock). Announce
  * the wait first: the frame thread polls this to decide when to let go. */
 static inline void mcpx_apu_guest_lock(MCPXAPUState *d)
 {
+    qatomic_inc(&g_apu_guest_locks);
     qatomic_inc(&d->lock_waiters);
     qemu_mutex_lock(&d->lock);
     qatomic_dec(&d->lock_waiters);
