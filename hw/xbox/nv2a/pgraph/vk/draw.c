@@ -1233,7 +1233,7 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
         sync_staging_buffer(pg, cmd, BUFFER_VERTEX_INLINE_STAGING,
                                 BUFFER_VERTEX_INLINE);
         sync_staging_buffer(pg, cmd, BUFFER_UNIFORM_STAGING, BUFFER_UNIFORM);
-        bitmap_clear(r->uploaded_bitmap, 0, r->bitmap_size);
+        bitmap_clear(r->referenced_bitmap, 0, r->bitmap_size);
         flush_memory_buffer(pg, cmd);
         VK_CHECK(vkEndCommandBuffer(r->aux_command_buffer));
         r->in_aux_command_buffer = false;
@@ -1632,6 +1632,11 @@ static void sync_vertex_ram_buffer(PGRAPHState *pg)
             pgraph_vk_update_vertex_ram_buffer(pg, addr, d->vram_ptr + addr,
                                                size);
         }
+    }
+
+    for (int i = 0; i < num_syncs; i++) {
+        bitmap_set(r->referenced_bitmap, merged[i].addr / TARGET_PAGE_SIZE,
+                   merged[i].size / TARGET_PAGE_SIZE);
     }
 
     r->num_vertex_ram_buffer_syncs = 0;
