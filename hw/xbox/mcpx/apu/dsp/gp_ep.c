@@ -867,6 +867,34 @@ void mcpx_apu_dsp_frame_gp(MCPXAPUState *d,
         }
     }
 
+    /* MCPX_APU_MIX_INJECT=1: overwrite the six mixbins with independent
+     * per-channel sinusoids before the GP consumes them, so the encoder's
+     * per-channel fidelity can be read from the decoded stream without the
+     * content's own inter-channel correlation confounding it. Bin b gets a
+     * distinct frequency at a fixed level; a bin the encoder handles well
+     * reconstructs its own tone, a mishandled one leaks or decorrelates.
+     * 2 = only bin 5, 3 = all bins with the tone order reversed. */
+    static int inject = -1;
+    if (inject < 0) {
+        const char *v = getenv("MCPX_APU_MIX_INJECT");
+        inject = v ? atoi(v) : 0;
+    }
+    if (inject) {
+        static uint64_t phase;
+        const double freq[NUM_MIXBINS] = { 300, 700, 1100, 1900, 3100, 5300 };
+        for (int mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
+            for (int sample = 0; sample < NUM_SAMPLES_PER_FRAME; sample++) {
+                double t = (double)(phase + sample) / 48000.0;
+                double f =
+                    freq[(inject == 3 && mixbin < 6) ? 5 - mixbin : mixbin];
+                float v = (inject == 2 && mixbin != 5) ? 0.0f :
+                    0.25f * sinf((float)(2.0 * M_PI * f * t));
+                mixbins[mixbin][sample] = v;
+            }
+        }
+        phase += NUM_SAMPLES_PER_FRAME;
+    }
+
     /* Write VP results to the GP DSP MIXBUF */
     for (int mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
         uint32_t base = GP_DSP_MIXBUF_BASE + mixbin * NUM_SAMPLES_PER_FRAME;
