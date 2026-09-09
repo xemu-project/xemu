@@ -85,7 +85,9 @@ Commit messages are an important part of the project history and documentation. 
 
 ## Code Style & Standards
 
-- **(Mostly) follow the QEMU guidelines**: Generally xemu code follows [QEMU style](docs/devel/style.rst). Notably, xemu does NOT require that variable declarations be at the top of the block. Allowing declarations at point of use makes it easier to understand types when dealing with longer functions.
+- **(Mostly) follow the QEMU guidelines**: Generally xemu code follows [QEMU style](docs/devel/style.rst) with the following notable exceptions.
+    - Variable declarations are NOT required to be at the top of the block. Allowing declarations at point of use makes it easier to understand types when dealing with longer functions.
+    - C++ style comments (`//`) are allowed where it aids readability (and conforms to the comment use convention below).
 - **Auto Format Newly Added Files**: The use of `clang-format` is **required** for all newly added files.
 - **Modifying Existing Files**: When modifying existing files, changes should match the local style of the file.
 - **No Unrelated Style Changes in Functional PRs**: Stylistic changes (reformatting, renaming, whitespace adjustments) that are unrelated to functionality changes **must be made in a separate PR**, unless discussed and agreed upon on the xemu Discord ahead of time. Mixing style changes with bug fixes or features complicates code reviews, obscures git history, and increases merge conflicts.
