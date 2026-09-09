@@ -1057,7 +1057,7 @@ static void bind_descriptor_sets(PGRAPHState *pg)
 static void begin_query(PGRAPHVkState *r)
 {
     assert(r->in_command_buffer);
-    assert(!r->in_render_pass);
+    assert(r->query_pool_reset || !r->in_render_pass);
     assert(!r->query_in_flight);
 
     // FIXME: We should handle this. Make the query buffer bigger, but at least
@@ -1065,8 +1065,10 @@ static void begin_query(PGRAPHVkState *r)
     assert(r->num_queries_in_flight < r->max_queries_in_flight);
 
     nv2a_profile_inc_counter(NV2A_PROF_QUERY);
-    vkCmdResetQueryPool(r->command_buffer, r->query_pool,
-                        r->num_queries_in_flight, 1);
+    if (!r->query_pool_reset) {
+        vkCmdResetQueryPool(r->command_buffer, r->query_pool,
+                            r->num_queries_in_flight, 1);
+    }
     vkCmdBeginQuery(r->command_buffer, r->query_pool, r->num_queries_in_flight,
                     VK_QUERY_CONTROL_PRECISE_BIT);
 
@@ -1078,7 +1080,7 @@ static void begin_query(PGRAPHVkState *r)
 static void end_query(PGRAPHVkState *r)
 {
     assert(r->in_command_buffer);
-    assert(!r->in_render_pass);
+    assert(r->query_pool_reset || !r->in_render_pass);
     assert(r->query_in_flight);
 
     vkCmdEndQuery(r->command_buffer, r->query_pool,
@@ -1193,6 +1195,9 @@ static void begin_render_pass(PGRAPHState *pg)
 static void end_render_pass(PGRAPHVkState *r)
 {
     if (r->in_render_pass) {
+        if (r->query_in_flight && r->query_pool_reset) {
+            end_query(r);
+        }
         vkCmdEndRenderPass(r->command_buffer);
         r->in_render_pass = false;
     }
@@ -1308,6 +1313,12 @@ void pgraph_vk_begin_command_buffer(PGRAPHState *pg)
                                   &command_buffer_begin_info));
     r->command_buffer_start_time = pg->draw_time;
     r->in_command_buffer = true;
+
+    r->query_pool_reset = r->num_queries_in_flight == 0;
+    if (r->query_pool_reset) {
+        vkCmdResetQueryPool(r->command_buffer, r->query_pool, 0,
+                            r->max_queries_in_flight);
+    }
 }
 
 // FIXME: Refactor below
@@ -1409,26 +1420,39 @@ static void begin_draw(PGRAPHState *pg)
 
     assert(r->in_command_buffer);
 
+    bool must_bind_pipeline = r->pipeline_binding_changed;
+    bool split_pass_for_query = !r->query_pool_reset;
+
+    if (!split_pass_for_query && !pg->clearing && pg->zpass_pixel_count_enable &&
+        !r->in_render_pass) {
+        begin_render_pass(pg);
+        must_bind_pipeline = true;
+    }
+
     // Visibility testing
     if (!pg->clearing && pg->zpass_pixel_count_enable) {
         if (r->new_query_needed && r->query_in_flight) {
-            end_render_pass(r);
+            if (split_pass_for_query) {
+                end_render_pass(r);
+            }
             end_query(r);
         }
         if (!r->query_in_flight) {
-            end_render_pass(r);
+            if (split_pass_for_query) {
+                end_render_pass(r);
+            }
             begin_query(r);
         }
     } else if (r->query_in_flight) {
-        end_render_pass(r);
+        if (split_pass_for_query) {
+            end_render_pass(r);
+        }
         end_query(r);
     }
 
     if (pg->clearing) {
         end_render_pass(r);
     }
-
-    bool must_bind_pipeline = r->pipeline_binding_changed;
 
     if (!r->in_render_pass) {
         begin_render_pass(pg);
