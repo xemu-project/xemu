@@ -93,7 +93,22 @@ static void dsp_jit_step(DSPState *dsp)
 
 static void dsp_jit_run(DSPState *dsp, int cycles)
 {
-    dsp56300_run(jit_be(dsp)->jit, cycles);
+    Dsp56300Jit *jit = jit_be(dsp)->jit;
+    dsp56300_run(jit, cycles);
+
+    /* WAIT/STOP park the core until an interrupt (power_state 1/2) without
+     * consuming cycles; nothing further can happen within this frame, so
+     * report the frame complete. The run loop only idles on the $FFFFC4
+     * flag; a program that parks with WAIT would otherwise spin the
+     * frame's halt-wait loop forever, wedging the APU thread while it
+     * holds the APU lock. */
+    if (!dsp56300_halt_requested(jit)) {
+        Dsp56300State ss;
+        dsp56300_get_state(jit, &ss);
+        if (ss.power_state != 0) {
+            dsp56300_set_halt_requested(jit, true);
+        }
+    }
 }
 
 static void dsp_jit_bootstrap(DSPState *dsp)
