@@ -125,7 +125,12 @@ typedef struct MCPXAPUState {
 
     struct {
         McpxApuDebugMonitorPoint point;
-        int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes)
+        int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes), stereo taps
+        /* 6-channel frames (FL FR FC LFE BL BR) for the EP S/PDIF tap.
+         * `channels` is what the open stream was created with; the monitor
+         * reopens it when the selected tap wants another count. */
+        int16_t surround_buf[256][6];
+        int channels;
         SDL_AudioStream *stream;
         int queued_bytes_low, queued_bytes_high;
     } monitor;
@@ -210,5 +215,13 @@ void mcpx_debug_end_frame(void);
 void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp);
 void mcpx_apu_monitor_finalize(MCPXAPUState *d);
 void mcpx_apu_monitor_frame(MCPXAPUState *d);
+
+/* EP S/PDIF (IEC 61937 AC-3) monitor point, spdif.c */
+void mcpx_apu_spdif_feed(MCPXAPUState *d, const uint8_t *buf, size_t len);
+void mcpx_apu_spdif_fill_frame(MCPXAPUState *d);
+void mcpx_apu_spdif_stats(uint64_t *frames, uint64_t *rejected,
+                          uint64_t *underruns, uint64_t *overruns,
+                          unsigned *level_min, unsigned *level_max,
+                          bool reset);
 
 #endif
