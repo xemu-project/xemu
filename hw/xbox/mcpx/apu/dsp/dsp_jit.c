@@ -21,6 +21,7 @@
 #include "qemu/osdep.h"
 #include "dsp_internal.h"
 #include "debug.h"
+#include "ep_yrom.h"
 
 #include <dsp56300.h>
 
@@ -67,6 +68,17 @@ static uint32_t jit_read_peripheral(void *opaque, uint32_t address)
 static void jit_write_peripheral(void *opaque, uint32_t address, uint32_t value)
 {
     write_peripheral((DSPState *)opaque, address, value);
+}
+
+/* EP on-chip Y data ROM (Y:$0800-$0FFF). Read-only: writes are ignored, as on
+ * hardware. Only mapped for the EP core (the GP has no such ROM). */
+static uint32_t jit_read_yrom(void *opaque, uint32_t address)
+{
+    return ep_yrom[address - DSP_YROM_BASE];
+}
+
+static void jit_write_yrom(void *opaque, uint32_t address, uint32_t value)
+{
 }
 
 static void dsp_jit_reset(DSPState *dsp)
@@ -273,31 +285,60 @@ static JitBackend *dsp_create_jit_backend(DSPState *dsp)
     be->pram = g_new(uint32_t, DSP_PRAM_SIZE);
     memset(be->pram, 0xCA, DSP_PRAM_SIZE * sizeof(uint32_t));
 
-    /* X-space: XRAM [0, 0x1000), mixbuf alias [0x1400, 0x1800), peripherals */
-    Dsp56300MemoryRegion x_regions[3] = {
-        { .start = 0x0000,
-          .end = 0x1000,
-          .kind = DSP56300_REGION_BUFFER,
-          .data = { .buffer = { .base = be->xram, .offset = 0 } } },
-        { .start = 0x1400,
-          .end = 0x1800,
-          .kind = DSP56300_REGION_BUFFER,
-          .data = { .buffer = { .base = be->xram, .offset = 0xC00 } } },
-        { .start = 0xFFFF80,
-          .end = 0x1000000,
-          .kind = DSP56300_REGION_CALLBACK,
-          .data = { .callback = { .opaque = dsp,
-                                  .read = jit_read_peripheral,
-                                  .write = jit_write_peripheral } } },
-    };
+    /* Peripheral (internal I/O) region, common to both cores. Unmapped
+     * addresses (the gaps between regions) read 0, matching hardware. */
+    const Dsp56300MemoryRegion periph_region = {
+        .start = 0xFFFF80,
+        .end = 0x1000000,
+        .kind = DSP56300_REGION_CALLBACK,
+        .data = { .callback = { .opaque = dsp,
+                                .read = jit_read_peripheral,
+                                .write = jit_write_peripheral } } };
 
-    /* Y-space: YRAM [0, 0x800) */
-    Dsp56300MemoryRegion y_regions[1] = {
-        { .start = 0x0000,
-          .end = 0x0800,
-          .kind = DSP56300_REGION_BUFFER,
-          .data = { .buffer = { .base = be->yram, .offset = 0 } } },
-    };
+    Dsp56300MemoryRegion x_regions[3];
+    Dsp56300MemoryRegion y_regions[2];
+    uint32_t x_count, y_count;
+
+    if (dsp->is_gp) {
+        /* GP X: XRAM, the mixbuf alias at [0x1400, 0x1800), peripherals. */
+        x_regions[0] = (Dsp56300MemoryRegion){
+            .start = 0x0000, .end = DSP_GP_XRAM_SIZE,
+            .kind = DSP56300_REGION_BUFFER,
+            .data = { .buffer = { .base = be->xram, .offset = 0 } } };
+        x_regions[1] = (Dsp56300MemoryRegion){
+            .start = 0x1400, .end = 0x1800,
+            .kind = DSP56300_REGION_BUFFER,
+            .data = { .buffer = { .base = be->xram, .offset = 0xC00 } } };
+        x_regions[2] = periph_region;
+        x_count = 3;
+        /* GP Y: YRAM [0, 0x800); no ROM. */
+        y_regions[0] = (Dsp56300MemoryRegion){
+            .start = 0x0000, .end = DSP_GP_YRAM_SIZE,
+            .kind = DSP56300_REGION_BUFFER,
+            .data = { .buffer = { .base = be->yram, .offset = 0 } } };
+        y_count = 1;
+    } else {
+        /* EP X: XRAM [0, 0xC00) only (no mixbuffer); higher X reads 0. */
+        x_regions[0] = (Dsp56300MemoryRegion){
+            .start = 0x0000, .end = DSP_EP_XRAM_SIZE,
+            .kind = DSP56300_REGION_BUFFER,
+            .data = { .buffer = { .base = be->xram, .offset = 0 } } };
+        x_regions[1] = periph_region;
+        x_count = 2;
+        /* EP Y: RAM [0, 0x100), then on-chip data ROM [0x800, 0x1000)
+         * (Dolby/AC3 encode tables); the $0100-$07FF gap reads 0. */
+        y_regions[0] = (Dsp56300MemoryRegion){
+            .start = 0x0000, .end = DSP_EP_YRAM_SIZE,
+            .kind = DSP56300_REGION_BUFFER,
+            .data = { .buffer = { .base = be->yram, .offset = 0 } } };
+        y_regions[1] = (Dsp56300MemoryRegion){
+            .start = DSP_YROM_BASE, .end = DSP_YROM_BASE + DSP_YROM_SIZE,
+            .kind = DSP56300_REGION_CALLBACK,
+            .data = { .callback = { .opaque = dsp,
+                                    .read = jit_read_yrom,
+                                    .write = jit_write_yrom } } };
+        y_count = 2;
+    }
 
     /* P-space: PRAM [0, 0x1000) */
     Dsp56300MemoryRegion p_regions[1] = {
@@ -310,9 +351,9 @@ static JitBackend *dsp_create_jit_backend(DSPState *dsp)
     Dsp56300CreateInfo info = {
         .memory_map = {
             .x_regions = x_regions,
-            .x_count = ARRAY_SIZE(x_regions),
+            .x_count = x_count,
             .y_regions = y_regions,
-            .y_count = ARRAY_SIZE(y_regions),
+            .y_count = y_count,
             .p_regions = p_regions,
             .p_count = ARRAY_SIZE(p_regions),
         },
