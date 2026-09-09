@@ -102,6 +102,14 @@ extern "C" {
 const struct McpxApuDebug *mcpx_apu_get_debug_info(void);
 McpxApuDebugMonitorPoint mcpx_apu_debug_get_monitor(void);
 void mcpx_apu_debug_set_monitor(McpxApuDebugMonitorPoint monitor);
+/* Channels the monitor is currently playing (2 or 6) and the mute mask over
+ * them; mask bit c enables channel c. */
+int mcpx_apu_debug_get_monitor_channels(void);
+uint32_t mcpx_apu_debug_get_monitor_channel_mask(void);
+void mcpx_apu_debug_set_monitor_channel_mask(uint32_t mask);
+/* Held peak of monitor channel c over its last pushes, 0..1 of full scale,
+ * measured before the mask. */
+float mcpx_apu_debug_get_monitor_channel_level(int channel);
 void mcpx_apu_debug_isolate_voice(uint16_t v);
 void mcpx_apu_debug_clear_isolations(void);
 void mcpx_apu_debug_toggle_mute(uint16_t v);

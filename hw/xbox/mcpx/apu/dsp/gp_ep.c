@@ -39,6 +39,62 @@ void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
             d->gp.realtime = false;
             d->ep.realtime = false;
         }
+        /* MCPX_APU_MONITOR=ac97|vp|gp|ep|spdif|auto: pin the debug
+         * monitor point from the environment - what the UI combo does,
+         * for headless captures. `ep` is FIFO #0, the analog output;
+         * `spdif` decodes the AC-3 stream on FIFO #1 (spdif.c). */
+        const char *mon = getenv("MCPX_APU_MONITOR");
+        if (mon) {
+            if (!strcmp(mon, "ac97")) {
+                d->monitor.point = MCPX_APU_DEBUG_MON_AC97;
+            } else if (!strcmp(mon, "vp")) {
+                d->monitor.point = MCPX_APU_DEBUG_MON_VP;
+            } else if (!strcmp(mon, "gp")) {
+                d->monitor.point = MCPX_APU_DEBUG_MON_GP;
+            } else if (!strcmp(mon, "ep")) {
+                d->monitor.point = MCPX_APU_DEBUG_MON_EP;
+            } else if (!strcmp(mon, "spdif")) {
+                d->monitor.point = MCPX_APU_DEBUG_MON_EP_SPDIF;
+            }
+        }
+        /* MCPX_APU_MON_CHANNELS=<list>: solo/mute channels of the monitor's
+         * layout - comma-separated names (l,r or fl,fr,fc,lfe,bl,br), channel
+         * indices, or a hex mask (0x..). Unset = all channels. */
+        const char *chs = getenv("MCPX_APU_MON_CHANNELS");
+        d->monitor.channel_mask = 0x3F;
+        if (chs) {
+            static const char *const names[6] = { "fl", "fr", "fc", "lfe",
+                                                  "bl", "br" };
+            uint32_t mask = 0;
+            unsigned long hex;
+            if (!strncmp(chs, "0x", 2)) {
+                if (qemu_strtoul(chs, NULL, 16, &hex) == 0) {
+                    mask = hex;
+                }
+            } else {
+                char buf[64];
+                snprintf(buf, sizeof(buf), "%s", chs);
+                char *tok = strtok(buf, ",");
+                for (; tok; tok = strtok(NULL, ",")) {
+                    if (!strcmp(tok, "l")) {
+                        mask |= 1;
+                    } else if (!strcmp(tok, "r")) {
+                        mask |= 2;
+                    } else if (*tok >= '0' && *tok <= '5' && !tok[1]) {
+                        mask |= 1u << (*tok - '0');
+                    } else {
+                        for (int c = 0; c < 6; c++) {
+                            if (!strcmp(tok, names[c])) {
+                                mask |= 1u << c;
+                            }
+                        }
+                    }
+                }
+            }
+            if (mask) {
+                d->monitor.channel_mask = mask;
+            }
+        }
         last_known_dsp_pref = g_config.audio.use_dsp;
     }
 }

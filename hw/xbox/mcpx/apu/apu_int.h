@@ -131,6 +131,12 @@ typedef struct MCPXAPUState {
          * reopens it when the selected tap wants another count. */
         int16_t surround_buf[256][6];
         int channels;
+        /* Bit c enables channel c of the layout being played. Applied
+         * before the dump, so MCPX_APU_MON_DUMP stays what plays. */
+        uint32_t channel_mask;
+        /* Held peak per channel (0..1 of full scale), measured before the
+         * mask and decayed each push so the debug meters hold a transient. */
+        float channel_level[6];
         SDL_AudioStream *stream;
         int queued_bytes_low, queued_bytes_high;
     } monitor;
