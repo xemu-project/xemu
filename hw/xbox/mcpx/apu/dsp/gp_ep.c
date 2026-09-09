@@ -20,6 +20,8 @@
  */
 
 #include "hw/xbox/mcpx/apu/apu_int.h"
+#include "qemu/cutils.h"
+#include "qemu/timer.h"
 
 static const int16_t ep_silence[256][2] = { 0 };
 
@@ -41,6 +43,13 @@ void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
     }
 }
 
+/* Walk an SGE table for a scratch or FIFO transfer. The table lives in guest
+ * RAM at `sge_base`, one 8-byte entry per page, the entry's first word being
+ * the physical page. The guest programs the table and its bounds through the
+ * APU registers, which take the APU lock for exactly these words so a
+ * transfer never sees a table change under it (see mcpx_apu_write); a table
+ * that is stale or short is the guest's problem on silicon too, so an entry
+ * past `max_sge` or a page outside RAM ends the transfer, not the emulator. */
 static void scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
                               unsigned int max_sge, uint8_t *ptr, uint32_t addr,
                               size_t len, bool dir)
@@ -49,21 +58,31 @@ static void scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
     unsigned int offset_in_page = addr % TARGET_PAGE_SIZE;
     unsigned int bytes_to_copy = TARGET_PAGE_SIZE - offset_in_page;
 
+    if (trace_event_get_state_backends(TRACE_MCPX_APU_DSP_SGE)) {
+        uint32_t first_page_phys =
+            ldl_le_phys(&address_space_memory, sge_base + page_entry * 8);
+        trace_mcpx_apu_dsp_sge(sge_base, dir ? "wr" : "rd", addr,
+                               (uint64_t)len,
+                               first_page_phys + offset_in_page);
+    }
+
     while (len > 0) {
-        assert(page_entry <= max_sge);
+        if (page_entry > max_sge) {
+            return;
+        }
 
         uint32_t prd_address = ldl_le_phys(&address_space_memory,
                                            sge_base + page_entry * 8 + 0);
         // uint32_t prd_control = ldl_le_phys(&address_space_memory,
         //                                     sge_base + page_entry * 8 + 4);
-
         hwaddr paddr = prd_address + offset_in_page;
 
         if (bytes_to_copy > len) {
             bytes_to_copy = len;
         }
-
-        assert(paddr + bytes_to_copy < memory_region_size(d->ram));
+        if (paddr + bytes_to_copy > memory_region_size(d->ram)) {
+            return;
+        }
 
         if (dir) {
             memcpy(&d->ram_ptr[paddr], ptr, bytes_to_copy);
@@ -89,6 +108,7 @@ static void gp_scratch_rw(void *opaque, uint8_t *ptr, uint32_t addr, size_t len,
     scatter_gather_rw(d, d->regs[NV_PAPU_GPSADDR], d->regs[NV_PAPU_GPSMAXSGE],
                       ptr, addr, len, dir);
 }
+
 
 static void ep_scratch_rw(void *opaque, uint8_t *ptr, uint32_t addr, size_t len,
                           bool dir)
@@ -156,6 +176,8 @@ static void gp_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
 
     uint32_t cur = GET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE);
 
+    trace_mcpx_apu_dsp_fifo("GP", dir ? "wr" : "rd", index, base, end, cur,
+                            (uint64_t)len);
 
     /* DSP hangs if current >= end; but forces current >= base */
     assert(cur < end);
@@ -170,6 +192,10 @@ static void gp_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
     SET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE, cur);
 }
 
+/* EP output FIFO #0 is the analog stereo output - with Dolby Digital on, a
+ * surround-encoded downmix, not the GP's front pair - as 256 S16 stereo
+ * frames per EP frame. The `ep` monitor point plays it; every point but
+ * AC97 sinks it (silence goes to the guest's ring). */
 static bool ep_sink_samples(MCPXAPUState *d, uint8_t *ptr, size_t len)
 {
     if (d->monitor.point == MCPX_APU_DEBUG_MON_AC97) {
@@ -207,6 +233,9 @@ static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
     }
 
     uint32_t cur = GET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE);
+
+    trace_mcpx_apu_dsp_fifo("EP", dir ? "wr" : "rd", index, base, end, cur,
+                            (uint64_t)len);
 
 
     if (dir && index == 0) {
@@ -287,7 +316,7 @@ static void gp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     MCPXAPUState *d = opaque;
 
-    qemu_mutex_lock(&d->lock);
+    mcpx_apu_guest_lock(d);
 
     assert(size == 4);
     assert(addr % 4 == 0);
@@ -324,7 +353,7 @@ static void gp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         break;
     }
 
-    qemu_mutex_unlock(&d->lock);
+    mcpx_apu_guest_unlock(d);
 }
 
 const MemoryRegionOps gp_ops = {
@@ -370,7 +399,7 @@ static void ep_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     MCPXAPUState *d = opaque;
 
-    qemu_mutex_lock(&d->lock);
+    mcpx_apu_guest_lock(d);
 
     assert(size == 4);
     assert(addr % 4 == 0);
@@ -403,7 +432,7 @@ static void ep_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         break;
     }
 
-    qemu_mutex_unlock(&d->lock);
+    mcpx_apu_guest_unlock(d);
 }
 
 const MemoryRegionOps ep_ops = {
@@ -411,8 +440,313 @@ const MemoryRegionOps ep_ops = {
     .write = ep_write,
 };
 
-void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+/* Cycles handed to a core per dsp_run call: how often the run loop is
+ * re-entered, and so how promptly a worker notices a waiting guest accessor
+ * or the end of its frame. Per-call overhead is not measurable against the
+ * generated code at this size. */
+#define DSP_SLICE_CYCLES 1000
+
+/* One worker thread per DSP core.
+ *
+ * On silicon the GP and EP are concurrent cores that hand data to each
+ * other through scratch buffers in guest RAM; running them in turn makes a
+ * frame's DSP cost the sum of the two and lets a spin-wait be satisfied
+ * only at slice boundaries. The frame thread remains the barrier: it fills
+ * the GP mixbuf, releases both workers, and waits for both before reading
+ * any result, so nothing touches a core's state while its worker runs. The
+ * cores are otherwise disjoint (DSPState, register windows, SGE tables);
+ * where they meet, the same guest RAM through different SGE tables, the
+ * programs' own handshake orders it: the GP writes one slice per frame
+ * into the half of its output ring the EP is not reading, and the EP loads
+ * the completed half at its kick (see mcpx_apu_dsp_frame_begin for how a
+ * late GP frame is finished before that load).
+ *
+ * There is one APU, so these are file-static. */
+typedef struct DSPWorker {
+    MCPXAPUState *d;
+    bool is_gp;
+    const char *name;
+    QemuThread thread;
+    QemuMutex lock;
+    QemuCond start_cond, done_cond;
+    bool created;
+    bool start_requested;
+    bool busy;
+    bool exiting;
+    /* Frame thread -> worker */
+    uint32_t budget;
+    /* Worker -> frame thread, published before done_cond is signalled */
+    bool wall_bound;
+} DSPWorker;
+
+static DSPWorker g_gp_worker = { .is_gp = true, .name = "mcpx.apu_gp" };
+static DSPWorker g_ep_worker = { .is_gp = false, .name = "mcpx.apu_ep" };
+
+/* Run one core until it signals frame-complete, exhausts its cycle budget, or
+ * has held the thread long enough that the frame should end. */
+static void run_one_core(DSPWorker *w)
 {
+    MCPXAPUState *d = w->d;
+    DSPState *dsp = w->is_gp ? d->gp.dsp : d->ep.dsp;
+    const int64_t slice_us = 2000;
+    int64_t t0 = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+
+    w->wall_bound = false;
+    while (dsp_get_cycle_count(dsp) < w->budget) {
+        if (dsp_get_halt_requested(dsp)) {
+            break;
+        }
+        dsp_run(dsp, DSP_SLICE_CYCLES);
+        if (qemu_clock_get_us(QEMU_CLOCK_REALTIME) - t0 >= slice_us) {
+            w->wall_bound = true;
+            break;
+        }
+        /* A guest-side accessor is blocked on the APU lock the frame thread
+         * is holding while it waits for us. Stop between slices so it can be
+         * handed over; the core keeps its state and resumes next frame. */
+        if (qatomic_read(&d->lock_waiters) > 0) {
+            break;
+        }
+    }
+}
+
+static void *dsp_worker_thread(void *opaque)
+{
+    DSPWorker *w = opaque;
+
+    /* The scratch DMA resolves SGE entries outside RAM through the address
+     * space, which reads the flat view under the RCU read lock. A thread
+     * that is not in the registry is not waited for by synchronize_rcu(),
+     * so that view can be freed while this thread is walking it. */
+    rcu_register_thread();
+    qemu_mutex_lock(&w->lock);
+    for (;;) {
+        while (!w->start_requested && !w->exiting) {
+            qemu_cond_wait(&w->start_cond, &w->lock);
+        }
+        if (w->exiting) {
+            break;
+        }
+        w->start_requested = false;
+        qemu_mutex_unlock(&w->lock);
+
+        run_one_core(w);
+
+        qemu_mutex_lock(&w->lock);
+        w->busy = false;
+        qemu_cond_signal(&w->done_cond);
+    }
+    qemu_mutex_unlock(&w->lock);
+    rcu_unregister_thread();
+    return NULL;
+}
+
+static void dsp_worker_init(DSPWorker *w, MCPXAPUState *d)
+{
+    if (w->created) {
+        return;
+    }
+    w->d = d;
+    qemu_mutex_init(&w->lock);
+    qemu_cond_init(&w->start_cond);
+    qemu_cond_init(&w->done_cond);
+    w->created = true;
+    qemu_thread_create(&w->thread, w->name, dsp_worker_thread, w,
+                       QEMU_THREAD_JOINABLE);
+}
+
+static void dsp_worker_start(DSPWorker *w, uint32_t budget)
+{
+    qemu_mutex_lock(&w->lock);
+    w->budget = budget;
+    w->busy = true;
+    w->start_requested = true;
+    qemu_cond_signal(&w->start_cond);
+    qemu_mutex_unlock(&w->lock);
+}
+
+static void dsp_worker_wait(DSPWorker *w)
+{
+    qemu_mutex_lock(&w->lock);
+    while (w->busy) {
+        qemu_cond_wait(&w->done_cond, &w->lock);
+    }
+    qemu_mutex_unlock(&w->lock);
+}
+
+void mcpx_apu_dsp_stop_workers(void)
+{
+    DSPWorker *ws[] = { &g_gp_worker, &g_ep_worker };
+    for (unsigned i = 0; i < ARRAY_SIZE(ws); i++) {
+        DSPWorker *w = ws[i];
+        if (!w->created) {
+            continue;
+        }
+        qemu_mutex_lock(&w->lock);
+        while (w->busy) {
+            qemu_cond_wait(&w->done_cond, &w->lock);
+        }
+        w->exiting = true;
+        qemu_cond_signal(&w->start_cond);
+        qemu_mutex_unlock(&w->lock);
+        qemu_thread_join(&w->thread);
+        w->created = false;
+    }
+}
+
+static void run_dsps(MCPXAPUState *d, bool gp_active, bool ep_active,
+                     uint32_t gp_budget, uint32_t ep_budget)
+{
+    dsp_worker_init(&g_gp_worker, d);
+    dsp_worker_init(&g_ep_worker, d);
+
+    if (gp_active) {
+        dsp_worker_start(&g_gp_worker, gp_budget);
+    }
+    if (ep_active) {
+        dsp_worker_start(&g_ep_worker, ep_budget);
+    }
+}
+
+/* Carried from begin to end. One APU, so file-static like the workers. */
+static struct {
+    bool gp_enabled, ep_enabled, ran;
+    uint32_t gp_budget, ep_budget;
+} g_frame;
+
+/* Join whatever run_dsps released. Separate from the start so the frame
+ * thread has somewhere useful to be in between - see
+ * mcpx_apu_dsp_frame_begin.
+ *
+ * The workers stop between slices when a guest accessor is waiting on the
+ * APU lock this thread holds. Ending the frame there would leave the
+ * stopped core's output unproduced and frame_end would consume the missing
+ * samples as silence, so after the join: while a core is unfinished for
+ * any reason but wall time, hand the lock over with both workers idle,
+ * then re-release the unfinished cores onto the remainder of their frame. */
+static void join_dsps(MCPXAPUState *d, bool gp_active, bool ep_active)
+{
+    if (gp_active) {
+        dsp_worker_wait(&g_gp_worker);
+    }
+    if (ep_active) {
+        dsp_worker_wait(&g_ep_worker);
+    }
+
+    for (;;) {
+        bool gp_more = gp_active && !g_gp_worker.wall_bound &&
+                       !dsp_get_halt_requested(d->gp.dsp) &&
+                       dsp_get_cycle_count(d->gp.dsp) < g_frame.gp_budget;
+        bool ep_more = ep_active && !g_ep_worker.wall_bound &&
+                       !dsp_get_halt_requested(d->ep.dsp) &&
+                       dsp_get_cycle_count(d->ep.dsp) < g_frame.ep_budget;
+        if ((!gp_more && !ep_more) || d->pause_requested) {
+            break;
+        }
+        while (!d->pause_requested && qatomic_read(&d->lock_waiters) > 0) {
+            qemu_cond_timedwait(&d->cond, &d->lock, 1);
+        }
+        if (d->pause_requested) {
+            break;
+        }
+        if (gp_more) {
+            dsp_worker_start(&g_gp_worker, g_frame.gp_budget);
+        }
+        if (ep_more) {
+            dsp_worker_start(&g_ep_worker, g_frame.ep_budget);
+        }
+        if (gp_more) {
+            dsp_worker_wait(&g_gp_worker);
+        }
+        if (ep_more) {
+            dsp_worker_wait(&g_ep_worker);
+        }
+    }
+}
+
+void mcpx_apu_dsp_frame_begin(MCPXAPUState *d)
+{
+    bool ep_enabled = (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPRST) &&
+                      (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPDSPRST);
+
+    bool gp_enabled = (d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPRST) &&
+                      (d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPDSPRST);
+
+    g_frame.gp_enabled = gp_enabled;
+    g_frame.ep_enabled = ep_enabled;
+    g_frame.ran = gp_enabled || ep_enabled;
+
+    if (gp_enabled) {
+        dsp_start_frame(d->gp.dsp);
+        dsp_set_halt_requested(d->gp.dsp, false);
+        dsp_set_cycle_count(d->gp.dsp, 0);
+    }
+    if (ep_enabled) {
+        /* The kick (start-frame interrupt + run-to-idle) fires every 8th
+         * frame as on hardware; between kicks an EP that has not idled keeps
+         * executing its per-frame slice, and an idled EP stays parked. The
+         * first kick is in the release frame itself: the EP's first kick is
+         * the encoder's initialisation pass and its second, eight frames on,
+         * is the first to read the GP's output ring, by which time the GP
+         * has filled exactly one 8-slice half. */
+        if (d->ep_frame_div % 8 == 0) {
+            dsp_start_frame(d->ep.dsp);
+            dsp_set_halt_requested(d->ep.dsp, false);
+        }
+        dsp_set_cycle_count(d->ep.dsp, 0);
+    }
+
+    if (gp_enabled || ep_enabled) {
+        /* Hardware budget: 150 MHz for one 32-sample frame at 48 kHz. The EP
+         * gets the same per-frame slice every SE frame (its 8-frame kick
+         * budget spread evenly) rather than one 8x slice on kick frames,
+         * which is the hardware's own shape: the encoder's kick takes ~4.4
+         * frames of continuous execution at 150 MHz and then idles. */
+        const uint32_t hw_budget = 100000;
+        /* MCPX_DSP_BUDGET=<gp>[,<ep>]: per-frame cycle caps, for tests that
+         * want a core short of its per-frame need (a GP that cannot finish
+         * a frame is how the late-frame path below is provoked). */
+        static uint32_t gp_cap, ep_cap;
+        static int budget_env = -1;
+        if (budget_env < 0) {
+            const char *v = getenv("MCPX_DSP_BUDGET");
+            budget_env = v ? 1 : 0;
+            gp_cap = ep_cap = hw_budget;
+            if (v) {
+                const char *end;
+                unsigned long cap;
+                if (qemu_strtoul(v, &end, 0, &cap) == 0) {
+                    gp_cap = ep_cap = cap;
+                    if (*end == ',' &&
+                        qemu_strtoul(end + 1, NULL, 0, &cap) == 0) {
+                        ep_cap = cap;
+                    }
+                }
+            }
+        }
+        g_frame.gp_budget = d->gp.realtime ? gp_cap : 1000;
+        g_frame.ep_budget = d->ep.realtime ? ep_cap : 1000;
+
+        /* The EP runs from here, overlapped with the VP; the GP waits for
+         * the VP (mcpx_apu_dsp_frame_gp). */
+        run_dsps(d, false, ep_enabled, g_frame.gp_budget, g_frame.ep_budget);
+    }
+}
+
+/* The VP has filled this frame's mixbins: hand them to the GP and release
+ * it. The GP runs after the VP, not overlapped with it, because the two
+ * meet in guest RAM inside a frame: the GP's DMA writes its effect returns
+ * to scratch pages that VP voices read as sample data in the same frame,
+ * and a VP reading a page the GP is rewriting mixes two frames' worth of
+ * it - a discontinuity at the frame boundary, heard as a pop. The EP shares
+ * no such page with the VP and runs from frame begin. */
+void mcpx_apu_dsp_frame_gp(MCPXAPUState *d,
+                           float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+{
+    if (!g_frame.gp_enabled) {
+        return;
+    }
+
     /* Write VP results to the GP DSP MIXBUF */
     for (int mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
         uint32_t base = GP_DSP_MIXBUF_BASE + mixbin * NUM_SAMPLES_PER_FRAME;
@@ -422,18 +756,21 @@ void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_
         }
     }
 
-    bool ep_enabled = (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPRST) &&
-                      (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPDSPRST);
+    dsp_worker_start(&g_gp_worker, g_frame.gp_budget);
+}
 
-    /* Run GP */
-    if ((d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPRST) &&
-        (d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPDSPRST)) {
-        dsp_start_frame(d->gp.dsp);
-        dsp_set_halt_requested(d->gp.dsp, false);
-        dsp_set_cycle_count(d->gp.dsp, 0);
-        do {
-            dsp_run(d->gp.dsp, 1000);
-        } while (!dsp_get_halt_requested(d->gp.dsp) && d->gp.realtime);
+/* Join the cores and read their results. Everything here touches DSP state,
+ * so it must not run while a worker does. */
+void mcpx_apu_dsp_frame_end(MCPXAPUState *d)
+{
+    bool gp_enabled = g_frame.gp_enabled;
+    bool ep_enabled = g_frame.ep_enabled;
+
+    if (g_frame.ran) {
+        join_dsps(d, gp_enabled, ep_enabled);
+    }
+
+    if (gp_enabled) {
         g_dbg.gp.cycles = dsp_get_cycle_count(d->gp.dsp);
 
         if ((d->monitor.point == MCPX_APU_DEBUG_MON_GP) ||
@@ -448,19 +785,8 @@ void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_
             }
         }
     }
-
-    /* Run EP */
-    if ((d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPRST) &&
-        (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPDSPRST)) {
-        if (d->ep_frame_div % 8 == 0) {
-            dsp_start_frame(d->ep.dsp);
-            dsp_set_halt_requested(d->ep.dsp, false);
-            dsp_set_cycle_count(d->ep.dsp, 0);
-            do {
-                dsp_run(d->ep.dsp, 1000);
-            } while (!dsp_get_halt_requested(d->ep.dsp) && d->ep.realtime);
-            g_dbg.ep.cycles = dsp_get_cycle_count(d->ep.dsp);
-        }
+    if (ep_enabled) {
+        g_dbg.ep.cycles = dsp_get_cycle_count(d->ep.dsp);
     }
 }
 

@@ -96,6 +96,11 @@ typedef struct MCPXAPUState {
     uint32_t regs[0x20000];
 
     int ep_frame_div;
+    /* Guest-side accessors blocked on, or about to block on, `lock`. The
+     * frame thread holds the lock while the DSP cores run and cannot see a
+     * waiter from the mutex itself; it hands the lock over while this is
+     * non-zero (see mcpx_apu_guest_lock). */
+    int lock_waiters;
     int frame_work_acc_us;
     int frame_count;
     int64_t frame_count_time_us;
@@ -122,6 +127,22 @@ typedef struct MCPXAPUState {
         int queued_bytes_low, queued_bytes_high;
     } monitor;
 } MCPXAPUState;
+
+/* Take the APU lock from a guest-side accessor (MMIO, voice lock). Announce
+ * the wait first: the frame thread polls this to decide when to let go. */
+static inline void mcpx_apu_guest_lock(MCPXAPUState *d)
+{
+    qatomic_inc(&d->lock_waiters);
+    qemu_mutex_lock(&d->lock);
+    qatomic_dec(&d->lock_waiters);
+}
+
+/* Release it, waking a frame thread that handed the lock over. */
+static inline void mcpx_apu_guest_unlock(MCPXAPUState *d)
+{
+    qemu_cond_signal(&d->cond);
+    qemu_mutex_unlock(&d->lock);
+}
 
 extern MCPXAPUState *g_state; // Used via debug handlers
 extern struct McpxApuDebug g_dbg, g_dbg_cache;

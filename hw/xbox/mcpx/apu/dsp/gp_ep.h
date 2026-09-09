@@ -48,7 +48,15 @@ extern const MemoryRegionOps gp_ops;
 extern const MemoryRegionOps ep_ops;
 
 void mcpx_apu_dsp_init(MCPXAPUState *d);
+/* One SE frame of DSP work in three steps around the VP: begin does the
+ * kick bookkeeping and releases the EP worker, gp fills the GP mixbuf from
+ * the mixbins the VP just produced and releases the GP worker, end joins
+ * both and reads their results. */
+void mcpx_apu_dsp_frame_begin(MCPXAPUState *d);
+void mcpx_apu_dsp_frame_gp(
+    MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
+void mcpx_apu_dsp_frame_end(MCPXAPUState *d);
+void mcpx_apu_dsp_stop_workers(void);
 void mcpx_apu_update_dsp_preference(MCPXAPUState *d);
-void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
 
 #endif

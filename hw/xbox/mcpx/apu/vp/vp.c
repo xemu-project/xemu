@@ -134,7 +134,7 @@ static void voice_off(MCPXAPUState *d, uint16_t v)
 static void voice_lock(MCPXAPUState *d, uint16_t v, bool lock)
 {
     assert(v < MCPX_HW_MAX_VOICES);
-    qemu_mutex_lock(&d->lock);
+    mcpx_apu_guest_lock(d);
 
     uint64_t mask = 1LL << (v % 64);
     if (lock) {
@@ -143,8 +143,7 @@ static void voice_lock(MCPXAPUState *d, uint16_t v, bool lock)
         d->vp.voice_locked[v / 64] &= ~mask;
     }
 
-    qemu_cond_signal(&d->cond);
-    qemu_mutex_unlock(&d->lock);
+    mcpx_apu_guest_unlock(d);
 }
 
 static bool is_voice_locked(MCPXAPUState *d, uint16_t v)
