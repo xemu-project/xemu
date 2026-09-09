@@ -87,6 +87,8 @@ typedef struct MCPXAPUState {
 
     MemoryRegion *ram;
     uint8_t *ram_ptr;
+    /* Cached: the RAM helpers below bound-check every access. */
+    uint64_t ram_size;
     MemoryRegion mmio;
 
     MCPXAPUVPState vp;
@@ -142,6 +144,45 @@ static inline void mcpx_apu_guest_unlock(MCPXAPUState *d)
 {
     qemu_cond_signal(&d->cond);
     qemu_mutex_unlock(&d->lock);
+}
+
+/* Guest words the APU chases per sample or per DMA node - voice params, SGE
+ * entries - live in RAM, and resolving each through the address space walks
+ * the flat view per call, millions of times a second. These read and write
+ * through the RAM pointer and keep the walk for an address outside RAM. */
+
+static inline uint32_t mcpx_apu_ram_ldl(MCPXAPUState *d, hwaddr addr)
+{
+    if (addr + 4 <= d->ram_size) {
+        return ldl_le_p(&d->ram_ptr[addr]);
+    }
+    return ldl_le_phys(&address_space_memory, addr);
+}
+
+static inline uint32_t mcpx_apu_ram_ldub(MCPXAPUState *d, hwaddr addr)
+{
+    if (addr < d->ram_size) {
+        return d->ram_ptr[addr];
+    }
+    return ldub_phys(&address_space_memory, addr);
+}
+
+static inline uint32_t mcpx_apu_ram_lduw(MCPXAPUState *d, hwaddr addr)
+{
+    if (addr + 2 <= d->ram_size) {
+        return lduw_le_p(&d->ram_ptr[addr]);
+    }
+    return lduw_le_phys(&address_space_memory, addr);
+}
+
+static inline void mcpx_apu_ram_stl(MCPXAPUState *d, hwaddr addr, uint32_t val)
+{
+    if (addr + 4 <= d->ram_size) {
+        stl_le_p(&d->ram_ptr[addr], val);
+        memory_region_set_dirty(d->ram, addr, 4);
+    } else {
+        stl_le_phys(&address_space_memory, addr, val);
+    }
 }
 
 extern MCPXAPUState *g_state; // Used via debug handlers

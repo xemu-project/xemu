@@ -60,7 +60,7 @@ static void scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
 
     if (trace_event_get_state_backends(TRACE_MCPX_APU_DSP_SGE)) {
         uint32_t first_page_phys =
-            ldl_le_phys(&address_space_memory, sge_base + page_entry * 8);
+            mcpx_apu_ram_ldl(d, sge_base + page_entry * 8);
         trace_mcpx_apu_dsp_sge(sge_base, dir ? "wr" : "rd", addr,
                                (uint64_t)len,
                                first_page_phys + offset_in_page);
@@ -71,16 +71,13 @@ static void scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
             return;
         }
 
-        uint32_t prd_address = ldl_le_phys(&address_space_memory,
-                                           sge_base + page_entry * 8 + 0);
-        // uint32_t prd_control = ldl_le_phys(&address_space_memory,
-        //                                     sge_base + page_entry * 8 + 4);
+        uint32_t prd_address = mcpx_apu_ram_ldl(d, sge_base + page_entry * 8);
         hwaddr paddr = prd_address + offset_in_page;
 
         if (bytes_to_copy > len) {
             bytes_to_copy = len;
         }
-        if (paddr + bytes_to_copy > memory_region_size(d->ram)) {
+        if (paddr + bytes_to_copy > d->ram_size) {
             return;
         }
 
