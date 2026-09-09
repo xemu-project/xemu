@@ -48,9 +48,10 @@ uint32_t read_peripheral(DSPState *dsp, uint32_t address)
         v = 0; // core->num_inst; // ??
         break;
     case 0xFFFFC5:
-        v = dsp->interrupts;
+        v = dsp->interrupts | dsp->dma.pending_interrupts;
         if (dsp->dma.eol) {
             v |= INTERRUPT_DMA_EOL;
+            dsp_dma_completion_seen(&dsp->dma);
         }
         break;
     case 0xFFFFD4:
@@ -81,6 +82,7 @@ void write_peripheral(DSPState *dsp, uint32_t address, uint32_t value)
         break;
     case 0xFFFFC5:
         dsp->interrupts &= ~value;
+        dsp->dma.pending_interrupts &= ~value;
         if (value & INTERRUPT_DMA_EOL) {
             dsp->dma.eol = false;
         }
@@ -117,6 +119,7 @@ DSPState *dsp_init(void *rw_opaque, dsp_scratch_rw_func scratch_rw,
     dsp->dma.rw_opaque = rw_opaque;
     dsp->dma.scratch_rw = scratch_rw;
     dsp->dma.fifo_rw = fifo_rw;
+    dsp->dma.is_gp = is_gp;
 
     dsp_jit_init(dsp);
 
@@ -133,6 +136,11 @@ void dsp_destroy(DSPState *dsp)
 
 void dsp_reset(DSPState *dsp)
 {
+    /* The block reset restarts the DMA engine idle: a STOP the outgoing
+     * program issued does not leave STOPPED for the next program to read
+     * (probed: DMA_CONTROL reads 0 on a fresh boot after a stopped chain). */
+    dsp->dma.control = 0;
+    dsp->dma.dma_read_count = 0;
     dsp->ops->reset(dsp);
 }
 

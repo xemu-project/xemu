@@ -465,6 +465,23 @@ static const VMStateDescription vmstate_vp_dsp_dma_read_count = {
     }
 };
 
+static bool vp_dsp_dma_pending_interrupts_needed(void *opaque)
+{
+    DSPDMAState *s = opaque;
+    return s->pending_interrupts != 0;
+}
+
+static const VMStateDescription vmstate_vp_dsp_dma_pending_interrupts = {
+    .name = "mcpx-apu/dsp-state/dma/pending_interrupts",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = vp_dsp_dma_pending_interrupts_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(pending_interrupts, DSPDMAState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 const VMStateDescription vmstate_vp_dsp_dma_state = {
     .name = "mcpx-apu/dsp-state/dma",
     .version_id = 1,
@@ -480,6 +497,7 @@ const VMStateDescription vmstate_vp_dsp_dma_state = {
     },
     .subsections = (const VMStateDescription * const []) {
         &vmstate_vp_dsp_dma_read_count,
+        &vmstate_vp_dsp_dma_pending_interrupts,
         NULL
     }
 };

@@ -1069,8 +1069,13 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                     fval = int16_to_float(ival & 0xffff);
                     break;
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S24:
+                    /* A 24-bit sample occupies the top 24 bits of its
+                     * 32-bit container; the low byte is padding. This is
+                     * the layout the GP's format-2 DMA writes (probed on
+                     * silicon), and titles route GP output back into the
+                     * VP through exactly such voices. */
                     ival = ldl_le_phys(&address_space_memory, addr);
-                    fval = int24_to_float(ival);
+                    fval = int32_to_float(ival);
                     break;
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S32:
                     ival = ldl_le_phys(&address_space_memory, addr);

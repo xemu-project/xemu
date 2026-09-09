@@ -60,6 +60,20 @@ static void jit_dma_mem_write(void *opaque, int space, uint32_t addr,
                           value);
 }
 
+static void jit_dma_mem_read_run(void *opaque, int space, uint32_t addr,
+                                 uint32_t *out, uint32_t count)
+{
+    dsp56300_read_memory_run((const Dsp56300Jit *)opaque,
+                             (Dsp56300MemSpace)space, addr, out, count);
+}
+
+static void jit_dma_mem_write_run(void *opaque, int space, uint32_t addr,
+                                  const uint32_t *vals, uint32_t count)
+{
+    dsp56300_write_memory_run((Dsp56300Jit *)opaque, (Dsp56300MemSpace)space,
+                              addr, vals, count);
+}
+
 static uint32_t jit_read_peripheral(void *opaque, uint32_t address)
 {
     return read_peripheral((DSPState *)opaque, address);
@@ -387,6 +401,8 @@ void dsp_jit_init(DSPState *dsp)
     dsp->dma.mem_opaque = be->jit;
     dsp->dma.mem_read = jit_dma_mem_read;
     dsp->dma.mem_write = jit_dma_mem_write;
+    dsp->dma.mem_read_run = jit_dma_mem_read_run;
+    dsp->dma.mem_write_run = jit_dma_mem_write_run;
 }
 
 static void dsp_jit_finalize(DSPState *dsp)
