@@ -73,6 +73,10 @@ static struct {
     unsigned head, tail; /* frames; head == tail is empty */
 
     a52_state_t *a52;
+    bool decoding;
+    /* Monitor pulls so far, and the pull at which the last valid burst
+     * was seen: the stream is present while the gap is short. */
+    unsigned pulls, last_valid_pull;
 
     uint64_t frames, rejected, underruns, overruns;
     /* Ring level (frames) at each monitor pull, min/max since last read. */
@@ -165,6 +169,10 @@ static void decode_burst(void)
     if (frame_len <= 0 || (unsigned)frame_len > s.length ||
         ac3_crc16(f + 2, frame_len - 2) != 0) {
         s.rejected++;
+        return;
+    }
+    s.last_valid_pull = s.pulls;
+    if (!s.decoding) {
         return;
     }
     /* Ask for discrete 3/2 + LFE; liba52 hands back the layout it will
@@ -268,6 +276,29 @@ void mcpx_apu_spdif_feed(MCPXAPUState *d, const uint8_t *buf, size_t len)
             break;
         }
     }
+}
+
+/* Bursts arrive at 31.25/s, one per six pulls; a gap of 32 pulls (~170 ms)
+ * means the encoder stopped. */
+#define SPDIF_PRESENT_PULLS 32
+
+void mcpx_apu_spdif_pull(void)
+{
+    s.pulls++;
+}
+
+bool mcpx_apu_spdif_stream_present(void)
+{
+    return s.last_valid_pull && s.pulls - s.last_valid_pull < SPDIF_PRESENT_PULLS;
+}
+
+void mcpx_apu_spdif_set_decoding(bool on)
+{
+    if (on && !s.decoding) {
+        /* Start from an empty ring: what it holds is from the last time. */
+        s.head = s.tail = 0;
+    }
+    s.decoding = on;
 }
 
 void mcpx_apu_spdif_fill_frame(MCPXAPUState *d)
