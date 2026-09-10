@@ -109,6 +109,7 @@ static void gp_scratch_rw(void *opaque, uint8_t *ptr, uint32_t addr, size_t len,
                       ptr, addr, len, dir);
 }
 
+static bool core_resume_owed_frame(DSPState *dsp);
 
 static void ep_scratch_rw(void *opaque, uint8_t *ptr, uint32_t addr, size_t len,
                           bool dir)
@@ -493,7 +494,8 @@ static void run_one_core(DSPWorker *w)
 
     w->wall_bound = false;
     while (dsp_get_cycle_count(dsp) < w->budget) {
-        if (dsp_get_halt_requested(dsp)) {
+        if (dsp_get_halt_requested(dsp) &&
+            !core_resume_owed_frame(dsp)) {
             break;
         }
         dsp_run(dsp, DSP_SLICE_CYCLES);
@@ -612,7 +614,22 @@ static void run_dsps(MCPXAPUState *d, bool gp_active, bool ep_active,
 static struct {
     bool gp_enabled, ep_enabled, ran;
     uint32_t gp_budget, ep_budget;
+    /* The GP did not reach frame-complete by the end of the previous frame:
+     * its output slice for that frame is still unwritten. */
+    bool gp_late;
 } g_frame;
+
+/* A core that halted while its next frame start is already pending owes
+ * that frame: let it continue within its budget instead of parking until
+ * the next frame, which would leave it a frame behind for good. */
+static bool core_resume_owed_frame(DSPState *dsp)
+{
+    if (dsp_get_halt_requested(dsp) && dsp_frame_start_pending(dsp)) {
+        dsp_set_halt_requested(dsp, false);
+        return true;
+    }
+    return false;
+}
 
 /* Join whatever run_dsps released. Separate from the start so the frame
  * thread has somewhere useful to be in between - see
@@ -662,6 +679,12 @@ static void join_dsps(MCPXAPUState *d, bool gp_active, bool ep_active)
             dsp_worker_wait(&g_ep_worker);
         }
     }
+}
+
+/* After the join: what the frame left behind for the next one. */
+static void dsp_frame_account(MCPXAPUState *d, bool gp_active)
+{
+    g_frame.gp_late = gp_active && !dsp_get_halt_requested(d->gp.dsp);
 }
 
 void mcpx_apu_dsp_frame_begin(MCPXAPUState *d)
@@ -747,6 +770,25 @@ void mcpx_apu_dsp_frame_gp(MCPXAPUState *d,
         return;
     }
 
+    /* A GP that did not reach frame-complete last frame is parked part way
+     * through it, still reading the mixbuf that frame was given. Writing
+     * this frame's over it would finish the late frame on a mix of two
+     * frames' input, and the owed frame that follows (core_resume_owed_
+     * frame) would consume this frame's mixbuf a second time: a slice of
+     * garbage and a repeated slice in the output ring. On a kick frame the
+     * EP, loading the GP's last eight slices from their shared ring almost
+     * at once, would also read the unwritten one - silicon has every slice
+     * written by the frame boundary. Finish the late frame here first, on
+     * its own mixbuf, bounded by the GP's budget. */
+    if (g_frame.gp_late) {
+        int64_t c0 = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+        while (!dsp_get_halt_requested(d->gp.dsp) &&
+               dsp_get_cycle_count(d->gp.dsp) < g_frame.gp_budget &&
+               qemu_clock_get_us(QEMU_CLOCK_REALTIME) - c0 < 2000) {
+            dsp_run(d->gp.dsp, DSP_SLICE_CYCLES);
+        }
+    }
+
     /* Write VP results to the GP DSP MIXBUF */
     for (int mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
         uint32_t base = GP_DSP_MIXBUF_BASE + mixbin * NUM_SAMPLES_PER_FRAME;
@@ -768,6 +810,7 @@ void mcpx_apu_dsp_frame_end(MCPXAPUState *d)
 
     if (g_frame.ran) {
         join_dsps(d, gp_enabled, ep_enabled);
+        dsp_frame_account(d, gp_enabled);
     }
 
     if (gp_enabled) {
