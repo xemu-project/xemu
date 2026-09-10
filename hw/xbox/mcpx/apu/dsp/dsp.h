@@ -32,31 +32,7 @@
 #include "dsp_dma.h"
 
 typedef struct DSPState DSPState;
-
-typedef struct DSPOps {
-    void (*finalize)(DSPState *dsp);
-    void (*reset)(DSPState *dsp);
-    void (*step)(DSPState *dsp);
-    void (*run)(DSPState *dsp, int cycles);
-    void (*bootstrap)(DSPState *dsp);
-    void (*start_frame)(DSPState *dsp);
-    uint32_t (*read_memory)(DSPState *dsp, char space, uint32_t addr);
-    void (*write_memory)(DSPState *dsp, char space, uint32_t addr,
-                         uint32_t value);
-    bool (*get_halt_requested)(DSPState *dsp);
-    void (*set_halt_requested)(DSPState *dsp, bool idle);
-    uint32_t (*get_cycle_count)(DSPState *dsp);
-    void (*set_cycle_count)(DSPState *dsp, uint32_t count);
-    void (*invalidate_opcache)(DSPState *dsp);
-    void (*sync_to_vm)(DSPState *dsp);
-    void (*sync_from_vm)(DSPState *dsp);
-    /* Whole register file, for snapshotting a core's working state. */
-    void (*get_registers)(DSPState *dsp, uint32_t out[64]);
-    /* Cheap PC/SP peek for instrumentation: unlike sync_to_vm this copies
-     * no memory, so it can be called per execution slice. */
-    void (*get_pc_sp)(DSPState *dsp, uint32_t *pc, uint32_t *sp,
-                      uint32_t ssh[16]);
-} DSPOps;
+typedef struct Dsp56300Jit Dsp56300Jit;
 
 /* Register file width, the layout Dsp56300State and the snapshot share. */
 #define DSP_REG_MAX 64
@@ -102,7 +78,11 @@ typedef struct DspCoreState {
 } DspCoreState;
 
 struct DSPState {
-    const DSPOps *ops;
+    Dsp56300Jit *jit;
+    /* The core's memory, owned here and mapped into the JIT. */
+    uint32_t *xram;
+    uint32_t *yram;
+    uint32_t *pram;
 
     DspCoreState core;
     DSPDMAState dma;
@@ -120,8 +100,6 @@ struct DSPState {
     bool halted_since_reset;
 
     bool is_gp;
-
-    void *backend;
 };
 
 DSPState *dsp_init(void *rw_opaque, dsp_scratch_rw_func scratch_rw,
@@ -142,28 +120,27 @@ uint32_t dsp_read_memory(DSPState *dsp, char space, uint32_t addr);
 void dsp_write_memory(DSPState *dsp, char space, uint32_t address,
                       uint32_t value);
 
-/* Accessor functions for backend-independent state access */
 bool dsp_get_halt_requested(DSPState *dsp);
 void dsp_set_halt_requested(DSPState *dsp, bool idle);
 uint32_t dsp_get_cycle_count(DSPState *dsp);
 void dsp_set_cycle_count(DSPState *dsp, uint32_t count);
 void dsp_invalidate_opcache(DSPState *dsp);
 
-/* Backend synchronization - sync backend state to/from DspCoreState */
+/* Snapshot synchronization: the core's state to/from DspCoreState. */
 void dsp_sync_to_vm(DSPState *dsp);
 bool dsp_frame_start_pending(DSPState *dsp);
 uint32_t dsp_frame_starts_dropped(DSPState *dsp);
 /* Frame-complete flags counted per core (dsp.c) and DMA words landed in P
  * memory (dsp_dma.c), for the scheduler trace report (gp_ep.c). */
 extern uint64_t g_dsp_gp_halts, g_dsp_ep_halts, g_dsp_dma_p_writes;
-/* dsp_jit.c: the JIT's translation counters. */
+/* The JIT's translation counters. */
 void dsp_jit_get_stats(DSPState *dsp, uint64_t *compiles, uint64_t *compile_ns,
                        uint64_t *compile_ns_worst,
                        uint64_t *invalidations, uint64_t *cache_hits,
                        uint64_t *retained, uint64_t *block_entries,
                        uint64_t *code_bytes);
-/* dsp_jit.c: the JIT's per-start-PC block-entry histogram (the first dump
- * is what enables profiling). */
+/* The JIT's per-start-PC block-entry histogram (the first dump is what
+ * enables profiling). */
 void dsp_jit_dump_block_profile(DSPState *dsp, const char *path);
 /* gp_ep.c: the MCPX_EP_SNAPSHOT node trigger, see there. */
 void mcpx_apu_ep_snapshot_on_eol_clear(DSPState *dsp);
