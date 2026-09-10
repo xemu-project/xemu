@@ -1,4 +1,4 @@
-project('dsp56300', version: '0.1.5')
+project('dsp56300', version: '0.1.4')
 
 fs = import('fs')
 
