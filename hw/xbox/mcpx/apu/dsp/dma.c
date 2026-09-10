@@ -438,6 +438,17 @@ static void dsp_dma_run(DSPDMAState *s)
         uint32_t items = dsp_interleave ? (count >> 4) * channel_count : count;
         size_t transfer_size = (size_t)items * item_size;
 
+        /* The buffer side moves 32-bit units: a node whose byte count is
+         * not a whole number of them is rejected like a bad format
+         * (probed: 1, 2, 3, 5 and 6 bytes raised the error bit and moved
+         * nothing, in both directions, interleaved and into a FIFO; 4
+         * bytes moved). */
+        if (transfer_size & 3) {
+            s->error = true;
+            s->pending_interrupts |= DMA_INTERRUPT_ERROR;
+            continue;
+        }
+
         if (transfer_size == 0) {
             goto node_done;
         }
