@@ -45,6 +45,8 @@ on:
         type: string
         default: ""
 
+permissions: {}
+
 jobs:
   trigger_results:
     name: Trigger PGRAPH release tests
@@ -55,7 +57,7 @@ jobs:
         with:
           workflow: run_xemu_release_tests.yml
           repo: ${{ inputs.repo || vars.PGRAPH_RESULTS_REPO || 'xemu-project/xemu-nxdk_pgraph_tests_results' }}
-          token: ${{ secrets.PGRAPH_RESULTS_TOKEN || secrets.XEMU_ROBOT_TOKEN || secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PGRAPH_RESULTS_TOKEN || secrets.XEMU_ROBOT_TOKEN || secrets.GH_PAT }}
           ref: main
           inputs: |
             {
