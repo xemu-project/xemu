@@ -56,6 +56,9 @@ const BasicColorFormatInfo kelvin_color_format_info_map[66] = {
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8] = { 2, false },
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R8B8] = { 2, false },
 
+    /* D3DFMT_V16U16: swizzled two-channel signed 16-bit (bump/normal offsets) */
+    [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_V16U16] = { 4, false },
+
     [NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8] = { 2, true },
     [NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_YB8CR8YA8CB8] = { 2, true },
 
