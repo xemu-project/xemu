@@ -23,7 +23,7 @@
 #include "debug.h"
 #include "dsp_dma.h"
 #include "dsp_dma_regs.h"
-#include "interp/dsp_cpu_regs.h"
+#include "dsp_mem.h"
 
 #ifdef DEBUG
 

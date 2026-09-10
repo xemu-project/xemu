@@ -28,7 +28,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "interp/dsp_cpu_regs.h"
+#include "dsp_mem.h"
 #include "dsp_dma.h"
 
 typedef struct DSPState DSPState;
@@ -52,15 +52,17 @@ typedef struct DSPOps {
     void (*sync_from_vm)(DSPState *dsp);
 } DSPOps;
 
+/* Register file width, the layout Dsp56300State and the snapshot share. */
+#define DSP_REG_MAX 64
+
 /*
- * Shared VM state for save/load and backend synchronization.
- * Both the C interpreter and JIT backends sync to/from this struct.
+ * The core's state as saved and loaded: the JIT syncs to and from this
+ * struct around a snapshot.
  *
- * TODO: This struct mirrors the old C interpreter's dsp_core_t layout for
- * snapshot compatibility. It uses 16-bit interrupt fields and only 4 interrupt
- * slots, losing fidelity when saving JIT state (which has 24-bit addresses and
- * 128 IVT slots). Once the C interpreter is removed, simplify this to match
- * the JIT's native state and bump the vmstate version.
+ * TODO: The layout is the retired C interpreter's, kept so existing
+ * snapshots still load. It has 16-bit interrupt fields and only 4 interrupt
+ * slots, losing fidelity against the JIT's 24-bit addresses and 128 IVT
+ * slots. Simplify it to match Dsp56300State and bump the vmstate version.
  */
 typedef struct DspCoreState {
     uint32_t pc;
@@ -132,8 +134,5 @@ void dsp_invalidate_opcache(DSPState *dsp);
 /* Backend synchronization - sync backend state to/from DspCoreState */
 void dsp_sync_to_vm(DSPState *dsp);
 void dsp_sync_from_vm(DSPState *dsp);
-
-/* Engine switching */
-void dsp_set_engine(DSPState *dsp, bool use_jit);
 
 #endif /* DSP_H */
