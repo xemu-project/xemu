@@ -1,6 +1,8 @@
 /*
  * MCPX EP (Encode Processor) on-chip Y data ROM, Y:$0800-$0FFF.
  *
+ * Copyright (c) 2026 Matt Borgerson
+ *
  * Captured from Xbox hardware with xbtest and verified bit-for-bit against
  * fresh reads. It holds the coefficient, window and companding tables the
  * EP's Dolby Digital / AC3 encoder reads directly from Y data space; the
