@@ -29,8 +29,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "dsp_mem.h"
-#include "dsp_dma.h"
+#include "mem.h"
+#include "dma.h"
 
 typedef struct DSPState DSPState;
 typedef struct Dsp56300Jit Dsp56300Jit;
@@ -132,7 +132,7 @@ void dsp_sync_to_vm(DSPState *dsp);
 bool dsp_frame_start_pending(DSPState *dsp);
 uint32_t dsp_frame_starts_dropped(DSPState *dsp);
 /* Frame-complete flags counted per core (dsp.c) and DMA words landed in P
- * memory (dsp_dma.c), for the scheduler trace report (gp_ep.c). */
+ * memory (dma.c), for the scheduler trace report (gp_ep.c). */
 extern uint64_t g_dsp_gp_halts, g_dsp_ep_halts, g_dsp_dma_p_writes;
 /* The JIT's translation counters. */
 void dsp_jit_get_stats(DSPState *dsp, uint64_t *compiles, uint64_t *compile_ns,

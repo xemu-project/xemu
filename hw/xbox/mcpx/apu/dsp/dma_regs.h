@@ -18,8 +18,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef HW_XBOX_MCPX_DSP_DSP_DMA_REGS_H
-#define HW_XBOX_MCPX_DSP_DSP_DMA_REGS_H
+#ifndef HW_XBOX_MCPX_DSP_DMA_REGS_H
+#define HW_XBOX_MCPX_DSP_DMA_REGS_H
 
 #define DMA_CONFIGURATION_AUTOSTART (1 << 0)
 #define DMA_CONFIGURATION_AUTOREADY (1 << 1)

@@ -18,8 +18,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef DSP_DMA_H
-#define DSP_DMA_H
+#ifndef HW_XBOX_MCPX_DSP_DMA_H
+#define HW_XBOX_MCPX_DSP_DMA_H
 
 #include <stdint.h>
 #include <stdbool.h>
