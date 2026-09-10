@@ -76,26 +76,34 @@ static void scratch_circular_copy(
     uint8_t     *scratch_buf,
     int          direction)
 {
-    if (*scratch_offset >= scratch_size) {
-        *scratch_offset = 0;
-    }
-
     uint32_t buf_offset = 0;
 
+    /* The ring is a whole number of 32-bit units (probed: a size field of
+     * 0, nominally one byte, wrapped like a four-byte ring), and the
+     * offset wraps only when a transfer crosses the ring's end. An offset
+     * at or past the end is neither clamped nor wrapped: the data lands at
+     * base + offset and the offset advances past it (probed with offsets
+     * of size and size + $100 on a $800 ring). The offset's low two bits
+     * are dropped too (probed: offset 2 landed at 0 and wrote back $10). */
+    scratch_size = (scratch_size + 3) & ~3u;
+    *scratch_offset &= ~3u;
+
     while (transfer_size > 0) {
-        size_t bytes_until_wrap = scratch_size - *scratch_offset;
-        size_t chunk_size = MIN(transfer_size, bytes_until_wrap);
+        size_t chunk_size = transfer_size;
+        bool crosses = false;
         uint32_t scratch_addr = scratch_base + *scratch_offset;
 
-        // R/W to scratch memory from chunk in buffer
-        s->scratch_rw(s->rw_opaque, &scratch_buf[buf_offset], scratch_addr, chunk_size, direction);
+        if (*scratch_offset < scratch_size) {
+            size_t bytes_until_wrap = scratch_size - *scratch_offset;
 
-        // Advance scratch pointer, wrap if we've reached the end
-        *scratch_offset += chunk_size;
-        if (*scratch_offset >= scratch_size) {
-            *scratch_offset = 0;
+            crosses = transfer_size >= bytes_until_wrap;
+            chunk_size = MIN(transfer_size, bytes_until_wrap);
         }
 
+        s->scratch_rw(s->rw_opaque, &scratch_buf[buf_offset], scratch_addr,
+                      chunk_size, direction);
+
+        *scratch_offset = crosses ? 0 : *scratch_offset + chunk_size;
         transfer_size -= chunk_size;
         buf_offset += chunk_size;
     }
