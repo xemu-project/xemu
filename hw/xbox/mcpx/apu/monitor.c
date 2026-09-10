@@ -19,6 +19,7 @@
 
 #include "apu_int.h"
 #include "qapi/error.h"
+#include "qemu/cutils.h"
 #include "qemu/error-report.h"
 
 /* Channels the selected tap wants: the EP S/PDIF tap plays the decoded 5.1
@@ -77,13 +78,82 @@ static bool monitor_open(MCPXAPUState *d, int channels, Error **errp)
     return true;
 }
 
+/* The monitor plays the EP's analog output, FIFO #0: the point present in
+ * every guest audio configuration (a stereo pair, L == R for a mono guest,
+ * the EP's own surround-compatible downmix with Dolby Digital on). The
+ * S/PDIF stream exists only while a title runs the encoder, the VP and GP
+ * taps bypass the EP; those stay debug views.
+ *
+ * MCPX_APU_MONITOR=ac97|vp|gp|ep|spdif pins the point from the environment
+ * - what the UI combo does, for headless captures. `ep` is FIFO #0;
+ * `spdif` decodes the AC-3 stream on FIFO #1 (spdif.c). */
+static void monitor_select_point(MCPXAPUState *d)
+{
+    d->monitor.point = MCPX_APU_DEBUG_MON_EP;
+    const char *mon = getenv("MCPX_APU_MONITOR");
+    if (mon) {
+        if (!strcmp(mon, "ac97")) {
+            d->monitor.point = MCPX_APU_DEBUG_MON_AC97;
+        } else if (!strcmp(mon, "vp")) {
+            d->monitor.point = MCPX_APU_DEBUG_MON_VP;
+        } else if (!strcmp(mon, "gp")) {
+            d->monitor.point = MCPX_APU_DEBUG_MON_GP;
+        } else if (!strcmp(mon, "ep")) {
+            d->monitor.point = MCPX_APU_DEBUG_MON_EP;
+        } else if (!strcmp(mon, "spdif")) {
+            d->monitor.point = MCPX_APU_DEBUG_MON_EP_SPDIF;
+        }
+    }
+}
+
+/* MCPX_APU_MON_CHANNELS=<list>: solo/mute channels of the monitor's
+ * layout - comma-separated names (l,r or fl,fr,fc,lfe,bl,br), channel
+ * indices, or a hex mask (0x..). Unset = all channels. */
+static void monitor_select_channels(MCPXAPUState *d)
+{
+    const char *chs = getenv("MCPX_APU_MON_CHANNELS");
+    d->monitor.channel_mask = 0x3F;
+    if (!chs) {
+        return;
+    }
+    static const char *const names[6] = { "fl", "fr", "fc", "lfe", "bl", "br" };
+    uint32_t mask = 0;
+    unsigned long hex;
+    if (!strncmp(chs, "0x", 2)) {
+        if (qemu_strtoul(chs, NULL, 16, &hex) == 0) {
+            mask = hex;
+        }
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%s", chs);
+        char *tok = strtok(buf, ",");
+        for (; tok; tok = strtok(NULL, ",")) {
+            if (!strcmp(tok, "l")) {
+                mask |= 1;
+            } else if (!strcmp(tok, "r")) {
+                mask |= 2;
+            } else if (*tok >= '0' && *tok <= '5' && !tok[1]) {
+                mask |= 1u << (*tok - '0');
+            } else {
+                for (int c = 0; c < 6; c++) {
+                    if (!strcmp(tok, names[c])) {
+                        mask |= 1u << c;
+                    }
+                }
+            }
+        }
+    }
+    if (mask) {
+        d->monitor.channel_mask = mask;
+    }
+}
+
 void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
 {
     d->monitor.stream = NULL;
     d->monitor.channels = 0;
-    if (!d->monitor.channel_mask) {
-        d->monitor.channel_mask = 0x3F; /* all six enabled */
-    }
+    monitor_select_point(d);
+    monitor_select_channels(d);
 
     if (!SDL_Init(SDL_INIT_AUDIO)) {
         error_setg(errp, "SDL_Init failed: %s", SDL_GetError());

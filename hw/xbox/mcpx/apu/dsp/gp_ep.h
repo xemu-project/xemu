@@ -31,14 +31,12 @@
 typedef struct MCPXAPUState MCPXAPUState;
 
 typedef struct MCPXAPUGPState {
-    bool realtime;
     MemoryRegion mmio;
     DSPState *dsp;
     uint32_t regs[0x10000];
 } MCPXAPUGPState;
 
 typedef struct MCPXAPUEPState {
-    bool realtime;
     MemoryRegion mmio;
     DSPState *dsp;
     uint32_t regs[0x10000];
@@ -57,6 +55,5 @@ void mcpx_apu_dsp_frame_gp(
     MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
 void mcpx_apu_dsp_frame_end(MCPXAPUState *d);
 void mcpx_apu_dsp_stop_workers(void);
-void mcpx_apu_update_dsp_preference(MCPXAPUState *d);
 
 #endif

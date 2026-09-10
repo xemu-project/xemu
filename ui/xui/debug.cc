@@ -278,19 +278,6 @@ void DebugApuWindow::Draw()
         }
     }
 
-
-    static bool gp_realtime;
-    gp_realtime = dbg->gp_realtime;
-    if (ImGui::Checkbox("GP Realtime\n", &gp_realtime)) {
-        mcpx_apu_debug_set_gp_realtime_enabled(gp_realtime);
-    }
-
-    static bool ep_realtime;
-    ep_realtime = dbg->ep_realtime;
-    if (ImGui::Checkbox("EP Realtime\n", &ep_realtime)) {
-        mcpx_apu_debug_set_ep_realtime_enabled(ep_realtime);
-    }
-
     ImGui::Checkbox("HRTF Filtering\n", &g_config.audio.hrtf);
 
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);

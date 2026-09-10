@@ -43,16 +43,6 @@ void mcpx_debug_end_frame(void)
     g_dbg_cache = g_dbg;
 }
 
-void mcpx_apu_debug_set_gp_realtime_enabled(bool run)
-{
-    g_state->gp.realtime = run;
-}
-
-void mcpx_apu_debug_set_ep_realtime_enabled(bool run)
-{
-    g_state->ep.realtime = run;
-}
-
 McpxApuDebugMonitorPoint mcpx_apu_debug_get_monitor(void)
 {
     return g_state->monitor.point;

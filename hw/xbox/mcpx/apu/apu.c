@@ -281,10 +281,7 @@ uint64_t g_apu_guest_locks;
 
 static void se_frame(MCPXAPUState *d)
 {
-    mcpx_apu_update_dsp_preference(d);
     mcpx_debug_begin_frame();
-    g_dbg.gp_realtime = d->gp.realtime;
-    g_dbg.ep_realtime = d->ep.realtime;
 
     int64_t start_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
     int64_t elapsed_us = start_us - d->frame_count_time_us;
