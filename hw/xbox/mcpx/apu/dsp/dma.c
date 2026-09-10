@@ -614,10 +614,23 @@ void dsp_dma_write(DSPDMAState *s, DSPDMARegister reg, uint32_t v)
             s->control &= ~DMA_CONTROL_RUNNING;
             break;
         case DMA_CONTROL_ACTION_FREEZE:
+            /* A FREEZE right behind a START let the chain move its data
+             * but held EOL back: interrupt status stayed 0 with NEXT_BLOCK
+             * already at the terminator. The chain has run here
+             * by the time the DSP can freeze it, so hold the latch until
+             * the UNFREEZE. */
             s->control |= DMA_CONTROL_FROZEN;
+            if (s->eol) {
+                s->eol = false;
+                s->eol_held = true;
+            }
             break;
         case DMA_CONTROL_ACTION_UNFREEZE:
             s->control &= ~DMA_CONTROL_FROZEN;
+            if (s->eol_held) {
+                s->eol_held = false;
+                s->eol = true;
+            }
             break;
         default:
             /* NOP, ABORT and the unassigned encodings are silent no-ops on

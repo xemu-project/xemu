@@ -317,6 +317,9 @@ void dsp_reset(DSPState *dsp)
      * (probed: DMA_CONTROL reads 0 on a fresh boot after a stopped chain). */
     dsp->dma.control = 0;
     dsp->dma.dma_read_count = 0;
+    /* Nor does an EOL a FREEZE held back reach the next program: an
+     * UNFREEZE alone after a reboot saw no EOL on silicon. */
+    dsp->dma.eol_held = false;
     dsp56300_reset(dsp->jit);
 }
 
