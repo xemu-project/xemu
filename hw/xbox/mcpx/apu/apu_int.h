@@ -32,6 +32,7 @@
 #include "migration/vmstate.h"
 #include "qemu/main-loop.h"
 #include "qemu/thread.h"
+#include "system/physmem.h"
 #include "system/runstate.h"
 #include "ui/xemu-settings.h"
 
@@ -151,6 +152,19 @@ static inline void mcpx_apu_guest_unlock(MCPXAPUState *d)
  * the flat view per call, millions of times a second. These read and write
  * through the RAM pointer and keep the walk for an address outside RAM. */
 
+/* Marking dirty through memory_region_set_dirty costs an RCU section and a
+ * locked RMW per client bitmap even when every bit is already set, which
+ * for the pages the DSP and VP stream into is every call. The lazy variant
+ * scans first. The CODE bit is set without a TB invalidate, exactly like
+ * memory_region_set_dirty. */
+static inline void mcpx_apu_ram_set_dirty(MCPXAPUState *d, hwaddr addr,
+                                          hwaddr len)
+{
+    physical_memory_set_dirty_range_lazy(
+        memory_region_get_ram_addr(d->ram) + addr, len,
+        memory_region_get_dirty_log_mask(d->ram));
+}
+
 static inline uint32_t mcpx_apu_ram_ldl(MCPXAPUState *d, hwaddr addr)
 {
     if (addr + 4 <= d->ram_size) {
@@ -179,7 +193,7 @@ static inline void mcpx_apu_ram_stl(MCPXAPUState *d, hwaddr addr, uint32_t val)
 {
     if (addr + 4 <= d->ram_size) {
         stl_le_p(&d->ram_ptr[addr], val);
-        memory_region_set_dirty(d->ram, addr, 4);
+        mcpx_apu_ram_set_dirty(d, addr, 4);
     } else {
         stl_le_phys(&address_space_memory, addr, val);
     }

@@ -83,7 +83,7 @@ static void scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
 
         if (dir) {
             memcpy(&d->ram_ptr[paddr], ptr, bytes_to_copy);
-            memory_region_set_dirty(d->ram, paddr, bytes_to_copy);
+            mcpx_apu_ram_set_dirty(d, paddr, bytes_to_copy);
         } else {
             memcpy(ptr, &d->ram_ptr[paddr], bytes_to_copy);
         }
