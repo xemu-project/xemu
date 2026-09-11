@@ -483,7 +483,9 @@ static void dsp_dma_run(DSPDMAState *s)
         }
 
         /* Scratch ($F, and the $8-$B aliases) is addressed by scratch_offset
-         * alone; scratch_base is ignored (probed). */
+         * alone; scratch_base is ignored. Its offset advances by
+         * the bytes moved, which is what a writeback stores (probed for $F
+         * and $8, both directions). */
         if (direction) {
             if (bulk) {
                 dsp_dma_words_read(s, dsp_offset, s->word_buf, total_words);
@@ -519,6 +521,7 @@ static void dsp_dma_run(DSPDMAState *s)
         default: /* $8-$B behave as $F on silicon */
             s->scratch_rw(s->rw_opaque, scratch_buf, scratch_offset,
                           transfer_size, direction);
+            scratch_offset += transfer_size;
             break;
         }
 
