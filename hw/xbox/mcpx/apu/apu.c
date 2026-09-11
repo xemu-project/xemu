@@ -276,6 +276,9 @@ static void throttle(MCPXAPUState *d)
     }
 }
 
+/* Guest accessors that took the APU lock; in the scheduler trace report. */
+uint64_t g_apu_guest_locks;
+
 static void se_frame(MCPXAPUState *d)
 {
     mcpx_apu_update_dsp_preference(d);

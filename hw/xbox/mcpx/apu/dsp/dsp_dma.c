@@ -19,6 +19,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/atomic.h"
 #include "qemu/compiler.h"
 #include "debug.h"
 #include "dsp_dma.h"
@@ -143,12 +144,20 @@ static uint32_t dsp_dma_mem_read(DSPDMAState *s, uint32_t addr)
     return s->mem_read(s->mem_opaque, space, offset);
 }
 
+/* Words this engine has landed in P memory, each of which can dirty a
+ * translated block; in the scheduler trace report. Both cores' engines
+ * write it, from whichever thread is running them. */
+uint64_t g_dsp_dma_p_writes;
+
 static void dsp_dma_mem_write(DSPDMAState *s, uint32_t addr, uint32_t value)
 {
     int space;
     uint32_t offset;
 
     if (dsp_dma_map(addr, &space, &offset)) {
+        if (space == DSP_SPACE_P) {
+            qatomic_add(&g_dsp_dma_p_writes, 1);
+        }
         s->mem_write(s->mem_opaque, space, offset, value);
     }
 }
@@ -324,6 +333,9 @@ static void dsp_dma_words_write(DSPDMAState *s, uint32_t addr,
         uint32_t n = MIN(count, dsp_dma_window_end(addr) - addr);
 
         if (dsp_dma_map(addr, &space, &offset)) {
+            if (space == DSP_SPACE_P) {
+                qatomic_add(&g_dsp_dma_p_writes, n);
+            }
             s->mem_write_run(s->mem_opaque, space, offset, vals, n);
         }
         addr += n;
