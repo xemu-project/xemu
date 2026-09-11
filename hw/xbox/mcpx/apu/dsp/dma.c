@@ -606,11 +606,11 @@ void dsp_dma_write(DSPDMAState *s, DSPDMARegister reg, uint32_t v)
         switch(v & DMA_CONTROL_ACTION) {
         case DMA_CONTROL_ACTION_START:
             s->control |= DMA_CONTROL_RUNNING;
-            s->control &= ~DMA_CONTROL_STOPPED;
             s->dma_read_count = 0;
             break;
         case DMA_CONTROL_ACTION_STOP:
-            s->control |= DMA_CONTROL_STOPPED;
+            /* DMA_CONTROL reads 0 after a STOP (probed on an idle engine);
+             * the STOPPED bit has never been seen set. */
             s->control &= ~DMA_CONTROL_RUNNING;
             break;
         case DMA_CONTROL_ACTION_FREEZE:
