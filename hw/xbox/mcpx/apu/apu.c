@@ -710,4 +710,5 @@ void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
 
     d->ram = ram;
     d->ram_ptr = memory_region_get_ram_ptr(d->ram);
+    d->ram_size = memory_region_size(d->ram);
 }
