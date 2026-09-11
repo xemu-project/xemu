@@ -79,6 +79,8 @@ typedef struct DSPDMAState {
 
     bool error;
     bool eol;
+    /* EOL reached while frozen: latched at the UNFREEZE. */
+    bool eol_held;
 
     /* Reads of DMA_CONTROL while RUNNING; the third reads the engine as
      * idle (see dsp_dma_read). */
