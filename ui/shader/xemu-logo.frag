@@ -1,4 +1,4 @@
-#version 330
+#version 140
 uniform sampler2D tex;
 uniform vec4 in_ColorPrimary;
 uniform vec4 in_ColorFill;
