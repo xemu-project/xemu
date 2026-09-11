@@ -91,7 +91,6 @@ struct McpxApuDebug
             float low_ms, high_ms;
         } latency;
     } throttle;
-    bool gp_realtime, ep_realtime;
 };
 
 #ifdef __cplusplus
@@ -113,8 +112,6 @@ void mcpx_apu_debug_isolate_voice(uint16_t v);
 void mcpx_apu_debug_clear_isolations(void);
 void mcpx_apu_debug_toggle_mute(uint16_t v);
 bool mcpx_apu_debug_is_muted(uint16_t v);
-void mcpx_apu_debug_set_gp_realtime_enabled(bool enable);
-void mcpx_apu_debug_set_ep_realtime_enabled(bool enable);
 
 #ifdef __cplusplus
 }
