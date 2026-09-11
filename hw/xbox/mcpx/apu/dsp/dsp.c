@@ -78,10 +78,25 @@ void write_peripheral(DSPState *dsp, uint32_t address, uint32_t value)
     case 0xFFFFC4:
         if (value & 1) {
             dsp_set_halt_requested(dsp, true);
+            dsp->halted_since_reset = true;
         }
         break;
     case 0xFFFFC5:
         dsp->interrupts &= ~value;
+        if (value & INTERRUPT_START_FRAME) {
+            /* The program consumed one start; one still owed stays visible
+             * so the run loop lets the core catch up. Before its first
+             * frame-complete the program is clearing the bit as part of its
+             * init, not consuming a start: a start that arrived during a
+             * slow init is still owed to the first real frame, or the
+             * program runs one kick behind the frame counter for good. */
+            if (dsp->frame_starts_pending && dsp->halted_since_reset) {
+                dsp->frame_starts_pending--;
+            }
+            if (dsp->frame_starts_pending) {
+                dsp->interrupts |= INTERRUPT_START_FRAME;
+            }
+        }
         dsp->dma.pending_interrupts &= ~value;
         if (value & INTERRUPT_DMA_EOL) {
             dsp->dma.eol = false;
@@ -104,9 +119,29 @@ void write_peripheral(DSPState *dsp, uint32_t address, uint32_t value)
     trace_dsp_write_peripheral(address, value);
 }
 
+#define FRAME_STARTS_PENDING_MAX 64
+
 void dsp_start_frame_impl(DSPState *dsp)
 {
+    if (dsp->frame_starts_pending < FRAME_STARTS_PENDING_MAX) {
+        dsp->frame_starts_pending++;
+    } else {
+        dsp->frame_starts_dropped++;
+    }
     dsp->interrupts |= INTERRUPT_START_FRAME;
+}
+
+/* Whether a frame start is signalled that the program has not yet consumed
+ * (it clears the bit when it begins the frame): a core that halted with
+ * this set still owes that frame's work. */
+bool dsp_frame_start_pending(DSPState *dsp)
+{
+    return dsp->interrupts & INTERRUPT_START_FRAME;
+}
+
+uint32_t dsp_frame_starts_dropped(DSPState *dsp)
+{
+    return dsp->frame_starts_dropped;
 }
 
 DSPState *dsp_init(void *rw_opaque, dsp_scratch_rw_func scratch_rw,
@@ -136,6 +171,11 @@ void dsp_destroy(DSPState *dsp)
 
 void dsp_reset(DSPState *dsp)
 {
+    /* A start owed to the program being reset is not owed to the next one:
+     * silicon loses an interrupt that lands in reset, and carrying it over
+     * runs the new program one frame ahead of the frame counter. */
+    dsp->frame_starts_pending = 0;
+    dsp->halted_since_reset = false;
     /* The block reset restarts the DMA engine idle: a STOP the outgoing
      * program issued does not leave STOPPED for the next program to read
      * (probed: DMA_CONTROL reads 0 on a fresh boot after a stopped chain). */

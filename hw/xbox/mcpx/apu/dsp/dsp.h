@@ -103,6 +103,15 @@ struct DSPState {
     int save_cycles;
 
     uint32_t interrupts;
+    /* Frame starts signalled but not yet consumed by the program. Silicon's
+     * cores never fall behind their edge-latched start; here a core can, so
+     * starts are counted (capped) and re-armed as the program consumes
+     * each one. */
+    uint32_t frame_starts_pending, frame_starts_dropped;
+    /* Set by the program's first frame-complete after a reset. Until then
+     * an acknowledge of the start-frame bit clears the bit without
+     * consuming a latched start: the program is still initialising. */
+    bool halted_since_reset;
 
     bool is_gp;
 
@@ -133,6 +142,8 @@ void dsp_invalidate_opcache(DSPState *dsp);
 
 /* Backend synchronization - sync backend state to/from DspCoreState */
 void dsp_sync_to_vm(DSPState *dsp);
+bool dsp_frame_start_pending(DSPState *dsp);
+uint32_t dsp_frame_starts_dropped(DSPState *dsp);
 void dsp_sync_from_vm(DSPState *dsp);
 
 #endif /* DSP_H */
