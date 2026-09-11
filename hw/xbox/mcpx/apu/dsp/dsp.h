@@ -101,6 +101,17 @@ struct DSPState {
      * an acknowledge of the start-frame bit clears the bit without
      * consuming a latched start: the program is still initialising. */
     bool halted_since_reset;
+    /* The frame timer at x:$FFFFB0-B3: $FFFFB3 counts core cycles
+     * (1.003 ticks per cycle) from the write of $FFFFB1 while $FFFFB0 bit 0
+     * is set; $FFFFB2 is the period the programs set to $FFFFFF (only that
+     * value probed, so the count simply wraps at 24 bits). Both programs
+     * enable it at init and the GP calibrates its frame length against it.
+     * cycles_base advances by DSP_FRAME_CYCLES per SE frame (dsp_frame_tick)
+     * so the timer measures elapsed frames, as on silicon where the core
+     * busy-waits instead of halting; the JIT's per-frame retired count adds
+     * the position within the frame. */
+    uint32_t timer_ctl, timer_period;
+    uint64_t timer_base, cycles_base;
 
     bool is_gp;
 };
@@ -115,6 +126,14 @@ void dsp_run(DSPState *dsp, int cycles);
 
 void dsp_bootstrap(DSPState *dsp);
 void dsp_start_frame(DSPState *dsp);
+/* One SE frame of the core's clock: 32 samples at 48 kHz on the 133.3 MHz
+ * core (probed: x:$FFFFB3 advances 88875 per frame). */
+#define DSP_FRAME_CYCLES 88875
+/* Advance the core's clock by one SE frame and reset its per-frame retired
+ * count. The x:$FFFFB3 timer is that clock: on silicon the core never
+ * halts, so its cycle counter measures time; here a halted core retires
+ * nothing, so the frame tick supplies the elapsed cycles instead. */
+void dsp_frame_tick(DSPState *dsp);
 void dsp_get_registers(DSPState *dsp, uint32_t out[64]);
 void dsp_get_pc_sp(DSPState *dsp, uint32_t *pc, uint32_t *sp,
                    uint32_t ssh[16]);

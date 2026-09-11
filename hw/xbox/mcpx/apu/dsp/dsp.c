@@ -51,13 +51,41 @@ uint64_t g_dsp_gp_halts, g_dsp_ep_halts;
  * Peripheral I/O, reached from the core through its callback region.
  */
 
+/* The core's clock: frames ticked (dsp_frame_tick) plus the cycles retired
+ * in the current frame. */
+static uint64_t dsp_cycles_total(DSPState *dsp)
+{
+    return dsp->cycles_base + dsp56300_cycle_count(dsp->jit);
+}
+
 static uint32_t read_peripheral(void *opaque, uint32_t address)
 {
     DSPState *dsp = opaque;
     uint32_t v = 0xababa;
     switch (address) {
+    case 0xFFFFB0:
+        v = dsp->timer_ctl;
+        break;
+    case 0xFFFFB2:
+        v = dsp->timer_period;
+        break;
     case 0xFFFFB3:
-        v = 0; // core->num_inst; // ??
+        /* Core cycles since the $FFFFB1 write while enabled, else 0
+         * (probed: reads 0 until the programs' timer init).
+         *
+         * GP only: the GP calibrates its frame length against this and the
+         * frame-timer test measures it. The EP program watchdogs the timer
+         * (P:$00B6: if the cycles between two of its resident-loop reads
+         * reach ~8 frames it jumps to an error path and hangs), and the
+         * wall-frame model here over-attributes cycles to the EP across the
+         * frames it spends budget-limited or parked between kicks, tripping
+         * that watchdog. Until the EP's per-frame cycle use is modelled
+         * faithfully the EP reads 0, as it did before the timer existed, so
+         * its watchdog stays dormant (dsp-cycle-model-status). */
+        v = 0;
+        if (dsp->is_gp && (dsp->timer_ctl & 1)) {
+            v = (dsp_cycles_total(dsp) - dsp->timer_base) & 0xFFFFFF;
+        }
         break;
     case 0xFFFFC5:
         v = dsp->interrupts | dsp->dma.pending_interrupts;
@@ -88,6 +116,16 @@ static void write_peripheral(void *opaque, uint32_t address, uint32_t value)
 {
     DSPState *dsp = opaque;
     switch (address) {
+    case 0xFFFFB0:
+        dsp->timer_ctl = value;
+        break;
+    case 0xFFFFB1:
+        /* Any write restarts the count (the programs write 1). */
+        dsp->timer_base = dsp_cycles_total(dsp);
+        break;
+    case 0xFFFFB2:
+        dsp->timer_period = value;
+        break;
     case 0xFFFFC4:
         if (value & 1) {
             /* Frame-complete: the program's own stop. Counted so
@@ -312,6 +350,9 @@ void dsp_reset(DSPState *dsp)
      * runs the new program one frame ahead of the frame counter. */
     dsp->frame_starts_pending = 0;
     dsp->halted_since_reset = false;
+    dsp->timer_ctl = 0;
+    dsp->timer_period = 0;
+    dsp->timer_base = dsp_cycles_total(dsp);
     /* The block reset restarts the DMA engine idle: a STOP the outgoing
      * program issued does not leave STOPPED for the next program to read
      * (probed: DMA_CONTROL reads 0 on a fresh boot after a stopped chain). */
@@ -433,6 +474,14 @@ void dsp_set_halt_requested(DSPState *dsp, bool idle)
 uint32_t dsp_get_cycle_count(DSPState *dsp)
 {
     return dsp56300_cycle_count(dsp->jit);
+}
+
+void dsp_frame_tick(DSPState *dsp)
+{
+    /* The retired count within a frame never exceeds the frame's budget,
+     * so the timer stays monotonic across the tick. */
+    dsp->cycles_base += DSP_FRAME_CYCLES;
+    dsp56300_set_cycle_count(dsp->jit, 0);
 }
 
 void dsp_set_cycle_count(DSPState *dsp, uint32_t count)
