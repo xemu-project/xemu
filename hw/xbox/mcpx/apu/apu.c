@@ -640,6 +640,21 @@ static const VMStateDescription vmstate_vp_dsp_frame_starts = {
     }
 };
 
+/* The x:$FFFFB0-B3 frame timer and the retired-cycle base it counts from. */
+static const VMStateDescription vmstate_vp_dsp_frame_timer = {
+    .name = "mcpx-apu/dsp-state/frame-timer",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = vmstate_always_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(timer_ctl, DSPState),
+        VMSTATE_UINT32(timer_period, DSPState),
+        VMSTATE_UINT64(timer_base, DSPState),
+        VMSTATE_UINT64(cycles_base, DSPState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 const VMStateDescription vmstate_vp_dsp_state = {
     .name = "mcpx-apu/dsp-state",
     .version_id = 1,
@@ -653,6 +668,7 @@ const VMStateDescription vmstate_vp_dsp_state = {
     },
     .subsections = (const VMStateDescription * const []) {
         &vmstate_vp_dsp_frame_starts,
+        &vmstate_vp_dsp_frame_timer,
         NULL
     }
 };

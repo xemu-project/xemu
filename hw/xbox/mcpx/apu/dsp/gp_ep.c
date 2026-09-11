@@ -151,8 +151,8 @@ static struct { uint32_t pc; uint64_t n; } g_ep_stall[EP_STALL_PCS];
 static uint64_t g_ep_stall_samples, g_ep_stall_dropped;
 
 /* Where in its kick the EP reaches the frame-complete flag. The EP is kicked
- * every 8th SE frame and given its 800k-cycle hardware budget as 8 slices of
- * 100k; this says whether it stops because it signalled done, or because the
+ * every 8th SE frame and given its 711k-cycle hardware budget as 8 slices of
+ * 88875; this says whether it stops because it signalled done, or because the
  * budget ran out. */
 static struct {
     uint64_t cycles, frames;      /* accumulated over the current kick */
@@ -427,7 +427,7 @@ static void sched_stats_report(MCPXAPUState *d)
             "halts/s gp=%.0f ep=%.0f | "
             "guest locks/s=%.0f, frames cut for a waiter=%llu | "
             "mixbuf %.1f%% of wall (%.1f us/frame) | "
-            "kick: halts at %.0fk cyc (min %.0fk max %.0fk of 800k) "
+            "kick: halts at %.0fk cyc (min %.0fk max %.0fk of 711k) "
             "after %.1f of 8 frames, %llu never | "
             "gp late-finish %llu catchup %llu, ep catchup %llu | "
             "fifo1 %llu wr %llu B, mon %dch, spdif %llu frames %llu bad "
@@ -1227,7 +1227,7 @@ void mcpx_apu_dsp_frame_begin(MCPXAPUState *d)
     if (gp_enabled) {
         dsp_start_frame(d->gp.dsp);
         dsp_set_halt_requested(d->gp.dsp, false);
-        dsp_set_cycle_count(d->gp.dsp, 0);
+        dsp_frame_tick(d->gp.dsp);
     }
     if (ep_enabled) {
         /* The kick (start-frame interrupt + run-to-idle) fires every 8th
@@ -1248,16 +1248,18 @@ void mcpx_apu_dsp_frame_begin(MCPXAPUState *d)
             dsp_set_halt_requested(d->ep.dsp, false);
             g_sched.kicks++;
         }
-        dsp_set_cycle_count(d->ep.dsp, 0);
+        dsp_frame_tick(d->ep.dsp);
     }
 
     if (gp_enabled || ep_enabled) {
-        /* Hardware budget: 150 MHz for one 32-sample frame at 48 kHz. The EP
-         * gets the same per-frame slice every SE frame (its 8-frame kick
-         * budget spread evenly) rather than one 8x slice on kick frames,
-         * which is the hardware's own shape: the encoder's kick takes ~4.4
-         * frames of continuous execution at 150 MHz and then idles. */
-        const uint32_t hw_budget = 100000;
+        /* Hardware budget: one 32-sample frame at 48 kHz on the 133.3 MHz
+         * core (probed: the core's cycle counter at x:$FFFFB3 advances
+         * 88875 per SE frame). The EP gets the same per-frame slice every
+         * SE frame (its 8-frame kick budget spread evenly) rather than one
+         * 8x slice on kick frames, which is the hardware's own shape: the
+         * encoder's kick takes ~4.4 frames of continuous execution and
+         * then idles. */
+        const uint32_t hw_budget = DSP_FRAME_CYCLES;
         /* MCPX_DSP_BUDGET=<gp>[,<ep>]: per-frame cycle caps, for tests that
          * want a core short of its per-frame need (a GP that cannot finish
          * a frame is how the late-frame path below is provoked). */
