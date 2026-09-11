@@ -619,6 +619,27 @@ const VMStateDescription vmstate_vp_dsp_core_state = {
     }
 };
 
+static bool vmstate_always_needed(void *opaque)
+{
+    return true;
+}
+
+/* The frame-start latch: how many starts the program still owes and
+ * whether it has completed a frame since reset. Without them a loaded core
+ * whose start bit was set at save time runs an extra frame, and its output
+ * ring cursor lands a slot ahead of the EP's kick phase for good. */
+static const VMStateDescription vmstate_vp_dsp_frame_starts = {
+    .name = "mcpx-apu/dsp-state/frame-starts",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = vmstate_always_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(frame_starts_pending, DSPState),
+        VMSTATE_BOOL(halted_since_reset, DSPState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 const VMStateDescription vmstate_vp_dsp_state = {
     .name = "mcpx-apu/dsp-state",
     .version_id = 1,
@@ -628,6 +649,26 @@ const VMStateDescription vmstate_vp_dsp_state = {
         VMSTATE_STRUCT(dma, DSPState, 1, vmstate_vp_dsp_dma_state, DSPDMAState),
         VMSTATE_INT32(save_cycles, DSPState),
         VMSTATE_UINT32(interrupts, DSPState),
+        VMSTATE_END_OF_LIST()
+    },
+    .subsections = (const VMStateDescription * const []) {
+        &vmstate_vp_dsp_frame_starts,
+        NULL
+    }
+};
+
+/* The SE frame counter phases the EP kicks (every eighth frame) against
+ * the GP's output ring, whose cursor the GP keeps in its own state. A load
+ * that kept the cursor but not the counter kicked the EP in whatever phase
+ * the booting session had reached: up to seven of each kick's eight slices
+ * stale, a pop train for the rest of the session. */
+static const VMStateDescription vmstate_mcpx_apu_frame_div = {
+    .name = "mcpx-apu/frame-div",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = vmstate_always_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_INT32(ep_frame_div, MCPXAPUState),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -671,6 +712,10 @@ static const VMStateDescription vmstate_mcpx_apu = {
         VMSTATE_UINT64_ARRAY(vp.voice_locked, MCPXAPUState, 4),
         VMSTATE_END_OF_LIST()
     },
+    .subsections = (const VMStateDescription * const []) {
+        &vmstate_mcpx_apu_frame_div,
+        NULL
+    }
 };
 
 static void mcpx_apu_class_init(ObjectClass *klass, const void *data)
