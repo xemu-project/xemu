@@ -429,8 +429,7 @@ static void sched_stats_report(MCPXAPUState *d)
             "mixbuf %.1f%% of wall (%.1f us/frame) | "
             "kick: halts at %.0fk cyc (min %.0fk max %.0fk of 800k) "
             "after %.1f of 8 frames, %llu never | "
-            "gp late-finish %llu catchup %llu dropped %u, "
-            "ep catchup %llu dropped %u | "
+            "gp late-finish %llu catchup %llu, ep catchup %llu | "
             "fifo1 %llu wr %llu B, mon %dch, spdif %llu frames %llu bad "
             "%llu under %llu over lvl %u..%u | "
             "gp %llu calls %.0f cyc/call %.0f ns/cyc | "
@@ -464,9 +463,7 @@ static void sched_stats_report(MCPXAPUState *d)
             (unsigned long long)g_ep_kick.never,
             (unsigned long long)g_sched.gp_late_finish,
             (unsigned long long)g_sched.gp_catchup,
-            dsp_frame_starts_dropped(d->gp.dsp),
             (unsigned long long)g_sched.ep_catchup,
-            dsp_frame_starts_dropped(d->ep.dsp),
             (unsigned long long)g_sched.fifo1_writes,
             (unsigned long long)g_sched.fifo1_bytes,
             d->monitor.channels,

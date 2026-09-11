@@ -90,11 +90,13 @@ struct DSPState {
     int save_cycles;
 
     uint32_t interrupts;
-    /* Frame starts signalled but not yet consumed by the program. Silicon's
-     * cores never fall behind their edge-latched start; here a core can, so
-     * starts are counted (capped) and re-armed as the program consumes
-     * each one. */
-    uint32_t frame_starts_pending, frame_starts_dropped;
+    /* Frame starts the sound engine has ticked that the program has not yet
+     * consumed. Probed on silicon: every tick latches (no cap found up to
+     * 1500), a latched start is invisible in x:$FFFFC5 until the program
+     * writes frame-complete (x:$FFFFC4 = 1), which releases exactly one;
+     * the acknowledge (x:$FFFFC5 = 2) consumes it and does not re-arm the
+     * next. A core that fell behind catches up one frame per complete. */
+    uint32_t frame_starts_pending;
     /* Set by the program's first frame-complete after a reset. Until then
      * an acknowledge of the start-frame bit clears the bit without
      * consuming a latched start: the program is still initialising. */
@@ -130,7 +132,6 @@ void dsp_invalidate_opcache(DSPState *dsp);
 /* Snapshot synchronization: the core's state to/from DspCoreState. */
 void dsp_sync_to_vm(DSPState *dsp);
 bool dsp_frame_start_pending(DSPState *dsp);
-uint32_t dsp_frame_starts_dropped(DSPState *dsp);
 /* Frame-complete flags counted per core (dsp.c) and DMA words landed in P
  * memory (dma.c), for the scheduler trace report (gp_ep.c). */
 extern uint64_t g_dsp_gp_halts, g_dsp_ep_halts, g_dsp_dma_p_writes;
