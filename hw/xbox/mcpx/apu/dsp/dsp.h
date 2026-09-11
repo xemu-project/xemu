@@ -2,6 +2,7 @@
  * MCPX DSP emulator
  *
  * Copyright (c) 2015 espes
+ * Copyright (c) 2018-2026 Matt Borgerson
  *
  * Adapted from Hatari DSP M56001 emulation
  * (C) 2001-2008 ARAnyM developer team

@@ -2,7 +2,7 @@
  * MCPX DSP memory map
  *
  * Copyright (c) 2015 espes
- * Copyright (c) 2020-2025 Matt Borgerson
+ * Copyright (c) 2020-2026 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
