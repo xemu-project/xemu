@@ -257,6 +257,11 @@ static void se_frame(MCPXAPUState *d)
 static void *mcpx_apu_frame_thread(void *arg)
 {
     MCPXAPUState *d = MCPX_APU_DEVICE(arg);
+    /* The thread reads guest memory through the address space (voice
+     * parameters, SGE entries, dirty marking on the DMA path), which takes
+     * the RCU read lock. A thread not in the registry is not waited for by
+     * synchronize_rcu(), so the flat view could be freed under it. */
+    rcu_register_thread();
     qemu_mutex_lock(&d->lock);
     while (!qatomic_read(&d->exiting)) {
         if (d->pause_requested) {
@@ -299,6 +304,7 @@ static void *mcpx_apu_frame_thread(void *arg)
         se_frame(d);
     }
     qemu_mutex_unlock(&d->lock);
+    rcu_unregister_thread();
     return NULL;
 }
 
