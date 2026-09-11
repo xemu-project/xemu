@@ -19,8 +19,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef HW_XBOX_MCPX_DSP_DSP_MEM_H
-#define HW_XBOX_MCPX_DSP_DSP_MEM_H
+#ifndef HW_XBOX_MCPX_DSP_MEM_H
+#define HW_XBOX_MCPX_DSP_MEM_H
 
 /* Memory spaces, as the DMA engine hands them to the core (the values are
  * Dsp56300MemSpace's). */

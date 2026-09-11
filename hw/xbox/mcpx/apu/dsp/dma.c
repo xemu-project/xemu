@@ -22,9 +22,9 @@
 #include "qemu/atomic.h"
 #include "qemu/compiler.h"
 #include "debug.h"
-#include "dsp_dma.h"
-#include "dsp_dma_regs.h"
-#include "dsp_mem.h"
+#include "dma.h"
+#include "dma_regs.h"
+#include "mem.h"
 #include "trace.h"
 
 #ifdef DEBUG
