@@ -32,8 +32,6 @@
 #define INTERRUPT_START_FRAME (1 << 1)
 #define INTERRUPT_DMA_EOL (1 << 7)
 
-#define FRAME_STARTS_PENDING_MAX 64
-
 /* Map the snapshot's interrupt indices (the retired C interpreter's) to
  * architectural IVT slots. Architectural slot = vectorAddr / 2 (per
  * DSP56300FM Table 2-2). */
@@ -102,6 +100,12 @@ static void write_peripheral(void *opaque, uint32_t address, uint32_t value)
             }
             dsp_set_halt_requested(dsp, true);
             dsp->halted_since_reset = true;
+            /* Frame-complete is what releases a latched start (probed:
+             * with a backlog, the bit appears one read after this write
+             * and never on the acknowledge alone). */
+            if (dsp->frame_starts_pending) {
+                dsp->interrupts |= INTERRUPT_START_FRAME;
+            }
         }
         break;
     case 0xFFFFC5:
@@ -110,17 +114,13 @@ static void write_peripheral(void *opaque, uint32_t address, uint32_t value)
         }
         dsp->interrupts &= ~value;
         if (value & INTERRUPT_START_FRAME) {
-            /* The program consumed one start; one still owed stays visible
-             * so the run loop lets the core catch up. Before its first
-             * frame-complete the program is clearing the bit as part of its
-             * init, not consuming a start: a start that arrived during a
-             * slow init is still owed to the first real frame, or the
-             * program runs one kick behind the frame counter for good. */
+            /* The program consumed one start. The next owed one stays
+             * invisible until its frame-complete (see $FFFFC4). Before the
+             * first frame-complete the program is clearing the bit as part
+             * of its init, not consuming a start: a start that arrived
+             * during a slow init is still owed to the first real frame. */
             if (dsp->frame_starts_pending && dsp->halted_since_reset) {
                 dsp->frame_starts_pending--;
-            }
-            if (dsp->frame_starts_pending) {
-                dsp->interrupts |= INTERRUPT_START_FRAME;
             }
         }
         dsp->dma.pending_interrupts &= ~value;
@@ -366,12 +366,13 @@ void dsp_start_frame(DSPState *dsp)
     if (dsp->is_gp) {
         g_gp_frame_count++;
     }
-    if (dsp->frame_starts_pending < FRAME_STARTS_PENDING_MAX) {
-        dsp->frame_starts_pending++;
-    } else {
-        dsp->frame_starts_dropped++;
+    /* Every tick latches; the core sees it once it has completed a frame
+     * (a parked WAIT/STOP core counts as complete, see dsp_run). A core
+     * still working sees it at its next frame-complete. */
+    dsp->frame_starts_pending++;
+    if (dsp_get_halt_requested(dsp)) {
+        dsp->interrupts |= INTERRUPT_START_FRAME;
     }
-    dsp->interrupts |= INTERRUPT_START_FRAME;
 }
 
 /* Whether a frame start is signalled that the program has not yet consumed
@@ -380,11 +381,6 @@ void dsp_start_frame(DSPState *dsp)
 bool dsp_frame_start_pending(DSPState *dsp)
 {
     return dsp->interrupts & INTERRUPT_START_FRAME;
-}
-
-uint32_t dsp_frame_starts_dropped(DSPState *dsp)
-{
-    return dsp->frame_starts_dropped;
 }
 
 void dsp_get_registers(DSPState *dsp, uint32_t out[64])
