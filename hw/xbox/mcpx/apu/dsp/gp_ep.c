@@ -763,11 +763,9 @@ static void gp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         dsp_write_memory(d->gp.dsp, 'X', xaddr, val);
         break;
     }
-    case NV_PAPU_GPMIXBUF ... NV_PAPU_GPMIXBUF + 0x400 * 4 - 1: {
-        uint32_t xaddr = (addr - NV_PAPU_GPMIXBUF) / 4;
-        dsp_write_memory(d->gp.dsp, 'X', GP_DSP_MIXBUF_BASE + xaddr, val);
+    case NV_PAPU_GPMIXBUF ... NV_PAPU_GPMIXBUF + 0x400 * 4 - 1:
+        /* The mixbuffer is the VP's; host writes here are dropped. */
         break;
-    }
     case NV_PAPU_GPYMEM ... NV_PAPU_GPYMEM + 0x800 * 4 - 1: {
         uint32_t yaddr = (addr - NV_PAPU_GPYMEM) / 4;
         dsp_write_memory(d->gp.dsp, 'Y', yaddr, val);
