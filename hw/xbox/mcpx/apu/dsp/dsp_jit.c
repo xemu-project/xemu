@@ -24,9 +24,10 @@
 
 #include <dsp56300.h>
 
-/* Map C interpreter interrupt indices to architectural IVT slots.
- * Architectural slot = vectorAddr / 2 (per DSP56300FM Table 2-2). */
-static const int cinterp_to_arch[4] = {
+/* Map the snapshot's interrupt indices (the retired C interpreter's) to
+ * architectural IVT slots. Architectural slot = vectorAddr / 2 (per
+ * DSP56300FM Table 2-2). */
+static const int snapshot_to_arch[4] = {
     0, /* RESET:       vec $00, slot 0 */
     2, /* ILLEGAL:     vec $04, slot 2 */
     1, /* STACK_ERROR: vec $02, slot 1 */
@@ -166,7 +167,7 @@ static void dsp_jit_sync_to_vm(DSPState *dsp)
     vm->interrupt_pipeline_count = ss.interrupts.pipeline_stage;
     vm->interrupt_counter = 0;
     for (int i = 0; i < 4; i++) {
-        int slot = cinterp_to_arch[i];
+        int slot = snapshot_to_arch[i];
         vm->interrupt_ipl[i] = (int16_t)ss.interrupts.ipl[slot];
         vm->interrupt_is_pending[i] = (ss.interrupts.pending_bits[slot / 64] >> (slot % 64)) & 1;
         vm->interrupt_counter += vm->interrupt_is_pending[i];
@@ -232,7 +233,7 @@ static void dsp_jit_sync_from_vm(DSPState *dsp)
     ss.interrupts.pending_bits[0] = 0;
     ss.interrupts.pending_bits[1] = 0;
     for (int i = 0; i < 4; i++) {
-        int slot = cinterp_to_arch[i];
+        int slot = snapshot_to_arch[i];
         ss.interrupts.ipl[slot] = (int8_t)vm->interrupt_ipl[i];
         ss.interrupts.pending_bits[slot / 64] |=
             (uint64_t)(vm->interrupt_is_pending[i] != 0) << (slot % 64);
@@ -241,17 +242,17 @@ static void dsp_jit_sync_from_vm(DSPState *dsp)
     memcpy(ss.stack[0], vm->stack[0], 16 * sizeof(uint32_t));
     memcpy(ss.stack[1], vm->stack[1], 16 * sizeof(uint32_t));
 
-    /* Widen legacy 16-bit register values from old snapshots.
-     * The C interpreter used 16-bit R/N/M/SSH/SSL/LA/LC registers.
-     * M: $FFFF meant linear addressing at 16-bit; JIT needs $FFFFFF.
+    /* Widen legacy 16-bit register values from old snapshots, which the
+     * C interpreter wrote with 16-bit R/N/M/SSH/SSL/LA/LC registers.
+     * M: $FFFF meant linear addressing at 16-bit; the core needs $FFFFFF.
      * N: Signed offsets need sign extension from 16-bit to 24-bit.
      */
     for (int i = 0; i < 8; i++) {
-        if (ss.registers[DSP_REG_M0 + i] == 0x00FFFF) {
-            ss.registers[DSP_REG_M0 + i] = 0x00FFFFFF;
+        if (ss.registers[DSP56300_REG_M0 + i] == 0x00FFFF) {
+            ss.registers[DSP56300_REG_M0 + i] = 0x00FFFFFF;
         }
-        if (ss.registers[DSP_REG_N0 + i] & 0x8000) {
-            ss.registers[DSP_REG_N0 + i] |= 0xFF0000;
+        if (ss.registers[DSP56300_REG_N0 + i] & 0x8000) {
+            ss.registers[DSP56300_REG_N0 + i] |= 0xFF0000;
         }
     }
 

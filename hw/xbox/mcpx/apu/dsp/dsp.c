@@ -26,7 +26,6 @@
 #include "qemu/osdep.h"
 #include "dsp_internal.h"
 #include "trace.h"
-#include "ui/xemu-settings.h"
 
 /* Defines */
 #define BITMASK(x) ((1 << (x)) - 1)
@@ -38,7 +37,7 @@
 static int g_gp_frame_count = 0;
 
 /*
- * Shared peripheral I/O helpers, used by both backends via callbacks.
+ * Peripheral I/O, reached from the core through its callback region.
  */
 
 uint32_t read_peripheral(DSPState *dsp, uint32_t address)
@@ -119,11 +118,7 @@ DSPState *dsp_init(void *rw_opaque, dsp_scratch_rw_func scratch_rw,
     dsp->dma.scratch_rw = scratch_rw;
     dsp->dma.fifo_rw = fifo_rw;
 
-    if (g_config.audio.use_dsp_jit) {
-        dsp_jit_init(dsp);
-    } else {
-        dsp_c_init(dsp);
-    }
+    dsp_jit_init(dsp);
 
     dsp_reset(dsp);
 
@@ -208,23 +203,4 @@ void dsp_sync_to_vm(DSPState *dsp)
 void dsp_sync_from_vm(DSPState *dsp)
 {
     dsp->ops->sync_from_vm(dsp);
-}
-
-void dsp_set_engine(DSPState *dsp, bool use_jit)
-{
-    bool currently_jit = (dsp->ops == &jit_dsp_ops);
-    if (use_jit == currently_jit) {
-        return;
-    }
-
-    dsp_sync_to_vm(dsp);
-    dsp->ops->finalize(dsp);
-
-    if (use_jit) {
-        dsp_jit_init(dsp);
-    } else {
-        dsp_c_init(dsp);
-    }
-
-    dsp_sync_from_vm(dsp);
 }

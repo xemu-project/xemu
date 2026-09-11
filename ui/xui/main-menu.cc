@@ -846,9 +846,6 @@ void MainMenuAudioView::Draw()
     SectionTitle("Quality");
     Toggle("Real-time DSP processing", &g_config.audio.use_dsp,
            "Enable improved audio accuracy (experimental)");
-    Toggle("DSP JIT engine", &g_config.audio.use_dsp_jit,
-           "Use DSP JIT engine");
-
 }
 
 NetworkInterface::NetworkInterface(pcap_if_t *pcap_desc, char *_friendlyname)
