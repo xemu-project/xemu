@@ -1,7 +1,7 @@
 /*
  * QEMU MCPX Audio Processing Unit implementation
  *
- * Copyright (c) 2020-2021 Matt Borgerson
+ * Copyright (c) 2020-2026 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -30,7 +30,14 @@ typedef enum McpxApuDebugMonitorPoint {
     MCPX_APU_DEBUG_MON_VP,
     MCPX_APU_DEBUG_MON_GP,
     MCPX_APU_DEBUG_MON_EP,
-    MCPX_APU_DEBUG_MON_GP_OR_EP
+    /* EP output FIFO #1 - the S/PDIF stream - decoded from IEC 61937 AC-3
+     * to discrete 5.1 and played through a 6-channel stream (spdif.c,
+     * monitor.c). MON_EP is FIFO #0, the analog output. */
+    MCPX_APU_DEBUG_MON_EP_SPDIF,
+    /* The EP's output as a listener would take it: FIFO #0 until the
+     * S/PDIF stream carries valid AC-3, the decoded stream while it does
+     * (monitor.c). */
+    MCPX_APU_DEBUG_MON_EP_AUTO,
 } McpxApuDebugMonitorPoint;
 
 struct McpxApuDebugVoice
@@ -88,7 +95,6 @@ struct McpxApuDebug
             float low_ms, high_ms;
         } latency;
     } throttle;
-    bool gp_realtime, ep_realtime;
 };
 
 #ifdef __cplusplus
@@ -98,12 +104,18 @@ extern "C" {
 const struct McpxApuDebug *mcpx_apu_get_debug_info(void);
 McpxApuDebugMonitorPoint mcpx_apu_debug_get_monitor(void);
 void mcpx_apu_debug_set_monitor(McpxApuDebugMonitorPoint monitor);
+/* Channels the monitor is currently playing (2 or 6) and the mute mask over
+ * them; mask bit c enables channel c. */
+int mcpx_apu_debug_get_monitor_channels(void);
+uint32_t mcpx_apu_debug_get_monitor_channel_mask(void);
+void mcpx_apu_debug_set_monitor_channel_mask(uint32_t mask);
+/* Held peak of monitor channel c over its last pushes, 0..1 of full scale,
+ * measured before the mask. */
+float mcpx_apu_debug_get_monitor_channel_level(int channel);
 void mcpx_apu_debug_isolate_voice(uint16_t v);
 void mcpx_apu_debug_clear_isolations(void);
 void mcpx_apu_debug_toggle_mute(uint16_t v);
 bool mcpx_apu_debug_is_muted(uint16_t v);
-void mcpx_apu_debug_set_gp_realtime_enabled(bool enable);
-void mcpx_apu_debug_set_ep_realtime_enabled(bool enable);
 
 #ifdef __cplusplus
 }

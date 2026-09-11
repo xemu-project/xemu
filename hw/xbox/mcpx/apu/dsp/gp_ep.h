@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2018-2019 Jannik Vogel
- * Copyright (c) 2019-2025 Matt Borgerson
+ * Copyright (c) 2019-2026 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -31,14 +31,12 @@
 typedef struct MCPXAPUState MCPXAPUState;
 
 typedef struct MCPXAPUGPState {
-    bool realtime;
     MemoryRegion mmio;
     DSPState *dsp;
     uint32_t regs[0x10000];
 } MCPXAPUGPState;
 
 typedef struct MCPXAPUEPState {
-    bool realtime;
     MemoryRegion mmio;
     DSPState *dsp;
     uint32_t regs[0x10000];
@@ -48,7 +46,14 @@ extern const MemoryRegionOps gp_ops;
 extern const MemoryRegionOps ep_ops;
 
 void mcpx_apu_dsp_init(MCPXAPUState *d);
-void mcpx_apu_update_dsp_preference(MCPXAPUState *d);
-void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
+/* One SE frame of DSP work in three steps around the VP: begin does the
+ * kick bookkeeping and releases the EP worker, gp fills the GP mixbuf from
+ * the mixbins the VP just produced and releases the GP worker, end joins
+ * both and reads their results. */
+void mcpx_apu_dsp_frame_begin(MCPXAPUState *d);
+void mcpx_apu_dsp_frame_gp(
+    MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
+void mcpx_apu_dsp_frame_end(MCPXAPUState *d);
+void mcpx_apu_dsp_stop_workers(void);
 
 #endif
