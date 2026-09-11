@@ -242,13 +242,20 @@ static Dsp56300Jit *dsp_create_core(DSPState *dsp)
     uint32_t x_count, y_count;
 
     if (dsp->is_gp) {
-        /* GP X: XRAM, the mixbuf alias at [0x1400, 0x1800), peripherals. */
+        /* GP X: XRAM, the mixbuffer at [0x1400, 0x1800), peripherals. The
+         * mixbuffer is the top 1K of X RAM seen through a second window:
+         * the resident program mixes at X:$0C00-$0FFF and its DMA reads
+         * the six output blocks at the engine's flat $1400 (probed against
+         * the DMA corpus, bank b15). The VP writes it every frame, voices
+         * or none; on silicon a word seeded at X:$0C00 survives only until
+         * the VP's next write, so a probe of it races (banks b1, b11, b15). */
         x_regions[0] = (Dsp56300MemoryRegion){
             .start = 0x0000, .end = DSP_GP_XRAM_SIZE,
             .kind = DSP56300_REGION_BUFFER,
             .data = { .buffer = { .base = dsp->xram, .offset = 0 } } };
         x_regions[1] = (Dsp56300MemoryRegion){
-            .start = 0x1400, .end = 0x1800,
+            .start = DSP_MIXBUFFER_BASE,
+            .end = DSP_MIXBUFFER_BASE + DSP_MIXBUFFER_SIZE,
             .kind = DSP56300_REGION_BUFFER,
             .data = { .buffer = { .base = dsp->xram, .offset = 0xC00 } } };
         x_regions[2] = periph_region;
@@ -560,9 +567,8 @@ void dsp_sync_to_vm(DSPState *dsp)
     memcpy(vm->pram, dsp->pram, DSP_PRAM_SIZE * sizeof(uint32_t));
     memcpy(vm->xram, dsp->xram, DSP_XRAM_SIZE * sizeof(uint32_t));
     memcpy(vm->yram, dsp->yram, DSP_YRAM_SIZE * sizeof(uint32_t));
-    /* Mixbuffer is aliased at xram[0xC00] */
-    memcpy(vm->mixbuffer, dsp->xram + 0xC00,
-           DSP_MIXBUFFER_SIZE * sizeof(uint32_t));
+    /* The mixbuffer is xram[0xC00..0xFFF]; the snapshot keeps its own copy. */
+    memcpy(vm->mixbuffer, dsp->xram + 0xC00, DSP_MIXBUFFER_SIZE * sizeof(uint32_t));
     /* Peripheral state: read current values via callbacks */
     for (int i = 0; i < DSP_PERIPH_SIZE; i++) {
         vm->periph[i] =
@@ -582,9 +588,7 @@ void dsp_sync_from_vm(DSPState *dsp)
     memcpy(dsp->pram, vm->pram, DSP_PRAM_SIZE * sizeof(uint32_t));
     memcpy(dsp->xram, vm->xram, DSP_XRAM_SIZE * sizeof(uint32_t));
     memcpy(dsp->yram, vm->yram, DSP_YRAM_SIZE * sizeof(uint32_t));
-    /* Mixbuffer is aliased at xram[0xC00] */
-    memcpy(dsp->xram + 0xC00, vm->mixbuffer,
-           DSP_MIXBUFFER_SIZE * sizeof(uint32_t));
+    memcpy(dsp->xram + 0xC00, vm->mixbuffer, DSP_MIXBUFFER_SIZE * sizeof(uint32_t));
 
     /* Scalar state via bulk struct */
     Dsp56300State ss = {
