@@ -225,6 +225,17 @@ static void dma_mem_write_run(void *opaque, int space, uint32_t addr,
                               addr, vals, count);
 }
 
+void dsp_mixbuf_flip(DSPState *dsp)
+{
+    uint32_t *front = dsp->xram + DSP_GP_XRAM_SIZE - DSP_MIXBUFFER_SIZE;
+    uint32_t *back = dsp->core.mixbuffer;
+    for (int i = 0; i < DSP_MIXBUFFER_SIZE; i++) {
+        uint32_t w = front[i];
+        front[i] = back[i];
+        back[i] = w;
+    }
+}
+
 static Dsp56300Jit *dsp_create_core(DSPState *dsp)
 {
     /* Peripheral (internal I/O) region, common to both cores. Unmapped
@@ -243,12 +254,19 @@ static Dsp56300Jit *dsp_create_core(DSPState *dsp)
 
     if (dsp->is_gp) {
         /* GP X: XRAM, the mixbuffer at [0x1400, 0x1800), peripherals. The
-         * mixbuffer is the top 1K of X RAM seen through a second window:
-         * the resident program mixes at X:$0C00-$0FFF and its DMA reads
-         * the six output blocks at the engine's flat $1400 (probed against
-         * the DMA corpus, bank b15). The VP writes it every frame, voices
-         * or none; on silicon a word seeded at X:$0C00 survives only until
-         * the VP's next write, so a probe of it races (banks b1, b11, b15). */
+         * top 1K of X RAM, X:$0C00-$0FFF, is the bank in view of the
+         * double-buffered mixbuffer: the sound engine swaps it with the
+         * other bank every frame (dsp_mixbuf_flip), and the core, the host
+         * aperture and the engine's flat $0C00 all reach the bank in view
+         * (xbtest apu/dsp/mixbuf/bank-paths), which is why a probe of a
+         * word seeded there wins or loses run to run (DMA corpus banks b1,
+         * b11, b15). The window at $1400 is that bank again here: the
+         * resident program writes its six output blocks at X:$1400-$14BF
+         * and works in X:$14C0-$17FF, and its DMA reads the blocks at the
+         * engine's flat $1400. On silicon a core write at X:$1400 lands in
+         * the bank in view, but a stub's core or DMA reads of $1400 return
+         * zero in every form probed while the program's own carry its
+         * output; what enables the window is not yet known. */
         x_regions[0] = (Dsp56300MemoryRegion){
             .start = 0x0000, .end = DSP_GP_XRAM_SIZE,
             .kind = DSP56300_REGION_BUFFER,
@@ -567,8 +585,7 @@ void dsp_sync_to_vm(DSPState *dsp)
     memcpy(vm->pram, dsp->pram, DSP_PRAM_SIZE * sizeof(uint32_t));
     memcpy(vm->xram, dsp->xram, DSP_XRAM_SIZE * sizeof(uint32_t));
     memcpy(vm->yram, dsp->yram, DSP_YRAM_SIZE * sizeof(uint32_t));
-    /* The mixbuffer is xram[0xC00..0xFFF]; the snapshot keeps its own copy. */
-    memcpy(vm->mixbuffer, dsp->xram + 0xC00, DSP_MIXBUFFER_SIZE * sizeof(uint32_t));
+    /* vm->mixbuffer is the mixbuffer's out-of-view bank, live. */
     /* Peripheral state: read current values via callbacks */
     for (int i = 0; i < DSP_PERIPH_SIZE; i++) {
         vm->periph[i] =
@@ -588,7 +605,6 @@ void dsp_sync_from_vm(DSPState *dsp)
     memcpy(dsp->pram, vm->pram, DSP_PRAM_SIZE * sizeof(uint32_t));
     memcpy(dsp->xram, vm->xram, DSP_XRAM_SIZE * sizeof(uint32_t));
     memcpy(dsp->yram, vm->yram, DSP_YRAM_SIZE * sizeof(uint32_t));
-    memcpy(dsp->xram + 0xC00, vm->mixbuffer, DSP_MIXBUFFER_SIZE * sizeof(uint32_t));
 
     /* Scalar state via bulk struct */
     Dsp56300State ss = {

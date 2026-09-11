@@ -55,6 +55,8 @@ typedef struct DspCoreState {
     uint32_t xram[DSP_XRAM_SIZE];
     uint32_t yram[DSP_YRAM_SIZE];
     uint32_t pram[DSP_PRAM_SIZE];
+    /* The GP mixbuffer's bank out of the core's view (the one in view is
+     * xram[0xC00..0xFFF]); live, not a snapshot copy. */
     uint32_t mixbuffer[DSP_MIXBUFFER_SIZE];
     uint32_t periph[DSP_PERIPH_SIZE];
 
@@ -141,6 +143,10 @@ void dsp_get_pc_sp(DSPState *dsp, uint32_t *pc, uint32_t *sp,
 uint32_t dsp_read_memory(DSPState *dsp, char space, uint32_t addr);
 void dsp_write_memory(DSPState *dsp, char space, uint32_t address,
                       uint32_t value);
+/* Swap the bank of the GP mixbuffer in view, X:$0C00-$0FFF, for the
+ * other: the sound engine does so every frame (xbtest apu/dsp/mixbuf/
+ * bank-swap), each bank keeping its words. */
+void dsp_mixbuf_flip(DSPState *dsp);
 
 bool dsp_get_halt_requested(DSPState *dsp);
 void dsp_set_halt_requested(DSPState *dsp, bool idle);

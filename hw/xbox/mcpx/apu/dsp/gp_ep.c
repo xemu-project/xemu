@@ -1222,6 +1222,10 @@ void mcpx_apu_dsp_frame_begin(MCPXAPUState *d)
     g_frame.ep_enabled = ep_enabled;
     g_frame.ran = gp_enabled || ep_enabled;
 
+    /* The frame's bank of the GP mixbuffer comes into the core's view
+     * before the VP fills it; the other bank keeps last frame's words. */
+    dsp_mixbuf_flip(d->gp.dsp);
+
     if (gp_enabled) {
         dsp_start_frame(d->gp.dsp);
         dsp_set_halt_requested(d->gp.dsp, false);
@@ -1355,11 +1359,10 @@ void mcpx_apu_dsp_frame_gp(MCPXAPUState *d,
         phase += NUM_SAMPLES_PER_FRAME;
     }
 
-    /* The VP's mixbins into the mixbuffer: the top 1K of the GP's X RAM,
-     * X:$0C00-$0FFF, which the core also sees at X:$1400-$17FF and the
-     * engine at flat $1400. Only a frame that mixed a voice writes it: on
-     * silicon, with the engine running and no voices, every word of the
-     * 1K keeps a marker the core wrote for 120 frames (xbtest
+    /* The VP's mixbins into the mixbuffer: the bank in view this frame,
+     * X:$0C00-$0FFF. Only a frame that mixed a voice writes it: on
+     * silicon, with the engine running and no voices, every word of both
+     * banks keeps a marker the core wrote for 120 frames (xbtest
      * apu/dsp/mixbuf/vp-rewrite), so a GP program's own mix there is left
      * alone. */
     if (mixbins) {
@@ -1397,10 +1400,11 @@ void mcpx_apu_dsp_frame_end(MCPXAPUState *d)
         g_dbg.gp.cycles = dsp_get_cycle_count(d->gp.dsp);
 
         /* The GP tap: the front pair of the GP's output slice, the six
-         * 32-word blocks at X:$0C00 its resident program mixes into and
-         * DMAs to the EP's rings (flat $1400). Read through the program's
-         * own address, so the tap follows what the GP produced, whether
-         * the VP fed it (a title's voices) or the GP streamed it itself. */
+         * 32-word blocks its resident program writes at X:$1400 and DMAs
+         * to the EP's rings from flat $1400, read at X:$0C00 where the
+         * window lands in the bank in view. The tap follows what the GP
+         * produced, whether the VP fed it (a title's voices) or the GP
+         * streamed it itself. */
         if (d->monitor.point == MCPX_APU_DEBUG_MON_GP) {
             const uint32_t OUT = 0x0C00;
             int off = (d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
