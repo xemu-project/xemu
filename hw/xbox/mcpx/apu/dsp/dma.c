@@ -262,13 +262,15 @@ static void dsp_dma_unpack_item(uint32_t format, const uint8_t *in,
     }
 }
 
-/* DSP address of word `w` of item `item`. Linear transfers advance by
- * dsp_step per word; interleaved transfers place channel `ch` of block `b`
- * at dsp_offset + (b + ch*dsp_step) * words_per_item (probed with step !=
- * block count, so the stride is the control word's, not the block count,
- * and with the word-pair format, whose items land as intact pairs rather
- * than overlapping by a word). */
-static uint32_t dsp_dma_item_addr(uint32_t dsp_offset, uint32_t dsp_step,
+/* DSP address of word `w` of item `item`. The stride counts items, and an
+ * item's words are consecutive: linear transfers place item i at
+ * dsp_offset + i * dsp_step * words_per_item (probed with word pairs at
+ * step 2: items four words apart, each pair intact); interleaved ones
+ * place channel `ch` of block `b` at dsp_offset + (b + ch*dsp_step) *
+ * words_per_item (probed with step != block count, so the stride is the
+ * control word's, not the block count, and with the word-pair format,
+ * whose items land as intact pairs rather than overlapping by a word). */
+static uint32_t dsp_dma_item_addr(uint32_t dsp_offset, int32_t dsp_step,
                                   bool interleave, uint32_t channel_count,
                                   uint32_t words_per_item, uint32_t item,
                                   uint32_t w)
@@ -278,7 +280,7 @@ static uint32_t dsp_dma_item_addr(uint32_t dsp_offset, uint32_t dsp_step,
         uint32_t ch = item % channel_count;
         return dsp_offset + (block + ch * dsp_step) * words_per_item + w;
     }
-    return dsp_offset + (item * words_per_item + w) * dsp_step;
+    return dsp_offset + item * dsp_step * words_per_item + w;
 }
 
 /* End (exclusive) of the mapped-or-unmapped window containing addr, so a
@@ -404,17 +406,19 @@ static void dsp_dma_run(DSPDMAState *s)
 
         /* Control word, as probed: intr_sel (bits 2-3) selects the
          * completion interrupt, value n != 0 raising interrupt-status bit
-         * 3+n when the node completes; dsp_step (bits 14+) is the DSP
-         * address stride, per word for linear transfers (0 = re-access one
-         * address) and per channel for interleaved ones. Bits 9 and 13
-         * showed no effect and are ignored. */
+         * 3+n when the node completes; dsp_step (bits 14-23) is the DSP
+         * address stride in items, per item for linear transfers (0 =
+         * re-access one address) and per channel for interleaved ones.
+         * The stride is a signed 10-bit value: $3FF, $3FE and $200 walked
+         * below dsp_offset, $1FF above it. Bits 9 and 13 showed
+         * no effect and are ignored. */
         bool     dsp_interleave          = (control >> 0) & 1;
         bool     direction               = control & NODE_CONTROL_DIRECTION;
         uint32_t intr_sel                = (control >>  2) & 0x3;
         bool     buffer_offset_writeback = (control >>  4) & 1;
         uint32_t buf_id                  = (control >>  5) & 0xf;
         uint32_t format                  = (control >> 10) & 0x7;
-        uint32_t dsp_step                = (control >> 14) & 0x3FF;
+        int32_t  dsp_step                = (int32_t)(control << 8) >> 22;
 
         /* Buffer ids $4-$7 and $C-$D are rejected outright, as are formats
          * 4, 5 and 7: silicon transfers nothing, raises the error bit, and
