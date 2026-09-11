@@ -1357,7 +1357,12 @@ void mcpx_apu_dsp_frame_gp(MCPXAPUState *d,
         phase += NUM_SAMPLES_PER_FRAME;
     }
 
-    /* Write VP results to the GP DSP MIXBUF */
+    /* The VP's mixbins into the mixbuffer: the top 1K of the GP's X RAM,
+     * X:$0C00-$0FFF, which the core also sees at X:$1400-$17FF and the
+     * engine at flat $1400. Every bin, every frame, voices or none - on
+     * silicon words seeded at X:$0C00 through the aperture read back or
+     * come back zero from one run to the next, the VP's per-frame write
+     * racing the probe (DMA corpus bank b15). */
     int64_t t_mix = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
     for (int mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
         uint32_t base = GP_DSP_MIXBUF_BASE + mixbin * NUM_SAMPLES_PER_FRAME;
@@ -1391,13 +1396,18 @@ void mcpx_apu_dsp_frame_end(MCPXAPUState *d)
     if (gp_enabled) {
         g_dbg.gp.cycles = dsp_get_cycle_count(d->gp.dsp);
 
+        /* The GP tap: the front pair of the GP's output slice, the six
+         * 32-word blocks at X:$0C00 its resident program mixes into and
+         * DMAs to the EP's rings (flat $1400). Read through the program's
+         * own address, so the tap follows what the GP produced, whether
+         * the VP fed it (a title's voices) or the GP streamed it itself. */
         if (d->monitor.point == MCPX_APU_DEBUG_MON_GP) {
+            const uint32_t OUT = 0x0C00;
             int off = (d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-                uint32_t l = dsp_read_memory(d->gp.dsp, 'X', 0x1400 + i);
+                uint32_t l = dsp_read_memory(d->gp.dsp, 'X', OUT + i);
                 d->monitor.frame_buf[off + i][0] = l >> 8;
-                uint32_t r =
-                    dsp_read_memory(d->gp.dsp, 'X', 0x1400 + 1 * 0x20 + i);
+                uint32_t r = dsp_read_memory(d->gp.dsp, 'X', OUT + 0x20 + i);
                 d->monitor.frame_buf[off + i][1] = r >> 8;
             }
         }
