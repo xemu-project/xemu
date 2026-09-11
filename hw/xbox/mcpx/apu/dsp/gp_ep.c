@@ -101,34 +101,39 @@ static void ep_scratch_rw(void *opaque, uint8_t *ptr, uint32_t addr, size_t len,
     ep_snapshot_node_done(d, false);
 }
 
+/* The FIFO descriptor walk as probed on the EP (the DMA corpus, bank
+ * b12): the cursor is used where it stands, below the base included,
+ * advances by the transfer, and wraps to the base when it reaches the end
+ * from below. BASE and END hold 256-byte units (an END of $80 read back 0,
+ * and the ring it should have bounded never wrapped); the cursor keeps
+ * every bit. */
+#define FIFO_BOUND_MASK 0xffff00
+
 static uint32_t circular_scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
                                            unsigned int max_sge, uint8_t *ptr,
                                            uint32_t base, uint32_t end,
                                            uint32_t cur, size_t len, bool dir)
 {
+    base &= FIFO_BOUND_MASK;
+    end &= FIFO_BOUND_MASK;
     while (len > 0) {
-        unsigned int bytes_to_copy = end - cur;
+        size_t bytes_to_copy = len;
+        bool crosses = false;
 
-        if (bytes_to_copy > len) {
-            bytes_to_copy = len;
+        if (cur < end) {
+            crosses = len >= end - cur;
+            bytes_to_copy = MIN(len, (size_t)(end - cur));
         }
 
         DPRINTF("circular scatter gather %s in range 0x%x - 0x%x at 0x%x of "
-                "length 0x%x / 0x%lx bytes\n",
+                "length 0x%zx / 0x%zx bytes\n",
                 dir ? "write" : "read", base, end, cur, bytes_to_copy, len);
 
-        assert((cur >= base) && ((cur + bytes_to_copy) <= end));
         scatter_gather_rw(d, sge_base, max_sge, ptr, cur, bytes_to_copy, dir);
 
         ptr += bytes_to_copy;
         len -= bytes_to_copy;
-
-        /* After the first iteration we might have to wrap */
-        cur += bytes_to_copy;
-        if (cur >= end) {
-            assert(cur == end);
-            cur = base;
-        }
+        cur = crosses ? base : cur + bytes_to_copy;
     }
 
     return cur;
@@ -585,11 +590,9 @@ static void gp_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
     trace_mcpx_apu_dsp_fifo("GP", dir ? "wr" : "rd", index, base, end, cur,
                             (uint64_t)len);
 
-    /* DSP hangs if current >= end; but forces current >= base */
-    assert(cur < end);
-    if (cur < base) {
-        cur = base;
-    }
+    /* A cursor at or past END leaves the engine running with no EOL and
+     * kills the console on the next boot; nothing to emulate. */
+    assert(cur < (end & FIFO_BOUND_MASK));
 
     cur = circular_scatter_gather_rw(d,
         d->regs[NV_PAPU_GPFADDR], d->regs[NV_PAPU_GPFMAXSGE],
@@ -681,13 +684,9 @@ static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
         }
     }
 
-    /* DSP hangs if current >= end; but forces current >= base */
-    if (cur >= end) {
-        cur = cur % (end - base);
-    }
-    if (cur < base) {
-        cur = base;
-    }
+    /* A cursor at or past END leaves the engine running with no EOL and
+     * kills the console on the next boot; nothing to emulate. */
+    assert(cur < (end & FIFO_BOUND_MASK));
 
     cur = circular_scatter_gather_rw(d,
         d->regs[NV_PAPU_EPFADDR], d->regs[NV_PAPU_EPFMAXSGE],
