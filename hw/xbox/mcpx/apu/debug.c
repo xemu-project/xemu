@@ -63,6 +63,35 @@ void mcpx_apu_debug_set_monitor(McpxApuDebugMonitorPoint monitor)
     g_state->monitor.point = monitor;
 }
 
+int mcpx_apu_debug_get_monitor_channels(void)
+{
+    /* The open stream's count, or - before it has been (re)opened, and when
+     * there is no audio device at all - what the selected tap will ask for,
+     * so the UI always matches the layout the mask is applied to. */
+    if (g_state->monitor.channels) {
+        return g_state->monitor.channels;
+    }
+    return g_state->monitor.point == MCPX_APU_DEBUG_MON_EP_SPDIF ? 6 : 2;
+}
+
+uint32_t mcpx_apu_debug_get_monitor_channel_mask(void)
+{
+    return g_state->monitor.channel_mask;
+}
+
+void mcpx_apu_debug_set_monitor_channel_mask(uint32_t mask)
+{
+    g_state->monitor.channel_mask = mask;
+}
+
+float mcpx_apu_debug_get_monitor_channel_level(int channel)
+{
+    if (channel < 0 || channel >= 6) {
+        return 0.0f;
+    }
+    return g_state->monitor.channel_level[channel];
+}
+
 void mcpx_apu_debug_isolate_voice(uint16_t v)
 {
     g_dbg_voice_monitor = v;

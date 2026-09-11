@@ -81,6 +81,9 @@ void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
 {
     d->monitor.stream = NULL;
     d->monitor.channels = 0;
+    if (!d->monitor.channel_mask) {
+        d->monitor.channel_mask = 0x3F; /* all six enabled */
+    }
 
     if (!SDL_Init(SDL_INIT_AUDIO)) {
         error_setg(errp, "SDL_Init failed: %s", SDL_GetError());
@@ -121,6 +124,54 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
                                : (const void *)d->monitor.frame_buf;
     size_t len = surround ? sizeof(d->monitor.surround_buf)
                           : sizeof(d->monitor.frame_buf);
+
+    /* Per-channel peak for the debug meters, pre-mask. */
+    {
+        const int16_t *pcm = (const int16_t *)buf;
+        for (int c = 0; c < want; c++) {
+            int peak = 0;
+            for (int i = 0; i < 256; i++) {
+                int v = abs(pcm[i * want + c]);
+                peak = v > peak ? v : peak;
+            }
+            float level = peak / 32768.0f;
+            float held = d->monitor.channel_level[c] * 0.85f;
+            d->monitor.channel_level[c] = level > held ? level : held;
+        }
+        for (int c = want; c < 6; c++) {
+            d->monitor.channel_level[c] = 0.0f;
+        }
+    }
+
+    /* Mute the channels the mask leaves out, on whichever layout is live. */
+    uint32_t mask = d->monitor.channel_mask;
+    if ((mask & ((1u << want) - 1)) != ((1u << want) - 1)) {
+        int16_t *pcm = (int16_t *)buf;
+        for (int i = 0; i < 256; i++) {
+            for (int c = 0; c < want; c++) {
+                if (!(mask & (1u << c))) {
+                    pcm[i * want + c] = 0;
+                }
+            }
+        }
+    }
+
+    /* MCPX_APU_MON_DUMP=<path>: append the monitor PCM (S16LE, 48 kHz,
+     * pre-gain, post-channel-mask; stereo, or 6-channel FL FR FC LFE BL BR
+     * on the S/PDIF tap) - the exact signal the debug monitor plays - so an
+     * audio artifact can be diffed across arms instead of heard. */
+    static int dump_init;
+    static FILE *dump_file;
+    if (!dump_init) {
+        dump_init = 1;
+        const char *path = getenv("MCPX_APU_MON_DUMP");
+        if (path) {
+            dump_file = fopen(path, "wb");
+        }
+    }
+    if (dump_file) {
+        fwrite(buf, 1, len, dump_file);
+    }
 
     if (d->monitor.stream && d->monitor.channels == want) {
         float vu = pow(fmax(0.0, fmin(g_config.audio.volume_limit, 1.0)), M_E);
