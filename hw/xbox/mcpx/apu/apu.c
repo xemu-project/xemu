@@ -307,8 +307,8 @@ static void se_frame(MCPXAPUState *d)
     float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME] = { 0 };
 
     mcpx_apu_dsp_frame_begin(d);
-    mcpx_apu_vp_frame(d, mixbins);
-    mcpx_apu_dsp_frame_gp(d, mixbins);
+    int voices = mcpx_apu_vp_frame(d, mixbins);
+    mcpx_apu_dsp_frame_gp(d, voices ? mixbins : NULL);
     mcpx_apu_dsp_frame_end(d);
     mcpx_apu_monitor_frame(d);
 
