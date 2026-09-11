@@ -604,14 +604,16 @@ static void gp_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
 /* EP output FIFO #0 is the analog stereo output - with Dolby Digital on, a
  * surround-encoded downmix, not the GP's front pair - as 256 S16 stereo
  * frames per EP frame. The `ep` monitor point plays it; every point but
- * AC97 sinks it (silence goes to the guest's ring). */
+ * AC97 sinks it (silence goes to the guest's ring). A write of any other
+ * size is not that output (the DMA corpus writes a few words) and goes to
+ * the ring as data. */
 static bool ep_sink_samples(MCPXAPUState *d, uint8_t *ptr, size_t len)
 {
-    if (d->monitor.point == MCPX_APU_DEBUG_MON_AC97) {
+    if (d->monitor.point == MCPX_APU_DEBUG_MON_AC97 ||
+        len != sizeof(d->monitor.frame_buf)) {
         return false;
     } else if (d->monitor.point == MCPX_APU_DEBUG_MON_EP ||
                d->monitor.point == MCPX_APU_DEBUG_MON_EP_AUTO) {
-        assert(len == sizeof(d->monitor.frame_buf));
         memcpy(d->monitor.frame_buf, ptr, len);
     }
 
@@ -679,7 +681,6 @@ static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
         bool did_sink = ep_sink_samples(d, ptr, len);
         if (did_sink) {
             /* Since we are sinking, push silence out */
-            assert(len <= sizeof(ep_silence));
             ptr = (uint8_t*)ep_silence;
         }
     }
