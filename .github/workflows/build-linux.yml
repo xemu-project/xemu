@@ -155,6 +155,9 @@ jobs:
         mkdir appimage
         tar -C appimage -xf data.tar*
         install -DT src/xemu.metainfo.xml appimage/usr/share/metainfo/xemu.metainfo.xml
+        apt-get download libdecor-0-0 libdecor-0-plugin-1-cairo
+        dpkg-deb -x libdecor-0-0_*.deb appimage
+        dpkg-deb -x libdecor-0-plugin-1-cairo_*.deb appimage
 
         ./linuxdeploy-${{ matrix.arch }}.AppImage --output appimage --appdir appimage
     - name: Bundle artifacts
