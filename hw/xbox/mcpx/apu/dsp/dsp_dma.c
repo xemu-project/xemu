@@ -76,7 +76,6 @@ static void scratch_circular_copy(
     int          direction)
 {
     if (*scratch_offset >= scratch_size) {
-        // fprintf(stderr, "Initial scratch offset exceeds scratch size! Wrapping\n");
         *scratch_offset = 0;
     }
 
@@ -589,9 +588,6 @@ void dsp_dma_write(DSPDMAState *s, DSPDMARegister reg, uint32_t v)
             break;
         }
         dsp_dma_run(s);
-
-        // IDK about this, but need to stop somehow?
-        // s->control |= DMA_CONTROL_STOPPED;
         break;
     case DMA_START_BLOCK:
         s->start_block = v;

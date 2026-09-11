@@ -86,7 +86,6 @@ static void gp_scratch_rw(void *opaque, uint8_t *ptr, uint32_t addr, size_t len,
                           bool dir)
 {
     MCPXAPUState *d = opaque;
-    // fprintf(stderr, "GP %s scratch 0x%x bytes (0x%x words) at %x (0x%x words)\n", dir ? "writing to" : "reading from", len, len/4, addr, addr/4);
     scatter_gather_rw(d, d->regs[NV_PAPU_GPSADDR], d->regs[NV_PAPU_GPSMAXSGE],
                       ptr, addr, len, dir);
 }
@@ -95,7 +94,6 @@ static void ep_scratch_rw(void *opaque, uint8_t *ptr, uint32_t addr, size_t len,
                           bool dir)
 {
     MCPXAPUState *d = opaque;
-    // fprintf(stderr, "EP %s scratch 0x%x bytes (0x%x words) at %x (0x%x words)\n", dir ? "writing to" : "reading from", len, len/4, addr, addr/4);
     scatter_gather_rw(d, d->regs[NV_PAPU_EPSADDR], d->regs[NV_PAPU_EPSMAXSGE],
                       ptr, addr, len, dir);
 }
@@ -158,9 +156,6 @@ static void gp_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
 
     uint32_t cur = GET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE);
 
-    // fprintf(stderr, "GP %s fifo #%d, base = %x, end = %x, cur = %x, len = %x\n",
-    //     dir ? "writing to" : "reading from", index,
-    //     base, end, cur, len);
 
     /* DSP hangs if current >= end; but forces current >= base */
     assert(cur < end);
@@ -213,9 +208,6 @@ static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
 
     uint32_t cur = GET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE);
 
-    // fprintf(stderr, "EP %s fifo #%d, base = %x, end = %x, cur = %x, len = %x\n",
-    //     dir ? "writing to" : "reading from", index,
-    //     base, end, cur, len);
 
     if (dir && index == 0) {
         bool did_sink = ep_sink_samples(d, ptr, len);
@@ -265,25 +257,21 @@ static uint64_t gp_read(void *opaque, hwaddr addr, unsigned int size)
     case NV_PAPU_GPXMEM ... NV_PAPU_GPXMEM + 0x1000 * 4 - 1: {
         uint32_t xaddr = (addr - NV_PAPU_GPXMEM) / 4;
         r = dsp_read_memory(d->gp.dsp, 'X', xaddr);
-        // fprintf(stderr, "read GP NV_PAPU_GPXMEM [%x] -> %x\n", xaddr, r);
         break;
     }
     case NV_PAPU_GPMIXBUF ... NV_PAPU_GPMIXBUF + 0x400 * 4 - 1: {
         uint32_t xaddr = (addr - NV_PAPU_GPMIXBUF) / 4;
         r = dsp_read_memory(d->gp.dsp, 'X', GP_DSP_MIXBUF_BASE + xaddr);
-        // fprintf(stderr, "read GP NV_PAPU_GPMIXBUF [%x] -> %x\n", xaddr, r);
         break;
     }
     case NV_PAPU_GPYMEM ... NV_PAPU_GPYMEM + 0x800 * 4 - 1: {
         uint32_t yaddr = (addr - NV_PAPU_GPYMEM) / 4;
         r = dsp_read_memory(d->gp.dsp, 'Y', yaddr);
-        // fprintf(stderr, "read GP NV_PAPU_GPYMEM [%x] -> %x\n", yaddr, r);
         break;
     }
     case NV_PAPU_GPPMEM ... NV_PAPU_GPPMEM + 0x1000 * 4 - 1: {
         uint32_t paddr = (addr - NV_PAPU_GPPMEM) / 4;
         r = dsp_read_memory(d->gp.dsp, 'P', paddr);
-        // fprintf(stderr, "read GP NV_PAPU_GPPMEM [%x] -> %x\n", paddr, r);
         break;
     }
     default:
@@ -309,25 +297,21 @@ static void gp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     switch (addr) {
     case NV_PAPU_GPXMEM ... NV_PAPU_GPXMEM + 0x1000 * 4 - 1: {
         uint32_t xaddr = (addr - NV_PAPU_GPXMEM) / 4;
-        // fprintf(stderr, "gp write xmem %x = %x\n", xaddr, val);
         dsp_write_memory(d->gp.dsp, 'X', xaddr, val);
         break;
     }
     case NV_PAPU_GPMIXBUF ... NV_PAPU_GPMIXBUF + 0x400 * 4 - 1: {
         uint32_t xaddr = (addr - NV_PAPU_GPMIXBUF) / 4;
-        // fprintf(stderr, "gp write xmixbuf %x = %x\n", xaddr, val);
         dsp_write_memory(d->gp.dsp, 'X', GP_DSP_MIXBUF_BASE + xaddr, val);
         break;
     }
     case NV_PAPU_GPYMEM ... NV_PAPU_GPYMEM + 0x800 * 4 - 1: {
         uint32_t yaddr = (addr - NV_PAPU_GPYMEM) / 4;
-        // fprintf(stderr, "gp write ymem %x = %x\n", yaddr, val);
         dsp_write_memory(d->gp.dsp, 'Y', yaddr, val);
         break;
     }
     case NV_PAPU_GPPMEM ... NV_PAPU_GPPMEM + 0x1000 * 4 - 1: {
         uint32_t paddr = (addr - NV_PAPU_GPPMEM) / 4;
-        // fprintf(stderr, "gp write pmem %x = %x\n", paddr, val);
         dsp_write_memory(d->gp.dsp, 'P', paddr, val);
         break;
     }
@@ -361,19 +345,16 @@ static uint64_t ep_read(void *opaque, hwaddr addr, unsigned int size)
     case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00 * 4 - 1: {
         uint32_t xaddr = (addr - NV_PAPU_EPXMEM) / 4;
         r = dsp_read_memory(d->ep.dsp, 'X', xaddr);
-        // fprintf(stderr, "read EP  NV_PAPU_EPXMEM [%x] -> %x\n", xaddr, r);
         break;
     }
     case NV_PAPU_EPYMEM ... NV_PAPU_EPYMEM + 0x100 * 4 - 1: {
         uint32_t yaddr = (addr - NV_PAPU_EPYMEM) / 4;
         r = dsp_read_memory(d->ep.dsp, 'Y', yaddr);
-        // fprintf(stderr, "read EP  NV_PAPU_EPYMEM [%x] -> %x\n", yaddr, r);
         break;
     }
     case NV_PAPU_EPPMEM ... NV_PAPU_EPPMEM + 0x1000 * 4 - 1: {
         uint32_t paddr = (addr - NV_PAPU_EPPMEM) / 4;
         r = dsp_read_memory(d->ep.dsp, 'P', paddr);
-        // fprintf(stderr, "read EP  NV_PAPU_EPPMEM [%x] -> %x\n", paddr, r);
         break;
     }
     default:
@@ -400,18 +381,15 @@ static void ep_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00 * 4 - 1: {
         uint32_t xaddr = (addr - NV_PAPU_EPXMEM) / 4;
         dsp_write_memory(d->ep.dsp, 'X', xaddr, val);
-        // fprintf(stderr, "ep write xmem %x = %x\n", xaddr, val);
         break;
     }
     case NV_PAPU_EPYMEM ... NV_PAPU_EPYMEM + 0x100 * 4 - 1: {
         uint32_t yaddr = (addr - NV_PAPU_EPYMEM) / 4;
         dsp_write_memory(d->ep.dsp, 'Y', yaddr, val);
-        // fprintf(stderr, "ep write ymem %x = %x\n", yaddr, val);
         break;
     }
     case NV_PAPU_EPPMEM ... NV_PAPU_EPPMEM + 0x1000 * 4 - 1: {
         uint32_t paddr = (addr - NV_PAPU_EPPMEM) / 4;
-        // fprintf(stderr, "ep write pmem %x = %x\n", paddr, val);
         dsp_write_memory(d->ep.dsp, 'P', paddr, val);
         break;
     }
