@@ -63,6 +63,45 @@ static uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size)
     return r;
 }
 
+/* Registers the DSP DMA path reads mid-transfer: the SGE table bases and
+ * bounds, and each FIFO's base, end and cursor. Stores to these take the
+ * APU lock so they cannot land under a transfer a DSP worker is running;
+ * the workers run under that lock and stop between slices for a waiter
+ * (see run_one_core). Every other register is a plain atomic store. */
+static bool mcpx_apu_reg_is_dma_descriptor(hwaddr addr)
+{
+    switch (addr) {
+    case NV_PAPU_GPSADDR:
+    case NV_PAPU_GPFADDR:
+    case NV_PAPU_EPSADDR:
+    case NV_PAPU_EPFADDR:
+    case NV_PAPU_GPSMAXSGE:
+    case NV_PAPU_GPFMAXSGE:
+    case NV_PAPU_EPSMAXSGE:
+    case NV_PAPU_EPFMAXSGE:
+        return true;
+    default:
+        break;
+    }
+    if (addr >= NV_PAPU_GPOFBASE0 &&
+        addr < NV_PAPU_GPOFBASE0 + 0x10 * GP_OUTPUT_FIFO_COUNT) {
+        return true;
+    }
+    if (addr >= NV_PAPU_GPIFBASE0 &&
+        addr < NV_PAPU_GPIFBASE0 + 0x10 * GP_INPUT_FIFO_COUNT) {
+        return true;
+    }
+    if (addr >= NV_PAPU_EPOFBASE0 &&
+        addr < NV_PAPU_EPOFBASE0 + 0x10 * EP_OUTPUT_FIFO_COUNT) {
+        return true;
+    }
+    if (addr >= NV_PAPU_EPIFBASE0 &&
+        addr < NV_PAPU_EPIFBASE0 + 0x10 * EP_INPUT_FIFO_COUNT) {
+        return true;
+    }
+    return false;
+}
+
 static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
                            unsigned int size)
 {
@@ -75,12 +114,18 @@ static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
         /* the bits of the interrupts to clear are written */
         qatomic_and(&d->regs[NV_PAPU_ISTS], ~val);
         update_irq(d);
+        /* Under the lock: an unlocked broadcast can land between the frame
+         * thread's predicate read and its wait and be lost. */
+        mcpx_apu_guest_lock(d);
         qemu_cond_broadcast(&d->cond);
+        mcpx_apu_guest_unlock(d);
         break;
     case NV_PAPU_FECTL:
     case NV_PAPU_SECTL:
         qatomic_set(&d->regs[addr], val);
+        mcpx_apu_guest_lock(d);
         qemu_cond_broadcast(&d->cond);
+        mcpx_apu_guest_unlock(d);
         break;
     case NV_PAPU_FEMEMDATA:
         /* 'magic write'
@@ -91,7 +136,13 @@ static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
         break;
     default:
         if (addr < 0x20000) {
-            qatomic_set(&d->regs[addr], val);
+            if (mcpx_apu_reg_is_dma_descriptor(addr)) {
+                mcpx_apu_guest_lock(d);
+                qatomic_set(&d->regs[addr], val);
+                mcpx_apu_guest_unlock(d);
+            } else {
+                qatomic_set(&d->regs[addr], val);
+            }
         }
         break;
     }
@@ -241,11 +292,15 @@ static void se_frame(MCPXAPUState *d)
     }
     d->frame_count++;
 
-    /* Buffer for all mixbins for this frame */
+    /* The EP runs across the frame; the GP runs once the VP has filled the
+     * mixbins, as the GP's effect returns land in pages VP voices read
+     * (mcpx_apu_dsp_frame_gp). */
     float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME] = { 0 };
 
+    mcpx_apu_dsp_frame_begin(d);
     mcpx_apu_vp_frame(d, mixbins);
-    mcpx_apu_dsp_frame(d, mixbins);
+    mcpx_apu_dsp_frame_gp(d, mixbins);
+    mcpx_apu_dsp_frame_end(d);
     mcpx_apu_monitor_frame(d);
 
     d->ep_frame_div++;
@@ -302,6 +357,16 @@ static void *mcpx_apu_frame_thread(void *arg)
 
         throttle(d);
         se_frame(d);
+
+        /* Hand the lock to a guest accessor that announced itself
+         * (mcpx_apu_guest_lock): an MMIO accessor on the CPU thread holds
+         * the BQL while it blocks here. The mutex is not fair, so merely
+         * dropping and retaking it starves the accessor - this thread
+         * usually wins the race back. Wait on the condition the accessor
+         * signals when it is through, and only while one is waiting. */
+        if (qatomic_read(&d->lock_waiters) > 0) {
+            qemu_cond_timedwait(&d->cond, &d->lock, 1);
+        }
     }
     qemu_mutex_unlock(&d->lock);
     rcu_unregister_thread();
@@ -450,6 +515,7 @@ static void mcpx_apu_exitfn(PCIDevice *dev)
     bql_lock();
 
     qemu_thread_join(&d->apu_thread);
+    mcpx_apu_dsp_stop_workers();
     mcpx_apu_vp_finalize(d);
     mcpx_apu_monitor_finalize(d);
 }

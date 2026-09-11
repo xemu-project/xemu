@@ -4,3 +4,7 @@
 mcpx_apu_method(uint32_t addr, uint32_t parameter) "0x%04"PRIx32" 0x%"PRIx32
 mcpx_apu_reg_read(uint32_t addr, unsigned int size, uint64_t val) "addr 0x%"PRIx32" size %d val 0x%"PRIx64
 mcpx_apu_reg_write(uint32_t addr, unsigned int size, uint64_t val) "addr 0x%"PRIx32" size %d val 0x%"PRIx64
+
+# dsp/gp_ep.c
+mcpx_apu_dsp_sge(uint64_t sge_base, const char *dir, uint32_t off, uint64_t len, uint32_t phys) "sge 0x%"PRIx64" %s off 0x%06"PRIx32" len 0x%"PRIx64" phys 0x%08"PRIx32
+mcpx_apu_dsp_fifo(const char *core, const char *dir, unsigned int index, uint32_t base, uint32_t end, uint32_t cur, uint64_t len) "%s %s #%u base 0x%06"PRIx32" end 0x%06"PRIx32" cur 0x%06"PRIx32" len 0x%"PRIx64
