@@ -43,6 +43,14 @@ static void update_irq(MCPXAPUState *d)
     }
 }
 
+/* Bytes the open monitor stream consumes per millisecond; it follows the
+ * stream's channel count (2, or 6 on the S/PDIF tap). */
+static float monitor_bytes_per_ms(MCPXAPUState *d)
+{
+    int ch = d->monitor.channels ? d->monitor.channels : 2;
+    return 48000.0f * ch * sizeof(int16_t) / 1000.0f;
+}
+
 static uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size)
 {
     MCPXAPUState *d = opaque;
@@ -183,12 +191,13 @@ static void throttle_publish_debug(MCPXAPUState *d)
     g_dbg.throttle.deviation.avg_us = d->throttle.deviation.sum_us / d->throttle.deviation.count;
     g_dbg.throttle.deviation.max_us = d->throttle.deviation.max_us;
     if (d->throttle.queued_bytes_count > 0) {
-        g_dbg.throttle.latency.min_ms = d->throttle.queued_bytes_min / (float)MONITOR_BYTES_PER_MS;
+        float bpm = monitor_bytes_per_ms(d);
+        g_dbg.throttle.latency.min_ms = d->throttle.queued_bytes_min / bpm;
         g_dbg.throttle.latency.avg_ms = d->throttle.queued_bytes_sum /
-            (d->throttle.queued_bytes_count * (float)MONITOR_BYTES_PER_MS);
-        g_dbg.throttle.latency.max_ms = d->throttle.queued_bytes_max / (float)MONITOR_BYTES_PER_MS;
-        g_dbg.throttle.latency.low_ms = d->monitor.queued_bytes_low / (float)MONITOR_BYTES_PER_MS;
-        g_dbg.throttle.latency.high_ms = d->monitor.queued_bytes_high / (float)MONITOR_BYTES_PER_MS;
+            (d->throttle.queued_bytes_count * bpm);
+        g_dbg.throttle.latency.max_ms = d->throttle.queued_bytes_max / bpm;
+        g_dbg.throttle.latency.low_ms = d->monitor.queued_bytes_low / bpm;
+        g_dbg.throttle.latency.high_ms = d->monitor.queued_bytes_high / bpm;
     }
     d->throttle.pacing.backoff = d->throttle.pacing.ok = d->throttle.pacing.speedup = 0;
     d->throttle.deviation.min_us = d->throttle.deviation.max_us = d->throttle.deviation.sum_us = 0;

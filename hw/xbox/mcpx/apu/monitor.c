@@ -18,20 +18,35 @@
  */
 
 #include "apu_int.h"
+#include "qapi/error.h"
+#include "qemu/error-report.h"
 
-void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
+/* Channels the selected tap wants: the EP S/PDIF tap plays the decoded 5.1
+ * discretely, everything else is a stereo pair. SDL converts to whatever
+ * the device actually has, so a stereo-only host still hears a downmix. */
+static int monitor_channels_for(McpxApuDebugMonitorPoint point)
+{
+    return point == MCPX_APU_DEBUG_MON_EP_SPDIF ? 6 : 2;
+}
+
+static int monitor_frame_bytes(int channels)
+{
+    return 256 * channels * (int)sizeof(int16_t);
+}
+
+/* (Re)open the playback stream with `channels`. Pacing thresholds are
+ * derived from the frame size, so they follow the channel count. */
+static bool monitor_open(MCPXAPUState *d, int channels, Error **errp)
 {
     SDL_AudioSpec spec = {
         .freq = 48000,
         .format = SDL_AUDIO_S16LE,
-        .channels = 2,
+        .channels = channels,
     };
 
-    d->monitor.stream = NULL;
-
-    if (!SDL_Init(SDL_INIT_AUDIO)) {
-        error_setg(errp, "SDL_Init failed: %s", SDL_GetError());
-        return;
+    if (d->monitor.stream) {
+        SDL_DestroyAudioStream(d->monitor.stream);
+        d->monitor.stream = NULL;
     }
 
     d->monitor.stream = SDL_OpenAudioDeviceStream(
@@ -39,8 +54,9 @@ void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
     if (d->monitor.stream == NULL) {
         error_setg(errp, "SDL_OpenAudioDeviceStream failed: %s",
                    SDL_GetError());
-        return;
+        return false;
     }
+    d->monitor.channels = channels;
 
     SDL_AudioDeviceID dev = SDL_GetAudioStreamDevice(d->monitor.stream);
 
@@ -52,12 +68,28 @@ void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
                           SDL_AUDIO_BYTESIZE(spec.format) *
                           spec.freq / dev_spec.freq;
     }
-    int frame_bytes = sizeof(d->monitor.frame_buf);
+    int frame_bytes = monitor_frame_bytes(channels);
     int drain = MAX(dev_drain_bytes, frame_bytes);
     d->monitor.queued_bytes_low = drain;
     d->monitor.queued_bytes_high = 3 * drain;
 
     SDL_ResumeAudioDevice(dev);
+    return true;
+}
+
+void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
+{
+    d->monitor.stream = NULL;
+    d->monitor.channels = 0;
+
+    if (!SDL_Init(SDL_INIT_AUDIO)) {
+        error_setg(errp, "SDL_Init failed: %s", SDL_GetError());
+        return;
+    }
+
+    if (!monitor_open(d, monitor_channels_for(d->monitor.point), errp)) {
+        return;
+    }
 }
 
 void mcpx_apu_monitor_finalize(MCPXAPUState *d)
@@ -73,12 +105,29 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
         return;
     }
 
-    if (d->monitor.stream) {
+    bool surround = d->monitor.point == MCPX_APU_DEBUG_MON_EP_SPDIF;
+    int want = monitor_channels_for(d->monitor.point);
+    if (d->monitor.stream && want != d->monitor.channels) {
+        Error *err = NULL;
+        if (!monitor_open(d, want, &err)) {
+            error_report_err(err);
+        }
+    }
+
+    if (surround) {
+        mcpx_apu_spdif_fill_frame(d);
+    }
+    const void *buf = surround ? (const void *)d->monitor.surround_buf
+                               : (const void *)d->monitor.frame_buf;
+    size_t len = surround ? sizeof(d->monitor.surround_buf)
+                          : sizeof(d->monitor.frame_buf);
+
+    if (d->monitor.stream && d->monitor.channels == want) {
         float vu = pow(fmax(0.0, fmin(g_config.audio.volume_limit, 1.0)), M_E);
         SDL_SetAudioStreamGain(d->monitor.stream, vu);
-        SDL_PutAudioStreamData(d->monitor.stream, d->monitor.frame_buf,
-                            sizeof(d->monitor.frame_buf));
+        SDL_PutAudioStreamData(d->monitor.stream, buf, len);
     }
 
     memset(d->monitor.frame_buf, 0, sizeof(d->monitor.frame_buf));
+    memset(d->monitor.surround_buf, 0, sizeof(d->monitor.surround_buf));
 }

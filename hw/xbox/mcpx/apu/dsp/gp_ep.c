@@ -235,6 +235,31 @@ static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
     trace_mcpx_apu_dsp_fifo("EP", dir ? "wr" : "rd", index, base, end, cur,
                             (uint64_t)len);
 
+    /* With Dolby Digital enabled, FIFO #1 carries the EP AC3 encoder's
+     * IEC 61937 bitstream. MCPX_EP_FIFO1_DUMP=<path> captures it raw;
+     * the result plays with `ffplay -f spdif <path>`. */
+    if (dir && index == 1) {
+        static FILE *fifo1_dump;
+        static bool fifo1_dump_checked;
+        if (!fifo1_dump_checked) {
+            const char *path = getenv("MCPX_EP_FIFO1_DUMP");
+            if (path) {
+                fifo1_dump = fopen(path, "wb");
+                if (!fifo1_dump) {
+                    fprintf(stderr, "MCPX_EP_FIFO1_DUMP: cannot open %s\n",
+                            path);
+                }
+            }
+            fifo1_dump_checked = true;
+        }
+        if (fifo1_dump) {
+            fwrite(ptr, 1, len, fifo1_dump);
+            fflush(fifo1_dump);
+        }
+        if (d->monitor.point == MCPX_APU_DEBUG_MON_EP_SPDIF) {
+            mcpx_apu_spdif_feed(d, ptr, len);
+        }
+    }
 
     if (dir && index == 0) {
         bool did_sink = ep_sink_samples(d, ptr, len);
