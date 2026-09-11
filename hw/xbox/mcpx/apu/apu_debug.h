@@ -34,6 +34,10 @@ typedef enum McpxApuDebugMonitorPoint {
      * to discrete 5.1 and played through a 6-channel stream (spdif.c,
      * monitor.c). MON_EP is FIFO #0, the analog output. */
     MCPX_APU_DEBUG_MON_EP_SPDIF,
+    /* The EP's output as a listener would take it: FIFO #0 until the
+     * S/PDIF stream carries valid AC-3, the decoded stream while it does
+     * (monitor.c). */
+    MCPX_APU_DEBUG_MON_EP_AUTO,
 } McpxApuDebugMonitorPoint;
 
 struct McpxApuDebugVoice

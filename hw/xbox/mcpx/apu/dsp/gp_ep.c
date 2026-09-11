@@ -431,7 +431,7 @@ static void sched_stats_report(MCPXAPUState *d)
             "after %.1f of 8 frames, %llu never | "
             "gp late-finish %llu catchup %llu dropped %u, "
             "ep catchup %llu dropped %u | "
-            "fifo1 %llu wr %llu B, spdif %llu frames %llu bad "
+            "fifo1 %llu wr %llu B, mon %dch, spdif %llu frames %llu bad "
             "%llu under %llu over lvl %u..%u | "
             "gp %llu calls %.0f cyc/call %.0f ns/cyc | "
             "ep %llu calls %.0f cyc/call %.0f ns/cyc | dma P wr/s=%.0f | "
@@ -469,6 +469,7 @@ static void sched_stats_report(MCPXAPUState *d)
             dsp_frame_starts_dropped(d->ep.dsp),
             (unsigned long long)g_sched.fifo1_writes,
             (unsigned long long)g_sched.fifo1_bytes,
+            d->monitor.channels,
             (unsigned long long)(spdif_frames - spdif_frames_prev),
             (unsigned long long)(spdif_bad - spdif_bad_prev),
             (unsigned long long)(spdif_under - spdif_under_prev),
@@ -608,7 +609,8 @@ static bool ep_sink_samples(MCPXAPUState *d, uint8_t *ptr, size_t len)
 {
     if (d->monitor.point == MCPX_APU_DEBUG_MON_AC97) {
         return false;
-    } else if (d->monitor.point == MCPX_APU_DEBUG_MON_EP) {
+    } else if (d->monitor.point == MCPX_APU_DEBUG_MON_EP ||
+               d->monitor.point == MCPX_APU_DEBUG_MON_EP_AUTO) {
         assert(len == sizeof(d->monitor.frame_buf));
         memcpy(d->monitor.frame_buf, ptr, len);
     }
@@ -666,7 +668,8 @@ static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
         }
         g_sched.fifo1_writes++;
         g_sched.fifo1_bytes += len;
-        if (d->monitor.point == MCPX_APU_DEBUG_MON_EP_SPDIF) {
+        if (d->monitor.point == MCPX_APU_DEBUG_MON_EP_SPDIF ||
+            d->monitor.point == MCPX_APU_DEBUG_MON_EP_AUTO) {
             mcpx_apu_spdif_feed(d, ptr, len);
         }
     }

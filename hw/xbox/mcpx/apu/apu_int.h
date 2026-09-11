@@ -228,6 +228,12 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d);
 /* EP S/PDIF (IEC 61937 AC-3) monitor point, spdif.c */
 void mcpx_apu_spdif_feed(MCPXAPUState *d, const uint8_t *buf, size_t len);
 void mcpx_apu_spdif_fill_frame(MCPXAPUState *d);
+/* Called once per monitor pull: whether a valid burst arrived recently, and
+ * whether bursts should be decoded into the PCM ring (validation runs
+ * regardless, so presence is known before anyone listens). */
+void mcpx_apu_spdif_pull(void);
+bool mcpx_apu_spdif_stream_present(void);
+void mcpx_apu_spdif_set_decoding(bool on);
 void mcpx_apu_spdif_stats(uint64_t *frames, uint64_t *rejected,
                           uint64_t *underruns, uint64_t *overruns,
                           unsigned *level_min, unsigned *level_max,

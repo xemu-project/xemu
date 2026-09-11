@@ -22,12 +22,20 @@
 #include "qemu/cutils.h"
 #include "qemu/error-report.h"
 
-/* Channels the selected tap wants: the EP S/PDIF tap plays the decoded 5.1
- * discretely, everything else is a stereo pair. SDL converts to whatever
- * the device actually has, so a stereo-only host still hears a downmix. */
-static int monitor_channels_for(McpxApuDebugMonitorPoint point)
+/* Whether the pull plays the decoded S/PDIF stream (six channels) rather
+ * than a stereo pair. The S/PDIF tap always does; the EP tap does while a
+ * title is encoding. SDL converts the layout to whatever the device has,
+ * so a stereo host hears a downmix of the decoded 5.1. */
+static bool monitor_surround(MCPXAPUState *d)
 {
-    return point == MCPX_APU_DEBUG_MON_EP_SPDIF ? 6 : 2;
+    switch (d->monitor.point) {
+    case MCPX_APU_DEBUG_MON_EP_SPDIF:
+        return true;
+    case MCPX_APU_DEBUG_MON_EP_AUTO:
+        return mcpx_apu_spdif_stream_present();
+    default:
+        return false;
+    }
 }
 
 static int monitor_frame_bytes(int channels)
@@ -78,21 +86,27 @@ static bool monitor_open(MCPXAPUState *d, int channels, Error **errp)
     return true;
 }
 
-/* The monitor plays the EP's analog output, FIFO #0: the point present in
- * every guest audio configuration (a stereo pair, L == R for a mono guest,
- * the EP's own surround-compatible downmix with Dolby Digital on). The
- * S/PDIF stream exists only while a title runs the encoder, the VP and GP
- * taps bypass the EP; those stay debug views.
+/* The monitor plays the EP's output. Its analog output, FIFO #0, is the
+ * point present in every guest audio configuration (a stereo pair, L == R
+ * for a mono guest, the EP's own surround-compatible downmix with Dolby
+ * Digital on); the S/PDIF stream on FIFO #1 exists only while a title runs
+ * the encoder, and is played decoded while it does (monitor_surround). The
+ * VP and GP taps bypass the EP; those and the pinned EP taps are debug
+ * views.
  *
- * MCPX_APU_MONITOR=ac97|vp|gp|ep|spdif pins the point from the environment
- * - what the UI combo does, for headless captures. `ep` is FIFO #0;
- * `spdif` decodes the AC-3 stream on FIFO #1 (spdif.c). */
+ * MCPX_APU_MONITOR=ac97|vp|gp|ep|spdif|auto pins the point from the
+ * environment - what the UI combo does, for headless captures. `ep` is
+ * FIFO #0 alone; `spdif` decodes the AC-3 stream on FIFO #1 (spdif.c). A
+ * capture wants one of those: under `auto` the layout of the dump can
+ * change when the title starts or stops encoding. */
 static void monitor_select_point(MCPXAPUState *d)
 {
-    d->monitor.point = MCPX_APU_DEBUG_MON_EP;
+    d->monitor.point = MCPX_APU_DEBUG_MON_EP_AUTO;
     const char *mon = getenv("MCPX_APU_MONITOR");
     if (mon) {
-        if (!strcmp(mon, "ac97")) {
+        if (!strcmp(mon, "auto")) {
+            d->monitor.point = MCPX_APU_DEBUG_MON_EP_AUTO;
+        } else if (!strcmp(mon, "ac97")) {
             d->monitor.point = MCPX_APU_DEBUG_MON_AC97;
         } else if (!strcmp(mon, "vp")) {
             d->monitor.point = MCPX_APU_DEBUG_MON_VP;
@@ -160,7 +174,7 @@ void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
         return;
     }
 
-    if (!monitor_open(d, monitor_channels_for(d->monitor.point), errp)) {
+    if (!monitor_open(d, monitor_surround(d) ? 6 : 2, errp)) {
         return;
     }
 }
@@ -178,13 +192,18 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
         return;
     }
 
-    bool surround = d->monitor.point == MCPX_APU_DEBUG_MON_EP_SPDIF;
-    int want = monitor_channels_for(d->monitor.point);
+    mcpx_apu_spdif_pull();
+    bool surround = monitor_surround(d);
+    mcpx_apu_spdif_set_decoding(surround);
+    int want = surround ? 6 : 2;
     if (d->monitor.stream && want != d->monitor.channels) {
         Error *err = NULL;
         if (!monitor_open(d, want, &err)) {
             error_report_err(err);
         }
+    } else if (!d->monitor.stream) {
+        /* Dump-only: the layout is whatever this pull writes. */
+        d->monitor.channels = want;
     }
 
     if (surround) {
