@@ -32,7 +32,7 @@ void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
 
     if (last_known_dsp_pref != (int)g_config.audio.use_dsp) {
         if (g_config.audio.use_dsp) {
-            d->monitor.point = MCPX_APU_DEBUG_MON_GP_OR_EP;
+            d->monitor.point = MCPX_APU_DEBUG_MON_EP;
             d->gp.realtime = true;
             d->ep.realtime = true;
         } else {
@@ -40,7 +40,7 @@ void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
             d->gp.realtime = false;
             d->ep.realtime = false;
         }
-        /* MCPX_APU_MONITOR=ac97|vp|gp|ep|spdif|auto: pin the debug
+        /* MCPX_APU_MONITOR=ac97|vp|gp|ep|spdif: pin the debug
          * monitor point from the environment - what the UI combo does,
          * for headless captures. `ep` is FIFO #0, the analog output;
          * `spdif` decodes the AC-3 stream on FIFO #1 (spdif.c). */
@@ -682,8 +682,7 @@ static bool ep_sink_samples(MCPXAPUState *d, uint8_t *ptr, size_t len)
 {
     if (d->monitor.point == MCPX_APU_DEBUG_MON_AC97) {
         return false;
-    } else if ((d->monitor.point == MCPX_APU_DEBUG_MON_EP) ||
-        (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP)) {
+    } else if (d->monitor.point == MCPX_APU_DEBUG_MON_EP) {
         assert(len == sizeof(d->monitor.frame_buf));
         memcpy(d->monitor.frame_buf, ptr, len);
     }
@@ -1464,8 +1463,7 @@ void mcpx_apu_dsp_frame_end(MCPXAPUState *d)
     if (gp_enabled) {
         g_dbg.gp.cycles = dsp_get_cycle_count(d->gp.dsp);
 
-        if ((d->monitor.point == MCPX_APU_DEBUG_MON_GP) ||
-            (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP && !ep_enabled)) {
+        if (d->monitor.point == MCPX_APU_DEBUG_MON_GP) {
             int off = (d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
                 uint32_t l = dsp_read_memory(d->gp.dsp, 'X', 0x1400 + i);

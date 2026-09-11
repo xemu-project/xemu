@@ -30,7 +30,6 @@ typedef enum McpxApuDebugMonitorPoint {
     MCPX_APU_DEBUG_MON_VP,
     MCPX_APU_DEBUG_MON_GP,
     MCPX_APU_DEBUG_MON_EP,
-    MCPX_APU_DEBUG_MON_GP_OR_EP,
     /* EP output FIFO #1 - the S/PDIF stream - decoded from IEC 61937 AC-3
      * to discrete 5.1 and played through a 6-channel stream (spdif.c,
      * monitor.c). MON_EP is FIFO #0, the analog output. */

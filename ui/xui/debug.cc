@@ -205,7 +205,7 @@ void DebugApuWindow::Draw()
     mon = (int)mcpx_apu_debug_get_monitor();
     if (ImGui::Combo("Monitor", &mon,
                      "AC97\0VP Only\0GP Only\0EP Only (analog)\0"
-                     "GP/EP if enabled\0EP S/PDIF (AC-3 5.1)\0")) {
+                     "EP S/PDIF (AC-3 5.1)\0")) {
         mcpx_apu_debug_set_monitor((McpxApuDebugMonitorPoint)mon);
     }
 
