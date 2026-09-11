@@ -42,6 +42,23 @@ VkDeviceSize pgraph_vk_update_vertex_inline_buffer(PGRAPHState *pg, void **data,
                                       sizes, count, 1);
 }
 
+uint8_t *pgraph_vk_reserve_vertex_inline_buffer(PGRAPHState *pg,
+                                                VkDeviceSize size,
+                                                VkDeviceSize *offset)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    StorageBuffer *b = &r->storage_buffers[BUFFER_VERTEX_INLINE_STAGING];
+
+    nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_3);
+    assert(pgraph_vk_buffer_has_space_for(pg, BUFFER_VERTEX_INLINE_STAGING,
+                                          size, 1));
+    assert(b->mapped);
+
+    *offset = b->buffer_offset;
+    b->buffer_offset += size;
+    return b->mapped + *offset;
+}
+
 void pgraph_vk_update_vertex_ram_buffer(PGRAPHState *pg, hwaddr offset,
                                         void *data, VkDeviceSize size)
 {
@@ -113,6 +130,30 @@ static char const * const vertex_data_array_format_to_str[] = {
     [NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_S32K] = "S32K",
     [NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_CMP] = "CMP",
 };
+
+VkFormat pgraph_vk_vertex_format_for_attribute(const VertexAttribute *attr)
+{
+    switch (attr->format) {
+    case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_UB_D3D:
+    case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_UB_OGL:
+        if (attr->count < 1 || attr->count > ARRAY_SIZE(ub_to_count)) {
+            return VK_FORMAT_UNDEFINED;
+        }
+        return ub_to_count[attr->count - 1];
+    case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_S1:
+        if (attr->count < 1 || attr->count > ARRAY_SIZE(s1_to_count)) {
+            return VK_FORMAT_UNDEFINED;
+        }
+        return s1_to_count[attr->count - 1];
+    case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_S32K:
+        if (attr->count < 1 || attr->count > ARRAY_SIZE(s32k_to_count)) {
+            return VK_FORMAT_UNDEFINED;
+        }
+        return s32k_to_count[attr->count - 1];
+    default:
+        return VK_FORMAT_UNDEFINED;
+    }
+}
 
 void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
                                       unsigned int max_element,
