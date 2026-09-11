@@ -1339,7 +1339,7 @@ void mcpx_apu_dsp_frame_gp(MCPXAPUState *d,
         const char *v = getenv("MCPX_APU_MIX_INJECT");
         inject = v ? atoi(v) : 0;
     }
-    if (inject) {
+    if (inject && mixbins) {
         static uint64_t phase;
         const double freq[NUM_MIXBINS] = { 300, 700, 1100, 1900, 3100, 5300 };
         for (int mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
@@ -1357,20 +1357,22 @@ void mcpx_apu_dsp_frame_gp(MCPXAPUState *d,
 
     /* The VP's mixbins into the mixbuffer: the top 1K of the GP's X RAM,
      * X:$0C00-$0FFF, which the core also sees at X:$1400-$17FF and the
-     * engine at flat $1400. Every bin, every frame, voices or none - on
-     * silicon words seeded at X:$0C00 through the aperture read back or
-     * come back zero from one run to the next, the VP's per-frame write
-     * racing the probe (DMA corpus bank b15). */
-    int64_t t_mix = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-    for (int mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
-        uint32_t base = GP_DSP_MIXBUF_BASE + mixbin * NUM_SAMPLES_PER_FRAME;
-        for (int sample = 0; sample < NUM_SAMPLES_PER_FRAME; sample++) {
-            dsp_write_memory(d->gp.dsp, 'X', base + sample,
-                             float_to_24b(mixbins[mixbin][sample]));
+     * engine at flat $1400. Only a frame that mixed a voice writes it: on
+     * silicon, with the engine running and no voices, every word of the
+     * 1K keeps a marker the core wrote for 120 frames (xbtest
+     * apu/dsp/mixbuf/vp-rewrite), so a GP program's own mix there is left
+     * alone. */
+    if (mixbins) {
+        int64_t t_mix = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+        for (int mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
+            uint32_t base = GP_DSP_MIXBUF_BASE + mixbin * NUM_SAMPLES_PER_FRAME;
+            for (int sample = 0; sample < NUM_SAMPLES_PER_FRAME; sample++) {
+                dsp_write_memory(d->gp.dsp, 'X', base + sample,
+                                 float_to_24b(mixbins[mixbin][sample]));
+            }
         }
+        g_sched.mixbuf_us += qemu_clock_get_us(QEMU_CLOCK_REALTIME) - t_mix;
     }
-
-    g_sched.mixbuf_us += qemu_clock_get_us(QEMU_CLOCK_REALTIME) - t_mix;
 
     dsp_worker_start(&g_gp_worker, g_frame.gp_budget);
 }

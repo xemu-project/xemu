@@ -1844,8 +1844,9 @@ static void voice_work_finalize(MCPXAPUState *d)
     vwd->workers = NULL;
 }
 
-void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+int mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
+    int voices = 0;
     memset(d->vp.sample_buf, 0, sizeof(d->vp.sample_buf));
 
     /* Process all voices, mixing each into the affected MIXBINs */
@@ -1873,6 +1874,7 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
                 fe_method(d, SE2FE_IDLE_VOICE, v);
             } else {
                 voice_work_enqueue(d, v, list);
+                voices++;
             }
             d->regs[current] = d->regs[next];
         }
@@ -1893,6 +1895,7 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
         memset(d->vp.sample_buf, 0, sizeof(d->vp.sample_buf));
         memset(mixbins, 0, sizeof(float[32][32]));
     }
+    return voices;
 }
 
 void mcpx_apu_vp_init(MCPXAPUState *d)
