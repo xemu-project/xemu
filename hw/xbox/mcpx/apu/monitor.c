@@ -24,14 +24,13 @@
 #include "qemu/error-report.h"
 
 /* Whether the pull plays the decoded S/PDIF stream (six channels) rather
- * than a stereo pair. The S/PDIF tap always does; auto does while a title
- * is encoding. SDL converts the layout to whatever the device has, so a
- * stereo host hears a downmix of the decoded 5.1. */
-static bool monitor_surround(MCPXAPUState *d)
+ * than a stereo pair: the S/PDIF tap and auto do while the stream carries
+ * AC-3. SDL converts the layout to whatever the device has, so a stereo
+ * host hears a downmix of the decoded 5.1. */
+bool mcpx_apu_monitor_surround(MCPXAPUState *d)
 {
     switch (d->monitor.point) {
     case MCPX_APU_DEBUG_MON_SPDIF:
-        return true;
     case MCPX_APU_DEBUG_MON_AUTO:
         return mcpx_apu_spdif_stream_present();
     default:
@@ -41,8 +40,11 @@ static bool monitor_surround(MCPXAPUState *d)
 
 /* Clock the ACI by one sound engine frame, on the frame thread. The bus
  * masters consume 32 stereo frames of their rings whatever the monitor
- * plays; PCM out is the analog output, into the pull's buffer when that is
- * what plays. */
+ * plays. PCM out is the analog output, into the pull's buffer when that is
+ * what plays. S/PDIF out goes to the decoder, which is how the stream's
+ * presence is known whatever plays; its words are the stereo PCM the
+ * S/PDIF tap plays while the stream carries no bursts (a receiver would
+ * play them the same way). */
 void mcpx_apu_monitor_aci_frame(MCPXAPUState *d)
 {
     int16_t pcm[NUM_SAMPLES_PER_FRAME][2];
@@ -51,10 +53,20 @@ void mcpx_apu_monitor_aci_frame(MCPXAPUState *d)
     if (!mcpx_aci_frame(NUM_SAMPLES_PER_FRAME, &pcm[0][0], spdif)) {
         return;
     }
-    if (d->monitor.point == MCPX_APU_DEBUG_MON_AC97 ||
-        d->monitor.point == MCPX_APU_DEBUG_MON_AUTO) {
-        int off = (d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
+    mcpx_apu_spdif_feed(d, spdif, sizeof(spdif));
+
+    int off = (d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
+    switch (d->monitor.point) {
+    case MCPX_APU_DEBUG_MON_AC97:
+    case MCPX_APU_DEBUG_MON_AUTO:
         memcpy(d->monitor.frame_buf[off], pcm, sizeof(pcm));
+        break;
+    case MCPX_APU_DEBUG_MON_SPDIF:
+        QEMU_BUILD_BUG_ON(sizeof(spdif) != sizeof(pcm));
+        memcpy(d->monitor.frame_buf[off], spdif, sizeof(spdif));
+        break;
+    default:
+        break;
     }
 }
 
@@ -110,15 +122,16 @@ static bool monitor_open(MCPXAPUState *d, int channels, Error **errp)
  * master fetches from the guest's ring, present in every guest audio
  * configuration (a stereo pair, L == R for a mono guest, the EP's own
  * surround-compatible downmix with Dolby Digital on, the kernel's own ring
- * for the boot sound). The S/PDIF stream exists only while a title runs
- * the encoder, and is played decoded while it does (monitor_surround). The
- * VP, GP and EP taps are debug views of the stages before the ACI.
+ * for the boot sound), or the optical output its S/PDIF bus master
+ * fetches: PCM, or AC-3 bursts while a title runs the encoder, played
+ * decoded while it does (monitor_surround). The VP, GP and EP taps are
+ * debug views of the stages before the ACI.
  *
  * MCPX_APU_MONITOR=ac97|vp|gp|ep|spdif|auto pins the point from the
  * environment - what the UI combo does, for headless captures. `ep` is
- * the EP's FIFO #0 writes; `spdif` decodes the AC-3 stream (spdif.c). A
- * capture wants one of those: under `auto` the layout of the dump can
- * change when the title starts or stops encoding. */
+ * the EP's FIFO #0 writes. A capture wants a fixed layout: under `auto`
+ * and `spdif` the layout of the dump changes when the title starts or
+ * stops encoding. */
 static void monitor_select_point(MCPXAPUState *d)
 {
     d->monitor.point = MCPX_APU_DEBUG_MON_AUTO;
@@ -194,7 +207,7 @@ void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
         return;
     }
 
-    if (!monitor_open(d, monitor_surround(d) ? 6 : 2, errp)) {
+    if (!monitor_open(d, mcpx_apu_monitor_surround(d) ? 6 : 2, errp)) {
         return;
     }
 }
@@ -213,7 +226,7 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
     }
 
     mcpx_apu_spdif_pull();
-    bool surround = monitor_surround(d);
+    bool surround = mcpx_apu_monitor_surround(d);
     mcpx_apu_spdif_set_decoding(surround);
     int want = surround ? 6 : 2;
     if (d->monitor.stream && want != d->monitor.channels) {
@@ -267,8 +280,9 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
 
     /* MCPX_APU_MON_DUMP=<path>: append the monitor PCM (S16LE, 48 kHz,
      * pre-gain, post-channel-mask; stereo, or 6-channel FL FR FC LFE BL BR
-     * on the S/PDIF tap) - the exact signal the debug monitor plays - so an
-     * audio artifact can be diffed across arms instead of heard. */
+     * while the S/PDIF stream plays decoded) - the exact signal the debug
+     * monitor plays - so an audio artifact can be diffed across arms
+     * instead of heard. */
     static int dump_init;
     static FILE *dump_file;
     if (!dump_init) {

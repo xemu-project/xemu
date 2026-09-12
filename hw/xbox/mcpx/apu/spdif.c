@@ -18,29 +18,32 @@
  */
 
 /*
- * EP S/PDIF monitor point.
+ * S/PDIF output decoder.
  *
- * With Dolby Digital enabled the EP writes two things: FIFO #0 carries the
- * analog stereo output (a surround-encoded downmix - not the front L/R the
- * GP monitor taps, so it is not a reference for the 5.1 program), and FIFO
- * #1 carries the S/PDIF stream: IEC 61937 bursts, each an AC-3 frame in
- * 16-bit little-endian words, at the 192 KB/s rate of a 48 kHz stereo
- * carrier. Neither is something the debug monitor could play as PCM.
+ * The ACI's S/PDIF bus master fetches 16-bit stereo words from the ring a
+ * title gives it and they go out the optical port as the IEC 60958
+ * carrier: plain PCM (a title in stereo mode points both bus masters at
+ * the same ring), or, with Dolby Digital enabled, the stream the EP's
+ * encoder wrote to its FIFO #1 - IEC 61937 bursts, each an AC-3 frame in
+ * little-endian words, at the 192 KB/s rate of a 48 kHz stereo carrier.
  *
- * This taps FIFO #1 as the receiver on the other end of the cable would:
- * a byte-oriented parser finds the Pa/Pb preamble, reads the burst type and
- * length, byte-swaps the payload into a big-endian AC-3 frame, checks the
- * frame's CRC, decodes it with liba52 to discrete 5.1 (SDL channel order)
- * and queues the 1536 frames for the monitor's 256-sample pushes. Frames
+ * This is the receiver on the other end of the cable. It is fed what the
+ * bus master fetches, one sound engine frame at a time: a byte-oriented
+ * parser finds the Pa/Pb preamble, reads the burst type and length,
+ * byte-swaps the payload into a big-endian AC-3 frame, checks the frame's
+ * CRC, decodes it with liba52 to discrete 5.1 (SDL channel order) and
+ * queues the 1536 frames for the monitor's 256-sample pushes. Frames
  * failing the CRC are counted and dropped rather than decoded to noise.
+ * While no valid burst has arrived recently the carrier is PCM and the
+ * monitor plays the words themselves (monitor.c).
  *
  * The CRC check is a guard, not a filter: with bit-14 DMA offsets reading
  * zero as on silicon, the stream is one valid burst per 6144-byte period
  * and the SCHED line's spdif counters show 0 bad.
  *
- * Threading: `feed` runs on the thread executing the EP core (its DSP
- * worker), `fill_frame` on the APU thread after the cores are joined - the
- * same ordering the FIFO #0 tap relies on, so the ring needs no lock.
+ * Everything here runs on the APU's frame thread: `feed` when the ACI is
+ * clocked, `fill_frame` on the monitor pull that follows, so the ring
+ * needs no lock.
  */
 
 #include "apu_int.h"

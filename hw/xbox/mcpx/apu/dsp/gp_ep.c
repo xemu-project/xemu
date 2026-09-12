@@ -641,8 +641,10 @@ static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
                             (uint64_t)len);
 
     /* With Dolby Digital enabled, FIFO #1 carries the EP AC3 encoder's
-     * IEC 61937 bitstream. MCPX_EP_FIFO1_DUMP=<path> captures it raw;
-     * the result plays with `ffplay -f spdif <path>`. */
+     * IEC 61937 bitstream, written to the ring the ACI's S/PDIF bus master
+     * fetches (the decoder listens there, spdif.c). MCPX_EP_FIFO1_DUMP=<path>
+     * captures the writes raw; the result plays with `ffplay -f spdif
+     * <path>`. */
     if (dir && index == 1) {
         static FILE *fifo1_dump;
         static bool fifo1_dump_checked;
@@ -662,10 +664,6 @@ static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
         }
         g_sched.fifo1_writes++;
         g_sched.fifo1_bytes += len;
-        if (d->monitor.point == MCPX_APU_DEBUG_MON_SPDIF ||
-            d->monitor.point == MCPX_APU_DEBUG_MON_AUTO) {
-            mcpx_apu_spdif_feed(d, ptr, len);
-        }
     }
     ep_snapshot_node_done(d, dir && index == 1);
 

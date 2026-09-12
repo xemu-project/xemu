@@ -36,8 +36,10 @@ typedef enum McpxApuDebugMonitorPoint {
     MCPX_APU_DEBUG_MON_GP,
     /* The EP's writes to its output FIFO #0. */
     MCPX_APU_DEBUG_MON_EP,
-    /* The S/PDIF stream decoded from IEC 61937 AC-3 to discrete 5.1 and
-     * played through a 6-channel stream (spdif.c, monitor.c). */
+    /* The S/PDIF output as a receiver takes it: the stereo PCM the ACI's
+     * S/PDIF bus master fetches, or, while the stream carries IEC 61937
+     * AC-3, the bursts decoded to discrete 5.1 and played through a
+     * 6-channel stream (spdif.c, monitor.c). */
     MCPX_APU_DEBUG_MON_SPDIF,
     /* What a listener would take: the ACI's analog output until the
      * S/PDIF stream carries valid AC-3, the decoded stream while it does

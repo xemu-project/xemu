@@ -224,9 +224,12 @@ void mcpx_debug_end_frame(void);
 void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp);
 void mcpx_apu_monitor_finalize(MCPXAPUState *d);
 void mcpx_apu_monitor_frame(MCPXAPUState *d);
-void mcpx_apu_monitor_aci_frame(MCPXAPUState *d);
 
-/* EP S/PDIF (IEC 61937 AC-3) monitor point, spdif.c */
+void mcpx_apu_monitor_aci_frame(MCPXAPUState *d);
+bool mcpx_apu_monitor_surround(MCPXAPUState *d);
+
+/* S/PDIF output decoder (IEC 61937 AC-3 to 5.1), spdif.c. `feed` takes the
+ * bytes the ACI's S/PDIF bus master fetched. */
 void mcpx_apu_spdif_feed(MCPXAPUState *d, const uint8_t *buf, size_t len);
 void mcpx_apu_spdif_fill_frame(MCPXAPUState *d);
 /* Called once per monitor pull: whether a valid burst arrived recently, and

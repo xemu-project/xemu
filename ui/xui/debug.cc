@@ -204,7 +204,7 @@ void DebugApuWindow::Draw()
     static int mon = 0;
     mon = (int)mcpx_apu_debug_get_monitor();
     if (ImGui::Combo("Monitor", &mon,
-                     "AC97\0VP\0GP\0EP FIFO #0\0S/PDIF (AC-3 5.1)\0"
+                     "AC97\0VP\0GP\0EP FIFO #0\0S/PDIF\0"
                      "Auto\0")) {
         mcpx_apu_debug_set_monitor((McpxApuDebugMonitorPoint)mon);
     }
