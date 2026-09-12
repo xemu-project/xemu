@@ -50,6 +50,18 @@ void pgraph_vk_init_buffers(NV2AState *d)
 
     // FIXME: Profile buffer sizes
 
+#if defined(__APPLE__)
+    // Apple Silicon has unified memory — CPU and GPU share the same RAM.
+    // Use VMA_MEMORY_USAGE_AUTO so VMA can place allocations in shared memory
+    // without unnecessary copies between host and device heaps.
+    VmaAllocationCreateInfo host_alloc_create_info = {
+        .usage = VMA_MEMORY_USAGE_AUTO,
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+    };
+    VmaAllocationCreateInfo device_alloc_create_info = {
+        .usage = VMA_MEMORY_USAGE_AUTO,
+    };
+#else
     VmaAllocationCreateInfo host_alloc_create_info = {
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
         .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
@@ -59,6 +71,7 @@ void pgraph_vk_init_buffers(NV2AState *d)
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
         .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT
     };
+#endif
 
     r->storage_buffers[BUFFER_STAGING_DST] = (StorageBuffer){
         .alloc_info = host_alloc_create_info,

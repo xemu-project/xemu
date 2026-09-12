@@ -20,7 +20,9 @@
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "renderer.h"
 
+#if HAVE_EXTERNAL_MEMORY
 #include "gloffscreen.h"
+#endif
 
 #if HAVE_EXTERNAL_MEMORY
 static GloContext *g_gl_context;
