@@ -68,9 +68,16 @@ struct AC97LinkState {
     SWVoiceIn *voice_mc;
     int invalid_freq[LAST_INDEX];
 #ifdef XBOX
-    /* Pacing of the S/PDIF bus master, which has no voice of its own. */
-    int64_t so_last_ns;
-    int so_carry;
+    /* The bus masters are run by the owner's clock (ac97_xbox_run) and
+     * deliver what they fetch into a sink rather than a voice. */
+    uint8_t *sink;
+    int sink_len, sink_pos;
+    /* The interrupt line, set through the owner (from any thread). */
+    void (*irq_update)(void *opaque, int level);
+    void *irq_opaque;
+    /* The codec's combined output volume for the owner to apply. */
+    int out_mute;
+    uint8_t out_vol_l, out_vol_r;
 #endif
     uint8_t silence[128];
     int bup_flag;
@@ -82,6 +89,12 @@ void ac97_common_init (AC97LinkState *s,
 
 extern const MemoryRegionOps ac97_io_nam_ops;
 extern const MemoryRegionOps ac97_io_nabm_ops;
+
+#ifdef XBOX
+/* Run bus master `index` for `bytes` of its stream into `out`: what it
+ * fetched, and silence where it is not running or halted. */
+void ac97_xbox_run(AC97LinkState *s, int index, uint8_t *out, int bytes);
+#endif
 
 #endif
 

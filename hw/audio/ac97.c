@@ -18,7 +18,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/timer.h"
 #include "hw/audio/model.h"
 #include "qemu/audio.h"
 #include "hw/pci/pci_device.h"
@@ -150,7 +149,9 @@ typedef struct AC97DeviceState {
 #define AC97_DEVICE(obj) \
     OBJECT_CHECK(AC97DeviceState, (obj), "AC97")
 
+#ifndef XBOX
 static void po_callback(void *opaque, int free);
+#endif
 
 #ifndef XBOX
 static void pi_callback(void *opaque, int avail);
@@ -232,13 +233,23 @@ static void update_sr(AC97LinkState *s, AC97BusMasterRegs *r, uint32_t new_sr)
 
     if (level) {
         s->glob_sta |= masks[r - s->bm_regs];
+    } else {
+        s->glob_sta &= ~masks[r - s->bm_regs];
+    }
+#ifdef XBOX
+    /* One line for all the bus masters, set by the owner. */
+    level = !!(s->glob_sta & (GS_PIINT | GS_POINT | GS_MINT | GS_SOINT));
+    dolog("set irq level=%d", level);
+    s->irq_update(s->irq_opaque, level);
+#else
+    if (level) {
         dolog("set irq level=1");
         pci_irq_assert(s->pci_dev);
     } else {
-        s->glob_sta &= ~masks[r - s->bm_regs];
         dolog("set irq level=0");
         pci_irq_deassert(s->pci_dev);
     }
+#endif
 }
 
 static void voice_set_active(AC97LinkState *s, int bm_index, int on)
@@ -253,16 +264,10 @@ static void voice_set_active(AC97LinkState *s, int bm_index, int on)
     case PO_INDEX:
 #ifdef XBOX
     case SO_INDEX:
-        /* The S/PDIF bus master rides the PCM-out voice's callback: the
-         * voice runs while either channel does. */
-        on = (s->bm_regs[PO_INDEX].cr & CR_RPBM) ||
-             (s->bm_regs[SO_INDEX].cr & CR_RPBM);
-        if (!on) {
-            s->so_last_ns = 0;
-            s->so_carry = 0;
-        }
-#endif
+        /* No voice: the owner clocks the bus masters (ac97_xbox_run). */
+#else
         AUD_set_active_out(s->voice_po, on);
+#endif
         break;
 
     case MC_INDEX:
@@ -327,12 +332,14 @@ static uint16_t mixer_load(AC97LinkState *s, uint32_t i)
 
 static void open_voice(AC97LinkState *s, int index, int freq)
 {
+#ifndef XBOX
     struct audsettings as;
 
     as.freq = freq;
     as.nchannels = 2;
     as.fmt = AUDIO_FORMAT_S16;
     as.endianness = 0;
+#endif
 
     if (freq > 0) {
         s->invalid_freq[index] = 0;
@@ -351,6 +358,7 @@ static void open_voice(AC97LinkState *s, int index, int freq)
             break;
 
         case PO_INDEX:
+#ifndef XBOX
             s->voice_po = AUD_open_out(
                 s->audio_be,
                 s->voice_po,
@@ -359,6 +367,7 @@ static void open_voice(AC97LinkState *s, int index, int freq)
                 po_callback,
                 &as
                 );
+#endif
             break;
 
         case MC_INDEX:
@@ -388,7 +397,9 @@ static void open_voice(AC97LinkState *s, int index, int freq)
             break;
 
         case PO_INDEX:
+#ifndef XBOX
             AUD_close_out(s->audio_be, s->voice_po);
+#endif
             s->voice_po = NULL;
             break;
 
@@ -417,7 +428,9 @@ static void reset_voices(AC97LinkState *s, uint8_t active[LAST_INDEX])
 
     freq = mixer_load(s, AC97_PCM_Front_DAC_Rate);
     open_voice(s, PO_INDEX, freq);
+#ifndef XBOX
     AUD_set_active_out(s->voice_po, active[PO_INDEX]);
+#endif
 
 #ifndef XBOX
     freq = mixer_load(s, AC97_MIC_ADC_Rate);
@@ -453,7 +466,13 @@ static void update_combined_volume_out(AC97LinkState *s)
     lvol = (lvol * plvol) / 255;
     rvol = (rvol * prvol) / 255;
 
+#ifdef XBOX
+    s->out_mute = mute;
+    s->out_vol_l = lvol;
+    s->out_vol_r = rvol;
+#else
     AUD_set_volume_out_lr(s->voice_po, mute, lvol, rvol);
+#endif
 }
 
 static void update_volume_in(AC97LinkState *s)
@@ -980,7 +999,13 @@ static int write_audio(AC97LinkState *s, AC97BusMasterRegs *r,
         int copied;
         to_copy = MIN(temp, sizeof(tmpbuf));
         dma_memory_read(s->as, addr, tmpbuf, to_copy, MEMTXATTRS_UNSPECIFIED);
+#ifdef XBOX
+        copied = MIN(to_copy, s->sink_len - s->sink_pos);
+        memcpy(s->sink + s->sink_pos, tmpbuf, copied);
+        s->sink_pos += copied;
+#else
         copied = AUD_write(s->voice_po, tmpbuf, to_copy);
+#endif
         dolog("write_audio max=%x to_copy=%x copied=%x",
               max, to_copy, copied);
         if (!copied) {
@@ -1007,6 +1032,10 @@ static int write_audio(AC97LinkState *s, AC97BusMasterRegs *r,
 
 static void write_bup(AC97LinkState *s, int elapsed)
 {
+#ifdef XBOX
+    /* The sink holds silence already. */
+    return;
+#endif
     dolog("write_bup");
     if (!(s->bup_flag & BUP_SET)) {
         if (s->bup_flag & BUP_LAST) {
@@ -1150,13 +1179,8 @@ static void transfer_audio(AC97LinkState *s, int index, int elapsed)
 
 #ifdef XBOX
         case SO_INDEX:
-            /* The S/PDIF transmitter's ring, consumed at the PCM rate; the
-             * data (IEC 61937 or PCM) has no sink yet. */
-            temp = MIN((int)(r->picb << 1), elapsed);
-            if (!temp) {
-                stop = 1;
-            }
-            r->bd.addr += temp;
+            /* The S/PDIF transmitter's ring, fetched like PCM out. */
+            temp = write_audio(s, r, elapsed, &stop);
             elapsed -= temp;
             r->picb -= (temp >> 1);
             break;
@@ -1204,25 +1228,22 @@ static void mc_callback(void *opaque, int avail)
 }
 #endif
 
+#ifdef XBOX
+void ac97_xbox_run(AC97LinkState *s, int index, uint8_t *out, int bytes)
+{
+    memset(out, 0, bytes);
+    s->sink = out;
+    s->sink_len = bytes;
+    s->sink_pos = 0;
+    transfer_audio(s, index, bytes);
+    s->sink = NULL;
+}
+#else
 static void po_callback(void *opaque, int free)
 {
-    AC97LinkState *s = opaque;
-
-    transfer_audio(s, PO_INDEX, free);
-#ifdef XBOX
-    /* The S/PDIF bus master consumes at the PCM rate (48 kHz stereo S16,
-     * 192000 bytes/s) by the clock, not by the voice's free space, which
-     * only PCM-out's own writes pace. */
-    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    if (s->so_last_ns) {
-        int64_t bytes = (now - s->so_last_ns) * 192000 / 1000000000 + s->so_carry;
-        bytes = MIN(bytes, 1 << 20);
-        s->so_carry = bytes & 3;
-        transfer_audio(s, SO_INDEX, bytes & ~3);
-    }
-    s->so_last_ns = now;
-#endif
+    transfer_audio(opaque, PO_INDEX, free);
 }
+#endif
 
 static const VMStateDescription vmstate_ac97_bm_regs = {
     .name = "ac97_bm_regs",
@@ -1399,6 +1420,9 @@ static void ac97_on_reset(AC97LinkState *s)
     reset_bm_regs(s, &s->bm_regs[0]);
     reset_bm_regs(s, &s->bm_regs[1]);
     reset_bm_regs(s, &s->bm_regs[2]);
+#ifdef XBOX
+    reset_bm_regs(s, &s->bm_regs[SO_INDEX]);
+#endif
 
     /*
      * Reset the mixer too. The Windows XP driver seems to rely on
@@ -1413,7 +1437,9 @@ void ac97_common_init(AC97LinkState *s, PCIDevice *pci_dev, AddressSpace *as)
   s->pci_dev = pci_dev;
   s->as = as;
 
+#ifndef XBOX
   AUD_backend_check (&s->audio_be, &error_fatal);
+#endif
   ac97_on_reset(s);
 }
 
