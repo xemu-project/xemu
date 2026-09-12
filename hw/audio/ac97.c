@@ -156,6 +156,25 @@ static void pi_callback(void *opaque, int avail);
 static void mc_callback(void *opaque, int avail);
 #endif
 
+#ifdef XBOX
+/* The MCPX walks its list as a ring closed by LVI: after the last valid
+ * descriptor the next one is descriptor 0, and the engine never halts
+ * there (the kernel's boot sound is one 8 KB descriptor with LVI = 0 and
+ * an interrupt handler that never touches LVI). PIV reads as CIV. Measured
+ * with xbtest's aci/pcm-out suite. */
+static void advance_bd(AC97BusMasterRegs *r)
+{
+    r->civ = r->civ == r->lvi ? 0 : (r->civ + 1) % 32;
+    r->piv = r->civ;
+}
+#else
+static void advance_bd(AC97BusMasterRegs *r)
+{
+    r->civ = r->piv;
+    r->piv = (r->piv + 1) % 32;
+}
+#endif
+
 static void fetch_bd(AC97LinkState *s, AC97BusMasterRegs *r)
 {
     uint8_t b[8];
@@ -810,13 +829,26 @@ static void nabm_writeb(void *opaque, uint32_t addr, uint32_t val)
         r = &s->bm_regs[GET_BM(addr)];
         if ((r->cr & CR_RPBM) && (r->sr & SR_DCH)) {
             r->sr &= ~(SR_DCH | SR_CELV);
-            r->civ = r->piv;
-            r->piv = (r->piv + 1) % 32;
+            advance_bd(r);
             fetch_bd(s, r);
         }
         r->lvi = val % 32;
         dolog("LVI[%d] <- 0x%x", GET_BM(addr), val);
         break;
+#ifdef XBOX
+    /* CIV takes a write, stopped or running: the engine goes on from the
+     * descriptor written. */
+    case PI_CIV:
+    case PO_CIV:
+    case MC_CIV:
+    case SO_CIV:
+        r = &s->bm_regs[GET_BM(addr)];
+        r->civ = val % 32;
+        r->piv = r->civ;
+        r->bd_valid = 0;
+        dolog("CIV[%d] <- 0x%x", GET_BM(addr), val);
+        break;
+#endif
     case PI_CR:
     case PO_CR:
     case MC_CR:
@@ -830,8 +862,9 @@ static void nabm_writeb(void *opaque, uint32_t addr, uint32_t val)
                 voice_set_active(s, r - s->bm_regs, 0);
                 r->sr |= SR_DCH;
             } else {
-                r->civ = r->piv;
-                r->piv = (r->piv + 1) % 32;
+#ifndef XBOX
+                advance_bd(r);
+#endif
                 fetch_bd(s, r);
                 r->sr &= ~SR_DCH;
                 voice_set_active(s, r - s->bm_regs, 1);
@@ -1056,16 +1089,32 @@ static void transfer_audio(AC97LinkState *s, int index, int elapsed)
         if (!r->picb) {
             dolog("fresh bd %d is empty 0x%x 0x%x",
                   r->civ, r->bd.addr, r->bd.ctl_len);
+#ifdef XBOX
+            /* Skipped without a stall; a whole ring of empties yields
+             * nothing this tick. */
+            int skipped = 0;
+            while (!r->picb && skipped++ < 32) {
+                if (r->civ == r->lvi) {
+                    r->sr |= SR_LVBCI;
+                }
+                advance_bd(r);
+                fetch_bd(s, r);
+            }
+            if (!r->picb) {
+                return;
+            }
+            continue;
+#else
             if (r->civ == r->lvi) {
                 r->sr |= SR_DCH; /* CELV? */
                 s->bup_flag = 0;
                 break;
             }
             r->sr &= ~SR_CELV;
-            r->civ = r->piv;
-            r->piv = (r->piv + 1) % 32;
+            advance_bd(r);
             fetch_bd(s, r);
             return;
+#endif
         }
 
         switch (index) {
@@ -1091,14 +1140,19 @@ static void transfer_audio(AC97LinkState *s, int index, int elapsed)
             }
 
             if (r->civ == r->lvi) {
+#ifdef XBOX
+                new_sr |= SR_LVBCI;
+                advance_bd(r);
+                fetch_bd(s, r);
+#else
                 dolog("Underrun civ (%d) == lvi (%d)", r->civ, r->lvi);
 
                 new_sr |= SR_LVBCI | SR_DCH | SR_CELV;
                 stop = 1;
                 s->bup_flag = (r->bd.ctl_len & BD_BUP) ? BUP_LAST : 0;
+#endif
             } else {
-                r->civ = r->piv;
-                r->piv = (r->piv + 1) % 32;
+                advance_bd(r);
                 fetch_bd(s, r);
             }
 
