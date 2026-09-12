@@ -690,9 +690,10 @@ static void nam_writew(void *opaque, uint32_t addr, uint32_t val)
         /* None of the features in these regs are emulated, so they are RO */
         break;
     default:
+        /* A codec register the model has no behaviour for: keep the value
+         * for a read back, as the codec would. */
         dolog("U nam writew 0x%x <- 0x%x", addr, val);
         mixer_store(s, addr, val);
-        assert(0);
         break;
     }
 }
@@ -761,8 +762,9 @@ static uint32_t nabm_readb(void *opaque, uint32_t addr)
         dolog("SRb[%d] -> 0x%x", GET_BM(addr), val);
         break;
     default:
+        /* A byte the block does not define (a wide read of a packed bus
+         * master block lands here): all ones, not a stop. */
         dolog("U nabm readb 0x%x -> 0x%x", addr, val);
-        assert(0);
         break;
     }
     return val;
