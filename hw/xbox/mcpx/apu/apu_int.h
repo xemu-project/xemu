@@ -224,6 +224,7 @@ void mcpx_debug_end_frame(void);
 void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp);
 void mcpx_apu_monitor_finalize(MCPXAPUState *d);
 void mcpx_apu_monitor_frame(MCPXAPUState *d);
+void mcpx_apu_monitor_aci_frame(MCPXAPUState *d);
 
 /* EP S/PDIF (IEC 61937 AC-3) monitor point, spdif.c */
 void mcpx_apu_spdif_feed(MCPXAPUState *d, const uint8_t *buf, size_t len);

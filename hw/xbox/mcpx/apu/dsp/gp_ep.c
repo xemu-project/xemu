@@ -24,8 +24,6 @@
 #include "qemu/error-report.h"
 #include "qemu/timer.h"
 
-static const int16_t ep_silence[256][2] = { 0 };
-
 /* Walk an SGE table for a scratch or FIFO transfer. The table lives in guest
  * RAM at `sge_base`, one 8-byte entry per page, the entry's first word being
  * the physical page. The guest programs the table and its bounds through the
@@ -603,21 +601,15 @@ static void gp_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
 
 /* EP output FIFO #0 is the analog stereo output - with Dolby Digital on, a
  * surround-encoded downmix, not the GP's front pair - as 256 S16 stereo
- * frames per EP frame. The `ep` monitor point plays it; every point but
- * AC97 sinks it (silence goes to the guest's ring). A write of any other
- * size is not that output (the DMA corpus writes a few words) and goes to
- * the ring as data. */
-static bool ep_sink_samples(MCPXAPUState *d, uint8_t *ptr, size_t len)
+ * frames per EP frame, written to the ring the ACI's PCM-out bus master
+ * plays. The `ep` monitor point mirrors a whole-frame write; a write of any
+ * other size is not that output (the DMA corpus writes a few words). */
+static void ep_mirror_samples(MCPXAPUState *d, const uint8_t *ptr, size_t len)
 {
-    if (d->monitor.point == MCPX_APU_DEBUG_MON_AC97 ||
-        len != sizeof(d->monitor.frame_buf)) {
-        return false;
-    } else if (d->monitor.point == MCPX_APU_DEBUG_MON_EP ||
-               d->monitor.point == MCPX_APU_DEBUG_MON_EP_AUTO) {
+    if (d->monitor.point == MCPX_APU_DEBUG_MON_EP &&
+        len == sizeof(d->monitor.frame_buf)) {
         memcpy(d->monitor.frame_buf, ptr, len);
     }
-
-    return true;
 }
 
 static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
@@ -670,19 +662,15 @@ static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
         }
         g_sched.fifo1_writes++;
         g_sched.fifo1_bytes += len;
-        if (d->monitor.point == MCPX_APU_DEBUG_MON_EP_SPDIF ||
-            d->monitor.point == MCPX_APU_DEBUG_MON_EP_AUTO) {
+        if (d->monitor.point == MCPX_APU_DEBUG_MON_SPDIF ||
+            d->monitor.point == MCPX_APU_DEBUG_MON_AUTO) {
             mcpx_apu_spdif_feed(d, ptr, len);
         }
     }
     ep_snapshot_node_done(d, dir && index == 1);
 
     if (dir && index == 0) {
-        bool did_sink = ep_sink_samples(d, ptr, len);
-        if (did_sink) {
-            /* Since we are sinking, push silence out */
-            ptr = (uint8_t*)ep_silence;
-        }
+        ep_mirror_samples(d, ptr, len);
     }
 
     /* A cursor at or past END leaves the engine running with no EOL and

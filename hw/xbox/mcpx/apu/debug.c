@@ -61,7 +61,7 @@ int mcpx_apu_debug_get_monitor_channels(void)
     if (g_state->monitor.channels) {
         return g_state->monitor.channels;
     }
-    return g_state->monitor.point == MCPX_APU_DEBUG_MON_EP_SPDIF ? 6 : 2;
+    return g_state->monitor.point == MCPX_APU_DEBUG_MON_SPDIF ? 6 : 2;
 }
 
 uint32_t mcpx_apu_debug_get_monitor_channel_mask(void)

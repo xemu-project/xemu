@@ -310,6 +310,7 @@ static void se_frame(MCPXAPUState *d)
     int voices = mcpx_apu_vp_frame(d, mixbins);
     mcpx_apu_dsp_frame_gp(d, voices ? mixbins : NULL);
     mcpx_apu_dsp_frame_end(d);
+    mcpx_apu_monitor_aci_frame(d);
     mcpx_apu_monitor_frame(d);
 
     d->ep_frame_div++;

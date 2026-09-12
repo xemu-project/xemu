@@ -25,19 +25,24 @@
 
 #define MAX_VOICE_WORKERS 16
 
+/* Where the monitor listens. The ACI is the output: what its PCM-out bus
+ * master fetches from the guest's ring is the analog pair, whether a
+ * program wrote the ring itself or the EP's DMA did. The other points
+ * mirror a stage of the pipeline for the debug view; selecting one changes
+ * what is heard, never what the guest's rings receive. */
 typedef enum McpxApuDebugMonitorPoint {
     MCPX_APU_DEBUG_MON_AC97,
     MCPX_APU_DEBUG_MON_VP,
     MCPX_APU_DEBUG_MON_GP,
+    /* The EP's writes to its output FIFO #0. */
     MCPX_APU_DEBUG_MON_EP,
-    /* EP output FIFO #1 - the S/PDIF stream - decoded from IEC 61937 AC-3
-     * to discrete 5.1 and played through a 6-channel stream (spdif.c,
-     * monitor.c). MON_EP is FIFO #0, the analog output. */
-    MCPX_APU_DEBUG_MON_EP_SPDIF,
-    /* The EP's output as a listener would take it: FIFO #0 until the
+    /* The S/PDIF stream decoded from IEC 61937 AC-3 to discrete 5.1 and
+     * played through a 6-channel stream (spdif.c, monitor.c). */
+    MCPX_APU_DEBUG_MON_SPDIF,
+    /* What a listener would take: the ACI's analog output until the
      * S/PDIF stream carries valid AC-3, the decoded stream while it does
      * (monitor.c). */
-    MCPX_APU_DEBUG_MON_EP_AUTO,
+    MCPX_APU_DEBUG_MON_AUTO,
 } McpxApuDebugMonitorPoint;
 
 struct McpxApuDebugVoice
