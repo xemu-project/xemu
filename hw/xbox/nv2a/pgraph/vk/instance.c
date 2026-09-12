@@ -419,6 +419,9 @@ static bool select_physical_device(PGRAPHState *pg, Error **errp)
     }
 
     vkGetPhysicalDeviceProperties(r->physical_device, &r->device_props);
+    r->max_1d_compute_group_size =
+        MIN(r->device_props.limits.maxComputeWorkGroupSize[0],
+            r->device_props.limits.maxComputeWorkGroupInvocations);
     xemu_settings_set_string(&g_config.display.vulkan.preferred_physical_device,
                              r->device_props.deviceName);
     r->vk_api_version = MIN(r->vk_api_version, r->device_props.apiVersion);
