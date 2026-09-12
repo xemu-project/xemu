@@ -34,6 +34,12 @@ typedef enum McpxApuDebugMonitorPoint {
     MCPX_APU_DEBUG_MON_AC97,
     MCPX_APU_DEBUG_MON_VP,
     MCPX_APU_DEBUG_MON_GP,
+    /* The GP's whole output slice: the six 32-word blocks it hands the EP
+     * each frame, before the EP downmixes or encodes them, played as
+     * discrete 5.1 (FL FR FC LFE BL BR) through a 6-channel stream. What
+     * the blocks carry is the title's routing per the console's speaker
+     * configuration (gp_ep.c). */
+    MCPX_APU_DEBUG_MON_GP_SURROUND,
     /* The EP's writes to its output FIFO #0. */
     MCPX_APU_DEBUG_MON_EP,
     /* The S/PDIF output as a receiver takes it: the stereo PCM the ACI's

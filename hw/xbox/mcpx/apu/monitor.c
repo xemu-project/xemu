@@ -23,19 +23,29 @@
 #include "qemu/cutils.h"
 #include "qemu/error-report.h"
 
-/* Whether the pull plays the decoded S/PDIF stream (six channels) rather
- * than a stereo pair: the S/PDIF tap and auto do while the stream carries
- * AC-3. SDL converts the layout to whatever the device has, so a stereo
- * host hears a downmix of the decoded 5.1. */
+/* Whether the pull plays six channels rather than a stereo pair: the
+ * S/PDIF tap and auto do while the stream carries AC-3 (the decoded
+ * stream), the GP 5.1 tap always (the GP's output slice). SDL converts the
+ * layout to whatever the device has, so a stereo host hears a downmix. */
 bool mcpx_apu_monitor_surround(MCPXAPUState *d)
 {
     switch (d->monitor.point) {
     case MCPX_APU_DEBUG_MON_SPDIF:
     case MCPX_APU_DEBUG_MON_AUTO:
         return mcpx_apu_spdif_stream_present();
+    case MCPX_APU_DEBUG_MON_GP_SURROUND:
+        return true;
     default:
         return false;
     }
+}
+
+/* Whether the six channels are the decoded S/PDIF stream, which the pull
+ * has to draw from the decoder's ring (the GP 5.1 tap fills its own). */
+static bool monitor_plays_decoded(MCPXAPUState *d)
+{
+    return mcpx_apu_monitor_surround(d) &&
+           d->monitor.point != MCPX_APU_DEBUG_MON_GP_SURROUND;
 }
 
 /* Clock the ACI by one sound engine frame, on the frame thread. The bus
@@ -127,11 +137,17 @@ static bool monitor_open(MCPXAPUState *d, int channels, Error **errp)
  * decoded while it does (monitor_surround). The VP, GP and EP taps are
  * debug views of the stages before the ACI.
  *
- * MCPX_APU_MONITOR=ac97|vp|gp|ep|spdif|auto pins the point from the
+ * The GP 5.1 tap is the six-channel bus between the GP and the EP: the
+ * discrete surround mix before the EP downmixes it for the analog pair
+ * or encodes it for the optical, so a host with a 5.1 device can play it
+ * without the AC-3 stage and the decoder. Better than the console's
+ * outputs, so opt-in, not what `auto` picks.
+ *
+ * MCPX_APU_MONITOR=ac97|vp|gp|gp51|ep|spdif|auto pins the point from the
  * environment - what the UI combo does, for headless captures. `ep` is
  * the EP's FIFO #0 writes. A capture wants a fixed layout: under `auto`
  * and `spdif` the layout of the dump changes when the title starts or
- * stops encoding. */
+ * stops encoding; `gp51` is always six channels. */
 static void monitor_select_point(MCPXAPUState *d)
 {
     d->monitor.point = MCPX_APU_DEBUG_MON_AUTO;
@@ -145,6 +161,8 @@ static void monitor_select_point(MCPXAPUState *d)
             d->monitor.point = MCPX_APU_DEBUG_MON_VP;
         } else if (!strcmp(mon, "gp")) {
             d->monitor.point = MCPX_APU_DEBUG_MON_GP;
+        } else if (!strcmp(mon, "gp51")) {
+            d->monitor.point = MCPX_APU_DEBUG_MON_GP_SURROUND;
         } else if (!strcmp(mon, "ep")) {
             d->monitor.point = MCPX_APU_DEBUG_MON_EP;
         } else if (!strcmp(mon, "spdif")) {
@@ -227,7 +245,8 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
 
     mcpx_apu_spdif_pull();
     bool surround = mcpx_apu_monitor_surround(d);
-    mcpx_apu_spdif_set_decoding(surround);
+    bool decoded = monitor_plays_decoded(d);
+    mcpx_apu_spdif_set_decoding(decoded);
     int want = surround ? 6 : 2;
     if (d->monitor.stream && want != d->monitor.channels) {
         Error *err = NULL;
@@ -239,7 +258,7 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
         d->monitor.channels = want;
     }
 
-    if (surround) {
+    if (decoded) {
         mcpx_apu_spdif_fill_frame(d);
     }
     const void *buf = surround ? (const void *)d->monitor.surround_buf
@@ -280,9 +299,9 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
 
     /* MCPX_APU_MON_DUMP=<path>: append the monitor PCM (S16LE, 48 kHz,
      * pre-gain, post-channel-mask; stereo, or 6-channel FL FR FC LFE BL BR
-     * while the S/PDIF stream plays decoded) - the exact signal the debug
-     * monitor plays - so an audio artifact can be diffed across arms
-     * instead of heard. */
+     * while the S/PDIF stream plays decoded and under the GP 5.1 tap) -
+     * the exact signal the debug monitor plays - so an audio artifact can
+     * be diffed across arms instead of heard. */
     static int dump_init;
     static FILE *dump_file;
     if (!dump_init) {

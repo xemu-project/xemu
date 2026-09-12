@@ -1385,20 +1385,28 @@ void mcpx_apu_dsp_frame_end(MCPXAPUState *d)
     if (gp_enabled) {
         g_dbg.gp.cycles = dsp_get_cycle_count(d->gp.dsp);
 
-        /* The GP tap: the front pair of the GP's output slice, the six
-         * 32-word blocks its resident program writes at X:$1400 and DMAs
-         * to the EP's rings from flat $1400, read at X:$0C00 where the
-         * window lands in the bank in view. The tap follows what the GP
-         * produced, whether the VP fed it (a title's voices) or the GP
-         * streamed it itself. */
-        if (d->monitor.point == MCPX_APU_DEBUG_MON_GP) {
+        /* The GP taps: the GP's output slice, the six 32-word blocks its
+         * resident program writes at X:$1400 and DMAs to the EP's rings
+         * from flat $1400, read at X:$0C00 where the window lands in the
+         * bank in view. The blocks are the DirectSound mixbin order, FL FR
+         * FC LFE BL BR: the front pair for `GP`, all six for `GP 5.1`. The
+         * tap follows what the GP produced, whether the VP fed it (a
+         * title's voices) or the GP streamed it itself. */
+        if (d->monitor.point == MCPX_APU_DEBUG_MON_GP ||
+            d->monitor.point == MCPX_APU_DEBUG_MON_GP_SURROUND) {
             const uint32_t OUT = 0x0C00;
+            bool six = d->monitor.point == MCPX_APU_DEBUG_MON_GP_SURROUND;
             int off = (d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
-            for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-                uint32_t l = dsp_read_memory(d->gp.dsp, 'X', OUT + i);
-                d->monitor.frame_buf[off + i][0] = l >> 8;
-                uint32_t r = dsp_read_memory(d->gp.dsp, 'X', OUT + 0x20 + i);
-                d->monitor.frame_buf[off + i][1] = r >> 8;
+            for (int k = 0; k < (six ? 6 : 2); k++) {
+                for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                    uint32_t w = dsp_read_memory(d->gp.dsp, 'X',
+                                                 OUT + 0x20 * k + i);
+                    if (six) {
+                        d->monitor.surround_buf[off + i][k] = w >> 8;
+                    } else {
+                        d->monitor.frame_buf[off + i][k] = w >> 8;
+                    }
+                }
             }
         }
     }

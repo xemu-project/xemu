@@ -126,7 +126,8 @@ typedef struct MCPXAPUState {
     struct {
         McpxApuDebugMonitorPoint point;
         int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes), stereo taps
-        /* 6-channel frames (FL FR FC LFE BL BR) for the EP S/PDIF tap.
+        /* 6-channel frames (FL FR FC LFE BL BR) for the decoded S/PDIF
+         * stream and the GP 5.1 tap.
          * `channels` is what the open stream was created with; the monitor
          * reopens it when the selected tap wants another count. */
         int16_t surround_buf[256][6];
