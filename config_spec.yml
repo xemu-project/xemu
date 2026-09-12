@@ -30,6 +30,13 @@ input:
     port3: string
     port4_driver: string
     port4: string
+    # Name of the host keyboard (SDL_GetKeyboardNameForID) that drives the
+    # keyboard-as-controller. Empty = any/all keyboards. When set, that keyboard
+    # is dedicated to the controller and excluded from the guest usb-kbd.
+    keyboard_device: string
+    # Name of the host keyboard that types into the emulated guest usb-kbd.
+    # Empty = all keyboards (except any dedicated to a controller above).
+    guest_keyboard_device: string
   peripherals:
     port1:
       peripheral_type_0: integer
