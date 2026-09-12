@@ -36,6 +36,8 @@ static void update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size,
     addr &= TARGET_PAGE_MASK;
     assert(end < memory_region_size(d->vram));
 
+    pgraph_gl_download_surfaces_in_range_if_dirty(d, addr, end - addr);
+
     static hwaddr last_addr, last_end;
     if (quick && (addr >= last_addr) && (end <= last_end)) {
         return;
