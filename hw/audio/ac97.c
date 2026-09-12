@@ -877,7 +877,7 @@ static void nabm_writeb(void *opaque, uint32_t addr, uint32_t val)
     case MC_SR:
     case SO_SR:
         r = &s->bm_regs[GET_BM(addr)];
-        r->sr |= val & ~(SR_RO_MASK | SR_WCLEAR_MASK);
+        r->sr |= val & SR_VALID_MASK & ~(SR_RO_MASK | SR_WCLEAR_MASK);
         update_sr(s, r, r->sr & ~(val & SR_WCLEAR_MASK));
         dolog("SR[%d] <- 0x%x (sr 0x%x)", GET_BM(addr), val, r->sr);
         break;
@@ -898,7 +898,7 @@ static void nabm_writew(void *opaque, uint32_t addr, uint32_t val)
     case MC_SR:
     case SO_SR:
         r = &s->bm_regs[GET_BM(addr)];
-        r->sr |= val & ~(SR_RO_MASK | SR_WCLEAR_MASK);
+        r->sr |= val & SR_VALID_MASK & ~(SR_RO_MASK | SR_WCLEAR_MASK);
         update_sr(s, r, r->sr & ~(val & SR_WCLEAR_MASK));
         dolog("SR[%d] <- 0x%x (sr 0x%x)", GET_BM(addr), val, r->sr);
         break;
@@ -921,7 +921,7 @@ static void nabm_writel(void *opaque, uint32_t addr, uint32_t val)
     case MC_BDBAR:
     case SO_BDBAR:
         r = &s->bm_regs[GET_BM(addr)];
-        r->bdbar = val & ~3;
+        r->bdbar = val & ~7;
         dolog("BDBAR[%d] <- 0x%x (bdbar 0x%x)", GET_BM(addr), val, r->bdbar);
         break;
     case GLOB_CNT:
