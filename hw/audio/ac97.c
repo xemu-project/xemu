@@ -18,6 +18,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/timer.h"
 #include "hw/audio/model.h"
 #include "qemu/audio.h"
 #include "hw/pci/pci_device.h"
@@ -198,7 +199,10 @@ static void update_sr(AC97LinkState *s, AC97BusMasterRegs *r, uint32_t new_sr)
     int level = 0;
     uint32_t new_mask = new_sr & SR_INT_MASK;
     uint32_t old_mask = r->sr & SR_INT_MASK;
-    uint32_t masks[] = {GS_PIINT, GS_POINT, GS_MINT};
+    uint32_t masks[LAST_INDEX] = {
+        [PI_INDEX] = GS_PIINT, [PO_INDEX] = GS_POINT, [MC_INDEX] = GS_MINT,
+        [SO_INDEX] = GS_SOINT,
+    };
 
     if (new_mask ^ old_mask) {
         /** @todo is IRQ deasserted when only one of status bits is cleared? */
@@ -247,6 +251,17 @@ static void voice_set_active(AC97LinkState *s, int bm_index, int on)
         break;
 
     case PO_INDEX:
+#ifdef XBOX
+    case SO_INDEX:
+        /* The S/PDIF bus master rides the PCM-out voice's callback: the
+         * voice runs while either channel does. */
+        on = (s->bm_regs[PO_INDEX].cr & CR_RPBM) ||
+             (s->bm_regs[SO_INDEX].cr & CR_RPBM);
+        if (!on) {
+            s->so_last_ns = 0;
+            s->so_carry = 0;
+        }
+#endif
         AUD_set_active_out(s->voice_po, on);
         break;
 
@@ -256,8 +271,10 @@ static void voice_set_active(AC97LinkState *s, int bm_index, int on)
 #endif
         break;
 
+#ifndef XBOX
     case SO_INDEX:
         break;
+#endif
 
     default:
         error_report("ac97: invalid bm_index(%d) in voice_set_active", bm_index);
@@ -1130,6 +1147,20 @@ static void transfer_audio(AC97LinkState *s, int index, int elapsed)
             elapsed -= temp;
             r->picb -= (temp >> 1);
             break;
+
+#ifdef XBOX
+        case SO_INDEX:
+            /* The S/PDIF transmitter's ring, consumed at the PCM rate; the
+             * data (IEC 61937 or PCM) has no sink yet. */
+            temp = MIN((int)(r->picb << 1), elapsed);
+            if (!temp) {
+                stop = 1;
+            }
+            r->bd.addr += temp;
+            elapsed -= temp;
+            r->picb -= (temp >> 1);
+            break;
+#endif
         }
 
         if (!r->picb) {
@@ -1175,7 +1206,22 @@ static void mc_callback(void *opaque, int avail)
 
 static void po_callback(void *opaque, int free)
 {
-    transfer_audio(opaque, PO_INDEX, free);
+    AC97LinkState *s = opaque;
+
+    transfer_audio(s, PO_INDEX, free);
+#ifdef XBOX
+    /* The S/PDIF bus master consumes at the PCM rate (48 kHz stereo S16,
+     * 192000 bytes/s) by the clock, not by the voice's free space, which
+     * only PCM-out's own writes pace. */
+    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    if (s->so_last_ns) {
+        int64_t bytes = (now - s->so_last_ns) * 192000 / 1000000000 + s->so_carry;
+        bytes = MIN(bytes, 1 << 20);
+        s->so_carry = bytes & 3;
+        transfer_audio(s, SO_INDEX, bytes & ~3);
+    }
+    s->so_last_ns = now;
+#endif
 }
 
 static const VMStateDescription vmstate_ac97_bm_regs = {

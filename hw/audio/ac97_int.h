@@ -67,6 +67,11 @@ struct AC97LinkState {
     SWVoiceOut *voice_po;
     SWVoiceIn *voice_mc;
     int invalid_freq[LAST_INDEX];
+#ifdef XBOX
+    /* Pacing of the S/PDIF bus master, which has no voice of its own. */
+    int64_t so_last_ns;
+    int so_carry;
+#endif
     uint8_t silence[128];
     int bup_flag;
 };
