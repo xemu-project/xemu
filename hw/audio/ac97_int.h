@@ -75,9 +75,9 @@ struct AC97LinkState {
     /* The interrupt line, set through the owner (from any thread). */
     void (*irq_update)(void *opaque, int level);
     void *irq_opaque;
-    /* The codec's combined output volume for the owner to apply. */
-    int out_mute;
-    uint8_t out_vol_l, out_vol_r;
+    /* The codec's output volume (master and PCM out, mute) as a linear
+     * gain per side, applied to what PCM out fetches. */
+    float out_gain_l, out_gain_r;
 #endif
     uint8_t silence[128];
     int bup_flag;

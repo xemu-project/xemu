@@ -24,9 +24,10 @@
 #include <stdint.h>
 
 /* Clock the ACI's bus masters by `frames` stereo frames (one sound engine
- * frame is 32): PCM out lands in `pcm` (`frames` stereo S16 frames, silence
- * where the engine is not running), S/PDIF out in `spdif` (`frames` * 4
- * bytes of the IEC 61937 stream). False when there is no ACI. */
+ * frame is 32): PCM out lands in `pcm` (`frames` stereo S16 frames at the
+ * codec's output volume, silence where the engine is not running), S/PDIF
+ * out in `spdif` (`frames` * 4 bytes of the IEC 61937 stream). False when
+ * there is no ACI. */
 bool mcpx_aci_frame(int frames, int16_t *pcm, uint8_t *spdif);
 
 #endif

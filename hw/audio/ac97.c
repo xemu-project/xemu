@@ -18,6 +18,7 @@
  */
 
 #include "qemu/osdep.h"
+#include <math.h>
 #include "hw/audio/model.h"
 #include "qemu/audio.h"
 #include "hw/pci/pci_device.h"
@@ -467,9 +468,15 @@ static void update_combined_volume_out(AC97LinkState *s)
     rvol = (rvol * prvol) / 255;
 
 #ifdef XBOX
-    s->out_mute = mute;
-    s->out_vol_l = lvol;
-    s->out_vol_r = rvol;
+    /* The codec's DAC path in its own units: master volume attenuates
+     * 1.5 dB per step from 0 dB, PCM out volume steps 1.5 dB around 8
+     * (0 = +12 dB, 8 = 0 dB); a mute bit on either silences the pair. */
+    uint16_t mv = mixer_load(s, AC97_Master_Volume_Mute);
+    uint16_t pv = mixer_load(s, AC97_PCM_Out_Volume_Mute);
+    float l_db = -1.5f * ((mv >> 8) & 0x3f) + 1.5f * (8 - ((pv >> 8) & 0x1f));
+    float r_db = -1.5f * (mv & 0x3f) + 1.5f * (8 - (pv & 0x1f));
+    s->out_gain_l = mute ? 0.0f : powf(10.0f, l_db / 20.0f);
+    s->out_gain_r = mute ? 0.0f : powf(10.0f, r_db / 20.0f);
 #else
     AUD_set_volume_out_lr(s->voice_po, mute, lvol, rvol);
 #endif
@@ -1231,6 +1238,20 @@ static void mc_callback(void *opaque, int avail)
 #endif
 
 #ifdef XBOX
+/* The codec's output volume on the PCM-out words: what its DACs put on
+ * the analog pins. The S/PDIF transmitter carries the words themselves. */
+static void apply_codec_gain(AC97LinkState *s, int16_t *pcm, int frames)
+{
+    float g[2] = { s->out_gain_l, s->out_gain_r };
+    if (g[0] == 1.0f && g[1] == 1.0f) {
+        return;
+    }
+    for (int i = 0; i < frames * 2; i++) {
+        float v = pcm[i] * g[i & 1];
+        pcm[i] = v > 32767.0f ? 32767 : v < -32768.0f ? -32768 : (int16_t)v;
+    }
+}
+
 void ac97_xbox_run(AC97LinkState *s, int index, uint8_t *out, int bytes)
 {
     memset(out, 0, bytes);
@@ -1239,6 +1260,9 @@ void ac97_xbox_run(AC97LinkState *s, int index, uint8_t *out, int bytes)
     s->sink_pos = 0;
     transfer_audio(s, index, bytes);
     s->sink = NULL;
+    if (index == PO_INDEX) {
+        apply_codec_gain(s, (int16_t *)out, bytes / 4);
+    }
 }
 #else
 static void po_callback(void *opaque, int free)
