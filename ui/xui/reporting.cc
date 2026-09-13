@@ -31,14 +31,6 @@ using json = nlohmann::json;
 
 static const char *compat_report_endpoint_url = "https://reports.xemu.app/compatibility";
 
-CompatibilityReport::CompatibilityReport()
-{
-}
-
-CompatibilityReport::~CompatibilityReport()
-{
-}
-
 const std::string &CompatibilityReport::GetSerializedReport()
 {
 	json report = {
@@ -57,6 +49,8 @@ const std::string &CompatibilityReport::GetSerializedReport()
 		{"compat_rating", compat_rating},
 		{"compat_comments", compat_comments},
 		{"xbe_headers", xbe_headers},
+		{"rendering_scale", rendering_scale},
+		{"backend", backend},
 	};
 	serialized = report.dump(2);
 	return serialized;
