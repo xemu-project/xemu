@@ -36,6 +36,7 @@ void xbox_smc_append_avpack_hint(Error **errp);
 void xbox_smc_append_smc_version_hint(Error **errp);
 void xbox_smc_power_button(void);
 void xbox_smc_eject_button(void);
+void xbox_smc_tray_eject(uint8_t val);
 void xbox_smc_update_tray_state(void);
 
 #endif
