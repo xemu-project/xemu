@@ -51,6 +51,9 @@ typedef struct MemorySyncRequirement {
     hwaddr addr, size;
 } MemorySyncRequirement;
 
+/* Max distinct vertex RAM byte ranges tracked per command buffer. */
+#define VK_MAX_VERTEX_RAM_REFERENCED 256
+
 typedef struct RenderPassState {
     VkFormat color_format;
     VkFormat zeta_format;
@@ -376,6 +379,17 @@ typedef struct PGRAPHVkState {
     unsigned long *uploaded_bitmap;
     size_t bitmap_size;
 
+    /* Byte ranges of BUFFER_VERTEX_RAM that draws already recorded into the
+     * current command buffer will source vertices from. Used to determine
+     * whether a RAM buffer update actually conflicts with pending work, rather
+     * than relying on the page-granular uploaded_bitmap alone. Reset whenever
+     * the command buffer is submitted. If more ranges are needed than fit,
+     * overflowed is set and we fall back to conservative behavior.
+     */
+    MemorySyncRequirement vertex_ram_referenced[VK_MAX_VERTEX_RAM_REFERENCED];
+    size_t num_vertex_ram_referenced;
+    bool vertex_ram_referenced_overflowed;
+
     VkVertexInputAttributeDescription vertex_attribute_descriptions[NV2A_VERTEXSHADER_ATTRIBUTES];
     int vertex_attribute_to_description_location[NV2A_VERTEXSHADER_ATTRIBUTES];
     int num_active_vertex_attribute_descriptions;
@@ -499,6 +513,8 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
 void pgraph_vk_bind_vertex_attributes_inline(NV2AState *d);
 void pgraph_vk_update_vertex_ram_buffer(PGRAPHState *pg, hwaddr offset, void *data,
                                     VkDeviceSize size);
+void pgraph_vk_mark_vertex_ram_referenced(PGRAPHState *pg, hwaddr addr,
+                                          hwaddr size);
 VkDeviceSize pgraph_vk_update_index_buffer(PGRAPHState *pg, void *data,
                                            VkDeviceSize size);
 VkDeviceSize pgraph_vk_update_vertex_inline_buffer(PGRAPHState *pg, void **data,

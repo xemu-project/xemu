@@ -42,6 +42,86 @@ VkDeviceSize pgraph_vk_update_vertex_inline_buffer(PGRAPHState *pg, void **data,
                                       sizes, count, 1);
 }
 
+void pgraph_vk_mark_vertex_ram_referenced(PGRAPHState *pg, hwaddr addr,
+                                          hwaddr size)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    if (!size) {
+        return;
+    }
+
+    /* Coalesce with the previous entry when possible: consecutive attributes of
+     * one draw are frequently adjacent or overlapping.
+     */
+    if (r->num_vertex_ram_referenced) {
+        MemorySyncRequirement *p =
+            &r->vertex_ram_referenced[r->num_vertex_ram_referenced - 1];
+
+        if (addr >= p->addr && addr <= p->addr + p->size) {
+            hwaddr end = MAX(p->addr + p->size, addr + size);
+            p->size = end - p->addr;
+            return;
+        }
+    }
+
+    if (r->num_vertex_ram_referenced >= VK_MAX_VERTEX_RAM_REFERENCED) {
+        /* Out of slots. Fall back to assuming everything is referenced, which
+         * restores the old (conservative) behavior for this command buffer.
+         */
+        r->vertex_ram_referenced_overflowed = true;
+        return;
+    }
+
+    r->vertex_ram_referenced[r->num_vertex_ram_referenced++] =
+        (MemorySyncRequirement){ .addr = addr, .size = size };
+}
+
+/*
+ * Determine whether writing `size` bytes of `data` at `offset` would actually
+ * change any byte that a draw already recorded into the current command buffer
+ * is going to read.
+ *
+ * The uploaded_bitmap test alone is page-granular, and sync_vertex_ram_buffer()
+ * aligns sync ranges outward to TARGET_PAGE_SIZE, so a guest write anywhere in
+ * a page containing vertex data forces a full-page re-upload and looks like a
+ * conflict. In practice the overwhelming majority of those uploads rewrite
+ * identical bytes, or change only bytes outside the ranges any pending draw
+ * sources vertices from.
+ *
+ * This is strictly narrower than the bitmap test but still conservative: it
+ * returns true whenever a byte within a referenced range is about to change.
+ */
+static bool vertex_ram_update_conflicts(PGRAPHVkState *r, hwaddr offset,
+                                        const void *data, VkDeviceSize size)
+{
+    if (r->vertex_ram_referenced_overflowed) {
+        return true;
+    }
+
+    const uint8_t *cur = r->storage_buffers[BUFFER_VERTEX_RAM].mapped;
+    const uint8_t *incoming = data;
+
+    for (size_t i = 0; i < r->num_vertex_ram_referenced; i++) {
+        hwaddr ref_start = r->vertex_ram_referenced[i].addr;
+        hwaddr ref_end = ref_start + r->vertex_ram_referenced[i].size;
+
+        /* Intersect the referenced range with the region being written. */
+        hwaddr start = MAX(ref_start, offset);
+        hwaddr end = MIN(ref_end, offset + size);
+
+        if (start >= end) {
+            continue;
+        }
+
+        if (memcmp(cur + start, incoming + (start - offset), end - start)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void pgraph_vk_update_vertex_ram_buffer(PGRAPHState *pg, hwaddr offset,
                                         void *data, VkDeviceSize size)
 {
@@ -54,7 +134,8 @@ void pgraph_vk_update_vertex_ram_buffer(PGRAPHState *pg, hwaddr offset,
     size_t nbits = end_bit - start_bit;
 
     if (find_next_bit(r->uploaded_bitmap, start_bit + nbits, start_bit) <
-        end_bit) {
+            end_bit &&
+        vertex_ram_update_conflicts(r, offset, data, size)) {
         // Vertex data changed while building the draw list. Finish drawing
         // before updating RAM buffer.
         pgraph_vk_finish(pg, VK_FINISH_REASON_VERTEX_BUFFER_DIRTY);
