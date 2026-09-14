@@ -331,6 +331,7 @@ typedef struct PGRAPHVkState {
     VkPhysicalDevice physical_device;
     VkPhysicalDeviceFeatures enabled_physical_device_features;
     VkPhysicalDeviceProperties device_props;
+    uint32_t max_1d_compute_group_size;
     VkDevice device;
     VmaAllocator allocator;
     uint32_t allocator_last_submit_index;
