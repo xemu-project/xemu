@@ -484,6 +484,10 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
 
     nv2a_profile_inc_counter(NV2A_PROF_TEX_UPLOAD);
 
+    if (r->in_command_buffer && binding->submit_time == r->submit_count) {
+        pgraph_vk_finish(pg, VK_FINISH_REASON_TEXTURE_DIRTY);
+    }
+
     g_autofree TextureLayout *layout = get_texture_layout(pg, texture_idx);
     const int num_layers = state->cubemap ? 6 : 1;
 

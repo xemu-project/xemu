@@ -574,6 +574,7 @@ typedef enum FinishReason {
     VK_FINISH_REASON_FLIP_STALL,
     VK_FINISH_REASON_FLUSH,
     VK_FINISH_REASON_STALLED,
+    VK_FINISH_REASON_TEXTURE_DIRTY,
 } FinishReason;
 
 // draw.c
