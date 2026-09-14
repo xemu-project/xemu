@@ -793,7 +793,11 @@ static void create_surface_image(PGRAPHState *pg, SurfaceBinding *surface)
     };
 
     VmaAllocationCreateInfo alloc_create_info = {
+#if defined(__APPLE__)
+        .usage = VMA_MEMORY_USAGE_AUTO,
+#else
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+#endif
     };
 
     VK_CHECK(vmaCreateImage(r->allocator, &image_create_info,
