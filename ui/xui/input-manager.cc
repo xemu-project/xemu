@@ -1,6 +1,7 @@
 #include "ui/xui/main-menu.hh"
 #include "input-manager.hh"
 #include "../xemu-input.h"
+#include "system-actions-manager.hh"
 #include "common.hh"
 
 InputManager g_input_mgr;
@@ -33,6 +34,8 @@ void InputManager::Update()
                 }
             }
         }
+
+        SystemActionsManager::HandleController(m_buttons);
     }
 
     // If the mouse is moved, wake the ui
