@@ -1,0 +1,12 @@
+[wrap-git]
+url = https://git.adelielinux.org/community/a52dec.git
+revision = c388f3b6d911c246e0b2a7b2c436c3de2e79c74d
+depth = 1
+patch_directory = a52dec
+diff_files = a52dec/a52dec-bitstream-shift.patch
+
+[provide]
+liba52 = a52_dep
+
+[update]
+tag_regex = ^v\d+\.\d+\.\d+$

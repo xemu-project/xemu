@@ -1721,6 +1721,10 @@ else
   sdl_image = not_found
 endif
 
+# AC-3 decoding for the MCPX APU's EP S/PDIF monitor point: the system's
+# liba52, or the a52dec subproject.
+a52 = dependency('liba52', method: 'pkg-config', fallback: ['a52dec', 'a52_dep'])
+
 rbd = not_found
 if not get_option('rbd').auto() or have_block
   librados = cc.find_library('rados', required: get_option('rbd'))
@@ -5096,6 +5100,7 @@ endif
 summary_info += {'D-Bus display':     dbus_display}
 summary_info += {'SDL support':       sdl}
 summary_info += {'SDL image support': sdl_image}
+summary_info += {'liba52 AC-3 decoding': a52}
 summary_info += {'GTK support':       gtk}
 summary_info += {'pixman':            pixman}
 summary_info += {'VTE support':       vte}
