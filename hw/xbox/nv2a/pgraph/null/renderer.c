@@ -41,6 +41,7 @@ static void pgraph_null_process_pending(NV2AState *d)
         qatomic_read(&d->pgraph.flush_pending)
         ) {
         qemu_mutex_unlock(&d->pfifo.lock);
+        pgraph_wait_for_cpu_mmio_accesses(&d->pgraph);
         qemu_mutex_lock(&d->pgraph.lock);
         if (qatomic_read(&d->pgraph.sync_pending)) {
             pgraph_null_sync(d);

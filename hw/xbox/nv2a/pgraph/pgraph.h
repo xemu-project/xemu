@@ -139,6 +139,14 @@ typedef struct PGRAPHState {
     QemuMutex lock;
     QemuMutex renderer_lock;
 
+    QemuMutex interrupt_lock;
+    QemuMutex surface_lock;
+
+    /* Serializes the CPU-MMIO/PFIFO handoff without nesting pgraph.lock. */
+    QemuMutex cpu_mmio_access_lock;
+    QemuCond cpu_mmio_access_cond;
+    unsigned int cpu_mmio_accesses_waiting;
+
     uint32_t pending_interrupts;
     uint32_t enabled_interrupts;
 
@@ -271,6 +279,33 @@ typedef struct PGRAPHState {
         PGRAPHVkState *vk_renderer_state;
     };
 } PGRAPHState;
+
+static inline void pgraph_cpu_mmio_access_begin(PGRAPHState *pg)
+{
+    qemu_mutex_lock(&pg->cpu_mmio_access_lock);
+    pg->cpu_mmio_accesses_waiting++;
+    qemu_mutex_unlock(&pg->cpu_mmio_access_lock);
+}
+
+static inline void pgraph_cpu_mmio_access_end(PGRAPHState *pg)
+{
+    qemu_mutex_lock(&pg->cpu_mmio_access_lock);
+    assert(pg->cpu_mmio_accesses_waiting > 0);
+    pg->cpu_mmio_accesses_waiting--;
+    if (pg->cpu_mmio_accesses_waiting == 0) {
+        qemu_cond_broadcast(&pg->cpu_mmio_access_cond);
+    }
+    qemu_mutex_unlock(&pg->cpu_mmio_access_lock);
+}
+
+static inline void pgraph_wait_for_cpu_mmio_accesses(PGRAPHState *pg)
+{
+    qemu_mutex_lock(&pg->cpu_mmio_access_lock);
+    while (pg->cpu_mmio_accesses_waiting != 0) {
+        qemu_cond_wait(&pg->cpu_mmio_access_cond, &pg->cpu_mmio_access_lock);
+    }
+    qemu_mutex_unlock(&pg->cpu_mmio_access_lock);
+}
 
 void pgraph_init(NV2AState *d);
 void pgraph_init_thread(NV2AState *d);
