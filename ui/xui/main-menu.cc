@@ -200,6 +200,8 @@ void MainMenuInputView::Draw()
         driver = DRIVER_DUKE_DISPLAY_NAME;
     else if (strcmp(driver, DRIVER_S) == 0)
         driver = DRIVER_S_DISPLAY_NAME;
+    else if (strcmp(driver, DRIVER_LIGHTGUN) == 0)
+        driver = DRIVER_LIGHTGUN_DISPLAY_NAME;
 
     ImGui::Columns(2, "", false);
     ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.25);
@@ -211,9 +213,11 @@ void MainMenuInputView::Draw()
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("###InputDrivers", driver,
                           ImGuiComboFlags_NoArrowButton)) {
-        const char *available_drivers[] = { DRIVER_DUKE, DRIVER_S };
+        const char *available_drivers[] = { DRIVER_DUKE, DRIVER_S,
+                                            DRIVER_LIGHTGUN };
         const char *driver_display_names[] = { DRIVER_DUKE_DISPLAY_NAME,
-                                               DRIVER_S_DISPLAY_NAME };
+                                               DRIVER_S_DISPLAY_NAME,
+                                               DRIVER_LIGHTGUN_DISPLAY_NAME };
         bool is_selected = false;
         int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);
         for (int i = 0; i < num_drivers; i++) {
@@ -572,6 +576,33 @@ void MainMenuInputView::Draw()
     Toggle("Background controller input capture",
            &g_config.input.background_input_capture,
            "Capture even if window is unfocused (requires restart)");
+
+    // These keep mouse/lightgun clicks from triggering UI shortcuts
+    // while playing
+    Toggle("Disable double-click fullscreen toggle",
+           &g_config.input.disable_dblclick_fullscreen,
+           "Keep double left-click (lightgun trigger) from toggling "
+           "fullscreen");
+    Toggle("Disable right-click menu",
+           &g_config.input.disable_rclick_menu,
+           "Keep right-click (lightgun secondary button) from opening the "
+           "xemu menu");
+
+    char slider_buf[64];
+    snprintf(slider_buf, sizeof(slider_buf), "Lightgun aim smoothing (%d%%)",
+             (int)(g_config.input.lightgun_smoothing * 100));
+    Slider("Lightgun aim smoothing", &g_config.input.lightgun_smoothing,
+           slider_buf);
+
+    // Sensitivity 50%..150%, mapped onto the widget's 0..1 range
+    float sens_t = g_config.input.lightgun_sensitivity - 0.5f;
+    if (sens_t < 0.0f) sens_t = 0.0f;
+    if (sens_t > 1.0f) sens_t = 1.0f;
+    snprintf(slider_buf, sizeof(slider_buf),
+             "Lightgun aim sensitivity (%d%%)",
+             (int)((sens_t + 0.5f) * 100));
+    Slider("Lightgun aim sensitivity", &sens_t, slider_buf);
+    g_config.input.lightgun_sensitivity = sens_t + 0.5f;
 }
 
 void MainMenuInputView::Hide()
@@ -583,6 +614,26 @@ void MainMenuInputView::PopulateTableController(ControllerState *state)
 {
     if (!state)
         return;
+
+    if (state->type == INPUT_DEVICE_RAWINPUT_MOUSE) {
+        // Mice/lightguns have a fixed mapping and no controller_map
+        static constexpr const char *mouse_mapping[][2] = {
+            { "Aim (Left Stick)", "Pointer Position" },
+            { "A (Trigger)", "Left Button" },
+            { "B", "Right Button" },
+            { "Start", "Middle Button" },
+            { "Back", "Button 4" },
+            { "X", "Button 5" },
+        };
+        for (auto &row : mouse_mapping) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("%s", row[0]);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%s", row[1]);
+        }
+        return;
+    }
 
     // Must match g_keyboard_scancode_map and the controller
     // button map below.
