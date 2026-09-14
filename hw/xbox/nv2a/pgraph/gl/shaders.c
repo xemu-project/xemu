@@ -421,27 +421,43 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
 
     READ_OR_ERR(&cached_xemu_version_len, sizeof(cached_xemu_version_len));
 
-    cached_xemu_version = g_malloc(cached_xemu_version_len +1);
+    if (cached_xemu_version_len == 0 || cached_xemu_version_len > 1024) {
+        fclose(shader_file);
+        goto error;
+    }
+
+    cached_xemu_version = g_malloc(cached_xemu_version_len + 1);
     READ_OR_ERR(cached_xemu_version, cached_xemu_version_len);
-    if (strcmp(cached_xemu_version, xemu_version) != 0) {
+    if (cached_xemu_version[cached_xemu_version_len - 1] != '\0' || 
+        strcmp(cached_xemu_version, xemu_version) != 0) {
         fclose(shader_file);
         goto error;
     }
 
     READ_OR_ERR(&gl_vendor_len, sizeof(gl_vendor_len));
+    if (gl_vendor_len == 0 || gl_vendor_len > 1024) {
+        fclose(shader_file);
+        goto error;
+    }
 
     cached_gl_vendor = g_malloc(gl_vendor_len);
     READ_OR_ERR(cached_gl_vendor, gl_vendor_len);
-    if (strcmp(cached_gl_vendor, shader_gl_vendor) != 0) {
+    if (cached_gl_vendor[gl_vendor_len - 1] != '\0' ||
+        strcmp(cached_gl_vendor, shader_gl_vendor) != 0) {
         fclose(shader_file);
         goto error;
     }
 
     READ_OR_ERR(&gl_version_len, sizeof(gl_version_len));
+    if (gl_version_len == 0 || gl_version_len > 1024) {
+        fclose(shader_file);
+        goto error;
+    }
 
     cached_gl_version = g_malloc(gl_version_len);
     READ_OR_ERR(cached_gl_version, gl_version_len);
-    if (strcmp(cached_gl_version, shader_gl_version) != 0) {
+    if (cached_gl_version[gl_version_len - 1] != '\0' ||
+        strcmp(cached_gl_version, shader_gl_version) != 0) {
         fclose(shader_file);
         goto error;
     }
@@ -556,9 +572,15 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
 
     if (!shader_gl_vendor) {
         shader_gl_vendor = (const char *) glGetString(GL_VENDOR);
+        if (!shader_gl_vendor) {
+            shader_gl_vendor = "Unknown vendor";
+        }
     }
     if (!shader_gl_version) {
         shader_gl_version = (const char *) glGetString(GL_VERSION);
+        if (!shader_gl_version) {
+            shader_gl_version = "Unknown version";
+        }
     }
 
     shader_create_cache_folder();
@@ -617,20 +639,11 @@ static void *shader_write_to_disk(void *arg)
     char *shader_bin = shader_get_bin_directory(binding->node.hash);
     char *shader_path = shader_get_binary_path(shader_bin, binding->node.hash);
 
-    static uint64_t gl_vendor_len;
-    if (gl_vendor_len == 0) {
-        gl_vendor_len = (uint64_t) (strlen(shader_gl_vendor) + 1);
-    }
+    uint64_t gl_vendor_len = (uint64_t)(strlen(shader_gl_vendor) + 1);
 
-    static uint64_t gl_version_len;
-    if (gl_version_len == 0) {
-        gl_version_len = (uint64_t) (strlen(shader_gl_version) + 1);
-    }
+    uint64_t gl_version_len = (uint64_t)(strlen(shader_gl_version) + 1);
 
-    static uint64_t xemu_version_len = 0;
-    if (xemu_version_len == 0) {
-        xemu_version_len = (uint64_t) (strlen(xemu_version) + 1);
-    }
+    uint64_t xemu_version_len = (uint64_t)(strlen(xemu_version) + 1);
 
     qemu_mkdir(shader_bin);
     g_free(shader_bin);
