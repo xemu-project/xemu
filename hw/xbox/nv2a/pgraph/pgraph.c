@@ -321,18 +321,26 @@ static void init_renderer(PGRAPHState *pg)
         return;  // Success
     }
 
-    CONFIG_DISPLAY_RENDERER default_renderer = get_default_renderer();
-    if (default_renderer != g_config.display.renderer) {
-        g_config.display.renderer = default_renderer;
+    static const CONFIG_DISPLAY_RENDERER fallback_order[] = {
+        CONFIG_DISPLAY_RENDERER_OPENGL,
+        CONFIG_DISPLAY_RENDERER_VULKAN,
+        CONFIG_DISPLAY_RENDERER_NULL,
+    };
+    CONFIG_DISPLAY_RENDERER failed = g_config.display.renderer;
+
+    for (int i = 0; i < ARRAY_SIZE(fallback_order); i++) {
+        CONFIG_DISPLAY_RENDERER candidate = fallback_order[i];
+        if (candidate == failed || !renderers[candidate]) {
+            continue;
+        }
+        g_config.display.renderer = candidate;
         if (attempt_renderer_init(pg)) {
             g_autofree gchar *msg = g_strdup_printf(
-                "Switched to default renderer: %s", pg->renderer->name);
+                "Switched to %s renderer", pg->renderer->name);
             xemu_queue_notification(msg);
             return;
         }
     }
-
-    // FIXME: Try others
 
     fprintf(stderr, "Fatal error: cannot initialize renderer\n");
     exit(1);

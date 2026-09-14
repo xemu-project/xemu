@@ -25,7 +25,7 @@
 static GPUProperties pgraph_gl_gpu_properties;
 
 static const char *vertex_shader_source =
-    "#version 400\n"
+    PROBE_GLSL_VERSION_DIRECTIVE
     "out vec3 v_fragColor;\n"
     "\n"
     "vec2 positions[11] = vec2[](\n"
@@ -62,7 +62,7 @@ static const char *vertex_shader_source =
     "}\n";
 
 static const char *geometry_shader_source =
-    "#version 400\n"
+    PROBE_GLSL_VERSION_DIRECTIVE
     "layout(triangles) in;\n"
     "layout(triangle_strip, max_vertices = 3) out;\n"
     "out vec3 fragColor;\n"
@@ -87,7 +87,7 @@ static const char *geometry_shader_source =
     "}\n";
 
 static const char *fragment_shader_source =
-    "#version 400\n"
+    PROBE_GLSL_VERSION_DIRECTIVE
     "out vec4 outColor;\n"
     "in vec3 fragColor;\n"
     "\n"
@@ -109,7 +109,8 @@ static GLuint compile_shader(GLenum type, const char *source)
         log[sizeof(log) - 1] = '\0';
         fprintf(stderr, "GL shader type %d compilation failed: %s\n", type,
                 log);
-        assert(!"GL shader compilation failed");
+        glDeleteShader(shader);
+        return 0;
     }
 
     return shader;
@@ -121,12 +122,22 @@ static GLuint create_program(const char *vert_source, const char *geom_source,
     GLuint vert_shader = compile_shader(GL_VERTEX_SHADER, vert_source);
     GLuint geom_shader = compile_shader(GL_GEOMETRY_SHADER, geom_source);
     GLuint frag_shader = compile_shader(GL_FRAGMENT_SHADER, frag_source);
+    if (!vert_shader || !geom_shader || !frag_shader) {
+        glDeleteShader(vert_shader);
+        glDeleteShader(geom_shader);
+        glDeleteShader(frag_shader);
+        return 0;
+    }
 
     GLuint shader_prog = glCreateProgram();
     glAttachShader(shader_prog, vert_shader);
     glAttachShader(shader_prog, geom_shader);
     glAttachShader(shader_prog, frag_shader);
     glLinkProgram(shader_prog);
+
+    glDeleteShader(vert_shader);
+    glDeleteShader(geom_shader);
+    glDeleteShader(frag_shader);
 
     GLint success;
     glGetProgramiv(shader_prog, GL_LINK_STATUS, &success);
@@ -135,12 +146,9 @@ static GLuint create_program(const char *vert_source, const char *geom_source,
         glGetProgramInfoLog(shader_prog, sizeof(log), NULL, log);
         log[sizeof(log) - 1] = '\0';
         fprintf(stderr, "GL shader linking failed: %s\n", log);
-        assert(!"GL shader linking failed");
+        glDeleteProgram(shader_prog);
+        return 0;
     }
-
-    glDeleteShader(vert_shader);
-    glDeleteShader(geom_shader);
-    glDeleteShader(frag_shader);
 
     return shader_prog;
 }
@@ -181,7 +189,12 @@ static uint8_t *render_geom_shader_triangles(int width, int height)
 
     GLuint shader_prog = create_program(
         vertex_shader_source, geometry_shader_source, fragment_shader_source);
-    assert(shader_prog != 0);
+    if (shader_prog == 0) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDeleteRenderbuffers(1, &rbo);
+        glDeleteFramebuffers(1, &fbo);
+        return NULL;
+    }
 
     glUseProgram(shader_prog);
     check_gl_error("glUseProgram");
@@ -339,6 +352,13 @@ void pgraph_gl_determine_gpu_properties(void)
     const int height = 480;
 
     uint8_t *pixels = render_geom_shader_triangles(width, height);
+    if (pixels == NULL) {
+        fprintf(stderr, "GL geometry shader probe failed\n");
+        pgraph_gl_gpu_properties.valid = false;
+        return;
+    }
+    pgraph_gl_gpu_properties.valid = true;
+
     determine_triangle_winding_order(pixels, width, height,
                                      &pgraph_gl_gpu_properties);
     g_free(pixels);
