@@ -1,0 +1,506 @@
+name: Xbox Series X|S Dev Mode UWP
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: "UWP configuration"
+        required: true
+        type: choice
+        options:
+          - Release
+          - Debug
+        default: Release
+      signing_mode:
+        description: "Signing identity (PFX is required for a release; dev-test is sideload-only)"
+        required: true
+        type: choice
+        options:
+          - pfx_required
+          - dev_test_certificate
+        default: pfx_required
+      create_release:
+        description: "Create a GitHub release after every hard gate passes"
+        required: true
+        type: boolean
+        default: false
+      release_tag:
+        description: "Existing/new tag for the optional release (for example v0.1.0-xbox-devmode.1)"
+        required: false
+        type: string
+        default: ""
+      draft_release:
+        description: "Create the optional release as a draft"
+        required: true
+        type: boolean
+        default: true
+      prerelease:
+        description: "Mark the optional release as a prerelease"
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  group: xbox-uwp-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  WINDOWS_SDK_VERSION: 10.0.26100.0
+  VCLIBS_URL: https://github.com/microsoft/winget-cli/releases/download/v1.12.350/DesktopAppInstaller_Dependencies.zip
+  VCLIBS_SHA256: 906CAD3B2BE067D816B20EA4EB1DF541F8A23AC4A4AA9FED70CE675CD918E6A6
+
+jobs:
+  preflight:
+    name: Verify Xbox UWP prerequisites
+    runs-on: windows-2022
+    outputs:
+      target_ready: ${{ steps.target_gate.outputs.target_ready }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Provision pinned scripting tools
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12.8
+          cache: pip
+
+      - name: Install pinned Meson/Ninja helpers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check --no-warn-script-location meson==1.9.0 ninja==1.12.1
+          python -c "import mesonbuild; print('meson=' + mesonbuild.__version__)"
+          ninja --version
+
+      - name: Verify Visual Studio and Windows SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if (-not (Test-Path -LiteralPath $vswhere)) { throw "vswhere.exe is missing" }
+          $vs = & $vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -latest -property installationPath
+          if (-not $vs) { throw 'Visual Studio C++ tools workload is missing' }
+          Write-Host "Visual Studio: $vs"
+          $sdk = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10"
+          foreach ($relative in @(
+              "Include\${env:WINDOWS_SDK_VERSION}\um\windows.h",
+              "Include\${env:WINDOWS_SDK_VERSION}\cppwinrt\winrt\base.h",
+              "Lib\${env:WINDOWS_SDK_VERSION}\um\x64\windowsapp.lib",
+              "bin\${env:WINDOWS_SDK_VERSION}\x64\makeappx.exe",
+              "bin\${env:WINDOWS_SDK_VERSION}\x64\signtool.exe")) {
+            $path = Join-Path $sdk $relative
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Windows SDK prerequisite missing: $path" }
+          }
+          $clang = Get-Command clang-cl.exe -ErrorAction SilentlyContinue
+          $lld = Get-Command lld-link.exe -ErrorAction SilentlyContinue
+          if (-not $clang -or -not $lld) {
+            Write-Warning 'clang-cl/lld-link is not on PATH; the clang-cl smoke is reported as unavailable, never substituted with MinGW.'
+          } else {
+            & $clang.Source --version
+            & $lld.Source --version
+          }
+
+      - name: Full emulator target gate (probe is not sufficient)
+        id: target_gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ready = $false
+          try {
+            & ./scripts/ci/validate-xbox-uwp.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE
+            if ($LASTEXITCODE -eq 0) { $ready = $true }
+          } catch {
+            Write-Warning $_.Exception.Message
+            Write-Warning 'The workflow may build the host probe for diagnostics, but the full xemu UWP package/release remains hard-gated.'
+          }
+          "target_ready=$($ready.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Record preflight result
+        if: always()
+        shell: pwsh
+        run: |
+          $result = [ordered]@{
+            source = '${{ github.sha }}'
+            target_ready = '${{ steps.target_gate.outputs.target_ready }}'
+            sdk = $env:WINDOWS_SDK_VERSION
+            runner = $env:ImageOS
+            probe_only_is_release_target = $false
+          }
+          $result | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP\xbox-uwp-preflight.json" -Encoding UTF8
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: xbox-uwp-preflight-${{ github.run_id }}
+          path: ${{ runner.temp }}/xbox-uwp-preflight.json
+          if-no-files-found: error
+          retention-days: 14
+
+  host-probe-diagnostic:
+    name: Build host probe (diagnostic only)
+    runs-on: windows-2022
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download and verify Microsoft VCLibs dependency
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'DesktopAppInstaller_Dependencies.zip'
+          Invoke-WebRequest -Uri $env:VCLIBS_URL -OutFile $zip -UseBasicParsing
+          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $env:VCLIBS_SHA256) { throw 'VCLibs archive hash mismatch' }
+          $root = Join-Path $env:RUNNER_TEMP 'DesktopAppInstaller_Dependencies'
+          Expand-Archive -LiteralPath $zip -DestinationPath $root -Force
+          $selectedDir = Join-Path $env:RUNNER_TEMP 'vclibs-selected'
+          & ./scripts/ci/select-vclibs.ps1 -ArchiveRoot $root -OutputDirectory $selectedDir -SdkVersion $env:WINDOWS_SDK_VERSION
+          $selected = @(Get-ChildItem -LiteralPath $selectedDir -Filter '*.appx' -File)
+          if ($selected.Count -ne 1) { throw "Expected exactly one selected VCLibs package; found $($selected.Count)." }
+          "VCLIBS_PATH=$($selected[0].FullName)" >> $env:GITHUB_ENV
+      - name: Build and package host probe (unsigned diagnostic)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./tests/xbox/uwp-host-probe/scripts/package.ps1 -Configuration '${{ inputs.configuration }}' -Platform x64 -VCLibsPackagePath $env:VCLIBS_PATH
+      - name: Upload host probe diagnostic (never a release input)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: xbox-uwp-host-probe-diagnostic-${{ github.run_id }}
+          path: tests/xbox/uwp-host-probe/AppPackages
+          if-no-files-found: warn
+          retention-days: 14
+
+  clangcl-smoke:
+    name: Authentic clang-cl/AppContainer smoke
+    needs: preflight
+    if: always()
+    runs-on: windows-2022
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Provision pinned scripting tools
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12.8
+          cache: pip
+      - name: Install pinned Meson/Ninja helpers
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check --no-warn-script-location meson==1.9.0 ninja==1.12.1
+      - name: Configure authentic build directory
+        id: configure
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & ./scripts/ci/configure-xbox-uwp-tests.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE
+      - name: Run strict clang-cl smoke against generated build
+        id: smoke
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./tests/xbox/uwp-clangcl-core-smoke/scripts/build.ps1 `
+            -RepositoryRoot $env:GITHUB_WORKSPACE `
+            -BuildDirectory "$env:GITHUB_WORKSPACE\build-xbox-uwp-tests" `
+            -OutputDirectory "$env:GITHUB_WORKSPACE\clangcl-smoke-output"
+      - name: Keep smoke failure explicit
+        if: always()
+        shell: pwsh
+        run: |
+          $configure = '${{ steps.configure.outcome }}'
+          $smoke = '${{ steps.smoke.outcome }}'
+          [ordered]@{ configure = $configure; smoke = $smoke; full_target_release_gate = 'independent hard gate'; fake_build_fallback = $false } |
+            ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP\xbox-uwp-clangcl-smoke.json" -Encoding UTF8
+          if ($configure -ne 'success' -or $smoke -ne 'success') {
+            Write-Error "Authentic configure/clang-cl smoke did not pass (configure=$configure smoke=$smoke); no preexisting or synthetic build was accepted."
+          }
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: xbox-uwp-clangcl-smoke-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/xbox-uwp-clangcl-smoke.json
+            clangcl-smoke-output
+          if-no-files-found: warn
+          retention-days: 14
+
+  target-build:
+    name: Build/test/package full xemu UWP target
+    needs: preflight
+    if: needs.preflight.outputs.target_ready == 'true'
+    runs-on: windows-2022
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Provision pinned scripting tools
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12.8
+          cache: pip
+      - name: Install pinned Meson/Ninja helpers
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check --no-warn-script-location meson==1.9.0 ninja==1.12.1
+      - name: Configure authentic Windows Meson test build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./scripts/ci/configure-xbox-uwp-tests.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE
+      - name: Compile authentic CPU/D3D11/WARP test artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($required in @($env:XEMU_VSDEVCMD, $env:XEMU_BASH, $env:XEMU_MESON, $env:CC, $env:CXX, $env:LD, $env:AR, $env:NM, $env:RANLIB)) {
+            if ([string]::IsNullOrWhiteSpace($required) -or -not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Persisted toolchain path is missing: $required" }
+          }
+          $compileCmd = Join-Path $env:RUNNER_TEMP 'xemu-compile-xbox-tests.cmd'
+          @"
+          @echo off
+          call "$env:XEMU_VSDEVCMD" -arch=x64 -host_arch=x64
+          if errorlevel 1 exit /b %errorlevel%
+          set "PATH=$env:XEMU_LLVM_BIN;%PATH%"
+          set "CC=$env:CC"
+          set "CXX=$env:CXX"
+          set "LD=$env:LD"
+          set "AR=$env:AR"
+          set "NM=$env:NM"
+          set "RANLIB=$env:RANLIB"
+          if not "$env:WINDRES"=="" set "WINDRES=$env:WINDRES"
+          if not "$env:RC"=="" set "RC=$env:RC"
+          call "$env:XEMU_MESON" compile -C "$env:GITHUB_WORKSPACE\build-xbox-uwp-tests"
+          exit /b %errorlevel%
+          "@ | Set-Content -LiteralPath $compileCmd -Encoding ASCII
+          & cmd.exe /d /s /c $compileCmd
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build complete xemu UWP package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./scripts/ci/build-xbox-uwp.ps1 `
+            -RepositoryRoot $env:GITHUB_WORKSPACE `
+            -Configuration '${{ inputs.configuration }}' `
+            -SdkVersion $env:WINDOWS_SDK_VERSION `
+            -OutputDirectory "$env:GITHUB_WORKSPACE\xbox-uwp-output"
+      - name: Run CPU/D3D11/WARP test matrix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./scripts/ci/run-xbox-uwp-tests.ps1 `
+            -BuildDirectory "$env:GITHUB_WORKSPACE\build-xbox-uwp-tests" `
+            -ReportPath "$env:GITHUB_WORKSPACE\xbox-uwp-output\xbox-uwp-test-results.json"
+      - name: Stage and verify x64 Microsoft VCLibs dependency
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'DesktopAppInstaller_Dependencies.zip'
+          Invoke-WebRequest -Uri $env:VCLIBS_URL -OutFile $zip -UseBasicParsing
+          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $env:VCLIBS_SHA256) { throw 'VCLibs archive hash mismatch' }
+          $depRoot = Join-Path $env:RUNNER_TEMP 'DesktopAppInstaller_Dependencies'
+          Expand-Archive -LiteralPath $zip -DestinationPath $depRoot -Force
+          $selectedDir = Join-Path $env:RUNNER_TEMP 'vclibs-selected'
+          $unsignedRoot = Join-Path $env:GITHUB_WORKSPACE 'xbox-uwp-output\unsigned'
+          $unsignedPackages = @(Get-ChildItem -LiteralPath $unsignedRoot -File | Where-Object { $_.Extension.ToLowerInvariant() -in @('.msix', '.appx') })
+          if ($unsignedPackages.Count -ne 1) { throw "Expected exactly one unsigned full xemu package before dependency selection; found $($unsignedPackages.Count)." }
+          $makeAppx = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin\${env:WINDOWS_SDK_VERSION}\x64\makeappx.exe"
+          $inspect = Join-Path $env:RUNNER_TEMP 'xemu-full-manifest-for-vclibs'
+          New-Item -ItemType Directory -Force -Path $inspect | Out-Null
+          try {
+            & $makeAppx unpack /p $unsignedPackages[0].FullName /d $inspect /o | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'MakeAppx could not unpack the full package manifest for VCLibs version matching.' }
+            [xml]$fullManifest = Get-Content -LiteralPath (Join-Path $inspect 'AppxManifest.xml') -Raw
+            $manifestVclibs = @($fullManifest.SelectNodes("/*[local-name()='Package']/*[local-name()='Dependencies']/*[local-name()='PackageDependency']") | Where-Object { [string]$_.Name -eq 'Microsoft.VCLibs.140.00' })
+            if ($manifestVclibs.Count -ne 1) { throw 'Full package manifest must declare exactly one Microsoft.VCLibs.140.00 dependency.' }
+            $requiredVclibsVersion = [version][string]$manifestVclibs[0].MinVersion
+            & ./scripts/ci/select-vclibs.ps1 -ArchiveRoot $depRoot -OutputDirectory $selectedDir -SdkVersion $env:WINDOWS_SDK_VERSION -RequiredMinVersion $requiredVclibsVersion
+          } finally {
+            if (Test-Path -LiteralPath $inspect) { Remove-Item -LiteralPath $inspect -Recurse -Force -ErrorAction SilentlyContinue }
+          }
+          $selected = @(Get-ChildItem -LiteralPath $selectedDir -Filter '*.appx' -File)
+          if ($selected.Count -ne 1) { throw "Expected exactly one selected VCLibs package; found $($selected.Count)." }
+          & ./scripts/ci/validate-xbox-uwp.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE -VclibsPackagePath $selected[0].FullName -SdkVersion $env:WINDOWS_SDK_VERSION | Write-Output
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "XEMU_VCLIBS_PACKAGE=$($selected[0].FullName)" >> $env:GITHUB_ENV
+          $stage = Join-Path $env:GITHUB_WORKSPACE 'xbox-uwp-output\bundle-source\dependencies'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -LiteralPath $selected[0].FullName -Destination (Join-Path $stage $selected[0].Name) -Force
+      - name: Sign package with stable PFX or explicit Dev Mode test certificate
+        shell: pwsh
+        env:
+          XBOX_DEV_PFX_BASE64: ${{ secrets.XBOX_DEV_PFX_BASE64 }}
+          XBOX_DEV_PFX_PASSWORD: ${{ secrets.XBOX_DEV_PFX_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:GITHUB_WORKSPACE 'xbox-uwp-output'
+          $unsignedRoot = Join-Path $root 'unsigned'
+          $packages = @(Get-ChildItem -LiteralPath $unsignedRoot -File | Where-Object { $_.Extension.ToLowerInvariant() -in @('.msix', '.appx') })
+          if ($packages.Count -ne 1) { throw "Expected exactly one unsigned full xemu package; found $($packages.Count)." }
+          $package = $packages[0]
+          $signedRoot = Join-Path $root 'signed'
+          New-Item -ItemType Directory -Force -Path $signedRoot | Out-Null
+          $signedPackage = Join-Path $signedRoot $package.Name
+          Copy-Item -LiteralPath $package.FullName -Destination $signedPackage -Force
+          $pfx = $null
+          if ('${{ inputs.signing_mode }}' -eq 'pfx_required') {
+            if ([string]::IsNullOrWhiteSpace($env:XBOX_DEV_PFX_BASE64)) { throw 'XBOX_DEV_PFX_BASE64 is required for pfx_required.' }
+            $pfx = Join-Path $env:RUNNER_TEMP 'xemu-xbox-signing.pfx'
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:XBOX_DEV_PFX_BASE64))
+          }
+          & ./scripts/ci/sign-xbox-uwp.ps1 `
+            -PackagePath $signedPackage `
+            -Mode '${{ inputs.signing_mode }}' `
+            -PfxPath $pfx `
+            -PfxPassword $env:XBOX_DEV_PFX_PASSWORD `
+            -VclibsPackagePath $env:XEMU_VCLIBS_PACKAGE `
+            -OutputDirectory "$env:GITHUB_WORKSPACE\xbox-uwp-output\signing" `
+            -SdkVersion $env:WINDOWS_SDK_VERSION
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item -LiteralPath $unsignedRoot -Recurse -Force
+      - name: Assemble deterministic bundle and metadata
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:GITHUB_WORKSPACE 'xbox-uwp-output'
+          function Get-RelativePath([string]$BasePath, [string]$TargetPath) {
+            $baseUri = New-Object Uri(([IO.Path]::GetFullPath($BasePath).TrimEnd('\') + '\'))
+            $targetUri = New-Object Uri([IO.Path]::GetFullPath($TargetPath))
+            return [Uri]::UnescapeDataString($baseUri.MakeRelativeUri($targetUri).ToString()).Replace('/', '\')
+          }
+          $bundleSource = Join-Path $root 'bundle-source'
+          $signedRoot = Join-Path $root 'signed'
+          $symbols = Join-Path $root 'symbols'
+          $signing = Join-Path $root 'signing'
+          $bundle = Join-Path $root 'bundle'
+          if (Test-Path -LiteralPath $bundle) { Remove-Item -LiteralPath $bundle -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $bundle | Out-Null
+          $package = @(Get-ChildItem -LiteralPath $signedRoot -File | Where-Object { $_.Extension.ToLowerInvariant() -in @('.msix', '.appx') })
+          if ($package.Count -ne 1) { throw "Expected exactly one signed full xemu package; found $($package.Count)." }
+          Copy-Item -LiteralPath $package.FullName -Destination (Join-Path $bundle $package.Name)
+          New-Item -ItemType Directory -Force -Path (Join-Path $bundle 'dependencies') -ErrorAction SilentlyContinue | Out-Null
+          $dependencies = @(Get-ChildItem -LiteralPath (Join-Path $bundleSource 'dependencies') -Filter '*.appx' -File)
+          if ($dependencies.Count -ne 1 -or $dependencies[0].Name -match '(?i)UWPDesktop') { throw 'Bundle must contain exactly one x64 Microsoft.VCLibs dependency; UWPDesktop is forbidden.' }
+          Copy-Item -LiteralPath $dependencies[0].FullName -Destination (Join-Path $bundle 'dependencies') -Force
+          Copy-Item -LiteralPath (Join-Path $signing 'xbox-devmode-signing.cer') -Destination $bundle -Force
+          Copy-Item -LiteralPath (Join-Path $signing 'signing-metadata.json') -Destination $bundle -Force
+          $pdbs = if (Test-Path -LiteralPath $symbols -PathType Container) { @(Get-ChildItem -LiteralPath $symbols -Filter '*.pdb' -File) } else { @() }
+          if ($pdbs.Count -eq 0) { throw 'PDB symbols are missing from the final bundle.' }
+          Copy-Item -LiteralPath $symbols -Destination (Join-Path $bundle 'symbols') -Recurse -Force
+          Copy-Item -LiteralPath (Join-Path $root 'xbox-uwp-test-results.json') -Destination $bundle -Force
+          $innerFiles = @(Get-ChildItem -LiteralPath $bundle -Recurse -File | Sort-Object FullName)
+          $innerHashes = foreach ($file in $innerFiles) {
+            $hash = Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256
+            "$($hash.Hash.ToLowerInvariant())  $((Get-RelativePath $bundle $file.FullName).Replace('\','/'))"
+          }
+          $innerHashes | Set-Content -LiteralPath (Join-Path $bundle 'SHA256SUMS.txt') -Encoding ASCII
+          & ./scripts/ci/new-deterministic-zip.ps1 -SourceDirectory $bundle -ZipPath (Join-Path $root "xemu-xbox-devmode-${{ inputs.configuration }}.zip")
+          $bundleZip = Join-Path $root "xemu-xbox-devmode-${{ inputs.configuration }}.zip"
+          $metadata = [ordered]@{ source = '${{ github.sha }}'; workflow = '${{ github.workflow }}'; run_id = '${{ github.run_id }}'; configuration = '${{ inputs.configuration }}'; signing_mode = '${{ inputs.signing_mode }}'; sdk = $env:WINDOWS_SDK_VERSION; runner_os = $env:ImageOS; package_is_full_xemu = $true; host_probe_is_release_input = $false; sha256sums_scope = 'Root SHA256SUMS covers only the final ZIP, SBOM, and build metadata. Bundle/SHA256SUMS covers bundle contents except itself.' }
+          $metadata | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root 'build-metadata.json') -Encoding UTF8
+          $sbomFiles = @(Get-ChildItem -LiteralPath $bundle -Recurse -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object FullName)
+          $sbomPackages = foreach ($file in $sbomFiles) {
+            $relative = (Get-RelativePath $bundle $file.FullName).Replace('\','/')
+            $canonicalPath = "bundle/$relative"
+            $pathHash = (Get-FileHash -InputStream ([IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes($canonicalPath))) -Algorithm SHA256).Hash.ToLowerInvariant().Substring(0, 24)
+            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            [ordered]@{ SPDXID = "SPDXRef-Path-$pathHash"; name = $relative; downloadLocation = 'NOASSERTION'; checksums = @(@{ algorithm = 'SHA256'; checksumValue = $hash }) }
+          }
+          [ordered]@{ spdxVersion = 'SPDX-2.3'; dataLicense = 'CC0-1.0'; SPDXID = 'SPDXRef-DOCUMENT'; name = 'xemu-xbox-devmode-build'; documentNamespace = "https://xemu.app/sbom/$env:GITHUB_SHA"; creationInfo = @{ created = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'); creators = @('Tool: xemu GitHub Actions') }; packages = @($sbomPackages) } |
+            ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $root 'sbom.spdx.json') -Encoding UTF8
+          $sidecars = @($bundleZip, (Join-Path $root 'sbom.spdx.json'), (Join-Path $root 'build-metadata.json'))
+          $sidecarHashes = foreach ($file in $sidecars) { $hash = Get-FileHash -LiteralPath $file -Algorithm SHA256; "$($hash.Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))" }
+          $sidecarHashes | Set-Content -LiteralPath (Join-Path $root 'SHA256SUMS.txt') -Encoding ASCII
+          Remove-Item -LiteralPath $bundle, $signedRoot, $signing, $bundleSource, $symbols -Recurse -Force
+      - name: Require public-release policy
+        if: inputs.create_release
+        env:
+          PFX_PRESENT: ${{ secrets.XBOX_DEV_PFX_BASE64 != '' && secrets.XBOX_DEV_PFX_PASSWORD != '' }}
+        shell: pwsh
+        run: |
+          if ('${{ inputs.configuration }}' -ne 'Release' -or '${{ inputs.signing_mode }}' -ne 'pfx_required' -or $env:PFX_PRESENT -ne 'true') {
+            throw 'Public GitHub releases require Release + pfx_required + both XBOX_DEV_PFX secrets. dev_test_certificate is forbidden for releases.'
+          }
+      - name: Upload signed Xbox Dev Mode bundle and metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: xemu-xbox-devmode-${{ inputs.configuration }}-${{ github.run_id }}
+          path: |
+            xbox-uwp-output/xemu-xbox-devmode-${{ inputs.configuration }}.zip
+            xbox-uwp-output/SHA256SUMS.txt
+            xbox-uwp-output/sbom.spdx.json
+            xbox-uwp-output/build-metadata.json
+          if-no-files-found: error
+          retention-days: 30
+
+  release-gate:
+    name: Hard release gate
+    needs: [preflight, target-build, clangcl-smoke]
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Refuse release unless full package and tests succeeded
+        env:
+          TARGET_READY: ${{ needs.preflight.outputs.target_ready }}
+          TARGET_RESULT: ${{ needs.target-build.result }}
+          SMOKE_RESULT: ${{ needs.clangcl-smoke.result }}
+          CREATE_RELEASE: ${{ inputs.create_release }}
+          CONFIGURATION: ${{ inputs.configuration }}
+          SIGNING_MODE: ${{ inputs.signing_mode }}
+          PFX_PRESENT: ${{ secrets.XBOX_DEV_PFX_BASE64 != '' && secrets.XBOX_DEV_PFX_PASSWORD != '' }}
+        run: |
+          set -euo pipefail
+          if [[ "$TARGET_READY" != "true" ]]; then
+            echo 'ERROR: full xemu UWP target is not present; the host probe is never a release substitute.' >&2
+            exit 1
+          fi
+          if [[ "$TARGET_RESULT" != "success" ]]; then
+            echo "ERROR: full xemu UWP build/test/package job result is $TARGET_RESULT." >&2
+            exit 1
+          fi
+          if [[ "$SMOKE_RESULT" != "success" ]]; then
+            echo "ERROR: authentic clang-cl/AppContainer smoke result is $SMOKE_RESULT." >&2
+            exit 1
+          fi
+          if [[ "$CREATE_RELEASE" == "true" && ( "$CONFIGURATION" != "Release" || "$SIGNING_MODE" != "pfx_required" ) ]]; then
+            echo 'ERROR: public releases require Release plus pfx_required; dev_test_certificate is never releasable.' >&2
+            exit 1
+          fi
+          if [[ "$CREATE_RELEASE" == "true" && "$PFX_PRESENT" != "true" ]]; then
+            echo 'ERROR: public releases require both XBOX_DEV_PFX_BASE64 and XBOX_DEV_PFX_PASSWORD secrets.' >&2
+            exit 1
+          fi
+
+  release:
+    name: Optional GitHub release
+    needs: [target-build, release-gate]
+    if: inputs.create_release && needs.target-build.result == 'success' && needs.release-gate.result == 'success'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Validate release input
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-xbox-devmode\.[0-9]+$ ]] || { echo 'release_tag must match vMAJOR.MINOR.PATCH-xbox-devmode.N'; exit 1; }
+      - name: Download full target artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: xemu-xbox-devmode-${{ inputs.configuration }}-${{ github.run_id }}
+          path: release
+      - name: Create draft/prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          args=("$RELEASE_TAG" --target "$GITHUB_SHA" --title "$RELEASE_TAG")
+          if [[ '${{ inputs.draft_release }}' == 'true' ]]; then args+=(--draft); fi
+          if [[ '${{ inputs.prerelease }}' == 'true' ]]; then args+=(--prerelease); fi
+          files=()
+          while IFS= read -r -d '' file; do files+=("$file"); done < <(find release -type f -print0 | sort -z)
+          ((${#files[@]} > 0)) || { echo 'No regular release files were downloaded.' >&2; exit 1; }
+          gh release create "${args[@]}" "${files[@]}"

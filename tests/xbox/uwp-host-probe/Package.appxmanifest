@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" IgnorableNamespaces="uap">
+  <Identity Name="xemu.UwpHostProbe" Publisher="CN=xemu-development" Version="0.1.0.0" ProcessorArchitecture="x64" />
+  <Properties><DisplayName>xemu UWP Host Probe</DisplayName><PublisherDisplayName>xemu development</PublisherDisplayName><Description>Xbox Dev Mode capability probe for xemu</Description><Logo>assets\Logo.png</Logo></Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+    <PackageDependency Name="Microsoft.VCLibs.140.00" MinVersion="14.0.33519.0" Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
+  </Dependencies>
+  <Resources><Resource Language="en-us" /></Resources>
+  <Applications><Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="xemu_uwp_host_probe.ProbeSource"><uap:VisualElements AppListEntry="none" DisplayName="xemu UWP Host Probe" Description="xemu capability probe" BackgroundColor="#202020" Square44x44Logo="assets\Logo.png" Square150x150Logo="assets\Logo.png" /></Application></Applications>
+</Package>

@@ -26,3 +26,5 @@ build.log
 /macos-libs/
 /macos-pkgs/
 /xemu.iconset/
+/tests/xbox/uwp-host-probe/AppPackages/
+/tests/xbox/uwp-host-probe/obj/
