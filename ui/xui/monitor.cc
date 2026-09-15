@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+#include "i18n.hh"
 #include "monitor.hh"
 #include "imgui.h"
 #include "misc.hh"
@@ -47,7 +48,7 @@ void MonitorWindow::Draw()
     ImVec2 window_pos = ImVec2(0,io.DisplaySize.y/2);
     ImGui::SetNextWindowPos(window_pos, ImGuiCond_Appearing);
     ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, io.DisplaySize.y/2), ImGuiCond_Appearing);
-    if (ImGui::Begin("Monitor", &is_open, ImGuiWindowFlags_NoCollapse)) {
+    if (ImGui::Begin(_("Monitor"), &is_open, ImGuiWindowFlags_NoCollapse)) {
         const float footer_height_to_reserve = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing(); // 1 separator, 1 input text
         ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footer_height_to_reserve), false, ImGuiWindowFlags_HorizontalScrollbar); // Leave room for 1 separator + 1 InputText
 
