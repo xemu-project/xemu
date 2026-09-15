@@ -16,4 +16,7 @@ subdir('null')
 subdir('gl')
 subdir('glsl')
 subdir('vk')
+if host_os == 'windows'
+	subdir('d3d11')
+endif
 specific_ss.add(nv2a_vsh_cpu)

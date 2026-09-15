@@ -1782,7 +1782,13 @@ Object *memory_region_owner(MemoryRegion *mr);
  *
  * @mr: the memory region being queried.
  */
+#ifdef __cplusplus
+extern "C" {
+#endif
 uint64_t memory_region_size(MemoryRegion *mr);
+#ifdef __cplusplus
+}
+#endif
 
 /**
  * memory_region_is_ram: check whether a memory region is random access
