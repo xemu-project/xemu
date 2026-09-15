@@ -1266,7 +1266,27 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
 
     bool is_integer_type = vkf.vk_format == VK_FORMAT_R32_UINT;
 
-    if (r->custom_border_color_extension_enabled) {
+    bool standard_border_color = true;
+    switch (border_color_pack32) {
+    case 0x00000000:
+        vk_border_color = is_integer_type ?
+                              VK_BORDER_COLOR_INT_TRANSPARENT_BLACK :
+                              VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+        break;
+    case 0xff000000:
+        vk_border_color = is_integer_type ? VK_BORDER_COLOR_INT_OPAQUE_BLACK :
+                                            VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+        break;
+    case 0xffffffff:
+        vk_border_color = is_integer_type ? VK_BORDER_COLOR_INT_OPAQUE_WHITE :
+                                            VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+        break;
+    default:
+        standard_border_color = false;
+        break;
+    }
+
+    if (!standard_border_color && r->custom_border_color_extension_enabled) {
         vk_border_color = is_integer_type ? VK_BORDER_COLOR_INT_CUSTOM_EXT :
                                             VK_BORDER_COLOR_FLOAT_CUSTOM_EXT;
         custom_border_color_create_info =
@@ -1291,15 +1311,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         sampler_next_struct = &custom_border_color_create_info;
     } else {
         // FIXME: Handle custom color in shader
-        if (is_integer_type) {
-            vk_border_color = VK_BORDER_COLOR_INT_TRANSPARENT_BLACK;
-        } else if (border_color_pack32 == 0x00000000) {
-            vk_border_color = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
-        } else if (border_color_pack32 == 0xff000000) {
-            vk_border_color = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
-        } else {
-            vk_border_color = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-        }
+        vk_border_color = is_integer_type ? VK_BORDER_COLOR_INT_TRANSPARENT_BLACK :
+                                            VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
     }
 
     if (filter & NV_PGRAPH_TEXFILTER0_ASIGNED)
