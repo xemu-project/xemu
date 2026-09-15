@@ -521,6 +521,7 @@ void pgraph_vk_init_shaders(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    pgraph_vk_set_glsl_target(r->device_props.apiVersion);
     pgraph_vk_init_glsl_compiler();
     create_descriptor_pool(pg);
     create_descriptor_set_layout(pg);
