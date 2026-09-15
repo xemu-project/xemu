@@ -73,11 +73,148 @@
 #define floatx80_ln2_d make_floatx80(0x3ffe, 0xb17217f7d1cf79abLL)
 #define floatx80_pi_d make_floatx80(0x4000, 0xc90fdaa22168c234LL)
 
-#if defined(XBOX) && defined(__x86_64__)
+#if defined(XBOX) && (defined(__x86_64__) || defined(__aarch64__))
 #ifdef USE_HARD_FPU
 /*
  * FIXME: rounding and exceptions
  */
+
+#if !defined(__x86_64__)
+static inline double fx80_to_host(floatx80 a)
+{
+    int exp = a.high & 0x7fff;
+    uint64_t sign = (uint64_t)(a.high & 0x8000) << 48;
+    union { uint64_t b; double d; } u;
+
+    if (exp == 0) {
+        u.b = sign;
+        return u.d;
+    }
+    if (exp == 0x7fff) {
+        u.b = sign | 0x7ff0000000000000ull |
+              ((a.low & 0x7fffffffffffffffull) >> 11);
+        return u.d;
+    }
+    int dexp = exp - 16383 + 1023;
+    if (dexp <= 0) {
+        u.b = sign;
+    } else if (dexp >= 0x7ff) {
+        u.b = sign | 0x7ff0000000000000ull;
+    } else {
+        u.b = sign | ((uint64_t)dexp << 52) |
+              ((a.low & 0x7fffffffffffffffull) >> 11);
+    }
+    return u.d;
+}
+
+static inline floatx80 host_to_fx80(double v)
+{
+    union { double d; uint64_t b; } u = { .d = v };
+    uint64_t dman = u.b & 0xfffffffffffffull;
+    int dexp = (u.b >> 52) & 0x7ff;
+    uint16_t sign = (u.b >> 48) & 0x8000;
+    floatx80 r;
+
+    if (dexp == 0) {
+        r.low = 0;
+        r.high = sign;
+    } else if (dexp == 0x7ff) {
+        r.low = 0x8000000000000000ull | (dman << 11);
+        r.high = sign | 0x7fff;
+    } else {
+        r.low = 0x8000000000000000ull | (dman << 11);
+        r.high = sign | (uint16_t)(dexp - 1023 + 16383);
+    }
+    return r;
+}
+
+static inline double pack_prec(double v, float_status *status)
+{
+    if (status->floatx80_rounding_precision == floatx80_precision_s) {
+        return (float)v;
+    }
+    return v;
+}
+
+static inline
+floatx80 floatx80_add__hard(floatx80 a, floatx80 b, float_status *status)
+{
+    return host_to_fx80(pack_prec(fx80_to_host(a) + fx80_to_host(b), status));
+}
+
+static inline
+floatx80 floatx80_sub__hard(floatx80 a, floatx80 b, float_status *status)
+{
+    return host_to_fx80(pack_prec(fx80_to_host(a) - fx80_to_host(b), status));
+}
+
+static inline
+floatx80 floatx80_mul__hard(floatx80 a, floatx80 b, float_status *status)
+{
+    return host_to_fx80(pack_prec(fx80_to_host(a) * fx80_to_host(b), status));
+}
+
+static inline
+floatx80 floatx80_div__hard(floatx80 a, floatx80 b, float_status *status)
+{
+    /* FIXME: Exceptions */
+    return host_to_fx80(pack_prec(fx80_to_host(a) / fx80_to_host(b), status));
+}
+
+static inline
+FloatRelation floatx80_compare__hard(floatx80 a, floatx80 b, float_status *status)
+{
+    double da = fx80_to_host(a), db = fx80_to_host(b);
+
+    if (da < db) return float_relation_less;
+    if (da > db) return float_relation_greater;
+    if (da == db) return float_relation_equal;
+    return float_relation_unordered;
+}
+
+static inline
+floatx80 float32_to_floatx80__hard(float32 val, float_status *status)
+{
+    return host_to_fx80(*(float *)&val);
+}
+
+static inline
+float32 floatx80_to_float32__hard(floatx80 a, float_status *status)
+{
+    union {
+        float32 f32;
+        float f;
+    } x;
+
+    x.f = fx80_to_host(a);
+    return x.f32;
+}
+
+static inline
+floatx80 float64_to_floatx80__hard(float64 val, float_status *status)
+{
+    return host_to_fx80(*(double *)&val);
+}
+
+static inline
+float64 floatx80_to_float64__hard(floatx80 a, float_status *status)
+{
+    union {
+        float64 f64;
+        double d;
+    } x;
+
+    x.d = fx80_to_host(a);
+    return x.f64;
+}
+
+static inline
+floatx80 int32_to_floatx80__hard(int32_t a, float_status *status)
+{
+    return host_to_fx80(a);
+}
+
+#else /* __x86_64__ */
 
 static inline
 floatx80 pack(floatx80 v, float_status *status)
@@ -164,6 +301,8 @@ floatx80 int32_to_floatx80__hard(int32_t a, float_status *status)
 {
     return (floatx80){ .fval = a };
 }
+
+#endif /* __x86_64__ */
 
 #define floatx80_add          floatx80_add__hard
 #define floatx80_sub          floatx80_sub__hard
@@ -3448,6 +3587,7 @@ void update_mxcsr_status(CPUX86State *env)
 {
     uint32_t mxcsr = env->mxcsr;
     int rnd_type;
+
 
     /* set rounding mode */
     rnd_type = (mxcsr & SSE_RC_MASK) >> SSE_RC_SHIFT;
