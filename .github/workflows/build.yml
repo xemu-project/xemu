@@ -7,6 +7,11 @@ on:
         description: Git ref (commit, branch, or tag) to build
         required: true
         type: string
+      windows_only:
+        description: Build only the Windows target (source package is still created)
+        required: false
+        type: boolean
+        default: false
     outputs:
       pkg_version:
         description: Build version
@@ -59,6 +64,7 @@ jobs:
   linux:
     name: Linux
     needs: source
+    if: ${{ !inputs.windows_only }}
     uses: ./.github/workflows/build-linux.yml
     with:
       pkg_version: ${{ needs.source.outputs.pkg_version }}
@@ -66,6 +72,7 @@ jobs:
   macos:
     name: macOS
     needs: source
+    if: ${{ !inputs.windows_only }}
     uses: ./.github/workflows/build-macos.yml
     with:
       pkg_version: ${{ needs.source.outputs.pkg_version }}
@@ -77,7 +84,114 @@ jobs:
     with:
       pkg_version: ${{ needs.source.outputs.pkg_version }}
 
+  # This is deliberately a probe-only Windows job. It never feeds a release
+  # and is enabled only by the Windows-focused CI caller.
+  xbox_uwp_diagnostic:
+    name: Xbox UWP host probe (diagnostic only)
+    needs: source
+    if: ${{ inputs.windows_only }}
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    env:
+      WINDOWS_SDK_VERSION: 10.0.26100.0
+      VCLIBS_URL: https://github.com/microsoft/winget-cli/releases/download/v1.12.350/DesktopAppInstaller_Dependencies.zip
+      VCLIBS_SHA256: 906CAD3B2BE067D816B20EA4EB1DF541F8A23AC4A4AA9FED70CE675CD918E6A6
+    steps:
+    - name: Clone tree
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      with:
+        fetch-depth: 1
+        ref: ${{ inputs.ref }}
+    - name: Verify installed MSVC and Windows SDK
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+        if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) { throw 'vswhere.exe is missing' }
+        $vs = & $vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -latest -property installationPath
+        if (-not $vs) { throw 'Visual Studio C++ tools workload is missing' }
+        $msvc = Get-ChildItem -LiteralPath (Join-Path $vs 'VC\Tools\MSVC') -Filter cl.exe -Recurse -File |
+          Where-Object { $_.FullName -match '\\bin\\Hostx64\\x64\\cl\.exe$' } |
+          Select-Object -First 1
+        if (-not $msvc) { throw 'x64 MSVC compiler is missing' }
+        $sdk = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10"
+        foreach ($relative in @(
+            "Include\$env:WINDOWS_SDK_VERSION\um\windows.h",
+            "Lib\$env:WINDOWS_SDK_VERSION\um\x64\windowsapp.lib",
+            "bin\$env:WINDOWS_SDK_VERSION\x64\makeappx.exe",
+            "bin\$env:WINDOWS_SDK_VERSION\x64\signtool.exe")) {
+          $path = Join-Path $sdk $relative
+          if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Windows SDK prerequisite missing: $path" }
+        }
+        Write-Host "Using MSVC: $($msvc.FullName)"
+    - name: Download and verify Microsoft VCLibs dependency
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $zip = Join-Path $env:RUNNER_TEMP 'DesktopAppInstaller_Dependencies.zip'
+        Invoke-WebRequest -Uri $env:VCLIBS_URL -OutFile $zip -UseBasicParsing
+        $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToUpperInvariant()
+        if ($hash -ne $env:VCLIBS_SHA256) { throw "VCLibs archive hash mismatch: $hash" }
+        $archive = Join-Path $env:RUNNER_TEMP 'DesktopAppInstaller_Dependencies'
+        Expand-Archive -LiteralPath $zip -DestinationPath $archive -Force
+        $selectedDir = Join-Path $env:RUNNER_TEMP 'vclibs-selected'
+        & ./scripts/ci/select-vclibs.ps1 `
+          -ArchiveRoot $archive `
+          -OutputDirectory $selectedDir `
+          -SdkVersion $env:WINDOWS_SDK_VERSION
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        $selected = @(Get-ChildItem -LiteralPath $selectedDir -Filter '*.appx' -File)
+        if ($selected.Count -ne 1) { throw "Expected one x64 Microsoft.VCLibs package; found $($selected.Count)" }
+        "XEMU_DIAGNOSTIC_VCLIBS=$($selected[0].FullName)" >> $env:GITHUB_ENV
+    - name: Build unsigned host probe package
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        # package.ps1 signs only when CertificatePath is supplied; this job never supplies one.
+        & ./tests/xbox/uwp-host-probe/scripts/package.ps1 `
+          -Configuration Release `
+          -Platform x64 `
+          -VCLibsPackagePath $env:XEMU_DIAGNOSTIC_VCLIBS
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    - name: Validate diagnostic manifest and artifact
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $output = Join-Path $env:GITHUB_WORKSPACE 'tests\xbox\uwp-host-probe\AppPackages\xemu-uwp-host-probe_Release_x64'
+        $package = @(Get-ChildItem -LiteralPath $output -Filter '*.msix' -File)
+        if ($package.Count -ne 1) { throw "Expected one unsigned probe MSIX; found $($package.Count)" }
+        $makeAppx = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin\$env:WINDOWS_SDK_VERSION\x64\makeappx.exe"
+        $inspect = Join-Path $env:RUNNER_TEMP 'xemu-uwp-host-probe-manifest'
+        New-Item -ItemType Directory -Force -Path $inspect | Out-Null
+        try {
+          & $makeAppx unpack /p $package[0].FullName /d $inspect /o | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'MakeAppx could not unpack the probe MSIX' }
+          [xml]$manifest = Get-Content -LiteralPath (Join-Path $inspect 'AppxManifest.xml') -Raw
+          $identity = $manifest.SelectSingleNode("/*[local-name()='Package']/*[local-name()='Identity']")
+          $application = $manifest.SelectSingleNode("/*[local-name()='Package']/*[local-name()='Applications']/*[local-name()='Application']")
+          if (-not $identity -or $identity.Name -ne 'xemu.UwpHostProbe' -or $identity.ProcessorArchitecture -ne 'x64') { throw 'Probe identity/architecture validation failed' }
+          if (-not $application -or $application.Executable -ne 'xemu-uwp-host-probe.exe') { throw 'Probe executable validation failed' }
+        } finally {
+          if (Test-Path -LiteralPath $inspect) { Remove-Item -LiteralPath $inspect -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        $marker = Join-Path $output 'DIAGNOSTIC_ONLY_UNSIGNED_NOT_FULL_XEMU.txt'
+        @(
+          'xemu Xbox UWP host probe diagnostic artifact.'
+          'This package is unsigned and is not a full xemu release target.'
+          'It must never be used as a release or Xbox deployment artifact.'
+        ) | Set-Content -LiteralPath $marker -Encoding UTF8
+        Write-Host "Validated unsigned diagnostic package: $($package[0].FullName)"
+    - name: Upload unsigned diagnostic artifact (not full xemu)
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+      with:
+        name: xbox-uwp-host-probe-diagnostic-not-full-xemu-${{ github.run_id }}
+        path: tests/xbox/uwp-host-probe/AppPackages/xemu-uwp-host-probe_Release_x64
+        if-no-files-found: error
+        retention-days: 14
+
   test:
     name: Unit tests
     needs: source
+    if: ${{ !inputs.windows_only }}
     uses: ./.github/workflows/build-tests.yml
