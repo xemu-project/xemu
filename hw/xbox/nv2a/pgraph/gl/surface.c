@@ -21,6 +21,7 @@
 
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "ui/xemu-settings.h"
+#include "system/tcg.h"
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "debug.h"

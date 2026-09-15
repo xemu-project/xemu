@@ -21,6 +21,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/display/vga_int.h"
+#include "system/tcg.h"
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/util.h"
 #include "renderer.h"
