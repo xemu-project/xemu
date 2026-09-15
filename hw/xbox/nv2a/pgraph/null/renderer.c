@@ -111,6 +111,14 @@ static void pgraph_null_surface_update(NV2AState *d, bool upload,
 {
 }
 
+static bool pgraph_null_get_framebuffer_surface(NV2AState *d,
+                                                NV2AFramebufferSurface *frame)
+{
+    (void)d;
+    (void)frame;
+    return false;
+}
+
 static void pgraph_null_init(NV2AState *d, Error **errp)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -137,6 +145,7 @@ static PGRAPHRenderer pgraph_null_renderer = {
         .process_pending = pgraph_null_process_pending,
         .process_pending_reports = pgraph_null_process_pending_reports,
         .surface_update = pgraph_null_surface_update,
+        .get_framebuffer_surface = pgraph_null_get_framebuffer_surface,
     }
 };
 

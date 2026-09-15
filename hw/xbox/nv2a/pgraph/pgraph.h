@@ -29,6 +29,7 @@
 #include "qemu/thread.h"
 #include "cpu.h"
 
+#include "../framebuffer.h"
 #include "surface.h"
 #include "texture.h"
 #include "util.h"
@@ -130,7 +131,8 @@ typedef struct PGRAPHRenderer {
         void (*surface_update)(NV2AState *d, bool upload, bool color_write, bool zeta_write);
         void (*set_surface_scale_factor)(NV2AState *d, unsigned int scale);
         unsigned int (*get_surface_scale_factor)(NV2AState *d);
-        int (*get_framebuffer_surface)(NV2AState *d);
+        bool (*get_framebuffer_surface)(NV2AState *d,
+                                        NV2AFramebufferSurface *surface);
         GPUProperties *(*get_gpu_properties)(void);
     } ops;
 } PGRAPHRenderer;

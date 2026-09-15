@@ -354,21 +354,25 @@ void pgraph_destroy(PGRAPHState *pg)
     qemu_mutex_destroy(&pg->lock);
 }
 
-int nv2a_get_framebuffer_surface(void)
+bool nv2a_get_framebuffer_surface(NV2AFramebufferSurface *surface)
 {
     NV2AState *d = g_nv2a;
     PGRAPHState *pg = &d->pgraph;
-    int s = 0;
+    bool available = false;
+
+    g_assert(surface != NULL);
+    surface->type = NV2A_FRAMEBUFFER_SURFACE_NONE;
+    surface->handle = 0;
 
     qemu_mutex_lock(&pg->renderer_lock);
     assert(!pg->framebuffer_in_use);
-    pg->framebuffer_in_use = true;
     if (pg->renderer->ops.get_framebuffer_surface) {
-        s = pg->renderer->ops.get_framebuffer_surface(d);
+        available = pg->renderer->ops.get_framebuffer_surface(d, surface);
     }
+    pg->framebuffer_in_use = available;
     qemu_mutex_unlock(&pg->renderer_lock);
 
-    return s;
+    return available;
 }
 
 void nv2a_release_framebuffer_surface(void)

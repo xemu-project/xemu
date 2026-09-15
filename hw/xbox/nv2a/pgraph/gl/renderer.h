@@ -290,7 +290,8 @@ bool pgraph_gl_shader_load_from_memory(ShaderBinding *snode);
 void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg);
 void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale);
 unsigned int pgraph_gl_get_surface_scale_factor(NV2AState *d);
-int pgraph_gl_get_framebuffer_surface(NV2AState *d);
+bool pgraph_gl_get_framebuffer_surface(NV2AState *d,
+                                       NV2AFramebufferSurface *surface);
 /**  Note: The caller must set up a clean GL context before invoking. */
 void pgraph_gl_determine_gpu_properties(void);
 GPUProperties *pgraph_gl_get_gpu_properties(void);
