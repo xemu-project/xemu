@@ -812,6 +812,19 @@
 #   define NV012_SET_BETA                                     0x00000300
 
 #define NV_MEMORY_TO_MEMORY_FORMAT                       0x0039
+#   define NV039_SET_OBJECT                                   0x00000000
+#   define NV039_NO_OPERATION                                 0x00000100
+#   define NV039_SET_CONTEXT_DMA_NOTIFIES                     0x00000180
+#   define NV039_SET_CONTEXT_DMA_BUFFER_IN                    0x00000184
+#   define NV039_SET_CONTEXT_DMA_BUFFER_OUT                   0x00000188
+#   define NV039_OFFSET_IN                                    0x0000030C
+#   define NV039_OFFSET_OUT                                   0x00000310
+#   define NV039_PITCH_IN                                     0x00000314
+#   define NV039_PITCH_OUT                                    0x00000318
+#   define NV039_LINE_LENGTH_IN                               0x0000031C
+#   define NV039_LINE_COUNT                                   0x00000320
+#   define NV039_FORMAT                                       0x00000324
+#   define NV039_BUFFER_NOTIFY                                0x00000328
 
 #define NV_CONTEXT_PATTERN                               0x0044
 #   define NV044_SET_MONOCHROME_COLOR0                        0x00000310

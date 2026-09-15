@@ -618,6 +618,135 @@ static void pgraph_method_non_inc(MethodFunc handler, METHOD_HANDLER_ARG_DECL)
     }                                                             \
     DEF_METHOD_INT(gclass, name)
 
+static inline void pgraph_m2mf_copy_linear(const M2MFState *m2mf,
+                                           uint8_t *out_base,
+                                           const uint8_t *in_base,
+                                           hwaddr in_max, hwaddr out_max)
+{
+    hwaddr src_off = m2mf->offset_in;
+    hwaddr dst_off = m2mf->offset_out;
+    for (uint32_t y = 0; y < m2mf->line_count; ++y) {
+        if (src_off >= in_max || dst_off >= out_max) {
+            break;
+        }
+        size_t copy_len = MIN(
+            (size_t)m2mf->line_length_in,
+            MIN((size_t)(in_max - src_off), (size_t)(out_max - dst_off)));
+        memmove(out_base + dst_off, in_base + src_off, copy_len);
+        if (copy_len < m2mf->line_length_in) {
+            break;
+        }
+        src_off += m2mf->pitch_in;
+        dst_off += m2mf->pitch_out;
+    }
+}
+
+static inline void pgraph_m2mf_copy_strided(const M2MFState *m2mf,
+                                            uint8_t *out_base,
+                                            const uint8_t *in_base,
+                                            hwaddr in_max, hwaddr out_max,
+                                            uint32_t stride_in,
+                                            uint32_t stride_out)
+{
+    const uint8_t *in_end = in_base + in_max;
+    uint8_t *out_end = out_base + out_max;
+    const uint8_t *src_line = in_base + m2mf->offset_in;
+    uint8_t *dst_line = out_base + m2mf->offset_out;
+
+    for (uint32_t y = 0; y < m2mf->line_count; ++y) {
+        const uint8_t *src = src_line;
+        uint8_t *dst = dst_line;
+        for (uint32_t x = 0; x < m2mf->line_length_in; ++x) {
+            if (src >= in_end || dst >= out_end) {
+                break;
+            }
+            *dst = *src;
+            src += stride_in;
+            dst += stride_out;
+        }
+        src_line += m2mf->pitch_in;
+        dst_line += m2mf->pitch_out;
+    }
+}
+
+static void pgraph_m2mf_transfer(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    M2MFState *m2mf = &pg->m2mf;
+
+    if (m2mf->line_count && m2mf->line_length_in) {
+        hwaddr in_len = 0;
+        uint8_t *in_base =
+            (uint8_t *)nv_dma_map(d, m2mf->dma_buffer_in, &in_len);
+        hwaddr out_len = 0;
+        uint8_t *out_base =
+            (uint8_t *)nv_dma_map(d, m2mf->dma_buffer_out, &out_len);
+
+        if (in_base && out_base) {
+            uint64_t vram_size = memory_region_size(d->vram);
+            hwaddr in_max =
+                MIN(in_len + 1, vram_size - (in_base - d->vram_ptr));
+            hwaddr out_max =
+                MIN(out_len + 1, vram_size - (out_base - d->vram_ptr));
+
+            uint32_t stride_in = m2mf->format & 0xFF;
+            if (!stride_in) {
+                // TODO: Hardware raises an exception in this case.
+                stride_in = 1;
+            }
+            uint32_t stride_out = (m2mf->format >> 8) & 0xFF;
+            if (!stride_out) {
+                // TODO: Hardware raises an exception in this case.
+                stride_out = 1;
+            }
+
+            hwaddr src_start = (in_base - d->vram_ptr) + m2mf->offset_in;
+            hwaddr dst_start = (out_base - d->vram_ptr) + m2mf->offset_out;
+            hwaddr src_line_span =
+                (hwaddr)(m2mf->line_length_in - 1) * stride_in + 1;
+            hwaddr dst_line_span =
+                (hwaddr)(m2mf->line_length_in - 1) * stride_out + 1;
+            hwaddr src_span =
+                (hwaddr)(m2mf->line_count - 1) * m2mf->pitch_in +
+                src_line_span;
+            hwaddr dst_span =
+                (hwaddr)(m2mf->line_count - 1) * m2mf->pitch_out +
+                dst_line_span;
+
+            if (d->pgraph.renderer->ops.sync_region_for_transfer) {
+                d->pgraph.renderer->ops.sync_region_for_transfer(
+                    d, src_start, src_span, false);
+                d->pgraph.renderer->ops.sync_region_for_transfer(
+                    d, dst_start, dst_span, true);
+            }
+
+            if (stride_in == 1 && stride_out == 1) {
+                pgraph_m2mf_copy_linear(m2mf, out_base, in_base, in_max,
+                                        out_max);
+            } else {
+                pgraph_m2mf_copy_strided(m2mf, out_base, in_base, in_max,
+                                         out_max, stride_in, stride_out);
+            }
+        }
+    }
+
+    if (m2mf->dma_notify) {
+        hwaddr notify_len = 0;
+        uint8_t *notify_data =
+            (uint8_t *)nv_dma_map(d, m2mf->dma_notify, &notify_len);
+        if (notify_data && notify_len >= 0x1F) {
+            uint32_t ptimer_lo = (uint32_t)ptimer_read(d, NV_PTIMER_TIME_0, 4);
+            uint32_t ptimer_hi = (uint32_t)ptimer_read(d, NV_PTIMER_TIME_1, 4);
+
+            stl_le_p(&notify_data[0x10], ptimer_lo);
+            stl_le_p(&notify_data[0x14], ptimer_hi);
+            stl_le_p(&notify_data[0x18], 0);
+            smp_wmb();
+            stl_le_p(&notify_data[0x1C], 0);
+        }
+    }
+}
+
 int pgraph_method(NV2AState *d, unsigned int subchannel,
                    unsigned int method, uint32_t parameter,
                    uint32_t *parameters, size_t num_words_available,
@@ -634,6 +763,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
     ContextSurfaces2DState *context_surfaces_2d = &pg->context_surfaces_2d;
     ImageBlitState *image_blit = &pg->image_blit;
     BetaState *beta = &pg->beta;
+    M2MFState *m2mf = &pg->m2mf;
 
     assert(subchannel < 8);
 
@@ -693,6 +823,52 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
                 // hardware.
                 beta->beta = parameter & 0x7f800000;
             }
+            break;
+        default:
+            goto unhandled;
+        }
+        break;
+    }
+    case NV_MEMORY_TO_MEMORY_FORMAT: {
+        switch (method) {
+        case NV039_SET_OBJECT:
+            m2mf->object_instance = parameter;
+            break;
+        case NV039_NO_OPERATION:
+            break;
+        case NV039_SET_CONTEXT_DMA_NOTIFIES:
+            m2mf->dma_notify = parameter;
+            break;
+        case NV039_SET_CONTEXT_DMA_BUFFER_IN:
+            m2mf->dma_buffer_in = parameter;
+            break;
+        case NV039_SET_CONTEXT_DMA_BUFFER_OUT:
+            m2mf->dma_buffer_out = parameter;
+            break;
+        case NV039_OFFSET_IN:
+            m2mf->offset_in = parameter;
+            break;
+        case NV039_OFFSET_OUT:
+            m2mf->offset_out = parameter;
+            break;
+        case NV039_PITCH_IN:
+            m2mf->pitch_in = parameter;
+            break;
+        case NV039_PITCH_OUT:
+            m2mf->pitch_out = parameter;
+            break;
+        case NV039_LINE_LENGTH_IN:
+            m2mf->line_length_in = parameter;
+            break;
+        case NV039_LINE_COUNT:
+            m2mf->line_count = parameter;
+            break;
+        case NV039_FORMAT:
+            m2mf->format = parameter;
+            break;
+        case NV039_BUFFER_NOTIFY:
+            m2mf->buf_notify = parameter;
+            pgraph_m2mf_transfer(d);
             break;
         default:
             goto unhandled;
