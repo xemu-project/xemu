@@ -12,6 +12,11 @@ on:
         required: false
         type: boolean
         default: false
+      x64_only:
+        description: Build only x86_64 Windows rows (release defaults to both architectures)
+        required: false
+        type: boolean
+        default: false
     outputs:
       pkg_version:
         description: Build version
@@ -83,6 +88,7 @@ jobs:
     uses: ./.github/workflows/build-windows.yml
     with:
       pkg_version: ${{ needs.source.outputs.pkg_version }}
+      x64_only: ${{ inputs.x64_only }}
 
   # This is deliberately a probe-only Windows job. It never feeds a release
   # and is enabled only by the Windows-focused CI caller.

@@ -19,3 +19,4 @@ jobs:
     with:
       ref: ${{ github.ref }}
       windows_only: true
+      x64_only: true

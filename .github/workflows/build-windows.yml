@@ -7,6 +7,11 @@ on:
         description: Build version
         required: true
         type: string
+      x64_only:
+        description: Build only the x86_64 Windows matrix rows
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -14,7 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [x86_64, arm64]
+        # Keep the architecture list closed and repository-controlled; callers
+        # can only select the x86_64 subset through the typed boolean input.
+        arch: ${{ fromJSON(inputs.x64_only && '["x86_64"]' || '["x86_64", "arm64"]') }}
         configuration: [debug, release]
     container:
       image: ghcr.io/xemu-project/xemu-win64-toolchain${{ matrix.arch == 'x86_64' && '-gcc:sha-2881edd' || ':sha-0d06ce8' }}
@@ -94,7 +101,7 @@ jobs:
     needs: build
     strategy:
       matrix:
-        arch: [x86_64, arm64]
+        arch: ${{ fromJSON(inputs.x64_only && '["x86_64"]' || '["x86_64", "arm64"]') }}
         configuration: [debug, release]
     steps:
     - name: Download artifacts
