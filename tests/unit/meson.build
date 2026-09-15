@@ -198,3 +198,126 @@ foreach test_name, extra: tests
        priority: slow_tests.get(test_name, 30),
        suite: ['unit'])
 endforeach
+
+vsh_cpu_transform_test = executable(
+  'test-vsh-cpu-transform',
+  ['test-vsh-cpu-transform.cc',
+   '../../hw/xbox/nv2a/pgraph/d3d11/vsh_cpu_transform.cc'],
+  include_directories: include_directories('../..'),
+  dependencies: [glib, nv2a_vsh_cpu])
+test('test-vsh-cpu-transform', vsh_cpu_transform_test,
+     protocol: 'exitcode', suite: ['unit'])
+
+if host_os == 'windows'
+  d3d11_test_dep = cc.find_library('d3d11', required: true)
+  dxgi_test_dep = cc.find_library('dxgi', required: true)
+  d3d11_present_test = executable(
+    'test-d3d11-present',
+    ['d3d11-present-test.cc', '../../ui/xui/d3d11-present.cc'],
+    include_directories: include_directories('../..'),
+    dependencies: [d3d11_test_dep, dxgi_test_dep])
+  test('test-d3d11-present', d3d11_present_test,
+       protocol: 'exitcode', suite: ['unit'])
+
+  d3d11_corewindow_present_test = executable(
+    'test-d3d11-corewindow-present',
+    ['d3d11-corewindow-present-test.cc',
+     '../../ui/xui/d3d11-corewindow-present.cc'],
+    include_directories: include_directories('../..'),
+    dependencies: [d3d11_test_dep, dxgi_test_dep])
+  test('test-d3d11-corewindow-present', d3d11_corewindow_present_test,
+       protocol: 'exitcode', suite: ['unit'])
+
+  d3d11_clear_test = executable(
+    'test-d3d11-clear',
+    ['d3d11-clear-test.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/clear.cc',
+     '../../hw/xbox/nv2a/pgraph/clear.c'],
+    include_directories: include_directories('../..'),
+    dependencies: [d3d11_test_dep, dxgi_test_dep])
+  test('test-d3d11-clear', d3d11_clear_test,
+       protocol: 'exitcode', suite: ['unit'])
+
+  d3d11_clear_adapter_test = executable(
+    'test-d3d11-clear-adapter',
+    ['d3d11-clear-adapter-test.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/clear-adapter.cc',
+     '../../hw/xbox/nv2a/pgraph/clear.c'],
+    include_directories: include_directories('../..'),
+    dependencies: [d3d11_test_dep, dxgi_test_dep])
+  test('test-d3d11-clear-adapter', d3d11_clear_adapter_test,
+       protocol: 'exitcode', suite: ['unit'])
+
+  d3d11_clear_executor_test = executable(
+    'test-d3d11-clear-executor',
+    ['d3d11-clear-executor-test.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/clear-executor.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/surface-adapter.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/clear-adapter.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/clear.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/context.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/surface.cc',
+     '../../hw/xbox/nv2a/pgraph/clear.c'],
+    include_directories: include_directories('../..'),
+    dependencies: [qemuutil, d3d11_test_dep, dxgi_test_dep])
+  test('test-d3d11-clear-executor', d3d11_clear_executor_test,
+       protocol: 'exitcode', suite: ['unit'])
+
+  d3d11_draw_executor_test = executable(
+    'test-d3d11-draw-executor',
+    ['d3d11-draw-executor-test.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/draw-executor.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/draw.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/vsh_cpu_transform.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/vertex-adapter.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/state-adapter.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/surface-adapter.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/context.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/surface.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/clear.cc',
+     '../../hw/xbox/nv2a/pgraph/clear.c'],
+    include_directories: include_directories('../..'),
+    dependencies: [qemuutil, nv2a_vsh_cpu, d3d11_test_dep, dxgi_test_dep])
+  test('test-d3d11-draw-executor', d3d11_draw_executor_test,
+       protocol: 'exitcode', suite: ['unit'])
+
+  d3d11_surface_test = executable(
+    'test-d3d11-surface',
+    ['d3d11-surface-test.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/surface.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/clear.cc',
+     '../../hw/xbox/nv2a/pgraph/clear.c'],
+    include_directories: include_directories('../..'),
+    dependencies: [d3d11_test_dep, dxgi_test_dep])
+  test('test-d3d11-surface', d3d11_surface_test,
+       protocol: 'exitcode', suite: ['unit'])
+
+  d3d11_draw_test = executable(
+    'test-d3d11-draw',
+    ['d3d11-draw-test.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/draw.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/clear.cc',
+     '../../hw/xbox/nv2a/pgraph/clear.c'],
+    include_directories: include_directories('../..'),
+    dependencies: [d3d11_test_dep, dxgi_test_dep])
+  test('test-d3d11-draw', d3d11_draw_test,
+       protocol: 'exitcode', suite: ['unit'])
+
+  d3d11_state_adapter_test = executable(
+    'test-d3d11-state-adapter',
+    ['d3d11-state-adapter-test.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/state-adapter.cc'],
+    include_directories: include_directories('../..'),
+    dependencies: [d3d11_test_dep, dxgi_test_dep])
+  test('test-d3d11-state-adapter', d3d11_state_adapter_test,
+       protocol: 'exitcode', suite: ['unit'])
+endif
+
+d3d11_vertex_adapter_test = executable(
+  'test-d3d11-vertex-adapter',
+  ['d3d11-vertex-adapter-test.cc',
+   '../../hw/xbox/nv2a/pgraph/d3d11/vertex-adapter.cc'] + genh,
+  include_directories: include_directories('../..'),
+  dependencies: [glib])
+test('test-d3d11-vertex-adapter', d3d11_vertex_adapter_test,
+     protocol: 'exitcode', suite: ['unit'])
