@@ -77,8 +77,8 @@ static const VkBlendOp pgraph_blend_equation_vk_map[] = {
     VK_BLEND_OP_ADD,
     VK_BLEND_OP_MIN,
     VK_BLEND_OP_MAX,
-    VK_BLEND_OP_REVERSE_SUBTRACT,
     VK_BLEND_OP_ADD,
+    VK_BLEND_OP_REVERSE_SUBTRACT,
 };
 
 /* FIXME

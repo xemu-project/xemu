@@ -167,14 +167,6 @@ void pgraph_gl_draw_begin(NV2AState *d)
 
     if (pgraph_reg_r(pg, NV_PGRAPH_BLEND) & NV_PGRAPH_BLEND_EN) {
         glEnable(GL_BLEND);
-        uint32_t sfactor = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
-                                    NV_PGRAPH_BLEND_SFACTOR);
-        uint32_t dfactor = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
-                                    NV_PGRAPH_BLEND_DFACTOR);
-        assert(sfactor < ARRAY_SIZE(pgraph_blend_factor_gl_map));
-        assert(dfactor < ARRAY_SIZE(pgraph_blend_factor_gl_map));
-        glBlendFunc(pgraph_blend_factor_gl_map[sfactor],
-                    pgraph_blend_factor_gl_map[dfactor]);
 
         uint32_t equation = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
                                      NV_PGRAPH_BLEND_EQN);
@@ -186,6 +178,23 @@ void pgraph_gl_draw_begin(NV2AState *d)
         pgraph_argb_pack32_to_rgba_float(blend_color, gl_blend_color);
         glBlendColor(gl_blend_color[0], gl_blend_color[1], gl_blend_color[2],
                      gl_blend_color[3]);
+        uint32_t sfactor = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
+                                    NV_PGRAPH_BLEND_SFACTOR);
+        uint32_t dfactor = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
+                                    NV_PGRAPH_BLEND_DFACTOR);
+        assert(sfactor < ARRAY_SIZE(pgraph_blend_factor_gl_map));
+        assert(dfactor < ARRAY_SIZE(pgraph_blend_factor_gl_map));
+
+        if (equation < 5) {           
+            glBlendFunc(pgraph_blend_factor_gl_map[sfactor],
+                        pgraph_blend_factor_gl_map[dfactor]);
+        } else {           
+            glBlendFuncSeparate(pgraph_blend_factor_gl_map[3],
+                                pgraph_blend_factor_gl_map[1],
+                                pgraph_blend_factor_gl_map[sfactor],
+                                pgraph_blend_factor_gl_map[dfactor]);
+        }
+
     } else {
         glDisable(GL_BLEND);
     }
