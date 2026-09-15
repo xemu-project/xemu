@@ -18,6 +18,10 @@
 //
 #pragma once
 
+#include <vector>
+
+#include "hw/xbox/nv2a/debug.h"
+
 class DebugApuWindow
 {
 public:
@@ -29,6 +33,13 @@ public:
 class DebugVideoWindow
 {
 public:
+    enum class LegendSortMode : int {
+        DEFAULT,
+        ALPHABETICAL_AZ,
+        ALPHABETICAL_ZA,
+        VALUE
+    } m_legend_sort_mode;
+
     bool m_is_open;
     bool m_transparent;
     bool m_position_restored;
@@ -37,6 +48,26 @@ public:
 
     DebugVideoWindow();
     void Draw();
+
+private:
+    struct CounterEntry {
+        int index;
+        int value;
+    };
+
+    static constexpr int NUM_EXTRA_COUNTERS = 1;
+    static constexpr int INDEX_MSPF = NV2A_PROF__COUNT;
+
+    int m_hovered_counter_index;
+    bool m_counter_visible[NV2A_PROF__COUNT + NUM_EXTRA_COUNTERS];
+
+    std::vector<const char *> m_legend_names;
+    std::vector<int> m_legend_indices_sorted_az;
+
+    std::vector<CounterEntry> m_counter_index_to_value;
+
+    void DrawAdvancedContent();
+    int FindHoveredPlotLineIndex();
 };
 
 extern DebugApuWindow apu_window;
