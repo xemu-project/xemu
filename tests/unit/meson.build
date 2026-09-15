@@ -96,6 +96,7 @@ if have_block
     'test-timed-average': [],
     'test-uuid': [],
     'test-pgraph-clear': ['../../hw/xbox/nv2a/pgraph/clear.c'],
+    'test-psh-reference': ['../../hw/xbox/nv2a/pgraph/psh_reference.c'],
 }
   if gnutls.found() and \
      tasn1.found() and \
@@ -311,6 +312,27 @@ if host_os == 'windows'
     dependencies: [d3d11_test_dep, dxgi_test_dep])
   test('test-d3d11-state-adapter', d3d11_state_adapter_test,
        protocol: 'exitcode', suite: ['unit'])
+
+  psh_interpreter_test = executable(
+    'test-psh-interpreter',
+    ['test-psh-interpreter.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/psh_interpreter.cc',
+     '../../hw/xbox/nv2a/pgraph/psh_reference.c'],
+    include_directories: include_directories('../..'),
+    dependencies: [qemuutil])
+  test('test-psh-interpreter', psh_interpreter_test,
+       protocol: 'exitcode', suite: ['unit'])
+
+  psh_interpreter_warp_test = executable(
+    'test-psh-interpreter-warp',
+    ['test-psh-interpreter-warp.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/psh_interpreter.cc',
+     '../../hw/xbox/nv2a/pgraph/psh_reference.c'],
+    include_directories: include_directories('../..'),
+    dependencies: [d3d11_test_dep, dxgi_test_dep, qemuutil])
+  test('test-psh-interpreter-warp', psh_interpreter_warp_test,
+       protocol: 'exitcode', suite: ['unit'])
+
 endif
 
 d3d11_vertex_adapter_test = executable(

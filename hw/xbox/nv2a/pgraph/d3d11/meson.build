@@ -6,3 +6,4 @@ specific_ss.add([d3d11_clear_dep, dxgi_clear_dep,
                        'context.cc', 'surface.cc',
                        'state-adapter.cc')])
 specific_ss.add(files('draw.cc', 'draw-executor.cc', 'vertex-adapter.cc'))
+specific_ss.add(files('psh_interpreter.cc', 'vsh_cpu_transform.cc'))

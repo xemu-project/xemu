@@ -82,10 +82,10 @@ enum PS_REGISTER
     PS_REGISTER_V1R0_SUM=          0x0eL, // r
     PS_REGISTER_EF_PROD=           0x0fL, // r
 
-    PS_REGISTER_ONE=               PS_REGISTER_ZERO | PS_INPUTMAPPING_UNSIGNED_INVERT, // OK for final combiner
-    PS_REGISTER_NEGATIVE_ONE=      PS_REGISTER_ZERO | PS_INPUTMAPPING_EXPAND_NORMAL,   // invalid for final combiner
-    PS_REGISTER_ONE_HALF=          PS_REGISTER_ZERO | PS_INPUTMAPPING_HALFBIAS_NEGATE, // invalid for final combiner
-    PS_REGISTER_NEGATIVE_ONE_HALF= PS_REGISTER_ZERO | PS_INPUTMAPPING_HALFBIAS_NORMAL, // invalid for final combiner
+    PS_REGISTER_ONE=               0x20L, // PS_REGISTER_ZERO | UNSIGNED_INVERT; OK for final combiner
+    PS_REGISTER_NEGATIVE_ONE=      0x40L, // PS_REGISTER_ZERO | EXPAND_NORMAL; invalid for final combiner
+    PS_REGISTER_ONE_HALF=          0xa0L, // PS_REGISTER_ZERO | HALFBIAS_NEGATE; invalid for final combiner
+    PS_REGISTER_NEGATIVE_ONE_HALF= 0x80L, // PS_REGISTER_ZERO | HALFBIAS_NORMAL; invalid for final combiner
 };
 
 enum PS_COMBINERCOUNTFLAGS

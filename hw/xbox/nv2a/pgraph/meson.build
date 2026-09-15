@@ -2,6 +2,7 @@ specific_ss.add(files(
 	'clear.c',
 	'pgraph.c',
 	'profile.c',
+	'psh_reference.c',
 	'rdi.c',
 	's3tc.c',
 	'swizzle.c',
