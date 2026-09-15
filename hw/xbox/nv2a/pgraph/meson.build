@@ -1,4 +1,5 @@
 specific_ss.add(files(
+	'clear.c',
 	'pgraph.c',
 	'profile.c',
 	'rdi.c',

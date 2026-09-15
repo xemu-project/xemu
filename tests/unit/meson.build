@@ -95,7 +95,8 @@ if have_block
     'test-crypto-block': [io],
     'test-timed-average': [],
     'test-uuid': [],
-  }
+    'test-pgraph-clear': ['../../hw/xbox/nv2a/pgraph/clear.c'],
+}
   if gnutls.found() and \
      tasn1.found() and \
      host_os != 'windows'
