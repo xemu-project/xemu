@@ -1,10 +1,40 @@
 #include "hw/xbox/nv2a/pgraph/d3d11/state-adapter.h"
 
+#include "hw/xbox/nv2a/pgraph/pgraph.h"
+
 #ifdef _WIN32
 
+#include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/nv2a_regs.h"
 
 #include <cstring>
+
+static DMAObject g_bridge_dma = {};
+static unsigned g_bridge_dirty_calls = 0;
+
+extern "C" uint64_t memory_region_size(MemoryRegion *mr)
+{
+    return int128_get64(mr->size);
+}
+
+extern "C" DMAObject nv_dma_load(NV2AState *, hwaddr)
+{
+    return g_bridge_dma;
+}
+
+extern "C" void memory_region_set_client_dirty(MemoryRegion *, hwaddr, hwaddr,
+                                               unsigned)
+{
+    ++g_bridge_dirty_calls;
+}
+
+extern "C" void pgraph_get_clear_color(PGRAPHState *, float rgba[4])
+{
+    rgba[0] = 0.25f;
+    rgba[1] = 0.5f;
+    rgba[2] = 0.75f;
+    rgba[3] = 1.0f;
+}
 
 namespace {
 

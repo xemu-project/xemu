@@ -13,7 +13,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "../../nv2a_regs.h"
+#include "d3d11_bridge.h"
 
 struct NV2AState;
 struct PGRAPHState;
@@ -38,7 +38,7 @@ struct D3D11CanonicalVertex {
  * array formats are F, UB_D3D, UB_OGL, S1, S32K, and CMP; inactive attributes
  * retain their inline_value defaults. */
 struct D3D11CanonicalVshInputs {
-    float values[NV2A_VERTEXSHADER_ATTRIBUTES][4] = {};
+    float values[D3D11_BRIDGE_VERTEX_ATTRIBUTES][4] = {};
 };
 
 struct D3D11VertexPlan {

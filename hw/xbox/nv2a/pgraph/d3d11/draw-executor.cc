@@ -4,8 +4,7 @@
 
 #ifdef _WIN32
 
-#include "../../nv2a_int.h"
-#include "../../nv2a_regs.h"
+#include "d3d11_bridge.h"
 #include "draw_shaders.h"
 #include "vsh_cpu_passthrough.h"
 
@@ -21,6 +20,9 @@ namespace xemu {
 namespace {
 
 using Microsoft::WRL::ComPtr;
+
+constexpr float kNv2aF16Max = 511.9375f;
+constexpr float kNv2aF24Max = 1.0E30f;
 
 static_assert(offsetof(D3D11CanonicalVertex, position) == 0);
 static_assert(offsetof(D3D11CanonicalVertex, color) == sizeof(float) * 3);
@@ -51,40 +53,30 @@ static_assert(offsetof(d3d11_vsh::VshCpuVertexOutput, oT2) ==
 static_assert(offsetof(d3d11_vsh::VshCpuVertexOutput, oT3) ==
               sizeof(float) * 47);
 
-uint32_t VshMode(const PGRAPHState *pg)
+uint32_t VshMode(const D3D11BridgePgraphSnapshot &pg)
 {
-    return pg == nullptr ?
-               UINT32_MAX :
-               GET_MASK(pg->regs_[NV_PGRAPH_CSV0_D], NV_PGRAPH_CSV0_D_MODE);
+    return pg.vsh_mode;
 }
 
-bool GetProgrammableVsh(const PGRAPHState *pg,
-                        std::array<uint32_t, NV2A_MAX_TRANSFORM_PROGRAM_LENGTH *
-                                                 VSH_TOKEN_SIZE> *tokens,
-                        uint32_t *token_count)
+bool GetProgrammableVsh(
+    const PGRAPHState *pg,
+    std::array<uint32_t, D3D11_BRIDGE_MAX_PROGRAM_TOKENS *
+                             D3D11_BRIDGE_VSH_TOKEN_WORDS> *tokens,
+    uint32_t *token_count)
 {
     if (pg == nullptr || tokens == nullptr || token_count == nullptr) {
         return false;
     }
-    const uint32_t start = GET_MASK(pg->regs_[NV_PGRAPH_CSV0_C],
-                                    NV_PGRAPH_CSV0_C_CHEOPS_PROGRAM_START);
-    if (start >= NV2A_MAX_TRANSFORM_PROGRAM_LENGTH) {
+    size_t count = 0;
+    if (!d3d11_bridge_copy_program(pg, tokens->data(),
+                                   D3D11_BRIDGE_MAX_PROGRAM_TOKENS *
+                                       D3D11_BRIDGE_VSH_TOKEN_WORDS,
+                                   &count) ||
+        count > UINT32_MAX) {
         return false;
     }
-    uint32_t count = 0;
-    for (; start + count < NV2A_MAX_TRANSFORM_PROGRAM_LENGTH; ++count) {
-        const uint32_t *source = pg->program_data[start + count];
-        std::memcpy(tokens->data() + count * VSH_TOKEN_SIZE, source,
-                    sizeof(uint32_t) * VSH_TOKEN_SIZE);
-        /* FLD_FINAL is token dword 3 bit 0.  Keep this scan local to the
-         * bounded raw-token layout; the C disassembler is invoked only after
-         * the range has been proven. */
-        if ((source[3] & 1u) != 0) {
-            *token_count = count + 1;
-            return true;
-        }
-    }
-    return false;
+    *token_count = static_cast<uint32_t>(count);
+    return true;
 }
 
 bool HasContextOutputs(const uint32_t *tokens, uint32_t token_count)
@@ -114,11 +106,11 @@ bool HasContextOutputs(const uint32_t *tokens, uint32_t token_count)
 bool ValidProgrammableTokens(const uint32_t *tokens, uint32_t token_count)
 {
     if (tokens == nullptr || token_count == 0 ||
-        token_count > NV2A_MAX_TRANSFORM_PROGRAM_LENGTH) {
+        token_count > D3D11_BRIDGE_MAX_PROGRAM_TOKENS) {
         return false;
     }
     for (uint32_t i = 0; i < token_count; ++i) {
-        const uint32_t *token = tokens + i * VSH_TOKEN_SIZE;
+        const uint32_t *token = tokens + i * D3D11_BRIDGE_VSH_TOKEN_WORDS;
         if (((token[1] >> 21) & 0xfu) > 13u || ((token[1] >> 25) & 0x7u) > 7u) {
             return false;
         }
@@ -126,16 +118,13 @@ bool ValidProgrammableTokens(const uint32_t *tokens, uint32_t token_count)
     return true;
 }
 
-float VshClipRange(const PGRAPHState *pg)
+float VshClipRange(const D3D11BridgePgraphSnapshot &pg)
 {
-    if (pg == nullptr) {
-        return 1.0f;
-    }
-    switch (pg->surface_shape.zeta_format) {
-    case NV097_SET_SURFACE_FORMAT_ZETA_Z16:
-        return pg->surface_shape.z_format ? f16_max : 65535.0f;
-    case NV097_SET_SURFACE_FORMAT_ZETA_Z24S8:
-        return pg->surface_shape.z_format ? f24_max : 16777215.0f;
+    switch (pg.zeta_format) {
+    case D3D11_BRIDGE_ZETA_Z16:
+        return pg.z_format ? kNv2aF16Max : 65535.0f;
+    case D3D11_BRIDGE_ZETA_Z24S8:
+        return pg.z_format ? kNv2aF24Max : 16777215.0f;
     default:
         return 1.0f;
     }
@@ -372,10 +361,10 @@ bool D3D11DrawExecutor::MarkDrawDirty(NV2AState *state, bool color, bool zeta,
     }
     if (state != nullptr) {
         if (color_writes) {
-            state->pgraph.surface_color.draw_dirty = true;
+            d3d11_bridge_mark_surface_draw_dirty(state, true, true);
         }
         if (zeta && (depth_writes || stencil_writes)) {
-            state->pgraph.surface_zeta.draw_dirty = true;
+            d3d11_bridge_mark_surface_draw_dirty(state, false, true);
         }
     }
     return true;
@@ -390,9 +379,14 @@ D3D11DrawExecutorResult D3D11DrawExecutor::Execute(NV2AState *state)
         result.color.status = D3D11DrawExecutorStatus::WrongThread;
         return result;
     }
-    if (state == nullptr || state->vram == nullptr ||
-        state->vram_ptr == nullptr || m_device == nullptr ||
-        m_context == nullptr || !m_pgraph_context->valid()) {
+    uint8_t *vram = nullptr;
+    uint64_t vram_size = 0;
+    const PGRAPHState *pg = d3d11_bridge_pgraph(state);
+    D3D11BridgePgraphSnapshot pg_snapshot = {};
+    if (state == nullptr || !d3d11_bridge_vram_view(state, &vram, &vram_size) ||
+        !d3d11_bridge_snapshot_pgraph(pg, &pg_snapshot) ||
+        m_device == nullptr || m_context == nullptr ||
+        !m_pgraph_context->valid()) {
         result.status =
             m_pgraph_context != nullptr && !m_pgraph_context->valid() ?
                 D3D11DrawExecutorStatus::DeviceError :
@@ -400,7 +394,7 @@ D3D11DrawExecutorResult D3D11DrawExecutor::Execute(NV2AState *state)
         result.color.status = result.status;
         return result;
     }
-    const uint32_t vsh_mode = VshMode(&state->pgraph);
+    const uint32_t vsh_mode = VshMode(pg_snapshot);
     if (vsh_mode != 0 && vsh_mode != 2) {
         result.status = D3D11DrawExecutorStatus::Unsupported;
         result.color.status = result.status;
@@ -409,30 +403,30 @@ D3D11DrawExecutorResult D3D11DrawExecutor::Execute(NV2AState *state)
 
     uint32_t width = 0;
     uint32_t height = 0;
-    if (!GetDimensions(&state->pgraph, &width, &height)) {
+    if (!GetDimensions(pg, &width, &height)) {
         result.status = D3D11DrawExecutorStatus::Invalid;
         result.color.status = result.status;
         return result;
     }
 
     D3D11VertexPlan vertex_plan;
-    if (d3d11_build_vertex_plan(
-            state, &state->pgraph, memory_region_size(state->vram),
-            &vertex_plan) != D3D11VertexAdapterStatus::Ready) {
+    if (d3d11_build_vertex_plan(state, pg, vram_size, &vertex_plan) !=
+        D3D11VertexAdapterStatus::Ready) {
         result.color.status = D3D11DrawExecutorStatus::Unsupported;
         result.status = result.color.status;
         return result;
     }
     const bool programmable_vsh = vsh_mode == 2;
-    std::array<uint32_t, NV2A_MAX_TRANSFORM_PROGRAM_LENGTH * VSH_TOKEN_SIZE>
+    std::array<uint32_t,
+               D3D11_BRIDGE_MAX_PROGRAM_TOKENS * D3D11_BRIDGE_VSH_TOKEN_WORDS>
         programmable_tokens = {};
     uint32_t programmable_token_count = 0;
     if (programmable_vsh &&
-        (!GetProgrammableVsh(&state->pgraph, &programmable_tokens,
+        (!GetProgrammableVsh(pg, &programmable_tokens,
                              &programmable_token_count) ||
          !ValidProgrammableTokens(programmable_tokens.data(),
                                   programmable_token_count) ||
-         state->pgraph.enable_vertex_program_write ||
+         pg_snapshot.vertex_program_write ||
          HasContextOutputs(programmable_tokens.data(),
                            programmable_token_count))) {
         /* The CPU fallback has no state writeback boundary.  Reject context
@@ -444,13 +438,13 @@ D3D11DrawExecutorResult D3D11DrawExecutor::Execute(NV2AState *state)
     D3D11PgraphDrawState draw_state = {};
     const D3D11PgraphTargetDimensions target = { width, height };
     const D3D11PgraphStateCapabilities capabilities = {
-        state->pgraph.surface_scale_factor,
-        NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1,
+        pg_snapshot.surface_scale_factor,
+        D3D11_BRIDGE_ANTIALIAS_CENTER_1,
         D3D11ShaderDepthConvention::ZeroToOne,
         D3D11PgraphClipOrigin::BottomLeft,
     };
-    if (d3d11_build_draw_state(&state->pgraph, &target, &capabilities,
-                               &draw_state) != D3D11PgraphStateStatus::Ready) {
+    if (d3d11_build_draw_state(pg, &target, &capabilities, &draw_state) !=
+        D3D11PgraphStateStatus::Ready) {
         result.color.status = D3D11DrawExecutorStatus::Unsupported;
         result.status = result.color.status;
         return result;
@@ -459,14 +453,22 @@ D3D11DrawExecutorResult D3D11DrawExecutor::Execute(NV2AState *state)
     std::vector<d3d11_vsh::VshCpuVertexOutput> programmable_vertices;
     if (programmable_vsh) {
         d3d11_vsh::VshCpuTransformOptions options = {};
+        std::array<uint32_t, D3D11_BRIDGE_VSH_CONSTANTS * 4> constants = {};
+        size_t constant_words = 0;
+        if (!d3d11_bridge_copy_vsh_constants(
+                pg, constants.data(), constants.size(), &constant_words)) {
+            result.color.status = D3D11DrawExecutorStatus::Unsupported;
+            result.status = result.color.status;
+            return result;
+        }
         options.constants =
-            reinterpret_cast<const float (*)[4]>(state->pgraph.vsh_constants);
+            reinterpret_cast<const float (*)[4]>(constants.data());
         options.postprocess = d3d11_vsh::DefaultVshCpuPostprocess();
         options.postprocess.surface_size[0] = static_cast<float>(width);
         options.postprocess.surface_size[1] = static_cast<float>(height);
         /* GLSL derives clipRange from the configured zeta format even when
          * the D3D11 color-only path cannot bind a usable zeta attachment. */
-        options.postprocess.clip_range[1] = VshClipRange(&state->pgraph);
+        options.postprocess.clip_range[1] = VshClipRange(pg_snapshot);
         options.serialize_context_writes = false;
         char error[128] = {};
         if (d3d11_vsh::TransformPlan(
@@ -492,7 +494,7 @@ D3D11DrawExecutorResult D3D11DrawExecutor::Execute(NV2AState *state)
 
     /* A zero-sized/unbound zeta is the normal color-only case.  If a zeta is
      * configured, its failure is reported but never prevents color drawing. */
-    const bool zeta_requested = state->pgraph.surface_zeta.pitch != 0;
+    const bool zeta_requested = pg_snapshot.zeta_surface.pitch != 0;
     D3D11SurfaceDescriptor zeta_descriptor = {};
     D3D11SurfaceStatus zeta_surface_status = D3D11SurfaceStatus::Ok;
     bool zeta_usable = false;
@@ -532,7 +534,7 @@ D3D11DrawExecutorResult D3D11DrawExecutor::Execute(NV2AState *state)
     D3D11SurfaceSnapshot old_color = m_color;
     D3D11SurfaceSnapshot old_zeta = m_depth_stencil;
     D3D11SurfaceSnapshot acquired_color = m_pgraph_context->Acquire(
-        color_descriptor, state->vram_ptr, memory_region_size(state->vram),
+        color_descriptor, vram, static_cast<size_t>(vram_size),
         D3D11SurfaceAttachment::Color);
     if (!acquired_color) {
         result.color = AttachmentFailure(
@@ -549,7 +551,7 @@ D3D11DrawExecutorResult D3D11DrawExecutor::Execute(NV2AState *state)
     if (zeta_usable &&
         result.depth_stencil.status == D3D11DrawExecutorStatus::NotRequested) {
         D3D11SurfaceSnapshot acquired_zeta = m_pgraph_context->Acquire(
-            zeta_descriptor, state->vram_ptr, memory_region_size(state->vram),
+            zeta_descriptor, vram, static_cast<size_t>(vram_size),
             D3D11SurfaceAttachment::DepthStencil);
         if (!acquired_zeta) {
             const D3D11SurfaceStatus status =
@@ -574,8 +576,8 @@ D3D11DrawExecutorResult D3D11DrawExecutor::Execute(NV2AState *state)
     }
 
     if (m_color->upload_dirty() &&
-        !m_pgraph_context->Upload(m_color, state->vram_ptr,
-                                  memory_region_size(state->vram))) {
+        !m_pgraph_context->Upload(m_color, vram,
+                                  static_cast<size_t>(vram_size))) {
         result.color = AttachmentFailure(
             SurfaceStatus(m_pgraph_context->last_operation_status()),
             m_pgraph_context->last_operation_status());
@@ -583,8 +585,8 @@ D3D11DrawExecutorResult D3D11DrawExecutor::Execute(NV2AState *state)
         return result;
     }
     if (zeta_usable && m_depth_stencil && m_depth_stencil->upload_dirty() &&
-        !m_pgraph_context->Upload(m_depth_stencil, state->vram_ptr,
-                                  memory_region_size(state->vram))) {
+        !m_pgraph_context->Upload(m_depth_stencil, vram,
+                                  static_cast<size_t>(vram_size))) {
         const D3D11SurfaceStatus status =
             m_pgraph_context->last_operation_status();
         result.depth_stencil = AttachmentFailure(SurfaceStatus(status), status);
@@ -736,9 +738,12 @@ bool D3D11DrawExecutor::FlushAttachment(NV2AState *state, bool color)
     const D3D11SurfaceAttachment attachment =
         color ? D3D11SurfaceAttachment::Color :
                 D3D11SurfaceAttachment::DepthStencil;
-    if (!m_pgraph_context->Download(snapshot, state->vram_ptr,
-                                    memory_region_size(state->vram),
-                                    attachment)) {
+    uint8_t *vram = nullptr;
+    uint64_t vram_size = 0;
+    if (!d3d11_bridge_vram_view(state, &vram, &vram_size) ||
+        vram_size > SIZE_MAX ||
+        !m_pgraph_context->Download(
+            snapshot, vram, static_cast<size_t>(vram_size), attachment)) {
         return false;
     }
     return true;
@@ -755,8 +760,10 @@ bool D3D11DrawExecutor::Flush(NV2AState *state, D3D11DrawFlushReport *report)
         report->status = D3D11DrawExecutorStatus::WrongThread;
         return false;
     }
-    if (state == nullptr || state->vram == nullptr ||
-        state->vram_ptr == nullptr || m_pgraph_context == nullptr) {
+    uint8_t *vram = nullptr;
+    uint64_t vram_size = 0;
+    if (state == nullptr || !d3d11_bridge_vram_view(state, &vram, &vram_size) ||
+        vram_size > SIZE_MAX || m_pgraph_context == nullptr) {
         report->status = D3D11DrawExecutorStatus::Invalid;
         return false;
     }
@@ -765,12 +772,12 @@ bool D3D11DrawExecutor::Flush(NV2AState *state, D3D11DrawFlushReport *report)
     bool zeta_ok = false;
     if (m_pgraph_context->valid()) {
         retired_ok = m_pgraph_context->FlushRetired(
-            state->vram_ptr, memory_region_size(state->vram));
+            vram, static_cast<size_t>(vram_size));
         if (m_color && m_depth_stencil &&
             m_color.get() == m_depth_stencil.get() &&
             (m_color->draw_dirty() || m_color->download_dirty())) {
             const bool alias_ok = m_pgraph_context->Download(
-                m_color, state->vram_ptr, memory_region_size(state->vram),
+                m_color, vram, static_cast<size_t>(vram_size),
                 D3D11SurfaceAttachment::Color |
                     D3D11SurfaceAttachment::DepthStencil);
             color_ok = alias_ok;

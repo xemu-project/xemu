@@ -42,6 +42,14 @@ extern "C" void memory_region_set_client_dirty(MemoryRegion *, hwaddr offset,
     g_dirty_calls.push_back({ offset, size, client });
 }
 
+extern "C" void pgraph_get_clear_color(PGRAPHState *, float rgba[4])
+{
+    rgba[0] = 0.25f;
+    rgba[1] = 0.5f;
+    rgba[2] = 0.75f;
+    rgba[3] = 1.0f;
+}
+
 namespace {
 
 using Microsoft::WRL::ComPtr;

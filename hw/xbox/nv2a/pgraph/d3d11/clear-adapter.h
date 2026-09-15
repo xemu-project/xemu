@@ -22,9 +22,7 @@
 
 #ifdef _WIN32
 
-extern "C" {
-#include "../pgraph.h"
-}
+#include "d3d11_bridge.h"
 #include "clear.h"
 
 namespace xemu {

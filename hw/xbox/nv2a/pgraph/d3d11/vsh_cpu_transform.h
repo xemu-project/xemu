@@ -50,13 +50,13 @@ VshPostprocess DefaultVshCpuPostprocess();
 
 VshCpuTransformStatus
 TransformProgram(const Nv2aVshProgram *program, uint32_t instruction_count,
-                 const float (*inputs)[NV2A_VERTEXSHADER_ATTRIBUTES][4],
+                 const float (*inputs)[D3D11_BRIDGE_VERTEX_ATTRIBUTES][4],
                  uint32_t vertex_count, const VshCpuTransformOptions &options,
                  VshCpuVertexOutput *outputs, char *error, size_t error_size);
 
 VshCpuTransformStatus
 TransformTokens(const uint32_t *tokens, uint32_t token_count,
-                const float (*inputs)[NV2A_VERTEXSHADER_ATTRIBUTES][4],
+                const float (*inputs)[D3D11_BRIDGE_VERTEX_ATTRIBUTES][4],
                 uint32_t vertex_count, const VshCpuTransformOptions &options,
                 VshCpuVertexOutput *outputs, char *error, size_t error_size);
 

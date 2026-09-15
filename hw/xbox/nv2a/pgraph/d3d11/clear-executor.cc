@@ -13,8 +13,6 @@
 
 #ifdef _WIN32
 
-#include "../../nv2a_int.h"
-
 #include <windows.h>
 
 
@@ -22,9 +20,9 @@ namespace xemu {
 
 namespace {
 
-constexpr uint32_t kColorBit = NV097_CLEAR_SURFACE_COLOR;
+constexpr uint32_t kColorBit = D3D11_BRIDGE_CLEAR_COLOR;
 constexpr uint32_t kZetaBits =
-    NV097_CLEAR_SURFACE_Z | NV097_CLEAR_SURFACE_STENCIL;
+    D3D11_BRIDGE_CLEAR_Z | D3D11_BRIDGE_CLEAR_STENCIL;
 constexpr uint32_t kKnownBits = kColorBit | kZetaBits;
 
 D3D11ClearExecutorStatus SurfaceStatusToExecutor(D3D11SurfaceStatus status)
@@ -124,6 +122,17 @@ bool CheckedDimensions(const PGRAPHState *pg, uint32_t *width, uint32_t *height)
     return d3d11_get_surface_dimensions(pg, width, height);
 }
 
+bool Vram(const NV2AState *state, uint8_t **data, size_t *size)
+{
+    uint64_t bridge_size = 0;
+    if (!d3d11_bridge_vram_view(state, data, &bridge_size) ||
+        bridge_size > SIZE_MAX) {
+        return false;
+    }
+    *size = static_cast<size_t>(bridge_size);
+    return true;
+}
+
 } // namespace
 
 D3D11ClearExecutor::D3D11ClearExecutor(D3D11PgraphContext &context)
@@ -207,9 +216,13 @@ D3D11ClearExecutor::ExecuteAttachment(NV2AState *state, bool color,
     const D3D11SurfaceAttachment attachment =
         color ? D3D11SurfaceAttachment::Color :
                 D3D11SurfaceAttachment::DepthStencil;
+    uint8_t *vram = nullptr;
+    size_t vram_size = 0;
+    if (!Vram(state, &vram, &vram_size)) {
+        return result;
+    }
     D3D11SurfaceSnapshot snapshot =
-        m_pgraph_context->Acquire(descriptor, state->vram_ptr,
-                                  memory_region_size(state->vram), attachment);
+        m_pgraph_context->Acquire(descriptor, vram, vram_size, attachment);
     if (!snapshot) {
         result.surface = m_pgraph_context->last_operation_status();
         result.status = SurfaceStatusToExecutor(result.surface);
@@ -227,8 +240,7 @@ D3D11ClearExecutor::ExecuteAttachment(NV2AState *state, bool color,
     result.surface = D3D11SurfaceStatus::Ok;
     D3D11SurfaceResource *resource = snapshot.get();
     if (resource->upload_dirty() &&
-        !m_pgraph_context->Upload(snapshot, state->vram_ptr,
-                                  memory_region_size(state->vram))) {
+        !m_pgraph_context->Upload(snapshot, vram, vram_size)) {
         result.surface = !m_pgraph_context->valid() ?
                              m_pgraph_context->status() :
                              resource->last_operation_status();
@@ -257,11 +269,7 @@ D3D11ClearExecutor::ExecuteAttachment(NV2AState *state, bool color,
         result.status = SurfaceStatusToExecutor(result.surface);
         return result;
     }
-    if (color) {
-        state->pgraph.surface_color.draw_dirty = true;
-    } else {
-        state->pgraph.surface_zeta.draw_dirty = true;
-    }
+    d3d11_bridge_mark_surface_draw_dirty(state, color, true);
     result.surface = D3D11SurfaceStatus::Ok;
     result.status = D3D11ClearExecutorStatus::Cleared;
     return result;
@@ -281,9 +289,14 @@ D3D11ClearExecutorResult D3D11ClearExecutor::Execute(NV2AState *state,
         }
         return result;
     }
-    if (state == nullptr || state->vram == nullptr ||
-        state->vram_ptr == nullptr || m_device == nullptr ||
-        m_context == nullptr || m_pgraph_context == nullptr) {
+    uint8_t *vram = nullptr;
+    size_t vram_size = 0;
+    const PGRAPHState *pg = d3d11_bridge_pgraph(state);
+    D3D11BridgePgraphSnapshot pg_snapshot = {};
+    if (state == nullptr || !Vram(state, &vram, &vram_size) ||
+        !d3d11_bridge_snapshot_pgraph(pg, &pg_snapshot) ||
+        m_device == nullptr || m_context == nullptr ||
+        m_pgraph_context == nullptr) {
         result.status = D3D11ClearExecutorStatus::Invalid;
         return result;
     }
@@ -304,7 +317,7 @@ D3D11ClearExecutorResult D3D11ClearExecutor::Execute(NV2AState *state,
 
     uint32_t width = 0;
     uint32_t height = 0;
-    if (!CheckedDimensions(&state->pgraph, &width, &height)) {
+    if (!CheckedDimensions(pg, &width, &height)) {
         result.status = D3D11ClearExecutorStatus::Invalid;
         if (parameter & kColorBit) {
             result.color.status = D3D11ClearExecutorStatus::Invalid;
@@ -316,7 +329,7 @@ D3D11ClearExecutorResult D3D11ClearExecutor::Execute(NV2AState *state,
     }
 
     D3D11ClearCapabilities capabilities = {
-        state->pgraph.surface_scale_factor,
+        pg_snapshot.surface_scale_factor,
     };
     D3D11ClearBindingDimensions bindings = {
         (parameter & kColorBit) != 0, width, height,
@@ -331,12 +344,12 @@ D3D11ClearExecutorResult D3D11ClearExecutor::Execute(NV2AState *state,
     D3D11SurfaceStatus zeta_surface_status = D3D11SurfaceStatus::Ok;
     const bool color_plan_ready =
         !(parameter & kColorBit) ||
-        d3d11_build_clear_plan(&state->pgraph, parameter & kColorBit, &bindings,
+        d3d11_build_clear_plan(pg, parameter & kColorBit, &bindings,
                                &capabilities,
                                &color_plan) == D3D11ClearPlanStatus::Ready;
     const bool zeta_plan_ready =
         !(parameter & kZetaBits) ||
-        d3d11_build_clear_plan(&state->pgraph, parameter & kZetaBits, &bindings,
+        d3d11_build_clear_plan(pg, parameter & kZetaBits, &bindings,
                                &capabilities,
                                &zeta_plan) == D3D11ClearPlanStatus::Ready;
     const bool color_descriptor_ready =
@@ -364,9 +377,8 @@ D3D11ClearExecutorResult D3D11ClearExecutor::Execute(NV2AState *state,
     if (parameter & kColorBit) {
         if (!color_plan_ready) {
             D3D11ClearPlan ignored = {};
-            const D3D11ClearPlanStatus status =
-                d3d11_build_clear_plan(&state->pgraph, parameter & kColorBit,
-                                       &bindings, &capabilities, &ignored);
+            const D3D11ClearPlanStatus status = d3d11_build_clear_plan(
+                pg, parameter & kColorBit, &bindings, &capabilities, &ignored);
             result.color.status = PlanStatusToExecutor(status);
         } else if (color_descriptor_ready) {
             result.color =
@@ -378,9 +390,8 @@ D3D11ClearExecutorResult D3D11ClearExecutor::Execute(NV2AState *state,
     if (parameter & kZetaBits) {
         if (!zeta_plan_ready) {
             D3D11ClearPlan ignored = {};
-            const D3D11ClearPlanStatus status =
-                d3d11_build_clear_plan(&state->pgraph, parameter & kZetaBits,
-                                       &bindings, &capabilities, &ignored);
+            const D3D11ClearPlanStatus status = d3d11_build_clear_plan(
+                pg, parameter & kZetaBits, &bindings, &capabilities, &ignored);
             result.depth_stencil.status = PlanStatusToExecutor(status);
         } else if (zeta_descriptor_ready) {
             result.depth_stencil =
@@ -405,10 +416,15 @@ bool D3D11ClearExecutor::FlushAttachment(NV2AState *state, bool color,
     if (!resource->draw_dirty() && !resource->download_dirty()) {
         return true;
     }
-    if (!m_pgraph_context->Download(
-            snapshot, state->vram_ptr, memory_region_size(state->vram),
-            color ? D3D11SurfaceAttachment::Color :
-                    D3D11SurfaceAttachment::DepthStencil)) {
+    uint8_t *vram = nullptr;
+    size_t vram_size = 0;
+    if (!Vram(state, &vram, &vram_size)) {
+        return false;
+    }
+    if (!m_pgraph_context->Download(snapshot, vram, vram_size,
+                                    color ?
+                                        D3D11SurfaceAttachment::Color :
+                                        D3D11SurfaceAttachment::DepthStencil)) {
         return false;
     }
     (void)report;
@@ -426,8 +442,9 @@ bool D3D11ClearExecutor::Flush(NV2AState *state, D3D11ClearFlushReport *report)
         report->status = D3D11ClearExecutorStatus::WrongThread;
         return false;
     }
-    if (state == nullptr || state->vram == nullptr ||
-        state->vram_ptr == nullptr) {
+    uint8_t *vram = nullptr;
+    size_t vram_size = 0;
+    if (state == nullptr || !Vram(state, &vram, &vram_size)) {
         *report = {};
         report->status = D3D11ClearExecutorStatus::Invalid;
         return false;
@@ -437,8 +454,7 @@ bool D3D11ClearExecutor::Flush(NV2AState *state, D3D11ClearFlushReport *report)
     bool color_ok = false;
     bool zeta_ok = false;
     if (m_pgraph_context->valid()) {
-        retired_ok = m_pgraph_context->FlushRetired(
-            state->vram_ptr, memory_region_size(state->vram));
+        retired_ok = m_pgraph_context->FlushRetired(vram, vram_size);
         color_ok = FlushAttachment(state, true, report);
         zeta_ok = FlushAttachment(state, false, report);
     } else {

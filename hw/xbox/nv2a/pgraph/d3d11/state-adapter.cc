@@ -4,17 +4,9 @@
 
 #ifdef _WIN32
 
-#include "../../nv2a_regs.h"
-
 #include <cfloat>
 namespace xemu {
 namespace {
-
-uint32_t Read(const PGRAPHState *pg, unsigned int reg)
-{
-    assert(reg % 4 == 0);
-    return pg->regs_[reg];
-}
 
 bool MapBlendFactor(uint32_t value, D3D11_BLEND *result)
 {
@@ -37,8 +29,7 @@ bool MapBlendFactor(uint32_t value, D3D11_BLEND *result)
         D3D11_BLEND_INV_BLEND_FACTOR,
     };
     if (value >= sizeof(table) / sizeof(table[0]) || value == 11 ||
-        value == NV_PGRAPH_BLEND_SFACTOR_CONSTANT_ALPHA ||
-        value == NV_PGRAPH_BLEND_SFACTOR_ONE_MINUS_CONSTANT_ALPHA) {
+        value == 14 || value == 15) {
         return false;
     }
     *result = table[value];
@@ -87,28 +78,28 @@ bool MapComparison(uint32_t value, D3D11_COMPARISON_FUNC *result)
 bool MapStencilOp(uint32_t value, D3D11_STENCIL_OP *result)
 {
     switch (value) {
-    case NV_PGRAPH_CONTROL_2_STENCIL_OP_V_KEEP:
+    case 1:
         *result = D3D11_STENCIL_OP_KEEP;
         return true;
-    case NV_PGRAPH_CONTROL_2_STENCIL_OP_V_ZERO:
+    case 2:
         *result = D3D11_STENCIL_OP_ZERO;
         return true;
-    case NV_PGRAPH_CONTROL_2_STENCIL_OP_V_REPLACE:
+    case 3:
         *result = D3D11_STENCIL_OP_REPLACE;
         return true;
-    case NV_PGRAPH_CONTROL_2_STENCIL_OP_V_INCRSAT:
+    case 4:
         *result = D3D11_STENCIL_OP_INCR_SAT;
         return true;
-    case NV_PGRAPH_CONTROL_2_STENCIL_OP_V_DECRSAT:
+    case 5:
         *result = D3D11_STENCIL_OP_DECR_SAT;
         return true;
-    case NV_PGRAPH_CONTROL_2_STENCIL_OP_V_INVERT:
+    case 6:
         *result = D3D11_STENCIL_OP_INVERT;
         return true;
-    case NV_PGRAPH_CONTROL_2_STENCIL_OP_V_INCR:
+    case 7:
         *result = D3D11_STENCIL_OP_INCR;
         return true;
-    case NV_PGRAPH_CONTROL_2_STENCIL_OP_V_DECR:
+    case 8:
         *result = D3D11_STENCIL_OP_DECR;
         return true;
     default:
@@ -139,7 +130,7 @@ bool ValidRect(uint32_t left, uint32_t top, uint32_t width, uint32_t height,
     return true;
 }
 
-bool ValidInclusiveWindowClips(const PGRAPHState *pg,
+bool ValidInclusiveWindowClips(const D3D11BridgePgraphSnapshot &pg,
                                const D3D11PgraphTargetDimensions &target)
 {
     constexpr uint32_t kMaxCoordinate = 0xFFF;
@@ -151,19 +142,10 @@ bool ValidInclusiveWindowClips(const PGRAPHState *pg,
     const uint32_t expected_ymax = target.height - 1;
     bool full_cover = false;
     for (unsigned int i = 0; i < 8; ++i) {
-        const uint32_t x = Read(pg, NV_PGRAPH_WINDOWCLIPX0 + i * 4);
-        const uint32_t y = Read(pg, NV_PGRAPH_WINDOWCLIPY0 + i * 4);
-        if ((x & ~(NV_PGRAPH_WINDOWCLIPX0_XMIN |
-                   NV_PGRAPH_WINDOWCLIPX0_XMAX)) != 0 ||
-            (y & ~(NV_PGRAPH_WINDOWCLIPY0_YMIN |
-                   NV_PGRAPH_WINDOWCLIPY0_YMAX)) != 0) {
-            return false;
-        }
-        full_cover |=
-            GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN) == 0 &&
-            GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMIN) == 0 &&
-            GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX) >= expected_xmax &&
-            GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX) >= expected_ymax;
+        full_cover |= pg.window_clip_x_min[i] == 0 &&
+                      pg.window_clip_y_min[i] == 0 &&
+                      pg.window_clip_x_max[i] >= expected_xmax &&
+                      pg.window_clip_y_max[i] >= expected_ymax;
     }
     return full_cover;
 }
@@ -181,90 +163,74 @@ d3d11_build_draw_state(const PGRAPHState *pg,
         target->height > FLT_MAX) {
         return D3D11PgraphStateStatus::Invalid;
     }
-    if (pg->primitive_mode != PRIM_TYPE_TRIANGLES ||
-        pg->surface_shape.anti_aliasing !=
-            NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1 ||
+    D3D11BridgePgraphSnapshot snapshot = {};
+    if (!d3d11_bridge_snapshot_pgraph(pg, &snapshot)) {
+        return D3D11PgraphStateStatus::Invalid;
+    }
+    if (snapshot.primitive_mode != 5 ||
+        snapshot.anti_aliasing != D3D11_BRIDGE_ANTIALIAS_CENTER_1 ||
         capabilities->surface_scale_factor != 1 ||
-        capabilities->anti_aliasing !=
-            NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1 ||
+        capabilities->anti_aliasing != D3D11_BRIDGE_ANTIALIAS_CENTER_1 ||
         capabilities->shader_depth_convention !=
             D3D11ShaderDepthConvention::ZeroToOne) {
         return D3D11PgraphStateStatus::Unsupported;
     }
 
-    const uint32_t control0 = Read(pg, NV_PGRAPH_CONTROL_0);
-    const uint32_t control1 = Read(pg, NV_PGRAPH_CONTROL_1);
-    const uint32_t control2 = Read(pg, NV_PGRAPH_CONTROL_2);
-    const uint32_t blend = Read(pg, NV_PGRAPH_BLEND);
-    const uint32_t raster = Read(pg, NV_PGRAPH_SETUPRASTER);
-
     /* These modes need shader work or have no exact D3D11 state. */
-    if ((control0 & (NV_PGRAPH_CONTROL_0_ALPHATESTENABLE |
-                     NV_PGRAPH_CONTROL_0_DITHERENABLE)) ||
-        (blend & NV_PGRAPH_BLEND_LOGICOP_ENABLE) ||
-        (raster & (NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE |
-                   NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE |
-                   NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE |
-                   NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE |
-                   NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE)) ||
-        (Read(pg, NV_PGRAPH_ANTIALIASING) & NV_PGRAPH_ANTIALIASING_ENABLE)) {
+    if (snapshot.alpha_test_enable || snapshot.dither_enable ||
+        snapshot.logic_op_enable || snapshot.polygon_offset_point_enable ||
+        snapshot.polygon_offset_line_enable ||
+        snapshot.polygon_offset_fill_enable || snapshot.polygon_smooth_enable ||
+        snapshot.window_clip_type || snapshot.antialiasing_enable) {
         return D3D11PgraphStateStatus::Unsupported;
     }
-    if (!ValidInclusiveWindowClips(pg, *target)) {
+    if (!snapshot.window_clip_values_valid ||
+        !ValidInclusiveWindowClips(snapshot, *target)) {
         return D3D11PgraphStateStatus::Unsupported;
     }
-    if ((GET_MASK(raster, NV_PGRAPH_SETUPRASTER_FRONTFACEMODE) !=
-         NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_FILL) ||
-        GET_MASK(raster, NV_PGRAPH_SETUPRASTER_BACKFACEMODE) != 0) {
+    if (snapshot.front_face_mode != 0 || snapshot.back_face_mode != 0) {
         return D3D11PgraphStateStatus::Unsupported;
     }
 
-    const bool cull_enable = (raster & NV_PGRAPH_SETUPRASTER_CULLENABLE) != 0;
-    const uint32_t cull_face = GET_MASK(raster, NV_PGRAPH_SETUPRASTER_CULLCTRL);
-    if (cull_enable && cull_face != NV_PGRAPH_SETUPRASTER_CULLCTRL_FRONT &&
-        cull_face != NV_PGRAPH_SETUPRASTER_CULLCTRL_BACK) {
+    const bool cull_enable = snapshot.cull_enable;
+    const uint32_t cull_face = snapshot.cull_face;
+    if (cull_enable && cull_face != 1 && cull_face != 2) {
         return D3D11PgraphStateStatus::Unsupported;
     }
 
     D3D11_BLEND src_blend = D3D11_BLEND_ZERO;
     D3D11_BLEND dst_blend = D3D11_BLEND_ZERO;
     D3D11_BLEND_OP blend_op = D3D11_BLEND_OP_ADD;
-    if (!MapBlendFactor(GET_MASK(blend, NV_PGRAPH_BLEND_SFACTOR), &src_blend) ||
-        !MapBlendFactor(GET_MASK(blend, NV_PGRAPH_BLEND_DFACTOR), &dst_blend) ||
-        !MapBlendOp(GET_MASK(blend, NV_PGRAPH_BLEND_EQN), &blend_op)) {
+    if (!MapBlendFactor(snapshot.blend_src_factor, &src_blend) ||
+        !MapBlendFactor(snapshot.blend_dst_factor, &dst_blend) ||
+        !MapBlendOp(snapshot.blend_equation, &blend_op)) {
         return D3D11PgraphStateStatus::Unsupported;
     }
 
     D3D11_COMPARISON_FUNC depth_func;
-    if (!MapComparison(GET_MASK(control0, NV_PGRAPH_CONTROL_0_ZFUNC),
-                       &depth_func)) {
+    if (!MapComparison(snapshot.z_func, &depth_func)) {
         return D3D11PgraphStateStatus::Unsupported;
     }
     D3D11_COMPARISON_FUNC stencil_func;
-    if (!MapComparison(GET_MASK(control1, NV_PGRAPH_CONTROL_1_STENCIL_FUNC),
-                       &stencil_func)) {
+    if (!MapComparison(snapshot.stencil_func, &stencil_func)) {
         return D3D11PgraphStateStatus::Unsupported;
     }
 
-    const bool stencil_enable =
-        (control1 & NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE) != 0;
+    const bool stencil_enable = snapshot.stencil_test_enable;
     D3D11_STENCIL_OP stencil_fail = D3D11_STENCIL_OP_KEEP;
     D3D11_STENCIL_OP stencil_zfail = D3D11_STENCIL_OP_KEEP;
     D3D11_STENCIL_OP stencil_zpass = D3D11_STENCIL_OP_KEEP;
     if (stencil_enable &&
-        (!MapStencilOp(GET_MASK(control2, NV_PGRAPH_CONTROL_2_STENCIL_OP_FAIL),
-                       &stencil_fail) ||
-         !MapStencilOp(GET_MASK(control2, NV_PGRAPH_CONTROL_2_STENCIL_OP_ZFAIL),
-                       &stencil_zfail) ||
-         !MapStencilOp(GET_MASK(control2, NV_PGRAPH_CONTROL_2_STENCIL_OP_ZPASS),
-                       &stencil_zpass))) {
+        (!MapStencilOp(snapshot.stencil_op_fail, &stencil_fail) ||
+         !MapStencilOp(snapshot.stencil_op_zfail, &stencil_zfail) ||
+         !MapStencilOp(snapshot.stencil_op_zpass, &stencil_zpass))) {
         return D3D11PgraphStateStatus::Unsupported;
     }
 
     D3D11_RECT scissor;
-    if (!ValidRect(pg->surface_shape.clip_x, pg->surface_shape.clip_y,
-                   pg->surface_shape.clip_width, pg->surface_shape.clip_height,
-                   *target, capabilities->clip_origin, &scissor)) {
+    if (!ValidRect(snapshot.clip_x, snapshot.clip_y, snapshot.clip_width,
+                   snapshot.clip_height, *target, capabilities->clip_origin,
+                   &scissor)) {
         return D3D11PgraphStateStatus::Invalid;
     }
 
@@ -281,12 +247,9 @@ d3d11_build_draw_state(const PGRAPHState *pg,
 
     state.rasterizer.FillMode = D3D11_FILL_SOLID;
     state.rasterizer.CullMode =
-        cull_enable ? (cull_face == NV_PGRAPH_SETUPRASTER_CULLCTRL_FRONT ?
-                           D3D11_CULL_FRONT :
-                           D3D11_CULL_BACK) :
+        cull_enable ? (cull_face == 1 ? D3D11_CULL_FRONT : D3D11_CULL_BACK) :
                       D3D11_CULL_NONE;
-    state.rasterizer.FrontCounterClockwise =
-        (raster & NV_PGRAPH_SETUPRASTER_FRONTFACE) != 0;
+    state.rasterizer.FrontCounterClockwise = snapshot.front_face;
     state.rasterizer.DepthBias = 0;
     state.rasterizer.DepthBiasClamp = 0.0f;
     state.rasterizer.SlopeScaledDepthBias = 0.0f;
@@ -295,30 +258,27 @@ d3d11_build_draw_state(const PGRAPHState *pg,
     state.rasterizer.MultisampleEnable = FALSE;
     state.rasterizer.AntialiasedLineEnable = FALSE;
 
-    state.depth_stencil.DepthEnable =
-        (control0 & NV_PGRAPH_CONTROL_0_ZENABLE) != 0;
-    state.depth_stencil.DepthWriteMask =
-        (control0 & NV_PGRAPH_CONTROL_0_ZWRITEENABLE) ?
-            D3D11_DEPTH_WRITE_MASK_ALL :
-            D3D11_DEPTH_WRITE_MASK_ZERO;
+    state.depth_stencil.DepthEnable = snapshot.z_enable;
+    state.depth_stencil.DepthWriteMask = snapshot.z_write_enable ?
+                                             D3D11_DEPTH_WRITE_MASK_ALL :
+                                             D3D11_DEPTH_WRITE_MASK_ZERO;
     state.depth_stencil.DepthFunc = depth_func;
     state.depth_stencil.StencilEnable = stencil_enable;
-    state.depth_stencil.StencilReadMask = static_cast<UINT8>(
-        GET_MASK(control1, NV_PGRAPH_CONTROL_1_STENCIL_MASK_READ));
+    state.depth_stencil.StencilReadMask =
+        static_cast<UINT8>(snapshot.stencil_read_mask);
     state.depth_stencil.StencilWriteMask =
-        (control0 & NV_PGRAPH_CONTROL_0_STENCIL_WRITE_ENABLE) ?
-            static_cast<UINT8>(
-                GET_MASK(control1, NV_PGRAPH_CONTROL_1_STENCIL_MASK_WRITE)) :
+        snapshot.stencil_write_enable ?
+            static_cast<UINT8>(snapshot.stencil_write_mask) :
             0;
     state.depth_stencil.FrontFace = { stencil_fail, stencil_zfail,
                                       stencil_zpass, stencil_func };
     state.depth_stencil.BackFace = state.depth_stencil.FrontFace;
-    state.stencil_ref = GET_MASK(control1, NV_PGRAPH_CONTROL_1_STENCIL_REF);
+    state.stencil_ref = snapshot.stencil_ref;
 
     state.blend.AlphaToCoverageEnable = FALSE;
     state.blend.IndependentBlendEnable = FALSE;
     auto &attachment = state.blend.RenderTarget[0];
-    attachment.BlendEnable = (blend & NV_PGRAPH_BLEND_EN) != 0;
+    attachment.BlendEnable = snapshot.blend_enable;
     attachment.SrcBlend = src_blend;
     attachment.DestBlend = dst_blend;
     attachment.BlendOp = blend_op;
@@ -326,19 +286,11 @@ d3d11_build_draw_state(const PGRAPHState *pg,
     attachment.DestBlendAlpha = dst_blend;
     attachment.BlendOpAlpha = blend_op;
     attachment.RenderTargetWriteMask =
-        ((control0 & NV_PGRAPH_CONTROL_0_RED_WRITE_ENABLE) ?
-             D3D11_COLOR_WRITE_ENABLE_RED :
-             0) |
-        ((control0 & NV_PGRAPH_CONTROL_0_GREEN_WRITE_ENABLE) ?
-             D3D11_COLOR_WRITE_ENABLE_GREEN :
-             0) |
-        ((control0 & NV_PGRAPH_CONTROL_0_BLUE_WRITE_ENABLE) ?
-             D3D11_COLOR_WRITE_ENABLE_BLUE :
-             0) |
-        ((control0 & NV_PGRAPH_CONTROL_0_ALPHA_WRITE_ENABLE) ?
-             D3D11_COLOR_WRITE_ENABLE_ALPHA :
-             0);
-    const uint32_t blend_color = Read(pg, NV_PGRAPH_BLENDCOLOR);
+        (snapshot.red_write_enable ? D3D11_COLOR_WRITE_ENABLE_RED : 0) |
+        (snapshot.green_write_enable ? D3D11_COLOR_WRITE_ENABLE_GREEN : 0) |
+        (snapshot.blue_write_enable ? D3D11_COLOR_WRITE_ENABLE_BLUE : 0) |
+        (snapshot.alpha_write_enable ? D3D11_COLOR_WRITE_ENABLE_ALPHA : 0);
+    const uint32_t blend_color = snapshot.blend_color;
     state.blend_factor[0] = ((blend_color >> 16) & 0xff) / 255.0f;
     state.blend_factor[1] = ((blend_color >> 8) & 0xff) / 255.0f;
     state.blend_factor[2] = (blend_color & 0xff) / 255.0f;

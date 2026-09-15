@@ -42,6 +42,22 @@ extern "C" void *nv_dma_map(NV2AState *, hwaddr, hwaddr *length)
     return g_dma_data;
 }
 
+extern "C" void pgraph_get_clear_color(PGRAPHState *, float rgba[4])
+{
+    rgba[0] = 0.25f;
+    rgba[1] = 0.5f;
+    rgba[2] = 0.75f;
+    rgba[3] = 1.0f;
+}
+
+static unsigned g_dirty_calls = 0;
+
+extern "C" void memory_region_set_client_dirty(MemoryRegion *, hwaddr, hwaddr,
+                                               unsigned)
+{
+    ++g_dirty_calls;
+}
+
 struct Fixture {
     NV2AState d = {};
     PGRAPHState &pg = d.pgraph;

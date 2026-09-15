@@ -20,10 +20,7 @@
 
 #include <cstdint>
 
-extern "C" {
-#include "../../nv2a_regs.h"
-#include "../pgraph.h"
-}
+#include "d3d11_bridge.h"
 
 namespace xemu {
 
@@ -56,7 +53,7 @@ enum class D3D11PgraphClipOrigin : uint8_t {
  * renderer, device, or the mutable PGRAPH scale cache. */
 struct D3D11PgraphStateCapabilities {
     uint32_t surface_scale_factor = 1;
-    uint32_t anti_aliasing = NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1;
+    uint32_t anti_aliasing = D3D11_BRIDGE_ANTIALIAS_CENTER_1;
     D3D11ShaderDepthConvention shader_depth_convention =
         D3D11ShaderDepthConvention::ZeroToOne;
     D3D11PgraphClipOrigin clip_origin = D3D11PgraphClipOrigin::BottomLeft;

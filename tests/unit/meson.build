@@ -97,6 +97,7 @@ if have_block
     'test-uuid': [],
     'test-pgraph-clear': ['../../hw/xbox/nv2a/pgraph/clear.c'],
     'test-psh-reference': ['../../hw/xbox/nv2a/pgraph/psh_reference.c'],
+    'test-d3d11-bridge-abi': ['test-d3d11-bridge-abi-cxx.cc'],
 }
   if gnutls.found() and \
      tasn1.found() and \
@@ -243,9 +244,10 @@ if host_os == 'windows'
     'test-d3d11-clear-adapter',
     ['d3d11-clear-adapter-test.cc',
      '../../hw/xbox/nv2a/pgraph/d3d11/clear-adapter.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/d3d11_bridge.c',
      '../../hw/xbox/nv2a/pgraph/clear.c'],
     include_directories: include_directories('../..'),
-    dependencies: [d3d11_test_dep, dxgi_test_dep])
+    dependencies: [qemuutil, d3d11_test_dep, dxgi_test_dep])
   test('test-d3d11-clear-adapter', d3d11_clear_adapter_test,
        protocol: 'exitcode', suite: ['unit'])
 
@@ -255,6 +257,7 @@ if host_os == 'windows'
      '../../hw/xbox/nv2a/pgraph/d3d11/clear-executor.cc',
      '../../hw/xbox/nv2a/pgraph/d3d11/surface-adapter.cc',
      '../../hw/xbox/nv2a/pgraph/d3d11/clear-adapter.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/d3d11_bridge.c',
      '../../hw/xbox/nv2a/pgraph/d3d11/clear.cc',
      '../../hw/xbox/nv2a/pgraph/d3d11/context.cc',
      '../../hw/xbox/nv2a/pgraph/d3d11/surface.cc',
@@ -271,6 +274,7 @@ if host_os == 'windows'
      '../../hw/xbox/nv2a/pgraph/d3d11/draw.cc',
      '../../hw/xbox/nv2a/pgraph/d3d11/vsh_cpu_transform.cc',
      '../../hw/xbox/nv2a/pgraph/d3d11/vertex-adapter.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/d3d11_bridge.c',
      '../../hw/xbox/nv2a/pgraph/d3d11/state-adapter.cc',
      '../../hw/xbox/nv2a/pgraph/d3d11/surface-adapter.cc',
      '../../hw/xbox/nv2a/pgraph/d3d11/context.cc',
@@ -307,9 +311,11 @@ if host_os == 'windows'
   d3d11_state_adapter_test = executable(
     'test-d3d11-state-adapter',
     ['d3d11-state-adapter-test.cc',
-     '../../hw/xbox/nv2a/pgraph/d3d11/state-adapter.cc'],
+     '../../hw/xbox/nv2a/pgraph/d3d11/state-adapter.cc',
+     '../../hw/xbox/nv2a/pgraph/d3d11/d3d11_bridge.c',
+     '../../hw/xbox/nv2a/pgraph/clear.c'],
     include_directories: include_directories('../..'),
-    dependencies: [d3d11_test_dep, dxgi_test_dep])
+    dependencies: [qemuutil, d3d11_test_dep, dxgi_test_dep])
   test('test-d3d11-state-adapter', d3d11_state_adapter_test,
        protocol: 'exitcode', suite: ['unit'])
 
@@ -338,8 +344,10 @@ endif
 d3d11_vertex_adapter_test = executable(
   'test-d3d11-vertex-adapter',
   ['d3d11-vertex-adapter-test.cc',
-   '../../hw/xbox/nv2a/pgraph/d3d11/vertex-adapter.cc'] + genh,
+   '../../hw/xbox/nv2a/pgraph/d3d11/vertex-adapter.cc',
+   '../../hw/xbox/nv2a/pgraph/d3d11/d3d11_bridge.c',
+   '../../hw/xbox/nv2a/pgraph/clear.c'] + genh,
   include_directories: include_directories('../..'),
-  dependencies: [glib])
+  dependencies: [glib, qemuutil])
 test('test-d3d11-vertex-adapter', d3d11_vertex_adapter_test,
      protocol: 'exitcode', suite: ['unit'])

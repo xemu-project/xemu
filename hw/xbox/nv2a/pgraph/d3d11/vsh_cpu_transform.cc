@@ -39,7 +39,7 @@ bool CheckInput(const Nv2aVshInput &input, char *error, size_t error_size)
         }
         break;
     case NV2ART_INPUT:
-        if (input.index >= NV2A_VERTEXSHADER_ATTRIBUTES) {
+        if (input.index >= D3D11_BRIDGE_VERTEX_ATTRIBUTES) {
             SetError(error, error_size, "VSH vertex input index out of range");
             return false;
         }
@@ -418,7 +418,7 @@ VshPostprocess DefaultVshCpuPostprocess()
 
 VshCpuTransformStatus
 TransformProgram(const Nv2aVshProgram *program, uint32_t instruction_count,
-                 const float (*inputs)[NV2A_VERTEXSHADER_ATTRIBUTES][4],
+                 const float (*inputs)[D3D11_BRIDGE_VERTEX_ATTRIBUTES][4],
                  uint32_t vertex_count, const VshCpuTransformOptions &options,
                  VshCpuVertexOutput *outputs, char *error, size_t error_size)
 {
@@ -471,7 +471,7 @@ TransformProgram(const Nv2aVshProgram *program, uint32_t instruction_count,
 
 VshCpuTransformStatus
 TransformTokens(const uint32_t *tokens, uint32_t token_count,
-                const float (*inputs)[NV2A_VERTEXSHADER_ATTRIBUTES][4],
+                const float (*inputs)[D3D11_BRIDGE_VERTEX_ATTRIBUTES][4],
                 uint32_t vertex_count, const VshCpuTransformOptions &options,
                 VshCpuVertexOutput *outputs, char *error, size_t error_size)
 {
@@ -525,7 +525,7 @@ VshCpuTransformStatus TransformPlan(const uint32_t *tokens,
     outputs->assign(plan.vsh_inputs.size(), {});
     const VshCpuTransformStatus status = TransformTokens(
         tokens, token_count,
-        reinterpret_cast<const float (*)[NV2A_VERTEXSHADER_ATTRIBUTES][4]>(
+        reinterpret_cast<const float (*)[D3D11_BRIDGE_VERTEX_ATTRIBUTES][4]>(
             plan.vsh_inputs.data()),
         static_cast<uint32_t>(plan.vsh_inputs.size()), options, outputs->data(),
         error, error_size);

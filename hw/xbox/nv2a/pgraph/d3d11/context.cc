@@ -13,7 +13,7 @@
 
 #ifdef _WIN32
 
-#include "../../nv2a_int.h"
+#include "d3d11_bridge.h"
 #include "surface-adapter.h"
 
 #include <windows.h>
@@ -197,25 +197,27 @@ std::vector<D3D11PgraphDownloadEvent> D3D11PgraphContext::DrainDownloadEvents(
     NV2AState *state, const D3D11SurfaceSnapshot &color,
     const D3D11SurfaceSnapshot &depth_stencil)
 {
-    if (!owner_thread() || state == nullptr || state->vram == nullptr ||
-        state->vram_ptr == nullptr) {
+    uint8_t *vram = nullptr;
+    uint64_t vram_size = 0;
+    const PGRAPHState *pg = d3d11_bridge_pgraph(state);
+    if (!owner_thread() || state == nullptr ||
+        !d3d11_bridge_vram_view(state, &vram, &vram_size)) {
         return {};
     }
+    (void)vram;
+    (void)vram_size;
     HarvestCacheEvents();
     std::vector<D3D11PgraphDownloadEvent> events;
     events.swap(m_download_events);
     for (const D3D11PgraphDownloadEvent &event : events) {
         if (event.size != 0) {
-            const hwaddr range = static_cast<hwaddr>(event.size);
-            memory_region_set_client_dirty(state->vram, event.descriptor.offset,
-                                           range, DIRTY_MEMORY_VGA);
-            memory_region_set_client_dirty(state->vram, event.descriptor.offset,
-                                           range, DIRTY_MEMORY_NV2A_TEX);
+            d3d11_bridge_mark_vram_dirty(state, event.descriptor.offset,
+                                         event.size);
         }
         uint32_t width = 0;
         uint32_t height = 0;
         const bool have_dimensions =
-            d3d11_get_surface_dimensions(&state->pgraph, &width, &height);
+            d3d11_get_surface_dimensions(pg, &width, &height);
         D3D11SurfaceDescriptor color_descriptor = {};
         D3D11SurfaceDescriptor zeta_descriptor = {};
         D3D11SurfaceStatus color_status = D3D11SurfaceStatus::InvalidDescriptor;
@@ -245,13 +247,13 @@ std::vector<D3D11PgraphDownloadEvent> D3D11PgraphContext::DrainDownloadEvents(
             (current_generation || !color ||
              (color->descriptor() == event.descriptor &&
               color.generation() == event.generation))) {
-            state->pgraph.surface_color.draw_dirty = false;
+            d3d11_bridge_mark_surface_draw_dirty(state, true, false);
         }
         if (logical_zeta && (current_generation || !current) &&
             (current_generation || !depth_stencil ||
              (depth_stencil->descriptor() == event.descriptor &&
               depth_stencil.generation() == event.generation))) {
-            state->pgraph.surface_zeta.draw_dirty = false;
+            d3d11_bridge_mark_surface_draw_dirty(state, false, false);
         }
     }
     return events;

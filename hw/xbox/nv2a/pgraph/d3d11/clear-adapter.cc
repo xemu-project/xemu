@@ -21,15 +21,16 @@
 #ifdef _WIN32
 
 #include "../clear.h"
-#include "../../nv2a_regs.h"
+
+#include <cstring>
 
 namespace xemu {
 
 namespace {
 
-constexpr uint32_t kColorBits = NV097_CLEAR_SURFACE_COLOR;
+constexpr uint32_t kColorBits = D3D11_BRIDGE_CLEAR_COLOR;
 constexpr uint32_t kZetaBits =
-    NV097_CLEAR_SURFACE_Z | NV097_CLEAR_SURFACE_STENCIL;
+    D3D11_BRIDGE_CLEAR_Z | D3D11_BRIDGE_CLEAR_STENCIL;
 constexpr uint32_t kKnownBits = kColorBits | kZetaBits;
 constexpr uint8_t kAllColorChannels = D3D11_CLEAR_ALL_COLOR_CHANNELS;
 
@@ -53,7 +54,8 @@ bool ValidDimensions(uint32_t width, uint32_t height)
     return width != 0 && height != 0;
 }
 
-bool ValidPitch(const Surface &surface, uint32_t width, unsigned int bytes)
+bool ValidPitch(const D3D11BridgeSurface &surface, uint32_t width,
+                unsigned int bytes)
 {
     const uint64_t minimum = static_cast<uint64_t>(width) * bytes;
     return surface.pitch >= minimum && (surface.pitch % bytes) == 0;
@@ -66,22 +68,14 @@ bool DimensionsMatch(const D3D11ClearBindingDimensions &bindings)
             bindings.color_height == bindings.zeta_height);
 }
 
-uint32_t ReadRegister(const PGRAPHState *pg, unsigned int reg)
+bool BuildRect(const D3D11BridgePgraphSnapshot &pg, uint32_t width,
+               uint32_t height, PGRAPHClearRect *rect)
 {
-    assert(reg % 4 == 0);
-    return pg->regs_[reg];
-}
-
-bool BuildRect(const PGRAPHState *pg, uint32_t width, uint32_t height,
-               PGRAPHClearRect *rect)
-{
-    const uint32_t clearrectx = ReadRegister(pg, NV_PGRAPH_CLEARRECTX);
-    const uint32_t clearrecty = ReadRegister(pg, NV_PGRAPH_CLEARRECTY);
     const PGRAPHClearRect requested = {
-        GET_MASK(clearrectx, NV_PGRAPH_CLEARRECTX_XMIN),
-        GET_MASK(clearrecty, NV_PGRAPH_CLEARRECTY_YMIN),
-        GET_MASK(clearrectx, NV_PGRAPH_CLEARRECTX_XMAX),
-        GET_MASK(clearrecty, NV_PGRAPH_CLEARRECTY_YMAX),
+        pg.clear_rect_x_min,
+        pg.clear_rect_y_min,
+        pg.clear_rect_x_max,
+        pg.clear_rect_y_max,
     };
     return pgraph_clear_rect_clamp(&requested, width, height, rect);
 }
@@ -106,16 +100,19 @@ d3d11_build_clear_plan(const PGRAPHState *pg, uint32_t parameter,
     if (!pg || !bindings || !capabilities) {
         return D3D11ClearPlanStatus::Invalid;
     }
+    D3D11BridgePgraphSnapshot snapshot = {};
+    if (!d3d11_bridge_snapshot_pgraph(pg, &snapshot)) {
+        return D3D11ClearPlanStatus::Invalid;
+    }
 
     const bool clear_color = HasColor(parameter);
     const bool clear_zeta = HasZeta(parameter);
     if (HasColor(parameter) && (parameter & kColorBits) != kColorBits) {
         return Unsupported();
     }
-    if (pg->surface_type != NV097_SET_SURFACE_FORMAT_TYPE_PITCH ||
+    if (snapshot.surface_type != D3D11_BRIDGE_SURFACE_TYPE_PITCH ||
         capabilities->surface_scale_factor != 1 ||
-        pg->surface_shape.anti_aliasing !=
-            NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1) {
+        snapshot.anti_aliasing != D3D11_BRIDGE_ANTIALIAS_CENTER_1) {
         return Unsupported();
     }
     if (!DimensionsMatch(*bindings)) {
@@ -123,30 +120,26 @@ d3d11_build_clear_plan(const PGRAPHState *pg, uint32_t parameter,
     }
 
     if (clear_color &&
-        pgraph_clear_classify_color_storage(pg->surface_shape.color_format) !=
+        pgraph_clear_classify_color_storage(snapshot.color_format) !=
             PGRAPH_CLEAR_COLOR_STORAGE_BGR8A8) {
         return Unsupported();
     }
-    if (clear_zeta &&
-        pg->surface_shape.zeta_format != NV097_SET_SURFACE_FORMAT_ZETA_Z16 &&
-        pg->surface_shape.zeta_format != NV097_SET_SURFACE_FORMAT_ZETA_Z24S8) {
+    if (clear_zeta && snapshot.zeta_format != D3D11_BRIDGE_ZETA_Z16 &&
+        snapshot.zeta_format != D3D11_BRIDGE_ZETA_Z24S8) {
         return Unsupported();
     }
-    if (clear_zeta &&
-        pg->surface_shape.zeta_format == NV097_SET_SURFACE_FORMAT_ZETA_Z16 &&
-        (parameter & NV097_CLEAR_SURFACE_STENCIL)) {
+    if (clear_zeta && snapshot.zeta_format == D3D11_BRIDGE_ZETA_Z16 &&
+        (parameter & D3D11_BRIDGE_CLEAR_STENCIL)) {
         return Unsupported();
     }
 
     uint32_t fixed_depth = 0;
     uint8_t stencil = 0;
-    const unsigned int z_format =
-        GET_MASK(ReadRegister(pg, NV_PGRAPH_SETUPRASTER),
-                 NV_PGRAPH_SETUPRASTER_Z_FORMAT);
-    if (clear_zeta && !pgraph_clear_extract_fixed_depth_stencil(
-                          pg->surface_shape.zeta_format, z_format,
-                          ReadRegister(pg, NV_PGRAPH_ZSTENCILCLEARVALUE),
-                          &fixed_depth, &stencil)) {
+    const unsigned int z_format = snapshot.z_format;
+    if (clear_zeta &&
+        !pgraph_clear_extract_fixed_depth_stencil(
+            snapshot.zeta_format, z_format, snapshot.z_stencil_clear_value,
+            &fixed_depth, &stencil)) {
         return Unsupported();
     }
 
@@ -159,18 +152,17 @@ d3d11_build_clear_plan(const PGRAPHState *pg, uint32_t parameter,
         !ValidDimensions(width, height)) {
         return D3D11ClearPlanStatus::Invalid;
     }
-    if (clear_color && !ValidPitch(pg->surface_color, width, 4)) {
+    if (clear_color && !ValidPitch(snapshot.color_surface, width, 4)) {
         return D3D11ClearPlanStatus::Invalid;
     }
     const unsigned int zeta_bytes =
-        pg->surface_shape.zeta_format == NV097_SET_SURFACE_FORMAT_ZETA_Z16 ? 2 :
-                                                                             4;
-    if (clear_zeta && !ValidPitch(pg->surface_zeta, width, zeta_bytes)) {
+        snapshot.zeta_format == D3D11_BRIDGE_ZETA_Z16 ? 2 : 4;
+    if (clear_zeta && !ValidPitch(snapshot.zeta_surface, width, zeta_bytes)) {
         return D3D11ClearPlanStatus::Invalid;
     }
 
     PGRAPHClearRect rect = {};
-    if (!BuildRect(pg, width, height, &rect)) {
+    if (!BuildRect(snapshot, width, height, &rect)) {
         return D3D11ClearPlanStatus::Invalid;
     }
     if (clear_zeta && !pgraph_clear_rect_is_full(&rect, width, height)) {
@@ -190,13 +182,14 @@ d3d11_build_clear_plan(const PGRAPHState *pg, uint32_t parameter,
         plan.color.color_mask = kAllColorChannels;
         /* The legacy helper predates const-correct renderer adapters; it only
          * reads the state and does not modify registers or dirty bits. */
-        pgraph_get_clear_color(const_cast<PGRAPHState *>(pg), plan.color.color);
+        std::memcpy(plan.color.color, snapshot.clear_color,
+                    sizeof(plan.color.color));
     }
 
     if (clear_zeta) {
         plan.depth_stencil.surface_kind = D3D11ClearSurfaceKind::DepthStencil;
         plan.depth_stencil.surface_format =
-            pg->surface_shape.zeta_format == NV097_SET_SURFACE_FORMAT_ZETA_Z16 ?
+            snapshot.zeta_format == D3D11_BRIDGE_ZETA_Z16 ?
                 D3D11ClearSurfaceFormat::Z16Fixed :
                 D3D11ClearSurfaceFormat::Z24S8Fixed;
         plan.depth_stencil.rect = rect;
@@ -205,9 +198,9 @@ d3d11_build_clear_plan(const PGRAPHState *pg, uint32_t parameter,
         plan.depth_stencil.fixed_depth = fixed_depth;
         plan.depth_stencil.stencil = stencil;
         plan.depth_stencil.clear_depth =
-            (parameter & NV097_CLEAR_SURFACE_Z) != 0;
+            (parameter & D3D11_BRIDGE_CLEAR_Z) != 0;
         plan.depth_stencil.clear_stencil =
-            (parameter & NV097_CLEAR_SURFACE_STENCIL) != 0;
+            (parameter & D3D11_BRIDGE_CLEAR_STENCIL) != 0;
     }
 
     *output = plan;
