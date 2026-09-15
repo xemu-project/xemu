@@ -21,8 +21,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <glib.h>
-#include <glib/gprintf.h>
+#ifdef __FreeBSD__
+  #include <glib-2.0/glib.h>
+  #include <glib-2.0/glib/gprintf.h>
+#else
+  #include <glib.h>
+  #include <glib/gprintf.h>
+#endif
 
 static char *read_file_if_possible(const char *path)
 {
