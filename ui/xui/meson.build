@@ -24,5 +24,6 @@ xemu_ss.add(files(
 ))
 
 if host_os == 'windows'
-  xemu_ss.add(files('update.cc', 'win32-dxgi-present.cc'))
+  xemu_ss.add(files('d3d11-corewindow-present.cc', 'd3d11-present.cc',
+                    'update.cc', 'win32-dxgi-present.cc'))
 endif
