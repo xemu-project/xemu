@@ -137,6 +137,154 @@ input:
     rtrigger:
       type: integer
       default: 18 # w
+  keyboard_sbc_scancode_map:
+    eject:
+      type: integer
+      default: 41 # esc
+    cockpit_hatch:
+      type: integer
+      default: 62 # F5
+    ignition:
+      type: integer
+      default: 63 # F6
+    start:
+      type: integer
+      default: 64 # F7
+    open_close:
+      type: integer
+      default: 74 # home
+    map_zoom_in_out:
+      type: integer
+      default: 77 # end
+    mode_select:
+      type: integer
+      default: 73 # insert
+    sub_monitor_mode_select:
+      type: integer
+      default: 76 # delete
+    zoom_in:
+      type: integer
+      default: 75 # Page Up
+    zoom_out:
+      type: integer
+      default: 78 # Page Down
+    fss:
+      type: integer
+      default: 97 # numpad 9
+    manipulator:
+      type: integer
+      default: 94 # numpad 6
+    line_color_change:
+      type: integer
+      default: 91 # numpad 3
+    washing:
+      type: integer
+      default: 45 # -
+    extinguisher:
+      type: integer
+      default: 8 # e
+    chaff:
+      type: integer
+      default: 6 # c
+    tank_detach:
+      type: integer
+      default: 96 # numpad 8
+    override:
+      type: integer
+      default: 93 # numpad 5
+    night_scope:
+      type: integer
+      default: 90 # numpad 2
+    func1:
+      type: integer
+      default: 95 # numpad 7
+    func2:
+      type: integer
+      default: 92 # numpad 4
+    func3:
+      type: integer
+      default: 89 # numpad 1
+    main_weapon_control:
+      type: integer
+      default: 35 # 6
+    sub_weapon_control:
+      type: integer
+      default: 36 # 7
+    magazine_change:
+      type: integer
+      default: 21 # r
+    com1:
+      type: integer
+      default: 30 # 1
+    com2:
+      type: integer
+      default: 31 # 2
+    com3:
+      type: integer
+      default: 32 # 3
+    com4:
+      type: integer
+      default: 33 # 4
+    com5:
+      type: integer
+      default: 34 # 5
+    sight_change:
+      type: integer
+      default: 20 # q
+    filt_control_system:
+      type: integer
+      default: 65 # F8
+    oxygen_supply_system:
+      type: integer
+      default: 66 # F9
+    fuel_flow_rate:
+      type: integer
+      default: 67 # F10
+    buffer_material:
+      type: integer
+      default: 68 # F11
+    vt_location_measurement:
+      type: integer
+      default: 69 # F12
+    gear_up:
+      type: integer
+      default: 225 # lshift
+    gear_down:
+      type: integer
+      default: 224 # lctrl
+    tuner_left:
+      type: integer
+      default: 54 # <
+    tuner_right:
+      type: integer
+      default: 55 # >
+    sight_change_up:
+      type: integer
+      default: 82 # up
+    sight_change_down:
+      type: integer
+      default: 81 # down
+    sight_change_left:
+      type: integer
+      default: 80 # left
+    sight_change_right:
+      type: integer
+      default: 79 # right
+    rotation_left:
+      type: integer
+      default: 4 # a
+    rotation_right:
+      type: integer
+      default: 7 # d
+    left_pedal:
+      type: integer
+      default: 44 #space
+    right_pedal:
+      type: integer
+      default: 26 # w
+    middle_pedal:
+      type: integer
+      default: 22 # s
   gamepad_mappings:
     type: array
     items:
