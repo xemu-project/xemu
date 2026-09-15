@@ -329,7 +329,37 @@
 #define SECOND_ARG(first, second, ...) second
 #define IS_EMPTY_(junk_maybecomma)     SECOND_ARG(junk_maybecomma 1, 0)
 
-#ifndef __cplusplus
+#ifdef __cplusplus
+/*
+ * C++ has no direct equivalent of GNU C's qualifier-stripping helper.  Keep
+ * this trait local instead of including <type_traits>: compiler.h is also
+ * included by a few C declarations wrapped in extern "C", where a C++
+ * standard header would be ill-formed.  The nested extern "C++" is valid in
+ * that context and keeps the trait's specializations in C++ linkage.
+ */
+extern "C++" {
+namespace qemu_cxx {
+template <typename T> struct remove_reference { typedef T type; };
+template <typename T> struct remove_reference<T &> { typedef T type; };
+template <typename T> struct remove_reference<T &&> { typedef T type; };
+
+template <typename T> struct remove_cv { typedef T type; };
+template <typename T> struct remove_cv<const T> { typedef T type; };
+template <typename T> struct remove_cv<volatile T> { typedef T type; };
+template <typename T>
+struct remove_cv<const volatile T> { typedef T type; };
+
+template <typename T>
+struct remove_cvref {
+    typedef typename remove_cv<
+        typename remove_reference<T>::type>::type type;
+};
+} /* namespace qemu_cxx */
+}
+
+#define typeof_strip_qual(expr) \
+    typename qemu_cxx::remove_cvref<decltype(expr)>::type
+#else
 /*
  * Useful in macros that need to declare temporary variables.  For example,
  * the variable that receives the old value of an atomically-accessed

@@ -149,7 +149,7 @@ static inline uint32_t *create_bits(pixman_format_code_t format,
         *rowstride_bytes = stride;
     }
 
-    return g_malloc0(buf_size);
+    return (uint32_t *)g_malloc0(buf_size);
 }
 
 static inline pixman_image_t *pixman_image_create_bits(pixman_format_code_t format,

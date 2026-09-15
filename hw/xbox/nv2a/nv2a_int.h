@@ -37,14 +37,13 @@
 #include "hw/display/vga_int.h"
 #include "hw/pci/pci_device.h"
 #include "exec/target_page.h"
+#include "exec/hwaddr.h"
 
 #include "hw/hw.h"
 #include "hw/display/vga.h"
 #include "hw/display/vga_int.h"
 #include "hw/display/vga_regs.h"
 #include "hw/pci/pci.h"
-#include "cpu.h"
-
 #include "trace.h"
 
 #include "nv2a.h"

@@ -155,7 +155,7 @@ struct CPUClass {
 
     ObjectClass *(*class_by_name)(const char *cpu_model);
     void (*list_cpus)(void);
-    void (*parse_features)(const char *typename, char *str, Error **errp);
+    void (*parse_features)(const char *type_name, char *str, Error **errp);
 
     int (*memory_rw_debug)(CPUState *cpu, vaddr addr,
                            uint8_t *buf, size_t len, bool is_write);
@@ -839,7 +839,7 @@ void cpu_reset(CPUState *cpu);
  * Returns: A concrete #CPUClass or %NULL if no matching class is found
  *          or if the matching class is abstract.
  */
-ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model);
+ObjectClass *cpu_class_by_name(const char *type_name, const char *cpu_model);
 
 /**
  * cpu_model_from_type:
@@ -852,7 +852,7 @@ ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model);
  * Returns: CPU model name or NULL if the CPU class doesn't exist
  *          The user should g_free() the string once no longer needed.
  */
-char *cpu_model_from_type(const char *typename);
+char *cpu_model_from_type(const char *type_name);
 
 /**
  * cpu_create:
@@ -862,7 +862,7 @@ char *cpu_model_from_type(const char *typename);
  *
  * Returns: A #CPUState or %NULL if an error occurred.
  */
-CPUState *cpu_create(const char *typename);
+CPUState *cpu_create(const char *type_name);
 
 /**
  * parse_cpu_option:

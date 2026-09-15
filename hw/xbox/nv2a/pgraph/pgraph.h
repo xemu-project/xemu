@@ -27,7 +27,7 @@
 #include "qemu/bitmap.h"
 #include "qemu/units.h"
 #include "qemu/thread.h"
-#include "cpu.h"
+#include "exec/hwaddr.h"
 
 #include "../framebuffer.h"
 #include "surface.h"

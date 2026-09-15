@@ -23,7 +23,7 @@
 #define HW_XBOX_NV2A_PGRAPH_TEXTURE_H
 
 #include "qemu/osdep.h"
-#include "cpu.h"
+#include "exec/hwaddr.h"
 
 #include <stdbool.h>
 #include <stdint.h>
