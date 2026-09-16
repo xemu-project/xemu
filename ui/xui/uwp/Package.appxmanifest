@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+         IgnorableNamespaces="uap mp">
+  <Identity Name="xemu.Xbox"
+            Publisher="CN=xemu-project"
+            Version="0.1.0.0"
+            ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>xemu</DisplayName>
+    <PublisherDisplayName>xemu-project</PublisherDisplayName>
+    <Logo>assets\Logo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Xbox" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+    <PackageDependency Name="Microsoft.VCLibs.140.00" MinVersion="14.0.33519.0" Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Applications>
+    <Application Id="xemu" Executable="xemu-uwp.exe" EntryPoint="xemu_uwp.App">
+      <uap:VisualElements DisplayName="xemu"
+                          Description="Original Xbox Emulator"
+                          BackgroundColor="#202020"
+                          Square44x44Logo="assets\Logo.png"
+                          Square150x150Logo="assets\Logo.png">
+        <uap:SplashScreen Image="assets\Logo.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <Capability Name="internetClient" />
+  </Capabilities>
+</Package>
