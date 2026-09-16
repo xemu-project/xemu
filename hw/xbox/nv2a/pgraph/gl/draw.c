@@ -100,8 +100,10 @@ void pgraph_gl_clear_surface(NV2AState *d, uint32_t parameter)
                       scissor_width >= pg->surface_binding_dim.width &&
                       scissor_height >= pg->surface_binding_dim.height;
 
-    pgraph_apply_scaling_factor(pg, &xmin, &ymin);
-    pgraph_apply_scaling_factor(pg, &scissor_width, &scissor_height);
+    unsigned int sf = r->color_binding ? r->color_binding->scale :
+                                         pg->surface_scale_factor;
+    xmin *= sf; ymin *= sf;
+    scissor_width *= sf; scissor_height *= sf;
 
     /* FIXME: Respect window clip?!?! */
     glEnable(GL_SCISSOR_TEST);
@@ -294,9 +296,12 @@ void pgraph_gl_draw_begin(NV2AState *d)
         glDisable(GL_POLYGON_SMOOTH);
     }
 
+    unsigned int sf = r->color_binding ? r->color_binding->scale :
+                                         pg->surface_scale_factor;
+
     unsigned int vp_width = pg->surface_binding_dim.width,
                  vp_height = pg->surface_binding_dim.height;
-    pgraph_apply_scaling_factor(pg, &vp_width, &vp_height);
+    vp_width *= sf; vp_height *= sf;
     glViewport(0, 0, vp_width, vp_height);
 
     /* Surface clip */
@@ -309,8 +314,8 @@ void pgraph_gl_draw_begin(NV2AState *d)
 
     pgraph_apply_anti_aliasing_factor(pg, &xmin, &ymin);
     pgraph_apply_anti_aliasing_factor(pg, &scissor_width, &scissor_height);
-    pgraph_apply_scaling_factor(pg, &xmin, &ymin);
-    pgraph_apply_scaling_factor(pg, &scissor_width, &scissor_height);
+    xmin *= sf; ymin *= sf;
+    scissor_width *= sf; scissor_height *= sf;
 
     glEnable(GL_SCISSOR_TEST);
     glScissor(xmin, ymin, scissor_width, scissor_height);
