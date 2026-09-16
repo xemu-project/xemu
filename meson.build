@@ -2698,6 +2698,7 @@ if numa.found()
 endif
 config_host_data.set('CONFIG_OPENGL', opengl.found())
 config_host_data.set('CONFIG_VULKAN', vulkan.found())
+config_host_data.set('CONFIG_D3D11', host_os == 'windows')
 config_host_data.set('CONFIG_PLUGIN', get_option('plugins'))
 config_host_data.set('CONFIG_RBD', rbd.found())
 config_host_data.set('CONFIG_RDMA', rdma.found())

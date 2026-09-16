@@ -41,6 +41,21 @@ bool g_capture_renderdoc_frame = false;
 #define SHORTCUT_MENU_TEXT(c) "Ctrl+" #c
 #endif
 
+#if defined(CONFIG_D3D11) && !defined(CONFIG_VULKAN)
+static int renderer_config_to_ui_index(int renderer)
+{
+    if (renderer == CONFIG_DISPLAY_RENDERER_VULKAN) {
+        return CONFIG_DISPLAY_RENDERER_OPENGL;
+    }
+    return renderer > CONFIG_DISPLAY_RENDERER_VULKAN ? renderer - 1 : renderer;
+}
+
+static int renderer_ui_to_config_index(int renderer)
+{
+    return renderer >= CONFIG_DISPLAY_RENDERER_VULKAN ? renderer + 1 : renderer;
+}
+#endif
+
 void ProcessKeyboardShortcuts(void)
 {
     if (IsShortcutKeyPressed(ImGuiKey_E)) {
@@ -175,13 +190,25 @@ void ShowMainMenu()
                 }
             }
 
-            ImGui::Combo("Backend", &g_config.display.renderer,
-                 "Null\0"
-                 "OpenGL\0"
-#ifdef CONFIG_VULKAN
-                 "Vulkan\0"
+            int renderer = g_config.display.renderer;
+#if defined(CONFIG_D3D11) && !defined(CONFIG_VULKAN)
+            renderer = renderer_config_to_ui_index(renderer);
 #endif
-                );
+            if (ImGui::Combo("Backend", &renderer,
+                             "Null\0"
+                             "OpenGL\0"
+#ifdef CONFIG_VULKAN
+                             "Vulkan\0"
+#endif
+#ifdef CONFIG_D3D11
+                             "Direct3D 11\0"
+#endif
+                             )) {
+#if defined(CONFIG_D3D11) && !defined(CONFIG_VULKAN)
+                renderer = renderer_ui_to_config_index(renderer);
+#endif
+                g_config.display.renderer = renderer;
+            }
 
             int rendering_scale = nv2a_get_surface_scale_factor() - 1;
             if (ImGui::Combo("Int. Resolution Scale", &rendering_scale,

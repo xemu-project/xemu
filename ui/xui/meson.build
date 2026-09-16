@@ -27,3 +27,7 @@ if host_os == 'windows'
   xemu_ss.add(files('d3d11-corewindow-present.cc', 'd3d11-present.cc',
                     'update.cc', 'win32-dxgi-present.cc'))
 endif
+
+if get_option('xbox_uwp')
+  subdir('uwp')
+endif

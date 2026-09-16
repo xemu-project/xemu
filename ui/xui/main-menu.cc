@@ -46,6 +46,21 @@
 
 MainMenuScene g_main_menu;
 
+#if defined(CONFIG_D3D11) && !defined(CONFIG_VULKAN)
+static int renderer_config_to_ui_index(int renderer)
+{
+    if (renderer == CONFIG_DISPLAY_RENDERER_VULKAN) {
+        return CONFIG_DISPLAY_RENDERER_OPENGL;
+    }
+    return renderer > CONFIG_DISPLAY_RENDERER_VULKAN ? renderer - 1 : renderer;
+}
+
+static int renderer_ui_to_config_index(int renderer)
+{
+    return renderer >= CONFIG_DISPLAY_RENDERER_VULKAN ? renderer + 1 : renderer;
+}
+#endif
+
 MainMenuTabView::~MainMenuTabView() {}
 void MainMenuTabView::Draw()
 {
@@ -740,14 +755,26 @@ void MainMenuInputView::PopulateTableController(ControllerState *state)
 void MainMenuDisplayView::Draw()
 {
     SectionTitle("Renderer");
-    ChevronCombo("Backend", &g_config.display.renderer,
-                 "Null\0"
-                 "OpenGL\0"
-#ifdef CONFIG_VULKAN
-                 "Vulkan\0"
+    int renderer = g_config.display.renderer;
+#if defined(CONFIG_D3D11) && !defined(CONFIG_VULKAN)
+    renderer = renderer_config_to_ui_index(renderer);
 #endif
-                 ,
-                 "Select desired renderer implementation");
+    if (ChevronCombo("Backend", &renderer,
+                     "Null\0"
+                     "OpenGL\0"
+#ifdef CONFIG_VULKAN
+                     "Vulkan\0"
+#endif
+#ifdef CONFIG_D3D11
+                     "Direct3D 11\0"
+#endif
+                     ,
+                     "Select desired renderer implementation")) {
+#if defined(CONFIG_D3D11) && !defined(CONFIG_VULKAN)
+        renderer = renderer_ui_to_config_index(renderer);
+#endif
+        g_config.display.renderer = renderer;
+    }
     int rendering_scale = nv2a_get_surface_scale_factor() - 1;
     if (ChevronCombo("Internal resolution scale", &rendering_scale,
                      "1x\0"

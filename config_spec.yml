@@ -226,7 +226,7 @@ input:
 display:
   renderer:
     type: enum
-    values: ["NULL", OPENGL, VULKAN]
+    values: ["NULL", OPENGL, VULKAN, D3D11]
     default: OPENGL
   vulkan:
     validation_layers: bool

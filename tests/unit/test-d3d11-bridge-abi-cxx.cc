@@ -1,6 +1,7 @@
 /* C++ side of the fixed-width D3D11 bridge ABI contract. */
 
 #include "hw/xbox/nv2a/pgraph/d3d11/d3d11_bridge.h"
+#include "hw/xbox/nv2a/framebuffer.h"
 
 #include <cstddef>
 
@@ -17,6 +18,11 @@ static_assert(offsetof(D3D11BridgePgraphSnapshot, window_clip_x_min) == 248);
 static_assert(offsetof(D3D11BridgePgraphSnapshot, clear_color) == 400);
 static_assert(offsetof(D3D11BridgeVertexAttribute, inline_value) == 20);
 static_assert(offsetof(D3D11BridgeSurfaceDescriptor, format) == 20);
+static_assert(sizeof(NV2AFramebufferSurface) == 64);
+static_assert(alignof(NV2AFramebufferSurface) == 8);
+static_assert(offsetof(NV2AFramebufferSurface, handle) == 8);
+static_assert(offsetof(NV2AFramebufferSurface, resource) == 16);
+static_assert(offsetof(NV2AFramebufferSurface, lease_id) == 56);
 
 static_assert(D3D11_BRIDGE_VERTEX_ATTRIBUTES == 16);
 static_assert(D3D11_BRIDGE_MAX_DRAW_ARRAY_RANGES == 1250);

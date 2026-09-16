@@ -116,6 +116,32 @@ struct D3D11SurfaceResult {
     }
 };
 
+/*
+ * Caller-owned CPU readback contract.  The caller supplies data/capacity and
+ * may choose a destination stride (it must be at least row_bytes()).  On
+ * success, exactly width * bytes_per_pixel() bytes are written per row;
+ * padding up to stride is left untouched.  required_size is always the
+ * number of bytes needed for the requested stride, when that multiplication
+ * is representable.
+ *
+ * This is a synchronous, owner-thread operation.  The D3D11 resource and its
+ * staging texture remain owned by D3D11SurfaceResource; no native handle is
+ * returned and the caller owns only the supplied CPU buffer.  The buffer must
+ * remain valid for the duration of the call and must not alias a D3D11
+ * resource.  A failed call does not promise any bytes in data were written.
+ */
+struct D3D11SurfaceReadback {
+    D3D11SurfaceFormat format = D3D11SurfaceFormat::Bgr8A8;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t stride = 0;
+    uint8_t *data = nullptr;
+    size_t capacity = 0;
+    size_t required_size = 0;
+    D3D11SurfaceStatus status = D3D11SurfaceStatus::InvalidDescriptor;
+    HRESULT hresult = E_INVALIDARG;
+};
+
 struct D3D11SurfaceDownloadEvent {
     D3D11SurfaceDescriptor descriptor;
     uint64_t generation = 0;
@@ -261,6 +287,10 @@ public:
 
     /* Flush a pending draw/download request, if any. */
     bool Flush(uint8_t *vram, size_t vram_size);
+
+    /* Synchronously copy the current GPU surface into a caller-owned CPU
+     * buffer.  This does not change guest VRAM or dirty authority flags. */
+    D3D11SurfaceStatus Readback(D3D11SurfaceReadback *request);
 
 private:
     bool CompleteGpuWork();

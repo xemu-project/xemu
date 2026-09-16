@@ -517,6 +517,90 @@ bool TestCacheGenerationOverlapAndValidation(const DevicePair &pair)
                  "terminal cache accepted acquisition");
 }
 
+bool TestCallerOwnedReadback(const DevicePair &pair)
+{
+    constexpr uint32_t width = 3;
+    constexpr uint32_t height = 2;
+    constexpr uint32_t pitch = 16;
+    const D3D11SurfaceDescriptor descriptor = {
+        0,
+        width,
+        height,
+        pitch,
+        D3D11SurfaceFormat::Bgr8A8,
+        D3D11SurfaceType::LinearPitch,
+        1,
+        D3D11SurfaceAntialias::Center1,
+    };
+    std::vector<uint8_t> vram(pitch * height, 0);
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width * 4; ++x) {
+            vram[y * pitch + x] = static_cast<uint8_t>(0x20 + y * 17 + x);
+        }
+    }
+    D3D11SurfaceCache cache(pair.device.Get(), pair.context.Get());
+    auto surface = cache.Acquire(descriptor, vram.data(), vram.size());
+    if (!Check(surface && surface->Upload(vram.data(), vram.size()),
+               "readback setup upload")) {
+        return false;
+    }
+
+    std::vector<uint8_t> output(pitch * height, 0xa5);
+    xemu::D3D11SurfaceReadback request = {};
+    request.stride = pitch;
+    request.data = output.data();
+    request.capacity = output.size();
+    const auto readback_status = surface->Readback(&request);
+    bool rows_match = true;
+    for (uint32_t y = 0; y < height; ++y) {
+        rows_match =
+            rows_match && std::memcmp(output.data() + y * pitch,
+                                      vram.data() + y * pitch, width * 4) == 0;
+        for (uint32_t x = width * 4; x < pitch; ++x) {
+            rows_match = rows_match && output[y * pitch + x] == 0xa5;
+        }
+    }
+    if (!Check(readback_status == xemu::D3D11SurfaceStatus::Ok &&
+                   request.status == xemu::D3D11SurfaceStatus::Ok &&
+                   request.format == D3D11SurfaceFormat::Bgr8A8 &&
+                   request.width == width && request.height == height &&
+                   request.required_size == output.size() && rows_match,
+               "caller-owned readback")) {
+        return false;
+    }
+
+    if (!Check(surface->MarkUploadDirty() &&
+                   surface->Readback(&request) ==
+                       xemu::D3D11SurfaceStatus::Conflict &&
+                   surface->MarkUploadDirty(false),
+               "readback ignored pending upload")) {
+        return false;
+    }
+
+    xemu::D3D11SurfaceReadback missing = {};
+    missing.stride = pitch;
+    missing.capacity = output.size() - 1;
+    if (!Check(surface->Readback(&missing) ==
+                       xemu::D3D11SurfaceStatus::OutOfRange &&
+                   missing.required_size == output.size() &&
+                   missing.status == xemu::D3D11SurfaceStatus::OutOfRange,
+               "short readback buffer accepted")) {
+        return false;
+    }
+    xemu::D3D11SurfaceReadback narrow = {};
+    narrow.stride = width * 4 - 1;
+    narrow.data = output.data();
+    narrow.capacity = output.size();
+    if (!Check(surface->Readback(&narrow) ==
+                   xemu::D3D11SurfaceStatus::InvalidDescriptor,
+               "narrow readback stride accepted")) {
+        return false;
+    }
+    return Check(surface->Readback(nullptr) ==
+                     xemu::D3D11SurfaceStatus::InvalidDescriptor,
+                 "null readback request accepted");
+}
+
 } // namespace
 
 int main()
@@ -527,7 +611,8 @@ int main()
         return 1;
     }
     return TestColorPitchAndClear(pair) && TestDepthBytesAndStencil(pair) &&
-                   TestCacheGenerationOverlapAndValidation(pair) ?
+                   TestCacheGenerationOverlapAndValidation(pair) &&
+                   TestCallerOwnedReadback(pair) ?
                0 :
                1;
 }

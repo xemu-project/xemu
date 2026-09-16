@@ -220,6 +220,8 @@ option('sdl', type : 'feature', value : 'enabled',
        description: 'SDL user interface')
 option('sdl_image', type : 'feature', value : 'auto',
        description: 'SDL Image support for icons')
+option('xbox_uwp', type : 'boolean', value : false,
+       description: 'Build the SDL-free Xbox Series X|S UWP CoreWindow host')
 option('seccomp', type : 'feature', value : 'auto',
        description: 'seccomp support')
 option('smartcard', type : 'feature', value : 'auto',

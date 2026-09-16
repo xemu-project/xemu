@@ -635,6 +635,108 @@ bool D3D11SurfaceResource::Download(uint8_t *vram, size_t vram_size)
     return true;
 }
 
+D3D11SurfaceStatus D3D11SurfaceResource::Readback(D3D11SurfaceReadback *request)
+{
+    if (request == nullptr) {
+        SetOperationError(D3D11SurfaceStatus::InvalidDescriptor, E_INVALIDARG);
+        return D3D11SurfaceStatus::InvalidDescriptor;
+    }
+
+    /* Preserve caller-owned inputs before populating the output metadata. */
+    uint8_t *data = request->data;
+    const size_t capacity = request->capacity;
+    const uint32_t requested_stride = request->stride;
+    request->format = m_descriptor.format;
+    request->width = m_descriptor.width;
+    request->height = m_descriptor.height;
+    request->required_size = 0;
+    request->status = D3D11SurfaceStatus::InvalidDescriptor;
+    request->hresult = E_INVALIDARG;
+
+    if (!CheckOwnerThread() || !valid()) {
+        request->status = m_status;
+        request->hresult = m_last_hresult;
+        return request->status;
+    }
+    if (m_upload_dirty) {
+        SetOperationError(D3D11SurfaceStatus::Conflict, E_INVALIDARG);
+        request->status = D3D11SurfaceStatus::Conflict;
+        request->hresult = E_INVALIDARG;
+        return request->status;
+    }
+    if (!ValidateInternalResources()) {
+        request->status = m_last_operation_status;
+        request->hresult = m_last_operation_hresult;
+        return request->status;
+    }
+
+    const uint32_t stride =
+        requested_stride == 0 ? m_row_bytes : requested_stride;
+    if (stride < m_row_bytes ||
+        static_cast<uint64_t>(stride) * m_descriptor.height > SIZE_MAX) {
+        SetOperationError(D3D11SurfaceStatus::InvalidDescriptor, E_INVALIDARG);
+        request->status = D3D11SurfaceStatus::InvalidDescriptor;
+        request->hresult = E_INVALIDARG;
+        return request->status;
+    }
+    const size_t required = static_cast<size_t>(stride) * m_descriptor.height;
+    request->stride = stride;
+    request->required_size = required;
+    if (data == nullptr || capacity < required) {
+        SetOperationError(D3D11SurfaceStatus::OutOfRange, E_INVALIDARG);
+        request->status = D3D11SurfaceStatus::OutOfRange;
+        request->hresult = E_INVALIDARG;
+        return request->status;
+    }
+
+    m_context->CopyResource(m_read_staging.Get(), m_texture.Get());
+    if (!CompleteGpuWork()) {
+        request->status = m_last_operation_status;
+        request->hresult = m_last_operation_hresult;
+        return request->status;
+    }
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    const HRESULT hr =
+        m_context->Map(m_read_staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+    if (FAILED(hr)) {
+        SetError(IsDeviceError(hr) ? D3D11SurfaceStatus::DeviceLost :
+                                     D3D11SurfaceStatus::Unsupported,
+                 hr);
+        request->status = m_status;
+        request->hresult = hr;
+        return request->status;
+    }
+    if (mapped.pData == nullptr || mapped.RowPitch < m_row_bytes) {
+        m_context->Unmap(m_read_staging.Get(), 0);
+        SetError(D3D11SurfaceStatus::InvalidDescriptor, E_INVALIDARG);
+        request->status = D3D11SurfaceStatus::InvalidDescriptor;
+        request->hresult = E_INVALIDARG;
+        return request->status;
+    }
+    const uint8_t *source = static_cast<const uint8_t *>(mapped.pData);
+    for (uint32_t y = 0; y < m_descriptor.height; ++y) {
+        size_t source_offset = 0;
+        size_t destination_offset = 0;
+        if (!CheckedRowOffset(y, mapped.RowPitch, &source_offset) ||
+            !CheckedRowOffset(y, stride, &destination_offset)) {
+            m_context->Unmap(m_read_staging.Get(), 0);
+            SetError(D3D11SurfaceStatus::InvalidDescriptor, E_INVALIDARG);
+            request->status = D3D11SurfaceStatus::InvalidDescriptor;
+            request->hresult = E_INVALIDARG;
+            return request->status;
+        }
+        std::memcpy(data + destination_offset, source + source_offset,
+                    m_row_bytes);
+    }
+    m_context->Unmap(m_read_staging.Get(), 0);
+    m_last_hresult = S_OK;
+    m_last_operation_status = D3D11SurfaceStatus::Ok;
+    m_last_operation_hresult = S_OK;
+    request->status = D3D11SurfaceStatus::Ok;
+    request->hresult = S_OK;
+    return request->status;
+}
+
 bool D3D11SurfaceResource::Flush(uint8_t *vram, size_t vram_size)
 {
     if (!CheckOwnerThread() || !valid()) {
