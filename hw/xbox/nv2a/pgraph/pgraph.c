@@ -354,6 +354,55 @@ void pgraph_destroy(PGRAPHState *pg)
     qemu_mutex_destroy(&pg->lock);
 }
 
+static void pgraph_download_vga_surfaces(NV2AState *d)
+{
+    VGADisplayParams vga_display_params;
+    d->vga.get_params(&d->vga, &vga_display_params);
+
+    hwaddr framebuffer_start = d->pcrtc.start + vga_display_params.line_offset;
+    if (!framebuffer_start) {
+        // Early exit during guest startup.
+        return;
+    }
+
+    PGRAPHState *pg = &d->pgraph;
+    {
+        DisplaySurface *display_surface = qemu_console_surface(d->vga.con);
+        hwaddr framebuffer_size =
+            surface_height(display_surface) * surface_stride(display_surface);
+
+        if (!pg->renderer->ops.have_overlapping_dirty_surfaces(
+                d, framebuffer_start, framebuffer_size)) {
+            return;
+        }
+
+        trace_nv2a_pgraph_surface_download_vga_overlapping(framebuffer_start,
+                                                           framebuffer_size);
+        bql_lock();
+        qemu_mutex_lock(&d->pfifo.lock);
+        qatomic_set(&d->pfifo.halt, true);
+
+        pg->renderer->ops.download_overlapping_surfaces_trigger(
+            d, framebuffer_start, framebuffer_size);
+
+        pfifo_kick(d);
+        qemu_mutex_unlock(&d->pfifo.lock);
+
+        bql_unlock();
+    }
+
+    pg->renderer->ops.download_overlapping_surfaces_wait(d);
+
+    {
+        bql_lock();
+        qemu_mutex_lock(&d->pfifo.lock);
+        qatomic_set(&d->pfifo.halt, false);
+        pfifo_kick(d);
+        qemu_mutex_unlock(&d->pfifo.lock);
+        bql_unlock();
+    }
+}
+
 int nv2a_get_framebuffer_surface(void)
 {
     NV2AState *d = g_nv2a;
@@ -363,9 +412,21 @@ int nv2a_get_framebuffer_surface(void)
     qemu_mutex_lock(&pg->renderer_lock);
     assert(!pg->framebuffer_in_use);
     pg->framebuffer_in_use = true;
+
+    // Presumably in the case that there is no get_framebuffer_surface it's
+    // impossible for there to be an overlapping modified GL/VK surface and we
+    // could just bail early?
     if (pg->renderer->ops.get_framebuffer_surface) {
         s = pg->renderer->ops.get_framebuffer_surface(d);
     }
+
+    if (!s) {
+        //  If there is no framebuffer surface, it is possible that there are
+        //  some GL surfaces that overlap the VGA region. Such surfaces must be
+        //  downloaded before the default VGA texture is created.
+        pgraph_download_vga_surfaces(d);
+    }
+
     qemu_mutex_unlock(&pg->renderer_lock);
 
     return s;

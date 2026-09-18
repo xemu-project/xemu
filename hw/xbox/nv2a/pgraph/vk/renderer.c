@@ -119,9 +119,9 @@ static void pgraph_vk_process_pending(NV2AState *d)
 
     if (qatomic_read(&r->downloads_pending) ||
         qatomic_read(&r->download_dirty_surfaces_pending) ||
+        qatomic_read(&r->download_dirty_surfaces_in_range_pending) ||
         qatomic_read(&d->pgraph.sync_pending) ||
-        qatomic_read(&d->pgraph.flush_pending)
-    ) {
+        qatomic_read(&d->pgraph.flush_pending)) {
         qemu_mutex_unlock(&d->pfifo.lock);
         qemu_mutex_lock(&d->pgraph.lock);
         if (qatomic_read(&r->downloads_pending)) {
@@ -129,6 +129,13 @@ static void pgraph_vk_process_pending(NV2AState *d)
         }
         if (qatomic_read(&r->download_dirty_surfaces_pending)) {
             pgraph_vk_download_dirty_surfaces(d);
+        }
+        if (qatomic_read(&r->download_dirty_surfaces_in_range_pending)) {
+            pgraph_vk_download_surfaces_in_range_if_dirty(
+                &d->pgraph, r->download_dirty_surfaces_in_range_start,
+                r->download_dirty_surfaces_in_range_size);
+            qatomic_set(&r->download_dirty_surfaces_in_range_pending, false);
+            qemu_event_set(&r->dirty_surfaces_download_complete);
         }
         if (qatomic_read(&d->pgraph.sync_pending)) {
             pgraph_vk_sync(d);
@@ -166,7 +173,7 @@ static void pgraph_vk_pre_shutdown_trigger(NV2AState *d)
 
 static void pgraph_vk_pre_shutdown_wait(NV2AState *d)
 {
-    // qemu_event_wait(&d->pgraph.vk_renderer_state->shader_cache_writeback_complete);   
+    // qemu_event_wait(&d->pgraph.vk_renderer_state->shader_cache_writeback_complete);
 }
 
 static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
@@ -204,34 +211,86 @@ static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
 #endif
 }
 
-static PGRAPHRenderer pgraph_vk_renderer = {
-    .type = CONFIG_DISPLAY_RENDERER_VULKAN,
-    .name = "Vulkan",
-    .ops = {
-        .init = pgraph_vk_init,
-        .early_context_init = early_context_init,
-        .finalize = pgraph_vk_finalize,
-        .clear_report_value = pgraph_vk_clear_report_value,
-        .clear_surface = pgraph_vk_clear_surface,
-        .draw_begin = pgraph_vk_draw_begin,
-        .draw_end = pgraph_vk_draw_end,
-        .flip_stall = pgraph_vk_flip_stall,
-        .flush_draw = pgraph_vk_flush_draw,
-        .get_report = pgraph_vk_get_report,
-        .image_blit = pgraph_vk_image_blit,
-        .pre_savevm_trigger = pgraph_vk_pre_savevm_trigger,
-        .pre_savevm_wait = pgraph_vk_pre_savevm_wait,
-        .pre_shutdown_trigger = pgraph_vk_pre_shutdown_trigger,
-        .pre_shutdown_wait = pgraph_vk_pre_shutdown_wait,
-        .process_pending = pgraph_vk_process_pending,
-        .process_pending_reports = pgraph_vk_process_pending_reports,
-        .surface_update = pgraph_vk_surface_update,
-        .set_surface_scale_factor = pgraph_vk_set_surface_scale_factor,
-        .get_surface_scale_factor = pgraph_vk_get_surface_scale_factor,
-        .get_framebuffer_surface = pgraph_vk_get_framebuffer_surface,
-        .get_gpu_properties = pgraph_vk_get_gpu_properties,
+static bool pgraph_vk_have_overlapping_dirty_surfaces(NV2AState *d,
+                                                      hwaddr start, hwaddr size)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    SurfaceBinding *surface;
+
+    hwaddr end = start + size - 1;
+
+    QTAILQ_FOREACH (surface, &r->surfaces, entry) {
+        hwaddr surf_end = surface->vram_addr + surface->size - 1;
+        bool overlapping = !(surface->vram_addr >= end || start >= surf_end);
+        if (overlapping && surface->draw_dirty) {
+            return true;
+        }
     }
-};
+
+    return false;
+}
+
+static void pgraph_vk_download_overlapping_surfaces_trigger(NV2AState *d,
+                                                            hwaddr start,
+                                                            hwaddr size)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    r->download_dirty_surfaces_in_range_start = start;
+    r->download_dirty_surfaces_in_range_size = size;
+    qemu_event_reset(&r->dirty_surfaces_download_complete);
+    qatomic_set(&r->download_dirty_surfaces_in_range_pending, true);
+}
+
+static void pgraph_vk_download_overlapping_surfaces_wait(NV2AState *d)
+{
+    qemu_event_wait(
+        &d->pgraph.vk_renderer_state->dirty_surfaces_download_complete);
+}
+
+static PGRAPHRenderer
+    pgraph_vk_renderer = { .type = CONFIG_DISPLAY_RENDERER_VULKAN,
+                           .name = "Vulkan",
+                           .ops = {
+                               .init = pgraph_vk_init,
+                               .early_context_init = early_context_init,
+                               .finalize = pgraph_vk_finalize,
+                               .clear_report_value =
+                                   pgraph_vk_clear_report_value,
+                               .clear_surface = pgraph_vk_clear_surface,
+                               .draw_begin = pgraph_vk_draw_begin,
+                               .draw_end = pgraph_vk_draw_end,
+                               .flip_stall = pgraph_vk_flip_stall,
+                               .flush_draw = pgraph_vk_flush_draw,
+                               .get_report = pgraph_vk_get_report,
+                               .image_blit = pgraph_vk_image_blit,
+                               .pre_savevm_trigger =
+                                   pgraph_vk_pre_savevm_trigger,
+                               .pre_savevm_wait = pgraph_vk_pre_savevm_wait,
+                               .pre_shutdown_trigger =
+                                   pgraph_vk_pre_shutdown_trigger,
+                               .pre_shutdown_wait = pgraph_vk_pre_shutdown_wait,
+                               .process_pending = pgraph_vk_process_pending,
+                               .process_pending_reports =
+                                   pgraph_vk_process_pending_reports,
+                               .surface_update = pgraph_vk_surface_update,
+                               .have_overlapping_dirty_surfaces =
+                                   pgraph_vk_have_overlapping_dirty_surfaces,
+                               .download_overlapping_surfaces_trigger =
+                                   pgraph_vk_download_overlapping_surfaces_trigger,
+                               .download_overlapping_surfaces_wait =
+                                   pgraph_vk_download_overlapping_surfaces_wait,
+                               .set_surface_scale_factor =
+                                   pgraph_vk_set_surface_scale_factor,
+                               .get_surface_scale_factor =
+                                   pgraph_vk_get_surface_scale_factor,
+                               .get_framebuffer_surface =
+                                   pgraph_vk_get_framebuffer_surface,
+                               .get_gpu_properties =
+                                   pgraph_vk_get_gpu_properties,
+                           } };
 
 static void __attribute__((constructor)) register_renderer(void)
 {

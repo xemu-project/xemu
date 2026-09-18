@@ -187,7 +187,11 @@ typedef struct PGRAPHGLState {
     SurfaceBinding *color_binding, *zeta_binding;
     bool downloads_pending;
     QemuEvent downloads_complete;
+
     bool download_dirty_surfaces_pending;
+    bool download_dirty_surfaces_in_range_pending;
+    hwaddr download_dirty_surfaces_in_range_start;
+    hwaddr download_dirty_surfaces_in_range_size;
     QemuEvent dirty_surfaces_download_complete; // common
 
     TextureBinding *texture_binding[NV2A_MAX_TEXTURES];
@@ -280,6 +284,7 @@ void pgraph_gl_reload_surface_scale_factor(PGRAPHState *pg);
 void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface, TextureBinding *texture, TextureShape *texture_shape, int texture_unit);
 void pgraph_gl_set_surface_dirty(PGRAPHState *pg, bool color, bool zeta);
 void pgraph_gl_surface_download_if_dirty(NV2AState *d, SurfaceBinding *surface);
+void pgraph_gl_download_surfaces_in_range_if_dirty(NV2AState *d, hwaddr start, hwaddr size);
 SurfaceBinding *pgraph_gl_surface_get(NV2AState *d, hwaddr addr);
 SurfaceBinding *pgraph_gl_surface_get_within(NV2AState *d, hwaddr addr);
 void pgraph_gl_surface_invalidate(NV2AState *d, SurfaceBinding *e);

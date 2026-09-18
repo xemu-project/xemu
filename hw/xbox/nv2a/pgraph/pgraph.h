@@ -128,6 +128,12 @@ typedef struct PGRAPHRenderer {
         void (*process_pending_reports)(NV2AState *d);
         void (*surface_flush)(NV2AState *d);
         void (*surface_update)(NV2AState *d, bool upload, bool color_write, bool zeta_write);
+        bool (*have_overlapping_dirty_surfaces)(NV2AState *d, hwaddr start,
+                                                hwaddr size);
+        void (*download_overlapping_surfaces_trigger)(NV2AState *d,
+                                                      hwaddr start,
+                                                      hwaddr size);
+        void (*download_overlapping_surfaces_wait)(NV2AState *d);
         void (*set_surface_scale_factor)(NV2AState *d, unsigned int scale);
         unsigned int (*get_surface_scale_factor)(NV2AState *d);
         int (*get_framebuffer_surface)(NV2AState *d);
