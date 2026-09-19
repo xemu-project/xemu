@@ -127,7 +127,7 @@ void pgraph_gl_clear_surface(NV2AState *d, uint32_t parameter)
     if (r->zeta_binding) {
         r->zeta_binding->cleared = full_clear && write_zeta;
     }
-    
+
     pg->clearing = false;
 }
 
@@ -167,10 +167,12 @@ void pgraph_gl_draw_begin(NV2AState *d)
 
     if (pgraph_reg_r(pg, NV_PGRAPH_BLEND) & NV_PGRAPH_BLEND_EN) {
         glEnable(GL_BLEND);
-        uint32_t sfactor = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
-                                    NV_PGRAPH_BLEND_SFACTOR);
-        uint32_t dfactor = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
-                                    NV_PGRAPH_BLEND_DFACTOR);
+        const uint32_t blend_reg = pgraph_reg_r(pg, NV_PGRAPH_BLEND);
+        uint32_t sfactor = fixup_blend_factor_for_surface(
+            GET_MASK(blend_reg, NV_PGRAPH_BLEND_SFACTOR), &pg->surface_shape);
+        uint32_t dfactor = fixup_blend_factor_for_surface(
+            GET_MASK(blend_reg, NV_PGRAPH_BLEND_DFACTOR), &pg->surface_shape);
+
         assert(sfactor < ARRAY_SIZE(pgraph_blend_factor_gl_map));
         assert(dfactor < ARRAY_SIZE(pgraph_blend_factor_gl_map));
         glBlendFunc(pgraph_blend_factor_gl_map[sfactor],
