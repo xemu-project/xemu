@@ -19,6 +19,40 @@
 
 #include "renderer.h"
 
+static VkDeviceSize clamp_buffer_size(PGRAPHVkState *r, VkDeviceSize desired,
+                                      bool storage)
+{
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(r->physical_device, &props);
+
+    VkPhysicalDeviceMemoryProperties mem_props;
+    vkGetPhysicalDeviceMemoryProperties(r->physical_device, &mem_props);
+
+    VkDeviceSize largest_heap = 0;
+    for (uint32_t i = 0; i < mem_props.memoryHeapCount; i++) {
+        if (mem_props.memoryHeaps[i].size > largest_heap) {
+            largest_heap = mem_props.memoryHeaps[i].size;
+        }
+    }
+
+    VkDeviceSize limit = desired;
+    if (storage && limit > (VkDeviceSize)props.limits.maxStorageBufferRange) {
+        limit = (VkDeviceSize)props.limits.maxStorageBufferRange;
+    }
+
+    VkDeviceSize budget = largest_heap / 16;
+    if (budget && limit > budget) {
+        limit = budget;
+    }
+
+    VkDeviceSize floor = 8 * 1024 * 1024;
+    if (limit < floor) {
+        limit = desired < floor ? desired : floor;
+    }
+
+    return limit;
+}
+
 static void create_buffer(PGRAPHState *pg, StorageBuffer *buffer)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -63,7 +97,7 @@ void pgraph_vk_init_buffers(NV2AState *d)
     r->storage_buffers[BUFFER_STAGING_DST] = (StorageBuffer){
         .alloc_info = host_alloc_create_info,
         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        .buffer_size = 4096 * 4096 * 4,
+        .buffer_size = clamp_buffer_size(r, 4096 * 4096 * 4, false),
     };
 
     r->storage_buffers[BUFFER_STAGING_SRC] = (StorageBuffer){
@@ -76,7 +110,8 @@ void pgraph_vk_init_buffers(NV2AState *d)
         .alloc_info = device_alloc_create_info,
         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        .buffer_size = (1024 * 10) * (1024 * 10) * 8,
+        .buffer_size = clamp_buffer_size(r, (VkDeviceSize)(1024 * 10) * (1024 * 10) * 8,
+                                         true),
     };
 
     r->storage_buffers[BUFFER_COMPUTE_SRC] = (StorageBuffer){
@@ -90,7 +125,8 @@ void pgraph_vk_init_buffers(NV2AState *d)
         .alloc_info = device_alloc_create_info,
         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                  VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-        .buffer_size = sizeof(pg->inline_elements) * 100,
+        .buffer_size =
+            clamp_buffer_size(r, sizeof(pg->inline_elements) * 100, false),
     };
 
     r->storage_buffers[BUFFER_INDEX_STAGING] = (StorageBuffer){
