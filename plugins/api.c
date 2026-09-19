@@ -48,6 +48,50 @@
 #include "disas/disas.h"
 #include "plugin.h"
 
+// <xemu>
+typedef void (*qemu_plugin_command_cb_t)(const char *args);
+static GHashTable *plugin_cmd_table = NULL;
+
+void qemu_plugin_register_command(const char *name, void (*cb)(const char *))
+{
+    if (!plugin_cmd_table) {
+        plugin_cmd_table =
+            g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    }
+
+    if (g_hash_table_contains(plugin_cmd_table, name)) {
+        fprintf(stderr,
+                "[Plugin API] Warning: Overwriting existing command '%s'\n",
+                name);
+    }
+
+    g_hash_table_insert(plugin_cmd_table, g_strdup(name), (gpointer)cb);
+}
+
+bool qemu_plugin_dispatch_cmd(const char *name, const char *args)
+{
+    if (!plugin_cmd_table) {
+        return false;
+    }
+
+    qemu_plugin_command_cb_t cb =
+        (qemu_plugin_command_cb_t)g_hash_table_lookup(plugin_cmd_table, name);
+
+    if (cb) {
+        cb(args ? args : "");
+        return true;
+    }
+    return false;
+}
+
+void qemu_plugin_unregister_command(const char *name)
+{
+    if (plugin_cmd_table) {
+        g_hash_table_remove(plugin_cmd_table, name);
+    }
+}
+// </xemu>
+
 /* Uninstall and Reset handlers */
 
 void qemu_plugin_uninstall(qemu_plugin_id_t id, qemu_plugin_simple_cb_t cb)
