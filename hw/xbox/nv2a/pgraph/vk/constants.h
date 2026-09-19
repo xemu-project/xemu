@@ -331,8 +331,12 @@ typedef struct SurfaceFormatInfo {
 
 static const BasicSurfaceFormatInfo kelvin_surface_color_format_map[] = {
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5] = { 2 },
+    [NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_O1R5G5B5] = { 2 },
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_R5G6B5] = { 2 },
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_X8R8G8B8_Z8R8G8B8] = { 4 },
+    [NV097_SET_SURFACE_FORMAT_COLOR_LE_X8R8G8B8_O8R8G8B8] = { 4 },
+    [NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_Z1A7R8G8B8] = { 4 },
+    [NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_O1A7R8G8B8] = { 4 },
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8] = { 4 },
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_B8] = { 1 },
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_G8B8] = { 2 },
@@ -342,6 +346,14 @@ static const SurfaceFormatInfo kelvin_surface_color_format_vk_map[] = {
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5] =
     {
         // FIXME: Force alpha to zero
+        2,
+        VK_FORMAT_A1R5G5B5_UNORM_PACK16,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT,
+    },
+    [NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_O1R5G5B5] =
+    {
+        // FIXME: Force alpha to one
         2,
         VK_FORMAT_A1R5G5B5_UNORM_PACK16,
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
@@ -357,6 +369,30 @@ static const SurfaceFormatInfo kelvin_surface_color_format_vk_map[] = {
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_X8R8G8B8_Z8R8G8B8] =
     {
         // FIXME: Force alpha to zero
+        4,
+        VK_FORMAT_B8G8R8A8_UNORM,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT,
+    },
+    [NV097_SET_SURFACE_FORMAT_COLOR_LE_X8R8G8B8_O8R8G8B8] =
+    {
+        // FIXME: Force alpha to one
+        4,
+        VK_FORMAT_B8G8R8A8_UNORM,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT,
+    },
+    [NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_Z1A7R8G8B8] =
+    {
+        // FIXME: Force high bit of alpha to zero
+        4,
+        VK_FORMAT_B8G8R8A8_UNORM,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT,
+    },
+    [NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_O1A7R8G8B8] =
+    {
+        // FIXME: Force high bit of alpha to one
         4,
         VK_FORMAT_B8G8R8A8_UNORM,
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
