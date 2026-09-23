@@ -51,6 +51,10 @@ uint64_t pfifo_read(void *opaque, hwaddr addr, unsigned int size)
     case NV_PFIFO_RUNOUT_STATUS:
         r = NV_PFIFO_RUNOUT_STATUS_LOW_MARK; /* low mark empty */
         break;
+    case NV_PFIFO_CACHE1_DMA_CTL:
+        /* No pushbuffer address translation is cached, so always valid */
+        r = d->pfifo.regs[addr] | NV_PFIFO_CACHE1_DMA_CTL_VALID;
+        break;
     default:
         r = d->pfifo.regs[addr];
         break;

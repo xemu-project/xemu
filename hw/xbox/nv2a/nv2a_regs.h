@@ -162,6 +162,8 @@
 #       define NV_PFIFO_CACHE1_DMA_STATE_ERROR_PROTECTION         6
 #define NV_PFIFO_CACHE1_DMA_INSTANCE                     0x0000122C
 #   define NV_PFIFO_CACHE1_DMA_INSTANCE_ADDRESS               0x0000FFFF
+#define NV_PFIFO_CACHE1_DMA_CTL                          0x00001230
+#   define NV_PFIFO_CACHE1_DMA_CTL_VALID                       (1 << 31)
 #define NV_PFIFO_CACHE1_DMA_PUT                          0x00001240
 #define NV_PFIFO_CACHE1_DMA_GET                          0x00001244
 #define NV_PFIFO_CACHE1_REF                              0x00001248
