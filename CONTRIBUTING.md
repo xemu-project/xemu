@@ -16,6 +16,45 @@ We are committed to providing a friendly, safe, and welcoming environment for ev
 
 ---
 
+## Project Scope & Design Philosophy
+
+When considering contributions, please keep the core tenets of the project in mind:
+
+- **Faithful Hardware Emulation**: xemu’s primary goal is the accurate, low level emulation and faithful recreation of
+  the original Microsoft Xbox hardware behavior. Changes should reflect how real hardware behaves rather than tailoring
+  behavior to satisfy individual titles.
+  <br><br>
+  This means that performance or functionality regressions may be acceptable if a change provably improves emulation
+  accuracy. That being said, the emulator is also expected to be usable, so approximations may also be considered
+  acceptable on a case-by-case basis.
+
+- **No Per-Game Hacks**: Emulation bugs should be solved through correct subsystem and hardware modeling. We generally
+  do not accept game-specific hacks, particularly functionality that is based on hardcoded title checks or game-specific
+  heuristics.
+
+- **Thoughtful Enhancements**: Quality-of-life enhancements (such as internal render scaling and snapshots) are
+  evaluated on a case-by-case basis. Any enhancements must remain optional and be configurable through settings so users
+  can disable them to restore pure hardware-accurate behavior.
+
+- **"It Just Works" User Experience**: We intentionally avoid exposing granular, low-level configuration tweaks.
+  <br><br>
+  Providing an overwhelming number of settings degrades the experience for non-"power users" and fragments the support
+  surface, making troubleshooting and bug isolation significantly more difficult. Features and subsystems should work
+  seamlessly without configuration whenever possible, with the exception of enhancement functionality.
+
+- **Developer & Debugging Tooling**: While xemu provides a number of development/debugging specific features (such as
+  the GDB stub, general tracing, and resource monitors), we strongly prefer to utilize established external tooling
+  wherever possible. Contributions that substantially overlap with existing external tools will generally not be
+  accepted.
+
+- **Upstream QEMU Relationship & Subsystem Isolation**: xemu is built on top of QEMU. To ensure long-term
+  maintainability, Xbox-specific logic should ideally be cleanly isolated within `hw/xbox/`. Modifying QEMU core
+  internals should be avoided where possible, minimizing divergence from upstream. Where general QEMU improvements, bug
+  fixes, or enhancements are developed, contributors are very strongly encouraged to submit them upstream to the QEMU
+  project.
+
+---
+
 ## Getting Started & Communicating
 
 ### Reporting Bugs & Requesting Features
