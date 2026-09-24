@@ -258,9 +258,9 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         mstring_append(body, "  oB1 = backSpecular;\n");
     } else {
         //FIXME: Do 2 passes if we want 2 sided-lighting?
-        static char alpha_source_diffuse[] = "diffuse.a";
-        static char alpha_source_specular[] = "specular.a";
-        static char alpha_source_material[] = "material_alpha";
+        static const char alpha_source_diffuse[] = "diffuse.a";
+        static const char alpha_source_specular[] = "specular.a";
+        static const char alpha_source_material[] = "material_alpha";
         const char *alpha_source = alpha_source_diffuse;
         if (state->fixed_function.diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) {
             alpha_source = alpha_source_material;
@@ -268,21 +268,44 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             alpha_source = alpha_source_specular;
         }
 
-        if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
-            mstring_append_fmt(body, "oD0 = vec4(sceneAmbientColor, %s);\n", alpha_source);
-        } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
-            mstring_append_fmt(body, "oD0 = vec4(diffuse.rgb, %s);\n", alpha_source);
-        } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
-            mstring_append_fmt(body, "oD0 = vec4(specular.rgb, %s);\n", alpha_source);
-        }
+        const char *emission_src =
+            state->fixed_function.emission_src == MATERIAL_COLOR_SRC_DIFFUSE ?
+                "diffuse.rgb" :
+                "specular.rgb";
+        const char *ambient_src =
+            state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE ?
+                "diffuse.rgb" :
+                "specular.rgb";
 
-        mstring_append(body, "oD0.rgb *= materialEmissionColor.rgb;\n");
-        if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_MATERIAL) {
-            mstring_append(body, "oD0.rgb += sceneAmbientColor;\n");
-        } else if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_DIFFUSE) {
-            mstring_append(body, "oD0.rgb += diffuse.rgb;\n");
-        } else if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_SPECULAR) {
-            mstring_append(body, "oD0.rgb += specular.rgb;\n");
+        bool use_scene_ambient =
+            state->fixed_function.emission_src == MATERIAL_COLOR_SRC_MATERIAL ||
+            state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_MATERIAL;
+        if (use_scene_ambient) {
+            mstring_append_fmt(body, "oD0 = vec4(sceneAmbientColor, %s);\n",
+                               alpha_source);
+
+            const char *added_src = NULL;
+            if (state->fixed_function.emission_src !=
+                MATERIAL_COLOR_SRC_MATERIAL) {
+                added_src = emission_src;
+            } else if (state->fixed_function.ambient_src !=
+                       MATERIAL_COLOR_SRC_MATERIAL) {
+                added_src = ambient_src;
+            }
+            if (added_src) {
+                mstring_append_fmt(body,
+                                   "oD0.rgb += %s * materialEmissionColor;\n",
+                                   added_src);
+            }
+        } else {
+            // If emission and ambient sources are both taken from vertex
+            // colors, the scene ambient color must be reconstructed. The
+            // materialEmissionColor modifies the vertex color assigned as the
+            // ambient source and this is added to the vertex color assigned as
+            // the emissive source.
+            mstring_append_fmt(
+                body, "oD0 = vec4(%s + %s * materialEmissionColor, %s);\n",
+                emission_src, ambient_src, alpha_source);
         }
 
         mstring_append(body, "oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n");
@@ -379,8 +402,19 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 "    vec3 lightSpecular = lightSpecularColor(%d) * attenuation * pf;\n",
                 i, i, i);
 
-            mstring_append(body,
-                "    oD0.xyz += lightAmbient;\n");
+            switch (state->fixed_function.ambient_src) {
+            case MATERIAL_COLOR_SRC_MATERIAL:
+                mstring_append(body, "    oD0.rgb += lightAmbient;\n");
+                break;
+            case MATERIAL_COLOR_SRC_DIFFUSE:
+                mstring_append(body,
+                               "    oD0.rgb += diffuse.rgb * lightAmbient;\n");
+                break;
+            case MATERIAL_COLOR_SRC_SPECULAR:
+                mstring_append(body,
+                               "    oD0.rgb += specular.rgb * lightAmbient;\n");
+                break;
+            }
 
             switch (state->fixed_function.diffuse_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
