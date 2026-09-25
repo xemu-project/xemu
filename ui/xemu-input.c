@@ -271,6 +271,17 @@ void xemu_input_init(void)
         exit(1);
     }
 
+    if (g_config.input.gamecontrollerdb_path && strlen(g_config.input.gamecontrollerdb_path) > 0) {
+        int count = SDL_AddGamepadMappingsFromFile(g_config.input.gamecontrollerdb_path);
+        if (count > 0) {
+            fprintf(stderr, "Loaded %d custom gamepad mapping(s) from '%s'\n",
+                    count, g_config.input.gamecontrollerdb_path);
+        } else if (count < 0) {
+            fprintf(stderr, "Failed to load gamepad mappings from '%s': %s\n",
+                    g_config.input.gamecontrollerdb_path, SDL_GetError());
+        }
+    }
+
     // Create the keyboard input (always first)
     ControllerState *new_con = malloc(sizeof(ControllerState));
     memset(new_con, 0, sizeof(ControllerState));
@@ -476,6 +487,20 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         }
     } else if (event->type == SDL_EVENT_GAMEPAD_REMAPPED) {
         DPRINTF("Controller Remapped: %d\n", event->gdevice.which);
+    } else if (event->type == SDL_EVENT_JOYSTICK_ADDED) {
+        if (!SDL_IsGamepad(event->jdevice.which)) {
+            const char *name = SDL_GetJoystickNameForID(event->jdevice.which);
+            SDL_GUID guid = SDL_GetJoystickGUIDForID(event->jdevice.which);
+            char guid_buf[35] = { 0 };
+            SDL_GUIDToString(guid, guid_buf, sizeof(guid_buf));
+            fprintf(
+                stderr,
+                "Input: Detected unmapped joystick '%s' (GUID: %s, ID: %u). "
+                "This device is not recognized as a gamepad by SDL and "
+                "requires an SDL gamepad mapping to work with xemu.\n",
+                name ? name : "Unknown", guid_buf,
+                (unsigned int)event->jdevice.which);
+        }
     }
 }
 

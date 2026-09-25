@@ -316,7 +316,7 @@ audio:
   use_dsp: bool
   use_dsp_jit:
     type: bool
-    default: true
+    default: false
   hrtf:
     type: bool
     default: true

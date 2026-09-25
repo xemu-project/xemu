@@ -37,7 +37,7 @@ imgui
 implot
 genconfig
 curl-*
-json-*
-SDL3-*
+nlohmann_json
+sdl3
 /dsp56300/*
 !/dsp56300/meson.build
