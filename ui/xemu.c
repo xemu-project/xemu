@@ -1374,12 +1374,16 @@ int main(int argc, char **argv)
         // Launched without a console. Redirect stdout and stderr to a log file.
         g_autofree char *log_path = g_build_filename(
             xemu_settings_get_base_path(), "xemu.log", NULL);
-        HANDLE logfile = CreateFileA(log_path,
-            GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
-            NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-        if (logfile != INVALID_HANDLE_VALUE) {
-            freopen(log_path, "a", stdout);
-            freopen(log_path, "a", stderr);
+        g_autofree wchar_t *log_path_w = (wchar_t *)g_utf8_to_utf16(
+            log_path, -1, NULL, NULL, NULL);
+        if (log_path_w) {
+            HANDLE logfile = CreateFileW(log_path_w,
+                GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
+                NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+            if (logfile != INVALID_HANDLE_VALUE) {
+                _wfreopen(log_path_w, L"a", stdout);
+                _wfreopen(log_path_w, L"a", stderr);
+            }
         }
     }
 
