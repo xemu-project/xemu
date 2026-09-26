@@ -77,7 +77,10 @@ const char *xemu_settings_get_base_path(void)
         return base_path;
     }
 
-    if (xemu_settings_detect_portable_mode()) {
+    if (settings_path != NULL) {
+        g_autofree char *config_dir = g_path_get_dirname(settings_path);
+        base_path = g_strdup_printf("%s%c", config_dir, G_DIR_SEPARATOR);
+    } else if (xemu_settings_detect_portable_mode()) {
         const char *base = SDL_GetBasePath();
         assert(base != NULL);
         base_path = g_strdup(base);

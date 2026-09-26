@@ -1346,36 +1346,6 @@ int main(int argc, char **argv)
 
     setlocale(LC_NUMERIC, "C");
 
-#ifdef _WIN32
-    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
-        // Launched with a console. If stdout and stderr are not associated with
-        // an output stream, redirect to parent console.
-        if (_fileno(stdout) == -2) {
-            freopen("CONOUT$", "w+", stdout);
-        }
-        if (_fileno(stderr) == -2) {
-            freopen("CONOUT$", "w+", stderr);
-        }
-    } else {
-        // Launched without a console. Redirect stdout and stderr to a log file.
-        HANDLE logfile = CreateFileA("xemu.log",
-            GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
-            NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-        if (logfile != INVALID_HANDLE_VALUE) {
-            freopen("xemu.log", "a", stdout);
-            freopen("xemu.log", "a", stderr);
-        }
-    }
-
-    _set_error_mode(_OUT_TO_STDERR);
-#endif
-
-    fprintf(stderr, "xemu_version: %s\n", xemu_version);
-    fprintf(stderr, "xemu_commit: %s\n", xemu_commit);
-    fprintf(stderr, "xemu_date: %s\n", xemu_date);
-
-    init_sdl_app_metadata();
-
     gArgc = argc;
     gArgv = argv;
 
@@ -1389,6 +1359,38 @@ int main(int argc, char **argv)
             break;
         }
     }
+
+#ifdef _WIN32
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        // Launched with a console. If stdout and stderr are not associated with
+        // an output stream, redirect to parent console.
+        if (_fileno(stdout) == -2) {
+            freopen("CONOUT$", "w+", stdout);
+        }
+        if (_fileno(stderr) == -2) {
+            freopen("CONOUT$", "w+", stderr);
+        }
+    } else {
+        // Launched without a console. Redirect stdout and stderr to a log file.
+        g_autofree char *log_path = g_build_filename(
+            xemu_settings_get_base_path(), "xemu.log", NULL);
+        HANDLE logfile = CreateFileA(log_path,
+            GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
+            NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (logfile != INVALID_HANDLE_VALUE) {
+            freopen(log_path, "a", stdout);
+            freopen(log_path, "a", stderr);
+        }
+    }
+
+    _set_error_mode(_OUT_TO_STDERR);
+#endif
+
+    fprintf(stderr, "xemu_version: %s\n", xemu_version);
+    fprintf(stderr, "xemu_commit: %s\n", xemu_commit);
+    fprintf(stderr, "xemu_date: %s\n", xemu_date);
+
+    init_sdl_app_metadata();
 
     if (!xemu_settings_load()) {
         const char *err_msg = xemu_settings_get_error_message();
