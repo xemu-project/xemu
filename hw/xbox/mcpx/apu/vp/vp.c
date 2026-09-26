@@ -957,45 +957,28 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
         hwaddr addr = d->regs[NV_PAPU_VPSSLADDR] + page * 8;
         segment_offset = ldl_le_phys(&address_space_memory, addr);
         segment_length = ldl_le_phys(&address_space_memory, addr + 4);
-        if (segment_offset == 0 || segment_length == 0) {
+        assert(segment_length != 0);
+        if (segment_offset == 0) {
             // SSL entry not yet populated by guest (timing race); skip this cycle
             DPRINTF("Voice %d: SSL entry page %d not ready "
                     "(offset=%"HWADDR_PRIx" length=%"PRIx32")\n",
                     v, page, segment_offset, segment_length);
             return -1;
         }
+
         seg_len = (segment_length >> 0) & 0xffff;
         seg_cs = (segment_length >> 16) & 3;
         seg_spb = (segment_length >> 18) & 0x1f;
         seg_s = (segment_length >> 23) & 1;
-        if (seg_cs != container_size_index) {
-            DPRINTF("Voice %d: SSL seg_cs %d != container_size_index %d\n",
-                    v, seg_cs, container_size_index);
-            voice_off(d, v);
-            return -1;
-        }
-        if ((seg_spb + 1) != samples_per_block) {
-            DPRINTF("Voice %d: SSL seg_spb+1 %d != samples_per_block %d\n",
-                    v, seg_spb + 1, samples_per_block);
-            voice_off(d, v);
-            return -1;
-        }
-        if (seg_s != stereo) {
-            DPRINTF("Voice %d: SSL seg_s %d != stereo %d\n",
-                    v, seg_s, stereo);
-            voice_off(d, v);
-            return -1;
-        }
+        assert(seg_cs == container_size_index);
+        assert((seg_spb + 1) == samples_per_block);
+        assert(seg_s == stereo);
         container_size_index = seg_cs;
         if (seg_cs == NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE_ADPCM) {
             sample_size = NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S24;
         }
 
-        if (seg_len == 0) {
-            DPRINTF("Voice %d: SSL seg_len is 0\n", v);
-            voice_off(d, v);
-            return -1;
-        }
+        assert(seg_len > 0);
         ebo = seg_len - 1; // FIXME: Confirm seg_len-1 is last valid sample index
 
         DPRINTF("Segment: SSL%c[%d]\n", 'A' + ssl_index, ssl_seg);
