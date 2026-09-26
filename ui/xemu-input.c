@@ -254,6 +254,8 @@ static const char *get_bound_driver(int port)
         return DRIVER_DUKE;
     if (strcmp(driver, DRIVER_S) == 0)
         return DRIVER_S;
+    if (strcmp(driver, DRIVER_ARCADE_STICK) == 0)
+        return DRIVER_ARCADE_STICK;
 
     return DRIVER_DUKE;
 }
