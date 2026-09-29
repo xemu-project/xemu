@@ -1445,9 +1445,15 @@ static void begin_draw(PGRAPHState *pg)
                      vp_height = pg->surface_binding_dim.height;
         pgraph_apply_scaling_factor(pg, &vp_width, &vp_height);
 
+        float vp_offset = pg->surface_scale_factor > 1
+                          ? 0.5f * (pg->surface_scale_factor - 1) + 0.25f
+                          : 0.0f;
+
         VkViewport viewport = {
-            .width = vp_width,
-            .height = vp_height,
+            .x = -vp_offset,
+            .y = -vp_offset,
+            .width = vp_width + vp_offset,
+            .height = vp_height + vp_offset,
             .minDepth = 0.0,
             .maxDepth = 1.0,
         };
