@@ -257,9 +257,12 @@ static const ColorFormatInfo kelvin_color_format_gl_map[66] = {
         {2, true, GL_DEPTH_COMPONENT16, GL_DEPTH_COMPONENT, GL_HALF_FLOAT,
           {GL_RED, GL_ZERO, GL_ONE, GL_ZERO}, true},
 
+    [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_Y16] =
+        {2, false, GL_RG8, GL_RG, GL_UNSIGNED_BYTE,
+         {GL_ONE, GL_GREEN, GL_RED, GL_ONE}},
     [NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_Y16] =
-        {2, true, GL_R16, GL_RED, GL_UNSIGNED_SHORT,
-         {GL_RED, GL_RED, GL_RED, GL_ONE}},
+        {2, true, GL_RG8, GL_RG, GL_UNSIGNED_BYTE,
+         {GL_ONE, GL_GREEN, GL_RED, GL_ONE}},
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8B8G8R8] =
         {4, false, GL_RGBA8, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV},
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_B8G8R8A8] =
