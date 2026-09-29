@@ -233,15 +233,17 @@ void pgraph_init(NV2AState *d)
 
     pg->material_alpha = 0.0f;
 
-    const float PF_1_L = 0.0f;
-    const float PF_1_M = -0.494592f;
-    const float PF_1_N = 1.494592f;
-    pg->specular_params[0] = PF_1_L;
-    pg->specular_params[1] = PF_1_M;
-    pg->specular_params[2] = PF_1_N;
-    pg->specular_params_back[0] = PF_1_L;
-    pg->specular_params_back[1] = PF_1_M;
-    pg->specular_params_back[2] = PF_1_N;
+    {
+        const float pf_1_l = 0.0f;
+        const float pf_1_m = -0.494592f;
+        const float pf_1_n = 1.494592f;
+        pg->specular_params[0] = pf_1_l;
+        pg->specular_params[1] = pf_1_m;
+        pg->specular_params[2] = pf_1_n;
+        pg->specular_params_back[0] = pf_1_l;
+        pg->specular_params_back[1] = pf_1_m;
+        pg->specular_params_back[2] = pf_1_n;
+    }
     PG_SET_MASK(NV_PGRAPH_CONTROL_3, NV_PGRAPH_CONTROL_3_SHADEMODE,
          NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH);
     pg->primitive_mode = PRIM_TYPE_INVALID;
