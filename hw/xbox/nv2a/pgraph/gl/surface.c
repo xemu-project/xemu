@@ -1025,7 +1025,7 @@ static void populate_surface_binding_entry_sized(NV2AState *d, bool color,
         if (fmt.bytes_per_pixel == 0) {
             fprintf(stderr, "nv2a: unimplemented color surface format 0x%x\n",
                     pg->surface_shape.color_format);
-            abort();
+            assert(!"unimplemented color surface format");
         }
     } else {
         surface = &pg->surface_zeta;
