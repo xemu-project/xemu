@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2018-2019 Jannik Vogel
- * Copyright (c) 2019-2025 Matt Borgerson
+ * Copyright (c) 2019-2026 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -32,6 +32,7 @@
 #include "migration/vmstate.h"
 #include "qemu/main-loop.h"
 #include "qemu/thread.h"
+#include "system/physmem.h"
 #include "system/runstate.h"
 #include "ui/xemu-settings.h"
 
@@ -87,6 +88,8 @@ typedef struct MCPXAPUState {
 
     MemoryRegion *ram;
     uint8_t *ram_ptr;
+    /* Cached: the RAM helpers below bound-check every access. */
+    uint64_t ram_size;
     MemoryRegion mmio;
 
     MCPXAPUVPState vp;
@@ -96,6 +99,11 @@ typedef struct MCPXAPUState {
     uint32_t regs[0x20000];
 
     int ep_frame_div;
+    /* Guest-side accessors blocked on, or about to block on, `lock`. The
+     * frame thread holds the lock while the DSP cores run and cannot see a
+     * waiter from the mutex itself; it hands the lock over while this is
+     * non-zero (see mcpx_apu_guest_lock). */
+    int lock_waiters;
     int frame_work_acc_us;
     int frame_count;
     int64_t frame_count_time_us;
@@ -117,11 +125,93 @@ typedef struct MCPXAPUState {
 
     struct {
         McpxApuDebugMonitorPoint point;
-        int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes)
+        int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes), stereo taps
+        /* 6-channel frames (FL FR FC LFE BL BR) for the EP S/PDIF tap.
+         * `channels` is what the open stream was created with; the monitor
+         * reopens it when the selected tap wants another count. */
+        int16_t surround_buf[256][6];
+        int channels;
+        /* Bit c enables channel c of the layout being played. Applied
+         * before the dump, so MCPX_APU_MON_DUMP stays what plays. */
+        uint32_t channel_mask;
+        /* Held peak per channel (0..1 of full scale), measured before the
+         * mask and decayed each push so the debug meters hold a transient. */
+        float channel_level[6];
         SDL_AudioStream *stream;
         int queued_bytes_low, queued_bytes_high;
     } monitor;
 } MCPXAPUState;
+
+extern uint64_t g_apu_guest_locks;
+
+/* Take the APU lock from a guest-side accessor (MMIO, voice lock). Announce
+ * the wait first: the frame thread polls this to decide when to let go. */
+static inline void mcpx_apu_guest_lock(MCPXAPUState *d)
+{
+    qatomic_inc(&g_apu_guest_locks);
+    qatomic_inc(&d->lock_waiters);
+    qemu_mutex_lock(&d->lock);
+    qatomic_dec(&d->lock_waiters);
+}
+
+/* Release it, waking a frame thread that handed the lock over. */
+static inline void mcpx_apu_guest_unlock(MCPXAPUState *d)
+{
+    qemu_cond_signal(&d->cond);
+    qemu_mutex_unlock(&d->lock);
+}
+
+/* Guest words the APU chases per sample or per DMA node - voice params, SGE
+ * entries - live in RAM, and resolving each through the address space walks
+ * the flat view per call, millions of times a second. These read and write
+ * through the RAM pointer and keep the walk for an address outside RAM. */
+
+/* Marking dirty through memory_region_set_dirty costs an RCU section and a
+ * locked RMW per client bitmap even when every bit is already set, which
+ * for the pages the DSP and VP stream into is every call. The lazy variant
+ * scans first. The CODE bit is set without a TB invalidate, exactly like
+ * memory_region_set_dirty. */
+static inline void mcpx_apu_ram_set_dirty(MCPXAPUState *d, hwaddr addr,
+                                          hwaddr len)
+{
+    physical_memory_set_dirty_range_lazy(
+        memory_region_get_ram_addr(d->ram) + addr, len,
+        memory_region_get_dirty_log_mask(d->ram));
+}
+
+static inline uint32_t mcpx_apu_ram_ldl(MCPXAPUState *d, hwaddr addr)
+{
+    if (addr + 4 <= d->ram_size) {
+        return ldl_le_p(&d->ram_ptr[addr]);
+    }
+    return ldl_le_phys(&address_space_memory, addr);
+}
+
+static inline uint32_t mcpx_apu_ram_ldub(MCPXAPUState *d, hwaddr addr)
+{
+    if (addr < d->ram_size) {
+        return d->ram_ptr[addr];
+    }
+    return ldub_phys(&address_space_memory, addr);
+}
+
+static inline uint32_t mcpx_apu_ram_lduw(MCPXAPUState *d, hwaddr addr)
+{
+    if (addr + 2 <= d->ram_size) {
+        return lduw_le_p(&d->ram_ptr[addr]);
+    }
+    return lduw_le_phys(&address_space_memory, addr);
+}
+
+static inline void mcpx_apu_ram_stl(MCPXAPUState *d, hwaddr addr, uint32_t val)
+{
+    if (addr + 4 <= d->ram_size) {
+        stl_le_p(&d->ram_ptr[addr], val);
+        mcpx_apu_ram_set_dirty(d, addr, 4);
+    } else {
+        stl_le_phys(&address_space_memory, addr, val);
+    }
+}
 
 extern MCPXAPUState *g_state; // Used via debug handlers
 extern struct McpxApuDebug g_dbg, g_dbg_cache;
@@ -134,5 +224,19 @@ void mcpx_debug_end_frame(void);
 void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp);
 void mcpx_apu_monitor_finalize(MCPXAPUState *d);
 void mcpx_apu_monitor_frame(MCPXAPUState *d);
+
+/* EP S/PDIF (IEC 61937 AC-3) monitor point, spdif.c */
+void mcpx_apu_spdif_feed(MCPXAPUState *d, const uint8_t *buf, size_t len);
+void mcpx_apu_spdif_fill_frame(MCPXAPUState *d);
+/* Called once per monitor pull: whether a valid burst arrived recently, and
+ * whether bursts should be decoded into the PCM ring (validation runs
+ * regardless, so presence is known before anyone listens). */
+void mcpx_apu_spdif_pull(void);
+bool mcpx_apu_spdif_stream_present(void);
+void mcpx_apu_spdif_set_decoding(bool on);
+void mcpx_apu_spdif_stats(uint64_t *frames, uint64_t *rejected,
+                          uint64_t *underruns, uint64_t *overruns,
+                          unsigned *level_min, unsigned *level_max,
+                          bool reset);
 
 #endif

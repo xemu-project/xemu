@@ -4,6 +4,5 @@
 dsp_read_peripheral(uint32_t addr, uint32_t val) "addr 0x%"PRIx32" val 0x%"PRIx32
 dsp_write_peripheral(uint32_t addr, uint32_t val) "addr 0x%"PRIx32" val 0x%"PRIx32
 
-# dsp_cpu.c
-dsp56k_execute_instruction(uint32_t id, uint32_t pc) "[gp=%d]: pc=0x%"PRIx32
-dsp56k_execute_instruction_disasm(const char *disasm) "%s"
+# dma.c
+dsp_dma_node(const char *core, uint32_t addr, uint32_t next_block, uint32_t control, uint32_t count, uint32_t dsp_offset, uint32_t scratch_offset, uint32_t scratch_base, uint32_t scratch_size) "%s node 0x%04"PRIx32" next 0x%"PRIx32" control 0x%06"PRIx32" count 0x%"PRIx32" dsp_off 0x%06"PRIx32" scratch_off 0x%06"PRIx32" base 0x%06"PRIx32" size 0x%06"PRIx32

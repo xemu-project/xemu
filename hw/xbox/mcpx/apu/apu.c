@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2018-2019 Jannik Vogel
- * Copyright (c) 2019-2025 Matt Borgerson
+ * Copyright (c) 2019-2026 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -43,6 +43,14 @@ static void update_irq(MCPXAPUState *d)
     }
 }
 
+/* Bytes the open monitor stream consumes per millisecond; it follows the
+ * stream's channel count (2, or 6 on the S/PDIF tap). */
+static float monitor_bytes_per_ms(MCPXAPUState *d)
+{
+    int ch = d->monitor.channels ? d->monitor.channels : 2;
+    return 48000.0f * ch * sizeof(int16_t) / 1000.0f;
+}
+
 static uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size)
 {
     MCPXAPUState *d = opaque;
@@ -63,6 +71,45 @@ static uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size)
     return r;
 }
 
+/* Registers the DSP DMA path reads mid-transfer: the SGE table bases and
+ * bounds, and each FIFO's base, end and cursor. Stores to these take the
+ * APU lock so they cannot land under a transfer a DSP worker is running;
+ * the workers run under that lock and stop between slices for a waiter
+ * (see run_one_core). Every other register is a plain atomic store. */
+static bool mcpx_apu_reg_is_dma_descriptor(hwaddr addr)
+{
+    switch (addr) {
+    case NV_PAPU_GPSADDR:
+    case NV_PAPU_GPFADDR:
+    case NV_PAPU_EPSADDR:
+    case NV_PAPU_EPFADDR:
+    case NV_PAPU_GPSMAXSGE:
+    case NV_PAPU_GPFMAXSGE:
+    case NV_PAPU_EPSMAXSGE:
+    case NV_PAPU_EPFMAXSGE:
+        return true;
+    default:
+        break;
+    }
+    if (addr >= NV_PAPU_GPOFBASE0 &&
+        addr < NV_PAPU_GPOFBASE0 + 0x10 * GP_OUTPUT_FIFO_COUNT) {
+        return true;
+    }
+    if (addr >= NV_PAPU_GPIFBASE0 &&
+        addr < NV_PAPU_GPIFBASE0 + 0x10 * GP_INPUT_FIFO_COUNT) {
+        return true;
+    }
+    if (addr >= NV_PAPU_EPOFBASE0 &&
+        addr < NV_PAPU_EPOFBASE0 + 0x10 * EP_OUTPUT_FIFO_COUNT) {
+        return true;
+    }
+    if (addr >= NV_PAPU_EPIFBASE0 &&
+        addr < NV_PAPU_EPIFBASE0 + 0x10 * EP_INPUT_FIFO_COUNT) {
+        return true;
+    }
+    return false;
+}
+
 static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
                            unsigned int size)
 {
@@ -75,12 +122,18 @@ static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
         /* the bits of the interrupts to clear are written */
         qatomic_and(&d->regs[NV_PAPU_ISTS], ~val);
         update_irq(d);
+        /* Under the lock: an unlocked broadcast can land between the frame
+         * thread's predicate read and its wait and be lost. */
+        mcpx_apu_guest_lock(d);
         qemu_cond_broadcast(&d->cond);
+        mcpx_apu_guest_unlock(d);
         break;
     case NV_PAPU_FECTL:
     case NV_PAPU_SECTL:
         qatomic_set(&d->regs[addr], val);
+        mcpx_apu_guest_lock(d);
         qemu_cond_broadcast(&d->cond);
+        mcpx_apu_guest_unlock(d);
         break;
     case NV_PAPU_FEMEMDATA:
         /* 'magic write'
@@ -91,7 +144,13 @@ static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
         break;
     default:
         if (addr < 0x20000) {
-            qatomic_set(&d->regs[addr], val);
+            if (mcpx_apu_reg_is_dma_descriptor(addr)) {
+                mcpx_apu_guest_lock(d);
+                qatomic_set(&d->regs[addr], val);
+                mcpx_apu_guest_unlock(d);
+            } else {
+                qatomic_set(&d->regs[addr], val);
+            }
         }
         break;
     }
@@ -132,12 +191,13 @@ static void throttle_publish_debug(MCPXAPUState *d)
     g_dbg.throttle.deviation.avg_us = d->throttle.deviation.sum_us / d->throttle.deviation.count;
     g_dbg.throttle.deviation.max_us = d->throttle.deviation.max_us;
     if (d->throttle.queued_bytes_count > 0) {
-        g_dbg.throttle.latency.min_ms = d->throttle.queued_bytes_min / (float)MONITOR_BYTES_PER_MS;
+        float bpm = monitor_bytes_per_ms(d);
+        g_dbg.throttle.latency.min_ms = d->throttle.queued_bytes_min / bpm;
         g_dbg.throttle.latency.avg_ms = d->throttle.queued_bytes_sum /
-            (d->throttle.queued_bytes_count * (float)MONITOR_BYTES_PER_MS);
-        g_dbg.throttle.latency.max_ms = d->throttle.queued_bytes_max / (float)MONITOR_BYTES_PER_MS;
-        g_dbg.throttle.latency.low_ms = d->monitor.queued_bytes_low / (float)MONITOR_BYTES_PER_MS;
-        g_dbg.throttle.latency.high_ms = d->monitor.queued_bytes_high / (float)MONITOR_BYTES_PER_MS;
+            (d->throttle.queued_bytes_count * bpm);
+        g_dbg.throttle.latency.max_ms = d->throttle.queued_bytes_max / bpm;
+        g_dbg.throttle.latency.low_ms = d->monitor.queued_bytes_low / bpm;
+        g_dbg.throttle.latency.high_ms = d->monitor.queued_bytes_high / bpm;
     }
     d->throttle.pacing.backoff = d->throttle.pacing.ok = d->throttle.pacing.speedup = 0;
     d->throttle.deviation.min_us = d->throttle.deviation.max_us = d->throttle.deviation.sum_us = 0;
@@ -216,12 +276,12 @@ static void throttle(MCPXAPUState *d)
     }
 }
 
+/* Guest accessors that took the APU lock; in the scheduler trace report. */
+uint64_t g_apu_guest_locks;
+
 static void se_frame(MCPXAPUState *d)
 {
-    mcpx_apu_update_dsp_preference(d);
     mcpx_debug_begin_frame();
-    g_dbg.gp_realtime = d->gp.realtime;
-    g_dbg.ep_realtime = d->ep.realtime;
 
     int64_t start_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
     int64_t elapsed_us = start_us - d->frame_count_time_us;
@@ -241,11 +301,15 @@ static void se_frame(MCPXAPUState *d)
     }
     d->frame_count++;
 
-    /* Buffer for all mixbins for this frame */
+    /* The EP runs across the frame; the GP runs once the VP has filled the
+     * mixbins, as the GP's effect returns land in pages VP voices read
+     * (mcpx_apu_dsp_frame_gp). */
     float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME] = { 0 };
 
-    mcpx_apu_vp_frame(d, mixbins);
-    mcpx_apu_dsp_frame(d, mixbins);
+    mcpx_apu_dsp_frame_begin(d);
+    int voices = mcpx_apu_vp_frame(d, mixbins);
+    mcpx_apu_dsp_frame_gp(d, voices ? mixbins : NULL);
+    mcpx_apu_dsp_frame_end(d);
     mcpx_apu_monitor_frame(d);
 
     d->ep_frame_div++;
@@ -257,6 +321,11 @@ static void se_frame(MCPXAPUState *d)
 static void *mcpx_apu_frame_thread(void *arg)
 {
     MCPXAPUState *d = MCPX_APU_DEVICE(arg);
+    /* The thread reads guest memory through the address space (voice
+     * parameters, SGE entries, dirty marking on the DMA path), which takes
+     * the RCU read lock. A thread not in the registry is not waited for by
+     * synchronize_rcu(), so the flat view could be freed under it. */
+    rcu_register_thread();
     qemu_mutex_lock(&d->lock);
     while (!qatomic_read(&d->exiting)) {
         if (d->pause_requested) {
@@ -297,8 +366,19 @@ static void *mcpx_apu_frame_thread(void *arg)
 
         throttle(d);
         se_frame(d);
+
+        /* Hand the lock to a guest accessor that announced itself
+         * (mcpx_apu_guest_lock): an MMIO accessor on the CPU thread holds
+         * the BQL while it blocks here. The mutex is not fair, so merely
+         * dropping and retaking it starves the accessor - this thread
+         * usually wins the race back. Wait on the condition the accessor
+         * signals when it is through, and only while one is waiting. */
+        if (qatomic_read(&d->lock_waiters) > 0) {
+            qemu_cond_timedwait(&d->cond, &d->lock, 1);
+        }
     }
     qemu_mutex_unlock(&d->lock);
+    rcu_unregister_thread();
     return NULL;
 }
 
@@ -444,6 +524,7 @@ static void mcpx_apu_exitfn(PCIDevice *dev)
     bql_lock();
 
     qemu_thread_join(&d->apu_thread);
+    mcpx_apu_dsp_stop_workers();
     mcpx_apu_vp_finalize(d);
     mcpx_apu_monitor_finalize(d);
 }
@@ -465,6 +546,23 @@ static const VMStateDescription vmstate_vp_dsp_dma_read_count = {
     }
 };
 
+static bool vp_dsp_dma_pending_interrupts_needed(void *opaque)
+{
+    DSPDMAState *s = opaque;
+    return s->pending_interrupts != 0;
+}
+
+static const VMStateDescription vmstate_vp_dsp_dma_pending_interrupts = {
+    .name = "mcpx-apu/dsp-state/dma/pending_interrupts",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = vp_dsp_dma_pending_interrupts_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(pending_interrupts, DSPDMAState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 const VMStateDescription vmstate_vp_dsp_dma_state = {
     .name = "mcpx-apu/dsp-state/dma",
     .version_id = 1,
@@ -480,6 +578,7 @@ const VMStateDescription vmstate_vp_dsp_dma_state = {
     },
     .subsections = (const VMStateDescription * const []) {
         &vmstate_vp_dsp_dma_read_count,
+        &vmstate_vp_dsp_dma_pending_interrupts,
         NULL
     }
 };
@@ -520,6 +619,42 @@ const VMStateDescription vmstate_vp_dsp_core_state = {
     }
 };
 
+static bool vmstate_always_needed(void *opaque)
+{
+    return true;
+}
+
+/* The frame-start latch: how many starts the program still owes and
+ * whether it has completed a frame since reset. Without them a loaded core
+ * whose start bit was set at save time runs an extra frame, and its output
+ * ring cursor lands a slot ahead of the EP's kick phase for good. */
+static const VMStateDescription vmstate_vp_dsp_frame_starts = {
+    .name = "mcpx-apu/dsp-state/frame-starts",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = vmstate_always_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(frame_starts_pending, DSPState),
+        VMSTATE_BOOL(halted_since_reset, DSPState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+/* The x:$FFFFB0-B3 frame timer and the retired-cycle base it counts from. */
+static const VMStateDescription vmstate_vp_dsp_frame_timer = {
+    .name = "mcpx-apu/dsp-state/frame-timer",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = vmstate_always_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(timer_ctl, DSPState),
+        VMSTATE_UINT32(timer_period, DSPState),
+        VMSTATE_UINT64(timer_base, DSPState),
+        VMSTATE_UINT64(cycles_base, DSPState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 const VMStateDescription vmstate_vp_dsp_state = {
     .name = "mcpx-apu/dsp-state",
     .version_id = 1,
@@ -529,6 +664,27 @@ const VMStateDescription vmstate_vp_dsp_state = {
         VMSTATE_STRUCT(dma, DSPState, 1, vmstate_vp_dsp_dma_state, DSPDMAState),
         VMSTATE_INT32(save_cycles, DSPState),
         VMSTATE_UINT32(interrupts, DSPState),
+        VMSTATE_END_OF_LIST()
+    },
+    .subsections = (const VMStateDescription * const []) {
+        &vmstate_vp_dsp_frame_starts,
+        &vmstate_vp_dsp_frame_timer,
+        NULL
+    }
+};
+
+/* The SE frame counter phases the EP kicks (every eighth frame) against
+ * the GP's output ring, whose cursor the GP keeps in its own state. A load
+ * that kept the cursor but not the counter kicked the EP in whatever phase
+ * the booting session had reached: up to seven of each kick's eight slices
+ * stale, a pop train for the rest of the session. */
+static const VMStateDescription vmstate_mcpx_apu_frame_div = {
+    .name = "mcpx-apu/frame-div",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = vmstate_always_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_INT32(ep_frame_div, MCPXAPUState),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -572,6 +728,10 @@ static const VMStateDescription vmstate_mcpx_apu = {
         VMSTATE_UINT64_ARRAY(vp.voice_locked, MCPXAPUState, 4),
         VMSTATE_END_OF_LIST()
     },
+    .subsections = (const VMStateDescription * const []) {
+        &vmstate_mcpx_apu_frame_div,
+        NULL
+    }
 };
 
 static void mcpx_apu_class_init(ObjectClass *klass, const void *data)
@@ -620,4 +780,5 @@ void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
 
     d->ram = ram;
     d->ram_ptr = memory_region_get_ram_ptr(d->ram);
+    d->ram_size = memory_region_size(d->ram);
 }

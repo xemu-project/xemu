@@ -1,7 +1,7 @@
 //
 // xemu User Interface
 //
-// Copyright (C) 2020-2022 Matt Borgerson
+// Copyright (C) 2020-2026 Matt Borgerson
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -842,13 +842,6 @@ void MainMenuAudioView::Draw()
     snprintf(buf, sizeof(buf), "Limit output volume (%d%%)",
              (int)(g_config.audio.volume_limit * 100));
     Slider("Output volume limit", &g_config.audio.volume_limit, buf);
-
-    SectionTitle("Quality");
-    Toggle("Real-time DSP processing", &g_config.audio.use_dsp,
-           "Enable improved audio accuracy (experimental)");
-    Toggle("DSP JIT engine", &g_config.audio.use_dsp_jit,
-           "Use DSP JIT engine");
-
 }
 
 NetworkInterface::NetworkInterface(pcap_if_t *pcap_desc, char *_friendlyname)
