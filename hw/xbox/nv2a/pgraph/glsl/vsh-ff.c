@@ -367,12 +367,21 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 break;
             }
 
+            /* From https://patents.google.com/patent/US6417851B1/en the
+             * coefficients are used to calculate
+             *    (x + L) / (M x + N)
+             *  where x is the dot product of the normal and half angle vector.
+             *  specularParams = (L, M , N)
+             */
             mstring_append_fmt(body,
-                "    float pf;\n"
-                "    if (nDotVP == 0.0 || nDotHV == 0.0) {\n"
-                "      pf = 0.0;\n"
-                "    } else {\n"
-                "      pf = pow(nDotHV, specularPower);\n"
+                "    float pf = 0.0;\n"
+                "    if (nDotVP > 0.0 && nDotHV > -specularParams.x) {\n"
+                "      float denom = specularParams.y * nDotHV + specularParams.z;\n"
+                "      if (denom == 0.0) {\n"
+                "        pf = 10000.0;\n"
+                "      } else if (denom > 0.0) {\n"
+                "        pf = clamp((nDotHV + specularParams.x) / denom, 0.0, 10000.0);\n"
+                "      }\n"
                 "    }\n"
                 "    vec3 lightAmbient = lightAmbientColor(%d) * attenuation;\n"
                 "    vec3 lightDiffuse = lightDiffuseColor(%d) * attenuation * nDotVP;\n"
