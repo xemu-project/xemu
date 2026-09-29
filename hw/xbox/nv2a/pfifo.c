@@ -91,7 +91,7 @@ void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
 void pfifo_kick(NV2AState *d)
 {
-    d->pfifo.fifo_kick = true;
+    qatomic_set(&d->pfifo.fifo_kick, true);
     qemu_cond_broadcast(&d->pfifo.fifo_cond);
 }
 
@@ -107,7 +107,7 @@ static bool is_flip_stall_complete(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
 
-    uint32_t s = pgraph_reg_r(pg, NV_PGRAPH_SURFACE);
+    uint32_t s = qatomic_read(&pg->regs_[NV_PGRAPH_SURFACE]);
 
     NV2A_DPRINTF("flip stall read: %d, write: %d, modulo: %d\n",
         GET_MASK(s, NV_PGRAPH_SURFACE_READ_3D),
@@ -186,12 +186,13 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
 
         // TODO: this is fucked
         qemu_mutex_unlock(&d->pfifo.lock);
+        pgraph_wait_for_cpu_mmio_accesses(&d->pgraph);
         qemu_mutex_lock(&d->pgraph.lock);
 
         // Switch contexts if necessary
         if (can_fifo_access(d)) {
             pgraph_context_switch(d, entry.channel_id);
-            if (!d->pgraph.waiting_for_context_switch) {
+            if (!qatomic_read(&d->pgraph.waiting_for_context_switch)) {
                 num_proc =
                     pgraph_method(d, subchannel, 0, entry.instance, parameters,
                                   num_words_available, max_lookahead_words, inc);
@@ -221,6 +222,7 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
 
         // TODO: this is fucked
         qemu_mutex_unlock(&d->pfifo.lock);
+        pgraph_wait_for_cpu_mmio_accesses(&d->pgraph);
         qemu_mutex_lock(&d->pgraph.lock);
 
         if (can_fifo_access(d)) {
@@ -459,7 +461,7 @@ void *pfifo_thread(void *arg)
 
     qemu_mutex_lock(&d->pfifo.lock);
     while (true) {
-        d->pfifo.fifo_kick = false;
+        qatomic_set(&d->pfifo.fifo_kick, false);
 
         pgraph_process_pending(d);
 
@@ -469,7 +471,7 @@ void *pfifo_thread(void *arg)
 
         pgraph_process_pending_reports(d);
 
-        if (!d->pfifo.fifo_kick) {
+        if (!qatomic_read(&d->pfifo.fifo_kick)) {
             qemu_cond_broadcast(&d->pfifo.fifo_idle_cond);
 
             // Both the pusher and puller are waiting for some action
