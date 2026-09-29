@@ -232,6 +232,15 @@ void pgraph_init(NV2AState *d)
     pg->draw_time = 0;
 
     pg->material_alpha = 0.0f;
+
+    const float PF_1_L = 0.0f;
+    const float PF_1_M = -0.494592f;
+    const float PF_1_N = 1.494592f;
+    for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
+        *(float *)&pg->ltctxa[NV_IGRAPH_XF_LTCTXA_L0_K + i * 2][0] = PF_1_L;
+        *(float *)&pg->ltctxa[NV_IGRAPH_XF_LTCTXA_L0_K + i * 2][1] = PF_1_M;
+        *(float *)&pg->ltctxa[NV_IGRAPH_XF_LTCTXA_L0_K + i * 2][2] = PF_1_N;
+    }
     PG_SET_MASK(NV_PGRAPH_CONTROL_3, NV_PGRAPH_CONTROL_3_SHADEMODE,
          NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH);
     pg->primitive_mode = PRIM_TYPE_INVALID;
