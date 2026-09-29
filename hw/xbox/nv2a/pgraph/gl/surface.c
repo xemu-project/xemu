@@ -1395,6 +1395,31 @@ void pgraph_gl_surface_update(NV2AState *d, bool upload, bool color_write,
     surface_evict_old(d);
 }
 
+void pgraph_gl_sync_region_for_transfer(NV2AState *d, hwaddr addr, hwaddr size,
+                                        bool prepare_write)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
+    SurfaceBinding *surface;
+
+    QTAILQ_FOREACH (surface, &r->surfaces, entry) {
+        if (!check_surface_overlaps_range(surface, addr, size)) {
+            continue;
+        }
+        pgraph_gl_surface_download_if_dirty(d, surface);
+        if (prepare_write) {
+            surface->upload_pending = true;
+            pg->draw_time++;
+        }
+    }
+
+    if (prepare_write) {
+        memory_region_set_client_dirty(d->vram, addr, size, DIRTY_MEMORY_VGA);
+        memory_region_set_client_dirty(d->vram, addr, size,
+                                       DIRTY_MEMORY_NV2A_TEX);
+    }
+}
+
 // FIXME: Move to common
 static void surface_get_dimensions(PGRAPHState *pg, unsigned int *width,
                                    unsigned int *height)
