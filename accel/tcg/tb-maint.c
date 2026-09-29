@@ -1131,6 +1131,7 @@ tb_invalidate_phys_page_range__locked(CPUState *cpu,
     PageForEachNext n;
     bool current_tb_modified = false;
     TranslationBlock *current_tb = NULL;
+    bool whole_page = false;
 
     /* Range may not cross a page. */
     tcg_debug_assert(((start ^ last) & TARGET_PAGE_MASK) == 0);
@@ -1139,12 +1140,40 @@ tb_invalidate_phys_page_range__locked(CPUState *cpu,
         current_tb = tcg_tb_lookup(retaddr);
     }
 
+#ifdef XBOX
+    /*
+     * xemu invalidates every TB on the page for any store to it
+     * (703566ce33d): once the page holds no code it is unprotected, later
+     * stores to it run at full speed, and the TBs come back from the
+     * invalidated-TB cache if the code runs again. That pays off for the
+     * common case of a guest writing data into a page whose code seldom
+     * runs.
+     *
+     * It is ruinous for the opposite case, code that stores into the page it
+     * is running from: every store discards the running TB, forces a
+     * single-instruction restart, and re-protects the page on the next
+     * fetch. The SmartXX loader decompresses its OS that way and took four
+     * minutes instead of fifteen seconds. So keep the whole-page behaviour
+     * only when the store comes from code elsewhere, and fall back to the
+     * precise overlap test when the current TB lives on the target page.
+     */
+    whole_page = true;
+    if (current_tb) {
+        tb_page_addr_t page = start & TARGET_PAGE_MASK;
+
+        if ((tb_page_addr0(current_tb) & TARGET_PAGE_MASK) == page ||
+            (tb_page_addr1(current_tb) != -1 &&
+             (tb_page_addr1(current_tb) & TARGET_PAGE_MASK) == page)) {
+            whole_page = false;
+        }
+    }
+#endif
+
     /*
      * We remove all the TBs in the range [start, last].
      * XXX: see if in some cases it could be faster to invalidate all the code
      */
     PAGE_FOR_EACH_TB(start, last, p, tb, n) {
-#ifndef XBOX
         tb_page_addr_t tb_start, tb_last;
 
         /* NOTE: this is subtle as a TB may span two physical pages */
@@ -1156,10 +1185,7 @@ tb_invalidate_phys_page_range__locked(CPUState *cpu,
             tb_start = tb_page_addr1(tb);
             tb_last = tb_start + (tb_last & ~TARGET_PAGE_MASK);
         }
-        if (!(tb_last < start || tb_start > last)) {
-#else
-        {
-#endif
+        if (whole_page || !(tb_last < start || tb_start > last)) {
             if (unlikely(current_tb == tb) &&
                 (tb_cflags(current_tb) & CF_COUNT_MASK) != 1) {
                 /*
