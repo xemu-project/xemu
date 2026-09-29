@@ -957,8 +957,15 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
         hwaddr addr = d->regs[NV_PAPU_VPSSLADDR] + page * 8;
         segment_offset = ldl_le_phys(&address_space_memory, addr);
         segment_length = ldl_le_phys(&address_space_memory, addr + 4);
-        assert(segment_offset != 0);
         assert(segment_length != 0);
+        if (segment_offset == 0) {
+            // SSL entry not yet populated by guest (timing race); skip this cycle
+            DPRINTF("Voice %d: SSL entry page %d not ready "
+                    "(offset=%"HWADDR_PRIx" length=%"PRIx32")\n",
+                    v, page, segment_offset, segment_length);
+            return -1;
+        }
+
         seg_len = (segment_length >> 0) & 0xffff;
         seg_cs = (segment_length >> 16) & 3;
         seg_spb = (segment_length >> 18) & 0x1f;
