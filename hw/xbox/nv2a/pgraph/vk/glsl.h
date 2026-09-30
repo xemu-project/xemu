@@ -120,7 +120,7 @@ void *uniform_ptr(ShaderUniformLayout *layout, int idx)
     return (char *)layout->allocation + layout->uniforms[idx - 1].offset;
 }
 
-static inline void uniform_copy(ShaderUniformLayout *layout, int idx,
+static inline bool uniform_copy(ShaderUniformLayout *layout, int idx,
                                 void *values, size_t value_size, size_t count)
 {
     assert(idx > 0 && "invalid uniform index");
@@ -133,16 +133,22 @@ static inline void uniform_copy(ShaderUniformLayout *layout, int idx,
     char *p_max = p_out + layout->total_size;
     char *p_in = (char *)values;
 
+    bool changed = false;
     int index = 0;
     while (bytes_remaining) {
         assert((p_out + element_size) <= p_max);
         assert(index < u->dim_a);
-        memcpy(p_out, p_in, element_size);
+        if (memcmp(p_out, p_in, element_size)) {
+            memcpy(p_out, p_in, element_size);
+            changed = true;
+        }
         bytes_remaining -= element_size;
         p_out += u->stride;
         p_in += element_size;
         index += 1;
     }
+
+    return changed;
 }
 
 static inline
