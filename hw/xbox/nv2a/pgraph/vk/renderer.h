@@ -419,6 +419,7 @@ typedef struct PGRAPHVkState {
     int num_queries_in_flight;
     bool new_query_needed;
     bool query_in_flight;
+    bool query_pool_reset;
     uint32_t zpass_pixel_count_result;
     QSIMPLEQ_HEAD(, QueryReport) report_queue; // FIXME: Statically allocate
 
