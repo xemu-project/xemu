@@ -189,7 +189,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
          * support signed textures more appropriately.
          */
 #if 0 // FIXME
-        psh->snorm_tex[i] = (f.gl_internal_format == GL_RGB8_SNORM)
+        psh->snorm_tex[i] = (f.gl_internal_format == GL_RGBA8_SNORM)
                                  || (f.gl_internal_format == GL_RG8_SNORM);
 #endif
         state->shadow_map[i] = f.depth;
