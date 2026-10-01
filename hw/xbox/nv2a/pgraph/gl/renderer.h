@@ -54,6 +54,7 @@ typedef struct SurfaceBinding {
     unsigned int height;
     unsigned int pitch;
     size_t size;
+    unsigned int scale;
 
     bool cleared;
     int frame_time;
@@ -185,6 +186,9 @@ typedef struct PGRAPHGLState {
 
     QTAILQ_HEAD(, SurfaceBinding) surfaces;
     SurfaceBinding *color_binding, *zeta_binding;
+
+    hwaddr vertex_fetched_addrs[16];
+    unsigned int vertex_fetched_count;
     bool downloads_pending;
     QemuEvent downloads_complete;
     bool download_dirty_surfaces_pending;
@@ -280,6 +284,7 @@ void pgraph_gl_reload_surface_scale_factor(PGRAPHState *pg);
 void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface, TextureBinding *texture, TextureShape *texture_shape, int texture_unit);
 void pgraph_gl_set_surface_dirty(PGRAPHState *pg, bool color, bool zeta);
 void pgraph_gl_surface_download_if_dirty(NV2AState *d, SurfaceBinding *surface);
+void pgraph_gl_download_surfaces_in_range_if_dirty(NV2AState *d, hwaddr addr, hwaddr size);
 SurfaceBinding *pgraph_gl_surface_get(NV2AState *d, hwaddr addr);
 SurfaceBinding *pgraph_gl_surface_get_within(NV2AState *d, hwaddr addr);
 void pgraph_gl_surface_invalidate(NV2AState *d, SurfaceBinding *e);
