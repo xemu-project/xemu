@@ -107,8 +107,8 @@ void pgraph_vk_init_buffers(NV2AState *d)
     };
 
     r->bitmap_size = memory_region_size(d->vram) / 4096;
-    r->uploaded_bitmap = bitmap_new(r->bitmap_size);
-    bitmap_clear(r->uploaded_bitmap, 0, r->bitmap_size);
+    r->referenced_bitmap = bitmap_new(r->bitmap_size);
+    bitmap_clear(r->referenced_bitmap, 0, r->bitmap_size);
 
     r->storage_buffers[BUFFER_VERTEX_INLINE] = (StorageBuffer){
         .alloc_info = device_alloc_create_info,
@@ -167,8 +167,8 @@ void pgraph_vk_finalize_buffers(NV2AState *d)
         destroy_buffer(pg, &r->storage_buffers[i]);
     }
 
-    g_free(r->uploaded_bitmap);
-    r->uploaded_bitmap = NULL;
+    g_free(r->referenced_bitmap);
+    r->referenced_bitmap = NULL;
 }
 
 bool pgraph_vk_buffer_has_space_for(PGRAPHState *pg, int index,
