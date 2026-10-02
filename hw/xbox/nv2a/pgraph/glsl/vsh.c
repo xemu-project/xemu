@@ -64,6 +64,11 @@ static void set_fixed_function_vsh_state(PGRAPHState *pg,
         }
     }
 
+    state->texgen_infinite_viewer =
+        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
+                 NV_PGRAPH_CSV0_D_TEXGEN_REF) ==
+        NV_PGRAPH_CSV0_D_TEXGEN_REF_INFINITE_VIEWER;
+
     state->lighting =
         GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LIGHTING);
     if (state->lighting) {

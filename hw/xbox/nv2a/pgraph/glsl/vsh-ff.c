@@ -185,7 +185,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         /* Set each component individually */
         /* FIXME: could be nicer if some channels share the same texgen */
         for (j = 0; j < 4; j++) {
-            /* TODO: TexGen View Model missing! */
             char c = "xyzw"[j];
             char cSuffix = "STRQ"[j];
             switch (state->fixed_function.texgen[i][j]) {
@@ -205,7 +204,11 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 assert(j < 2);  /* Channels S,T only! */
                 mstring_append(body, "{\n");
                 /* FIXME: u, r and m only have to be calculated once */
-                mstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
+                if (state->fixed_function.texgen_infinite_viewer) {
+                    mstring_append(body, "  vec3 u = vec3(0.0, 0.0, 1.0);\n");
+                } else {
+                    mstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
+                }
                 //FIXME: tNormal before or after normalization? Always normalize?
                 mstring_append(body, "  vec3 r = reflect(u, tNormal);\n");
 
@@ -225,7 +228,11 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 assert(j < 3); /* Channels S,T,R only! */
                 mstring_append(body, "{\n");
                 /* FIXME: u and r only have to be calculated once, can share the one from SPHERE_MAP */
-                mstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
+                if (state->fixed_function.texgen_infinite_viewer) {
+                    mstring_append(body, "  vec3 u = vec3(0.0, 0.0, 1.0);\n");
+                } else {
+                    mstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
+                }
                 mstring_append(body, "  vec3 r = reflect(u, tNormal);\n");
                 mstring_append_fmt(body, "  oT%d.%c = r.%c;\n",
                                    i, c, c);
