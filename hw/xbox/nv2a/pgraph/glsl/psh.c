@@ -1164,7 +1164,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_PASSTHRU:
             assert(ps->state->border_logical_size[i][0] == 0.0f && "Unexpected border texture on passthru");
-            mstring_append_fmt(vars, "vec4 t%d = pT%d;\n", i, i);
+            mstring_append_fmt(vars, "vec4 t%d = clamp(pT%d, 0.0, 1.0);\n", i, i);
             break;
         case PS_TEXTUREMODES_CLIPPLANE: {
             int j;
