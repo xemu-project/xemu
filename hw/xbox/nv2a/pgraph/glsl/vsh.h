@@ -40,6 +40,7 @@ typedef struct FixedFunctionVshState {
     enum MaterialColorSource diffuse_src;
     enum MaterialColorSource specular_src;
     bool local_eye;
+    bool texgen_infinite_viewer;
 } FixedFunctionVshState;
 
 typedef struct ProgrammableVshState {
