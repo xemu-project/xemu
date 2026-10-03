@@ -396,6 +396,18 @@ static bool machine_get_short_animation(Object *obj, Error **errp)
     return ms->short_animation;
 }
 
+static void machine_set_eject_after_boot(Object *obj, bool value, Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+    ms->eject_after_boot = value;
+}
+
+static bool machine_get_eject_after_boot(Object *obj, Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+    return ms->eject_after_boot;
+}
+
 static char *machine_get_smc_version(Object *obj, Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
@@ -494,6 +506,12 @@ static void xbox_machine_options(MachineClass *m)
         oc, "video-encoder",
         "Set the encoder presented to the OS: conexant (default), focus, "
         "xcalibur");
+
+    object_class_property_add_bool(oc, "eject-after-boot",
+                             machine_get_eject_after_boot,
+                             machine_set_eject_after_boot);
+    object_class_property_set_description(oc, "eject-after-boot",
+                                    "Eject disc tray after boot");        
 }
 
 static inline void xbox_machine_initfn(Object *obj)
@@ -502,6 +520,7 @@ static inline void xbox_machine_initfn(Object *obj)
     object_property_set_bool(obj, "short-animation", false, &error_fatal);
     object_property_set_str(obj, "smc-version", "P01", &error_fatal);
     object_property_set_str(obj, "video-encoder", "conexant", &error_fatal);
+    object_property_set_bool(obj, "eject-after-boot", false, &error_fatal);
 }
 
 static void xbox_machine_class_init(ObjectClass *oc, const void *data)
