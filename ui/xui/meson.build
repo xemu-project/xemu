@@ -18,6 +18,7 @@ xemu_ss.add(files(
   'scene-manager.cc',
   'scene.cc',
   'snapshot-manager.cc',
+  'system-actions-manager.cc',
   'viewport-manager.cc',
   'welcome.cc',
   'widgets.cc',

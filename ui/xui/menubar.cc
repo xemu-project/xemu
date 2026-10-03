@@ -27,6 +27,7 @@
 #include "actions.hh"
 #include "compat.hh"
 #include "update.hh"
+#include "system-actions-manager.hh"
 #include "../xemu-os-utils.h"
 
 extern float g_main_menu_height; // FIXME
@@ -43,36 +44,8 @@ bool g_capture_renderdoc_frame = false;
 
 void ProcessKeyboardShortcuts(void)
 {
-    if (IsShortcutKeyPressed(ImGuiKey_E)) {
-        ActionEjectDisc();
-    }
-
-    if (IsShortcutKeyPressed(ImGuiKey_O)) {
-        ActionLoadDisc();
-    }
-
-    if (IsShortcutKeyPressed(ImGuiKey_P)) {
-        ActionTogglePause();
-    }
-
-    if (IsShortcutKeyPressed(ImGuiKey_R)) {
-        ActionReset();
-    }
-
-    if (IsShortcutKeyPressed(ImGuiKey_Q)) {
-        ActionShutdown();
-    }
-
-    if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent)) {
-        monitor_window.ToggleOpen();
-    }
-
-    if (ImGui::IsKeyPressed(ImGuiKey_F12)) {
-        ActionScreenshot();
-    }
-
-    if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
-        xemu_toggle_fullscreen();
+    if (!g_main_menu.IsInputRebinding()) {
+        SystemActionsManager::HandleKeyboard();
     }
 
 #ifdef CONFIG_RENDERDOC

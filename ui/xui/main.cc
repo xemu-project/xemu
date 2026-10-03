@@ -49,6 +49,7 @@
 #include "debug.hh"
 #include "welcome.hh"
 #include "menubar.hh"
+#include "system-actions-manager.hh"
 #include "compat.hh"
 #if defined(_WIN32)
 #include "update.hh"
@@ -157,6 +158,7 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     InitializeStyle();
     g_main_menu.SetNextViewIndex(g_config.general.last_viewed_menu_index);
     first_boot_window.is_open = g_config.general.show_welcome;
+    SystemActionsManager::Init();
 }
 
 void xemu_hud_cleanup(void)
@@ -272,37 +274,11 @@ void xemu_hud_update(void)
     if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow) &&
         !g_scene_mgr.IsDisplayingScene()) {
 
-        // If the guide button is pressed, wake the ui
-        bool menu_button = false;
-        uint32_t buttons = g_input_mgr.CombinedButtons();
-        if (buttons & CONTROLLER_BUTTON_GUIDE) {
-            menu_button = true;
-        }
-
-        // Allow controllers without a guide button to also work
-        if ((buttons & CONTROLLER_BUTTON_BACK) &&
-            (buttons & CONTROLLER_BUTTON_START)) {
-            menu_button = true;
-        }
-
-        if (ImGui::IsKeyPressed(ImGuiKey_F1)) {
-            g_scene_mgr.PushScene(g_main_menu);
-        } else if (ImGui::IsKeyPressed(ImGuiKey_F2)) {
-            g_scene_mgr.PushScene(g_popup_menu);
-        } else if (menu_button ||
-                   (ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
-                    !ImGui::IsAnyItemFocused() && !ImGui::IsAnyItemHovered())) {
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
+            !ImGui::IsAnyItemFocused() && !ImGui::IsAnyItemHovered()) {
             g_scene_mgr.PushScene(g_popup_menu);
         } else if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
             xemu_toggle_fullscreen();
-        }
-
-        bool mod_key_down = ImGui::IsKeyDown(ImGuiKey_ModShift);
-        for (int f_key = 0; f_key < 4; ++f_key) {
-            if (ImGui::IsKeyPressed((enum ImGuiKey)(ImGuiKey_F5 + f_key))) {
-                ActionActivateBoundSnapshot(f_key, mod_key_down);
-                break;
-            }
         }
     }
 
