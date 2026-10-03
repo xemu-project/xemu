@@ -899,14 +899,23 @@ static MString* psh_convert(struct PixelShader *ps)
         "    float lo_f = float(lo_i) / float(0xffff);\n"
         "    return vec3(hi_f, lo_f, 1.0);\n"
         "}\n"
+        // HILO hemisphere: the two channels hold the signed x,y of a unit vector
+        // (R = low short, G = high short, sampled signed-normalized in [-1,1]);
+        // reconstruct z = sqrt(1 - x^2 - y^2) for the upper hemisphere. Used by
+        // normalization cube maps (e.g. D3DFMT_V16U16).
+        "vec3 dotmap_hilo_hemisphere_impl(vec4 col) {\n"
+        "    float x = col.g;\n"
+        "    float y = col.r;\n"
+        "    return vec3(x, y, sqrt(max(0.0, 1.0 - x*x - y*y)));\n"
+        "}\n"
         "vec3 dotmap_hilo_hemisphere_d3d(vec4 col) {\n"
-        "    return col.rgb;\n" // FIXME
+        "    return dotmap_hilo_hemisphere_impl(col);\n"
         "}\n"
         "vec3 dotmap_hilo_hemisphere_gl(vec4 col) {\n"
-        "    return col.rgb;\n" // FIXME
+        "    return dotmap_hilo_hemisphere_impl(col);\n"
         "}\n"
         "vec3 dotmap_hilo_hemisphere(vec4 col) {\n"
-        "    return col.rgb;\n" // FIXME
+        "    return dotmap_hilo_hemisphere_impl(col);\n"
         "}\n"
         // Kahan's algorithm for computing determinant using FMA for higher
         // precision. See e.g.:
