@@ -33,6 +33,10 @@ extern "C" {
 // Implemented in xemu.c
 int xemu_is_fullscreen(void);
 void xemu_toggle_fullscreen(void);
+// Nonzero when the guest is actively receiving host mouse input (an absolute
+// tablet is attached, or a relative mouse is attached and currently grabbed).
+// The HUD uses this to avoid stealing clicks (e.g. right-click context menu).
+int xemu_mouse_input_to_guest(void);
 SDL_Window *xemu_get_window(void);
 void xemu_eject_disc(Error **errp);
 void xemu_load_disc(const char *path, Error **errp);
