@@ -334,19 +334,13 @@ void pgraph_vk_compute_finish_complete(PGRAPHVkState *r)
 
 static int get_workgroup_size_for_output_units(PGRAPHVkState *r, int output_units)
 {
-    int group_size = 1024;
-
     // FIXME: Smarter workgroup size calculation could factor in multiple
     //        submissions. For now we will just pick the highest number that
     //        evenly divides output_units.
 
-    while (group_size > 1) {
-        if (group_size > r->device_props.limits.maxComputeWorkGroupSize[0]) {
-            continue;
-        }
-        if (output_units % group_size == 0) {
-            break;
-        }
+    int group_size = 1024;
+    while (group_size > 1 && (group_size > r->max_1d_compute_group_size ||
+                              output_units % group_size != 0)) {
         group_size /= 2;
     }
 
