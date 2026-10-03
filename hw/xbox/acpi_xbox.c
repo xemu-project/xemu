@@ -39,6 +39,15 @@
 # define XBOX_DPRINTF(format, ...)     do { } while (0)
 #endif
 
+#define TYPE_XBOX_PM_GPIO "xbox-pm-gpio"
+OBJECT_DECLARE_SIMPLE_TYPE(XboxPMGPIOState, XBOX_PM_GPIO)
+
+struct XboxPMGPIOState {
+    ISADevice parent_obj;
+    MemoryRegion io;
+};
+
+#define XBOX_PM_IO_BASE   0x8000
 #define XBOX_PM_BASE_BAR  0
 #define XBOX_PM_GPE_BASE  0x20
 #define XBOX_PM_GPE_LEN   4
@@ -185,10 +194,38 @@ void xbox_pm_init(PCIDevice *dev, XBOX_PMRegs *pm, qemu_irq sci_irq)
                           "xbox-pm-gpe0", XBOX_PM_GPE_LEN);
     memory_region_add_subregion(&pm->io, XBOX_PM_GPE_BASE, &pm->io_gpe);
 
-    memory_region_init_io(&pm->io_gpio, OBJECT(dev), &xbox_pm_gpio_ops, pm,
-                          "xbox-pm-gpio", XBOX_PM_GPIO_LEN);
-    memory_region_add_subregion(&pm->io, XBOX_PM_GPIO_BASE, &pm->io_gpio);
+    XBOX_LPCState *isa = XBOX_LPC_DEVICE(dev);
+    isa_create_simple(isa->isa_bus, TYPE_XBOX_PM_GPIO);
 
     pm->irq = sci_irq;
     qemu_register_reset(pm_reset, pm);
 }
+
+static void xbox_pm_gpio_realize(DeviceState *dev, Error **errp)
+{
+    ISADevice *isadev = ISA_DEVICE(dev);
+    XboxPMGPIOState *s = XBOX_PM_GPIO(dev);
+
+    memory_region_init_io(&s->io, OBJECT(dev), &xbox_pm_gpio_ops, s,
+                          "xbox-pm-gpio", XBOX_PM_GPIO_LEN);
+    isa_register_ioport(isadev, &s->io, XBOX_PM_IO_BASE + XBOX_PM_GPIO_BASE);
+}
+
+static void xbox_pm_gpio_class_init(ObjectClass *klass, const void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    dc->realize = xbox_pm_gpio_realize;
+}
+
+static const TypeInfo xbox_pm_gpio_info = {
+    .name          = TYPE_XBOX_PM_GPIO,
+    .parent        = TYPE_ISA_DEVICE,
+    .instance_size = sizeof(XboxPMGPIOState),
+    .class_init    = xbox_pm_gpio_class_init,
+};
+
+static void xbox_pm_gpio_register_types(void)
+{
+    type_register_static(&xbox_pm_gpio_info);
+}
+type_init(xbox_pm_gpio_register_types)
