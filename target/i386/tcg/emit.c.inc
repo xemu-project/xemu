@@ -3572,7 +3572,6 @@ static void gen_RDPMC(DisasContext *s, X86DecodedInsn *decode)
     gen_update_eip_cur(s);
     translator_io_start(&s->base);
     gen_helper_rdpmc(tcg_env);
-    s->base.is_jmp = DISAS_NORETURN;
 }
 
 static void gen_RDTSC(DisasContext *s, X86DecodedInsn *decode)
