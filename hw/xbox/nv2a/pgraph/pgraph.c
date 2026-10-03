@@ -147,8 +147,7 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
             assert(context_address < memory_region_size(&d->ramin));
 
-            uint8_t *context_ptr = d->ramin_ptr + context_address;
-            uint32_t context_user = ldl_le_p((uint32_t*)context_ptr);
+            uint32_t context_user = nv2a_pramin_read32(d, context_address);
 
             NV2A_DPRINTF("    - CTX_USER = 0x%x\n", context_user);
 
@@ -639,12 +638,11 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
 
     if (method == NV_SET_OBJECT) {
         assert(parameter < memory_region_size(&d->ramin));
-        uint8_t *obj_ptr = d->ramin_ptr + parameter;
 
-        uint32_t ctx_1 = ldl_le_p((uint32_t*)obj_ptr);
-        uint32_t ctx_2 = ldl_le_p((uint32_t*)(obj_ptr+4));
-        uint32_t ctx_3 = ldl_le_p((uint32_t*)(obj_ptr+8));
-        uint32_t ctx_4 = ldl_le_p((uint32_t*)(obj_ptr+12));
+        uint32_t ctx_1 = nv2a_pramin_read32(d, parameter);
+        uint32_t ctx_2 = nv2a_pramin_read32(d, parameter + 4);
+        uint32_t ctx_3 = nv2a_pramin_read32(d, parameter + 8);
+        uint32_t ctx_4 = nv2a_pramin_read32(d, parameter + 12);
         uint32_t ctx_5 = parameter;
 
         pgraph_reg_w(pg, NV_PGRAPH_CTX_CACHE1 + subchannel * 4, ctx_1);
