@@ -359,6 +359,7 @@ void pgraph_gl_draw_end(NV2AState *d)
     }
 
     pgraph_gl_flush_draw(d);
+    pgraph_vsh_carryover_update(pg);
 
     /* End of visibility testing */
     if (pg->zpass_pixel_count_enable) {
