@@ -365,7 +365,7 @@ void pgraph_destroy(PGRAPHState *pg)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
 
-    pgraph_vsh_carryover_invalidate_program(pg);
+    pgraph_vsh_carryover_invalidate_cache(pg);
 
     if (pg->renderer->ops.finalize) {
        pg->renderer->ops.finalize(d);
@@ -1923,7 +1923,7 @@ DEF_METHOD_INC(NV097, SET_TRANSFORM_PROGRAM)
     assert(program_load < NV2A_MAX_TRANSFORM_PROGRAM_LENGTH);
     pg->program_data[program_load][slot%4] = parameter;
     pg->program_data_dirty = true;
-    pgraph_vsh_carryover_invalidate_program(pg);
+    pg->vsh_carry_cache_dirty = true;
 
     if (slot % 4 == 3) {
         PG_SET_MASK(NV_PGRAPH_CHEOPS_OFFSET,

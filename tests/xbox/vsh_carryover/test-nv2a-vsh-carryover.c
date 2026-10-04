@@ -46,7 +46,8 @@ static void test_vsh_carryover_reset_defaults(void)
 {
     PGRAPHState pg;
     memset(&pg, 0x5A, sizeof(pg));
-    pg.vsh_carry_cached_program = NULL;
+    memset(pg.vsh_carry_cached_programs, 0,
+           sizeof(pg.vsh_carry_cached_programs));
 
     pgraph_vsh_carryover_reset(&pg);
 
@@ -55,8 +56,10 @@ static void test_vsh_carryover_reset_defaults(void)
     assert_float_near(pg.vsh_carry_fog[2], 0.0f);
     assert_float_near(pg.vsh_carry_fog[3], 1.0f);
 
-    g_assert_null(pg.vsh_carry_cached_program);
-    g_assert_cmpuint(pg.vsh_carry_cached_start, ==, (uint32_t)-1);
+    for (int i = 0; i < ARRAY_SIZE(pg.vsh_carry_cached_programs); ++i) {
+        g_assert_null(pg.vsh_carry_cached_programs[i]);
+    }
+    g_assert_false(pg.vsh_carry_cache_dirty);
 }
 
 static void test_vsh_carryover_ff_no_op(void)
@@ -82,7 +85,9 @@ static void test_vsh_carryover_ff_no_op(void)
     assert_float_near(pg.vsh_carry_fog[1], 0.0f);
     assert_float_near(pg.vsh_carry_fog[2], 0.0f);
     assert_float_near(pg.vsh_carry_fog[3], 1.0f);
-    g_assert_null(pg.vsh_carry_cached_program);
+    for (int i = 0; i < ARRAY_SIZE(pg.vsh_carry_cached_programs); ++i) {
+        g_assert_null(pg.vsh_carry_cached_programs[i]);
+    }
 }
 
 /*
@@ -116,6 +121,7 @@ static void test_vsh_carryover_fog_carryover(void)
 
     /* Verify Draw 1 updated oFog */
     assert_float_near(pg.vsh_carry_fog[0], 0.9999f);
+    g_assert_nonnull(pg.vsh_carry_cached_programs[0]);
 
     /* Draw 2: Program at slot 2 writes only oPos = v1, oFog is omitted */
     uint32_t c = pgraph_reg_r(&pg, NV_PGRAPH_CSV0_C);
@@ -137,7 +143,11 @@ static void test_vsh_carryover_fog_carryover(void)
     /* Verify oFog retained the value from Draw 1! */
     assert_float_near(pg.vsh_carry_fog[0], 0.9999f);
 
-    pgraph_vsh_carryover_invalidate_program(&pg);
+    /* Both programs should remain cached */
+    g_assert_nonnull(pg.vsh_carry_cached_programs[0]);
+    g_assert_nonnull(pg.vsh_carry_cached_programs[2]);
+
+    pgraph_vsh_carryover_invalidate_cache(&pg);
 }
 
 static void test_vsh_carryover_program_cache_invalidation(void)
@@ -148,13 +158,66 @@ static void test_vsh_carryover_program_cache_invalidation(void)
     make_mov_output(pg.program_data[0], NV2AOR_POS, 0xF, 0, true);
     pgraph_vsh_carryover_update(&pg);
 
-    g_assert_nonnull(pg.vsh_carry_cached_program);
-    g_assert_cmpuint(pg.vsh_carry_cached_start, ==, 0);
+    g_assert_nonnull(pg.vsh_carry_cached_programs[0]);
 
-    pgraph_vsh_carryover_invalidate_program(&pg);
+    pgraph_vsh_carryover_invalidate_cache(&pg);
 
-    g_assert_null(pg.vsh_carry_cached_program);
-    g_assert_cmpuint(pg.vsh_carry_cached_start, ==, (uint32_t)-1);
+    for (int i = 0; i < ARRAY_SIZE(pg.vsh_carry_cached_programs); ++i) {
+        g_assert_null(pg.vsh_carry_cached_programs[i]);
+    }
+
+    /* Verify lazy invalidation via vsh_carry_cache_dirty */
+    make_mov_output(pg.program_data[0], NV2AOR_POS, 0xF, 0, true);
+    pgraph_vsh_carryover_update(&pg);
+    g_assert_nonnull(pg.vsh_carry_cached_programs[0]);
+
+    pg.vsh_carry_cache_dirty = true;
+    pgraph_vsh_carryover_update(&pg);
+    g_assert_nonnull(pg.vsh_carry_cached_programs[0]);
+    g_assert_false(pg.vsh_carry_cache_dirty);
+
+    pgraph_vsh_carryover_invalidate_cache(&pg);
+}
+
+static void test_vsh_carryover_multi_program_cache(void)
+{
+    PGRAPHState pg;
+    setup_pgraph_test_state(&pg);
+
+    /* Program at slot 0 */
+    make_mov_output(pg.program_data[0], NV2AOR_POS, 0xF, 0, true);
+
+    /* Program at slot 10 */
+    make_mov_output(pg.program_data[10], NV2AOR_POS, 0xF, 1, true);
+
+    /* Run slot 0 */
+    pgraph_vsh_carryover_update(&pg);
+    g_assert_nonnull(pg.vsh_carry_cached_programs[0]);
+    g_assert_null(pg.vsh_carry_cached_programs[10]);
+
+    Nv2aVshProgram *cached_prog_0 = pg.vsh_carry_cached_programs[0];
+
+    /* Switch to slot 10 via CHEOPS_PROGRAM_START without setting
+     * vsh_carry_cache_dirty */
+    uint32_t c = pgraph_reg_r(&pg, NV_PGRAPH_CSV0_C);
+    SET_MASK(c, NV_PGRAPH_CSV0_C_CHEOPS_PROGRAM_START, 10);
+    pgraph_reg_w(&pg, NV_PGRAPH_CSV0_C, c);
+
+    pgraph_vsh_carryover_update(&pg);
+    g_assert_nonnull(pg.vsh_carry_cached_programs[10]);
+    /* Slot 0 must remain cached (pointer unchanged) */
+    g_assert_true(pg.vsh_carry_cached_programs[0] == cached_prog_0);
+
+    /* Switch back to slot 0 */
+    SET_MASK(c, NV_PGRAPH_CSV0_C_CHEOPS_PROGRAM_START, 0);
+    pgraph_reg_w(&pg, NV_PGRAPH_CSV0_C, c);
+
+    pgraph_vsh_carryover_update(&pg);
+    /* Both still cached and intact */
+    g_assert_true(pg.vsh_carry_cached_programs[0] == cached_prog_0);
+    g_assert_nonnull(pg.vsh_carry_cached_programs[10]);
+
+    pgraph_vsh_carryover_invalidate_cache(&pg);
 }
 
 int main(int argc, char **argv)
@@ -169,6 +232,8 @@ int main(int argc, char **argv)
                     test_vsh_carryover_fog_carryover);
     g_test_add_func("/xbox/vsh_carryover/program_cache_invalidation",
                     test_vsh_carryover_program_cache_invalidation);
+    g_test_add_func("/xbox/vsh_carryover/multi_program_cache",
+                    test_vsh_carryover_multi_program_cache);
 
     return g_test_run();
 }

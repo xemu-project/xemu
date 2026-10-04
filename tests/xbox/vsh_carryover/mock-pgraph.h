@@ -1,7 +1,3 @@
-/*
- * Mock environment for Xbox NV2A PGRAPH carryover tests
- */
-
 #ifndef MOCK_PGRAPH_H
 #define MOCK_PGRAPH_H
 

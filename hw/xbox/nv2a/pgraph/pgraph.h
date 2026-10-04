@@ -191,8 +191,8 @@ typedef struct PGRAPHState {
     uint32_t program_data[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH][VSH_TOKEN_SIZE];
     bool program_data_dirty;
     float vsh_carry_fog[4];
-    Nv2aVshProgram *vsh_carry_cached_program;
-    uint32_t vsh_carry_cached_start;
+    bool vsh_carry_cache_dirty;
+    Nv2aVshProgram *vsh_carry_cached_programs[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH];
 
     uint32_t vsh_constants[NV2A_VERTEXSHADER_CONSTANTS][4];
     bool vsh_constants_dirty[NV2A_VERTEXSHADER_CONSTANTS];
@@ -403,7 +403,7 @@ void pgraph_get_inline_values(PGRAPHState *pg, uint16_t attrs,
                                float values[NV2A_VERTEXSHADER_ATTRIBUTES][4],
                                int *count);
 void pgraph_vsh_carryover_reset(PGRAPHState *pg);
-void pgraph_vsh_carryover_invalidate_program(PGRAPHState *pg);
+void pgraph_vsh_carryover_invalidate_cache(PGRAPHState *pg);
 void pgraph_vsh_carryover_update(PGRAPHState *pg);
 
 /* RDI */

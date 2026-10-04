@@ -152,14 +152,15 @@ void pgraph_reset_draw_arrays(PGRAPHState *pg)
     pg->draw_arrays_prevent_connect = false;
 }
 
-void pgraph_vsh_carryover_invalidate_program(PGRAPHState *pg)
+void pgraph_vsh_carryover_invalidate_cache(PGRAPHState *pg)
 {
-    if (pg->vsh_carry_cached_program) {
-        nv2a_vsh_program_destroy(pg->vsh_carry_cached_program);
-        g_free(pg->vsh_carry_cached_program);
-        pg->vsh_carry_cached_program = NULL;
+    for (int i = 0; i < ARRAY_SIZE(pg->vsh_carry_cached_programs); ++i) {
+        if (pg->vsh_carry_cached_programs[i]) {
+            nv2a_vsh_program_destroy(pg->vsh_carry_cached_programs[i]);
+            g_free(pg->vsh_carry_cached_programs[i]);
+            pg->vsh_carry_cached_programs[i] = NULL;
+        }
     }
-    pg->vsh_carry_cached_start = (uint32_t)-1;
 }
 
 void pgraph_vsh_carryover_reset(PGRAPHState *pg)
@@ -168,11 +169,17 @@ void pgraph_vsh_carryover_reset(PGRAPHState *pg)
     pg->vsh_carry_fog[1] = 0.0f;
     pg->vsh_carry_fog[2] = 0.0f;
     pg->vsh_carry_fog[3] = 1.0f;
-    pgraph_vsh_carryover_invalidate_program(pg);
+    pgraph_vsh_carryover_invalidate_cache(pg);
+    pg->vsh_carry_cache_dirty = false;
 }
 
 void pgraph_vsh_carryover_update(PGRAPHState *pg)
 {
+    if (pg->vsh_carry_cache_dirty) {
+        pgraph_vsh_carryover_invalidate_cache(pg);
+        pg->vsh_carry_cache_dirty = false;
+    }
+
     bool is_vertex_program = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
                                       NV_PGRAPH_CSV0_D_MODE) == 2;
     if (!is_vertex_program) {
@@ -185,9 +192,7 @@ void pgraph_vsh_carryover_update(PGRAPHState *pg)
         return;
     }
 
-    if (!pg->vsh_carry_cached_program ||
-        pg->vsh_carry_cached_start != program_start) {
-        pgraph_vsh_carryover_invalidate_program(pg);
+    if (!pg->vsh_carry_cached_programs[program_start]) {
         Nv2aVshProgram *program = g_new0(Nv2aVshProgram, 1);
         Nv2aVshParseResult result = nv2a_vsh_parse_program(
             program, pg->program_data[program_start],
@@ -196,9 +201,10 @@ void pgraph_vsh_carryover_update(PGRAPHState *pg)
             g_free(program);
             return;
         }
-        pg->vsh_carry_cached_program = program;
-        pg->vsh_carry_cached_start = program_start;
+        pg->vsh_carry_cached_programs[program_start] = program;
     }
+
+    Nv2aVshProgram *program = pg->vsh_carry_cached_programs[program_start];
 
     Nv2aVshCPUFullExecutionState execution_state;
     Nv2aVshExecutionState state =
@@ -209,6 +215,12 @@ void pgraph_vsh_carryover_update(PGRAPHState *pg)
                pg->vertex_attributes[i].inline_value, sizeof(float) * 4);
     }
 
+    for (int i = 0; i < ARRAY_SIZE(execution_state.output_regs) / 4; ++i) {
+        execution_state.output_regs[i * 4 + 0] = 0.0f;
+        execution_state.output_regs[i * 4 + 1] = 0.0f;
+        execution_state.output_regs[i * 4 + 2] = 0.0f;
+        execution_state.output_regs[i * 4 + 3] = 1.0f;
+    }
     memcpy(&execution_state.output_regs[NV2AOR_FOG_COORD * 4],
            pg->vsh_carry_fog, sizeof(pg->vsh_carry_fog));
 
@@ -218,7 +230,7 @@ void pgraph_vsh_carryover_update(PGRAPHState *pg)
     memcpy(execution_state.context_regs, pg->vsh_constants,
            sizeof(execution_state.context_regs));
 
-    nv2a_vsh_emu_execute(&state, pg->vsh_carry_cached_program);
+    nv2a_vsh_emu_execute(&state, program);
 
     memcpy(pg->vsh_carry_fog,
            &execution_state.output_regs[NV2AOR_FOG_COORD * 4],
