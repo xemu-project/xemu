@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/KhronosGroup/SPIRV-Reflect
-revision = 9137a7e529e4e911a4dbd63f1ce71e4b3e8f4cfc
+revision = f3e261fda74ca81b44d1941931c6b7b5fe236d0e
 depth = 1
 
 [update]
