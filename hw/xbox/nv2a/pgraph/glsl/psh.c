@@ -58,6 +58,28 @@ static uint32_t get_color_key_mask_for_texture(PGRAPHState *pg, int i)
     return get_colorkey_mask(color_format);
 }
 
+static inline bool point_sprite_mode_enabled(PGRAPHState *pg)
+{
+    if (pg->primitive_mode == PRIM_TYPE_LINES ||
+        pg->primitive_mode == PRIM_TYPE_LINE_LOOP ||
+        pg->primitive_mode == PRIM_TYPE_LINE_STRIP) {
+        return false;
+    }
+
+    uint32_t setup_raster = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER);
+    if (!(setup_raster & NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE)) {
+        return false;
+    }
+
+    uint32_t polygon_mode_front =
+        GET_MASK(setup_raster, NV_PGRAPH_SETUPRASTER_FRONTFACEMODE);
+    // FIXME: Missing support for 2-sided-poly mode
+    // uint32_t polygon_mode_back =
+    //     GET_MASK(setup_raster, NV_PGRAPH_SETUPRASTER_BACKFACEMODE);
+    return pg->primitive_mode == PRIM_TYPE_POINTS ||
+           polygon_mode_front == NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_POINT;
+}
+
 void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
 {
     state->window_clip_exclusive = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
@@ -73,8 +95,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
     state->alpha_func = (enum PshAlphaFunc)GET_MASK(
         pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0), NV_PGRAPH_CONTROL_0_ALPHAFUNC);
 
-    state->point_sprite = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-                          NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE;
+    state->point_sprite = point_sprite_mode_enabled(pg);
 
     state->shadow_depth_func =
         (enum PshShadowDepthFunc)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_SHADOWCTL),
