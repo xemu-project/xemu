@@ -103,10 +103,37 @@ static float filter_coefficient(double x)
     return fmin(round(c), 65535.0) / 65536.0;
 }
 
+/* Route gains in 1/16384, attenuations in 1/64 dB (measured): straight lines
+ * between whole decibels through round(4095 * 10^(-k / 20)), rounded down;
+ * from 48 dB a straight line to nothing at 63 dB. Attenuation 0 is unity. */
+static uint32_t attenuation_nodes[64];
+
+static void attenuation_init(void)
+{
+    for (int k = 0; k <= 48; k++) {
+        attenuation_nodes[k] = floor(4095.0 * pow(10.0, -k / 20.0) + 0.5);
+    }
+    for (int k = 49; k < 64; k++) {
+        attenuation_nodes[k] = attenuation_nodes[48] * (63 - k) / 15;
+    }
+}
+
+static uint32_t attenuation_gain(int att)
+{
+    if (att <= 0) {
+        return 16384;
+    }
+    if (att >= 63 * 64) {
+        return 0;
+    }
+    uint32_t n0 = attenuation_nodes[att >> 6];
+    uint32_t n1 = attenuation_nodes[(att >> 6) + 1];
+    return (256 * n0 - 4 * (n0 - n1) * (att & 63)) >> 6;
+}
+
 static float attenuate(uint16_t vol)
 {
-    vol &= 0xFFF;
-    return (vol == 0xFFF) ? 0.0 : powf(10.0f, vol/(64.0 * -20.0f));
+    return attenuation_gain(vol & 0xFFF) / 16384.0f;
 }
 
 static uint32_t voice_get_mask(MCPXAPUState *d, uint16_t voice_handle,
@@ -1962,6 +1989,7 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
 void mcpx_apu_vp_init(MCPXAPUState *d)
 {
     lagrange_init();
+    attenuation_init();
     voice_work_init(d);
 }
 
