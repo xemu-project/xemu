@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/libsdl-org/SDL
-revision = fa2c02bb6e21974a89ea9824bc53c9932abe5f9c
+revision = 829a65d769d935c4852f8159e964312c0957260a
 depth = 1
 method = cmake
 
