@@ -20,8 +20,6 @@
  */
 
 #include "xid.h"
-#include "../../ui/xui/debug-tools/addons/diagnostics/controller-xid-trace-hook.h"
-#include "../../ui/xui/debug-tools/addons/diagnostics/controller-input-poll-trace-hook.h"
 
 /*
  * http://xbox-linux.cvs.sourceforge.net/viewvc/xbox-linux/kernel-2.6/drivers/usb/input/xpad.c
@@ -48,11 +46,6 @@ void update_output(USBXIDGamepadState *s)
     }
 
     ControllerState *state = xemu_input_get_bound(s->device_index);
-    if (state == NULL) {
-        xemu_debug_tools_controller_xid_trace_xid_event(
-            XEMU_DEBUG_TOOLS_CONTROLLER_XID_XID_BOUND_MISSING,
-            s->device_index, s, 2, 0);
-    }
     assert(state);
     state->rumble_l = s->out_state.left_actuator_strength;
     state->rumble_r = s->out_state.right_actuator_strength;
@@ -66,30 +59,8 @@ void update_input(USBXIDGamepadState *s)
         return;
     }
 
-    const int input_poll_trace =
-        xemu_debug_tools_controller_input_poll_trace_active();
-    uint64_t input_poll_stage = input_poll_trace
-        ? xemu_debug_tools_controller_input_poll_trace_stage_begin() : 0;
     ControllerState *state = xemu_input_get_bound(s->device_index);
-    if (input_poll_trace) {
-        xemu_debug_tools_controller_input_poll_trace_stage_end(
-            XEMU_DEBUG_TOOLS_INPUT_POLL_STAGE_GET_BOUND, input_poll_stage);
-    }
-    if (state == NULL) {
-        xemu_debug_tools_controller_xid_trace_xid_event(
-            XEMU_DEBUG_TOOLS_CONTROLLER_XID_XID_BOUND_MISSING,
-            s->device_index, s, 1, 0);
-    }
     assert(state);
-    if (input_poll_trace) {
-        xemu_debug_tools_controller_input_poll_trace_set_controller(
-            state->sdl_joystick_id, state->type, state->connected ? 1 : 0);
-        /* Host SDL state is refreshed by the UI thread outside the BQL. */
-        xemu_debug_tools_controller_input_poll_trace_set_update_result(
-            0, state->connected ? 0 : 1, 0);
-        input_poll_stage =
-            xemu_debug_tools_controller_input_poll_trace_stage_begin();
-    }
 
     const int button_map_analog[6][2] = {
         { GAMEPAD_A,     CONTROLLER_BUTTON_A     },
@@ -129,31 +100,11 @@ void update_input(USBXIDGamepadState *s)
     s->in_state.sThumbLY = state->axis[CONTROLLER_AXIS_LSTICK_Y];
     s->in_state.sThumbRX = state->axis[CONTROLLER_AXIS_RSTICK_X];
     s->in_state.sThumbRY = state->axis[CONTROLLER_AXIS_RSTICK_Y];
-
-    if (input_poll_trace) {
-        xemu_debug_tools_controller_input_poll_trace_stage_end(
-            XEMU_DEBUG_TOOLS_INPUT_POLL_STAGE_INPUT_MAPPING,
-            input_poll_stage);
-        input_poll_stage =
-            xemu_debug_tools_controller_input_poll_trace_stage_begin();
-    }
-    xemu_debug_tools_controller_xid_trace_xid_state(
-        s->device_index, s, state->buttons, state->axis, s->in_state.wButtons,
-        s->in_state.bAnalogButtons, s->in_state.sThumbLX, s->in_state.sThumbLY,
-        s->in_state.sThumbRX, s->in_state.sThumbRY);
-    if (input_poll_trace) {
-        xemu_debug_tools_controller_input_poll_trace_stage_end(
-            XEMU_DEBUG_TOOLS_INPUT_POLL_STAGE_XID_STATE_TRACE,
-            input_poll_stage);
-    }
 }
 
 void usb_xid_handle_reset(USBDevice *dev)
 {
-    USBXIDGamepadState *s = (USBXIDGamepadState *)dev;
     DPRINTF("xid reset\n");
-    xemu_debug_tools_controller_xid_trace_xid_event(
-        XEMU_DEBUG_TOOLS_CONTROLLER_XID_XID_RESET, s->device_index, s, 0, 0);
 }
 
 void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
@@ -162,9 +113,6 @@ void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
     USBXIDGamepadState *s = (USBXIDGamepadState *)dev;
 
     DPRINTF("xid handle_control 0x%x 0x%x\n", request, value);
-    xemu_debug_tools_controller_xid_trace_usb_event(
-        XEMU_DEBUG_TOOLS_CONTROLLER_XID_USB_CONTROL_REQUEST,
-        s->device_index, s, request, value, index, length);
 
     int ret = usb_desc_handle_control(dev, p, request, value, index, length, data);
     if (ret >= 0) {
@@ -176,9 +124,6 @@ void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
     /* HID requests */
     case ClassInterfaceRequest | HID_GET_REPORT:
         DPRINTF("xid GET_REPORT 0x%x\n", value);
-        xemu_debug_tools_controller_xid_trace_xid_event(
-            XEMU_DEBUG_TOOLS_CONTROLLER_XID_XID_GET_REPORT,
-            s->device_index, s, value, length);
         update_input(s);
         if (value == 0x0100) { /* input */
             if (length <= s->in_state.bLength) {
@@ -279,8 +224,4 @@ static void usb_xid_handle_destroy(USBDevice *dev)
 
 void usb_xbox_gamepad_unrealize(USBDevice *dev)
 {
-    USBXIDGamepadState *s = (USBXIDGamepadState *)dev;
-    xemu_debug_tools_controller_xid_trace_xid_event(
-        XEMU_DEBUG_TOOLS_CONTROLLER_XID_XID_UNREALIZE,
-        s->device_index, s, 0, 0);
 }

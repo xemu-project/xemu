@@ -31,8 +31,6 @@
 #include "xemu-input.h"
 #include "xemu-notifications.h"
 #include "xemu-settings.h"
-#include "xui/debug-tools/addons/diagnostics/controller-xid-trace-hook.h"
-#include "xui/debug-tools/addons/diagnostics/controller-input-poll-trace-hook.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -364,18 +362,12 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
 {
     if (event->type == SDL_EVENT_GAMEPAD_ADDED) {
         DPRINTF("Controller Added: %d\n", event->gdevice.which);
-        xemu_debug_tools_controller_xid_trace_host_lifecycle(
-            XEMU_DEBUG_TOOLS_CONTROLLER_XID_HOST_GAMEPAD_ADDED, -1,
-            event->gdevice.which, 0, NULL, NULL);
 
         // Attempt to open the added controller
         SDL_Gamepad *sdl_con;
         sdl_con = SDL_OpenGamepad(event->gdevice.which);
         if (sdl_con == NULL) {
             DPRINTF("Could not open joystick %d as a Gamepad\n", event->gdevice.which);
-            xemu_debug_tools_controller_xid_trace_host_lifecycle(
-                XEMU_DEBUG_TOOLS_CONTROLLER_XID_HOST_GAMEPAD_OPEN_FAILED, -1,
-                event->gdevice.which, 0, NULL, NULL);
             return;
         }
 
@@ -386,9 +378,6 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         char guid_buf[35] = { 0 };
         SDL_GUIDToString(sdl_joystick_guid, guid_buf, sizeof(guid_buf));
         DPRINTF("Opened %s (%s)\n", sdl_name, guid_buf);
-        xemu_debug_tools_controller_xid_trace_host_lifecycle(
-            XEMU_DEBUG_TOOLS_CONTROLLER_XID_HOST_GAMEPAD_OPENED, -1,
-            sdl_joystick_id, 0, sdl_name, guid_buf);
 
         /* Info: Reconnect the same host GUID without guest XID re-enumeration. */
         ControllerState *new_con = NULL;
@@ -417,11 +406,6 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
             new_con->buttons = 0;
             memset(new_con->axis, 0, sizeof(new_con->axis));
             xemu_input_bindings_reload_map(new_con);
-
-            xemu_debug_tools_controller_xid_trace_host_lifecycle(
-                XEMU_DEBUG_TOOLS_CONTROLLER_XID_HOST_PERSISTENT_REATTACHED,
-                new_con->bound, new_con->sdl_joystick_id, 0,
-                new_con->name, guid_buf);
 
             char buf[128];
             snprintf(buf, sizeof(buf), "Reconnected '%s' to port %d",
@@ -505,13 +489,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
             if (iter->type != INPUT_DEVICE_SDL_GAMEPAD) continue;
 
             if (iter->sdl_joystick_id == event->gdevice.which) {
-                char trace_guid[35] = { 0 };
-                SDL_GUIDToString(iter->sdl_joystick_guid, trace_guid,
-                                 sizeof(trace_guid));
                 DPRINTF("Device removed: %s\n", iter->name);
-                xemu_debug_tools_controller_xid_trace_host_lifecycle(
-                    XEMU_DEBUG_TOOLS_CONTROLLER_XID_HOST_GAMEPAD_REMOVED,
-                    iter->bound, iter->sdl_joystick_id, 0, iter->name, trace_guid);
 
                 if (iter->bound >= 0) {
                     /* Info: Keep the guest XID device present with neutral input while host hardware is absent. */
@@ -524,13 +502,6 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
                     memset(iter->axis, 0, sizeof(iter->axis));
                     iter->rumble_l = 0;
                     iter->rumble_r = 0;
-                    xemu_debug_tools_controller_xid_trace_host_state(
-                        iter->bound, iter->sdl_joystick_id,
-                        iter->buttons, iter->axis);
-                    xemu_debug_tools_controller_xid_trace_host_lifecycle(
-                        XEMU_DEBUG_TOOLS_CONTROLLER_XID_HOST_PERSISTENT_NEUTRAL,
-                        iter->bound, iter->sdl_joystick_id, 0,
-                        iter->name, trace_guid);
 
                     if (iter->sdl_gamepad) {
                         SDL_RumbleGamepad(iter->sdl_gamepad, 0, 0, 0);
@@ -700,62 +671,6 @@ XemuInputHostPollBatch *xemu_input_host_poll_prepare(void)
     return batch;
 }
 
-static inline bool xemu_input_profiled_gamepad_button(
-    SDL_Gamepad *gamepad, SDL_GamepadButton button, uint32_t getter,
-    bool input_poll_trace)
-{
-    uint64_t start_ns = input_poll_trace
-        ? xemu_debug_tools_controller_input_poll_trace_stage_begin() : 0;
-    const bool value = SDL_GetGamepadButton(gamepad, button);
-    if (input_poll_trace) {
-        xemu_debug_tools_controller_input_poll_trace_getter_end(getter,
-                                                                start_ns);
-    }
-    return value;
-}
-
-static inline Sint16 xemu_input_profiled_gamepad_axis(
-    SDL_Gamepad *gamepad, SDL_GamepadAxis axis, uint32_t getter,
-    bool input_poll_trace)
-{
-    uint64_t start_ns = input_poll_trace
-        ? xemu_debug_tools_controller_input_poll_trace_stage_begin() : 0;
-    const Sint16 value = SDL_GetGamepadAxis(gamepad, axis);
-    if (input_poll_trace) {
-        xemu_debug_tools_controller_input_poll_trace_getter_end(getter,
-                                                                start_ns);
-    }
-    return value;
-}
-
-static const uint32_t xemu_input_host_poll_button_getters[15] = {
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_BUTTON_A,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_BUTTON_B,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_BUTTON_X,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_BUTTON_Y,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_DPAD_LEFT,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_DPAD_UP,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_DPAD_RIGHT,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_DPAD_DOWN,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_BACK,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_START,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_LEFT_SHOULDER,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_RIGHT_SHOULDER,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_LEFT_STICK_BUTTON,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_RIGHT_STICK_BUTTON,
-    XEMU_DEBUG_TOOLS_INPUT_GETTER_GUIDE,
-};
-
-static const uint32_t
-    xemu_input_host_poll_axis_getters[CONTROLLER_AXIS__COUNT] = {
-        XEMU_DEBUG_TOOLS_INPUT_GETTER_AXIS_TRIGGER_LEFT,
-        XEMU_DEBUG_TOOLS_INPUT_GETTER_AXIS_TRIGGER_RIGHT,
-        XEMU_DEBUG_TOOLS_INPUT_GETTER_AXIS_LEFT_X,
-        XEMU_DEBUG_TOOLS_INPUT_GETTER_AXIS_LEFT_Y,
-        XEMU_DEBUG_TOOLS_INPUT_GETTER_AXIS_RIGHT_X,
-        XEMU_DEBUG_TOOLS_INPUT_GETTER_AXIS_RIGHT_Y,
-    };
-
 void xemu_input_host_poll_sample(XemuInputHostPollBatch *batch)
 {
     if (batch == NULL) {
@@ -767,22 +682,16 @@ void xemu_input_host_poll_sample(XemuInputHostPollBatch *batch)
         uint16_t buttons = 0;
         int16_t axis[CONTROLLER_AXIS__COUNT] = { 0 };
 
-        const bool input_poll_trace =
-            xemu_debug_tools_controller_input_poll_trace_active() != 0;
         for (int button = 0; button < 15; button++) {
-            if (xemu_input_profiled_gamepad_button(
-                    entry->sdl_gamepad, entry->button_mapping[button],
-                    xemu_input_host_poll_button_getters[button],
-                    input_poll_trace)) {
+            if (SDL_GetGamepadButton(entry->sdl_gamepad,
+                                     entry->button_mapping[button])) {
                 buttons |= (uint16_t)(1u << button);
             }
         }
         for (int axis_index = 0; axis_index < CONTROLLER_AXIS__COUNT;
              axis_index++) {
-            axis[axis_index] = xemu_input_profiled_gamepad_axis(
-                entry->sdl_gamepad, entry->axis_mapping[axis_index],
-                xemu_input_host_poll_axis_getters[axis_index],
-                input_poll_trace);
+            axis[axis_index] = SDL_GetGamepadAxis(
+                entry->sdl_gamepad, entry->axis_mapping[axis_index]);
         }
 
         for (int axis_index = CONTROLLER_AXIS_LSTICK_X;
@@ -837,8 +746,6 @@ void xemu_input_host_poll_commit(XemuInputHostPollBatch *batch)
         state->buttons = entry->buttons;
         memcpy(state->axis, entry->axis, sizeof(state->axis));
         state->last_input_updated_ts = entry->sampled_ts;
-        xemu_debug_tools_controller_xid_trace_host_state(
-            state->bound, state->sdl_joystick_id, state->buttons, state->axis);
     }
 }
 
@@ -849,39 +756,14 @@ void xemu_input_host_poll_free(XemuInputHostPollBatch *batch)
 
 void xemu_input_update_controller(ControllerState *state)
 {
-    const int input_poll_trace =
-        xemu_debug_tools_controller_input_poll_trace_active();
-    uint64_t input_poll_stage = input_poll_trace
-        ? xemu_debug_tools_controller_input_poll_trace_stage_begin() : 0;
-
     if (state->type == INPUT_DEVICE_SDL_GAMEPAD) {
-        if (input_poll_trace) {
-            xemu_debug_tools_controller_input_poll_trace_set_update_result(
-                0, state->connected ? 0 : 1, 0);
-            xemu_debug_tools_controller_input_poll_trace_stage_end(
-                XEMU_DEBUG_TOOLS_INPUT_POLL_STAGE_UPDATE_GATE,
-                input_poll_stage);
-        }
         return;
     }
 
     int64_t now = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
     if (ABS(now - state->last_input_updated_ts) <
         XEMU_INPUT_MIN_INPUT_UPDATE_INTERVAL_US) {
-        if (input_poll_trace) {
-            xemu_debug_tools_controller_input_poll_trace_set_update_result(
-                0, 0, 1);
-            xemu_debug_tools_controller_input_poll_trace_stage_end(
-                XEMU_DEBUG_TOOLS_INPUT_POLL_STAGE_UPDATE_GATE,
-                input_poll_stage);
-        }
         return;
-    }
-
-    if (input_poll_trace) {
-        xemu_debug_tools_controller_input_poll_trace_set_update_result(1, 0, 0);
-        xemu_debug_tools_controller_input_poll_trace_stage_end(
-            XEMU_DEBUG_TOOLS_INPUT_POLL_STAGE_UPDATE_GATE, input_poll_stage);
     }
 
     if (state->type == INPUT_DEVICE_SDL_KEYBOARD) {
@@ -992,18 +874,7 @@ void xemu_input_bind(int index, ControllerState *state, int save)
 
     // Unbind existing controller
     if (bound_controllers[index]) {
-        char trace_guid[35] = { 0 };
-        ControllerState *old_state = bound_controllers[index];
-        if (old_state->type == INPUT_DEVICE_SDL_GAMEPAD) {
-            SDL_GUIDToString(old_state->sdl_joystick_guid, trace_guid,
-                             sizeof(trace_guid));
-        }
-        assert(old_state->device != NULL);
-        xemu_debug_tools_controller_xid_trace_host_lifecycle(
-            XEMU_DEBUG_TOOLS_CONTROLLER_XID_HOST_UNBIND, index,
-            old_state->type == INPUT_DEVICE_SDL_GAMEPAD
-                ? old_state->sdl_joystick_id : 0,
-            save, old_state->name, trace_guid);
+        assert(bound_controllers[index]->device != NULL);
         Error *err = NULL;
 
         // Unbind any XMUs
@@ -1096,17 +967,6 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         object_unref(OBJECT(dev));
 
         state->device = usbhub_dev;
-
-        char trace_guid[35] = { 0 };
-        if (state->type == INPUT_DEVICE_SDL_GAMEPAD) {
-            SDL_GUIDToString(state->sdl_joystick_guid, trace_guid,
-                             sizeof(trace_guid));
-        }
-        xemu_debug_tools_controller_xid_trace_host_lifecycle(
-            XEMU_DEBUG_TOOLS_CONTROLLER_XID_HOST_BIND, index,
-            state->type == INPUT_DEVICE_SDL_GAMEPAD
-                ? state->sdl_joystick_id : 0,
-            save, state->name, trace_guid);
     }
 }
 
