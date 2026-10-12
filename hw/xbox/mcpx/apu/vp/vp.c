@@ -62,6 +62,8 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
     d->vp.filters[v].resample_buf_pos = NUM_SAMPLES_PER_FRAME;
     d->vp.filters[v].gains = false;
     d->vp.filters[v].pitched = false;
+    d->vp.filters[v].dls2_set = false;
+    d->vp.filters[v].peq_set = false;
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
 }
 
@@ -1480,13 +1482,22 @@ static void voice_process(MCPXAPUState *d,
         lpf = stereo ? (fmode == 1) : (fmode & 1);
         peq = stereo ? (fmode == 2) : (fmode >= 2);
     }
+    /* The F envelope bends both filters' frequencies by its FC scale, 256
+     * units a step at full. Each coefficient moves from the last frame's to
+     * this frame's across the frame, linearly in f (measured). */
+    int8_t fc_scale = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_ENV1,
+                                     NV_PAVS_VOICE_CFG_ENV1_EF_FCSCALE);
+    double fc_bend = fc_scale * 256 * ef_value;
+
     if (lpf) {
         for (int ch = 0; ch < 2; ch++) {
-            // FIXME: Cutoff modulation via NV_PAVS_VOICE_CFG_ENV1_EF_FCSCALE
             int16_t fc = voice_get_mask(
                 d, v, NV_PAVS_VOICE_TAR_FCA + (ch % channels) * 4,
                 NV_PAVS_VOICE_TAR_FCA_FC0);
-            float fc_f = filter_coefficient(fc);
+            float fc_f = filter_coefficient(fc + fc_bend);
+            float f_from =
+                d->vp.filters[v].dls2_set ? d->vp.filters[v].dls2_f[ch] : fc_f;
+            d->vp.filters[v].dls2_f[ch] = fc_f;
             uint16_t q = voice_get_mask(
                 d, v, NV_PAVS_VOICE_TAR_FCA + (ch % channels) * 4,
                 NV_PAVS_VOICE_TAR_FCA_FC1);
@@ -1494,10 +1505,12 @@ static void voice_process(MCPXAPUState *d,
             sv_filter *filter = &d->vp.filters[v].svf[ch];
             setup_svf(filter, fc_f, q_f, F_LP);
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                filter->f = f_from + (fc_f - f_from) * (i / 32.0f);
                 samples[i][ch] = run_svf(filter, samples[i][ch]);
             }
         }
     }
+    d->vp.filters[v].dls2_set = lpf;
 
     /* ParaEQ (measured on hardware): the DLS2 filter's SVF as a peaking EQ,
      * y = x + G * q * band, with f = 2^(FC / 4096), G = gain / 8192 and
@@ -1512,16 +1525,21 @@ static void voice_process(MCPXAPUState *d,
                          stereo  ? NV_PAVS_VOICE_TAR_FCA + ch * 4 :
                                    NV_PAVS_VOICE_TAR_FCB;
             uint32_t c = voice_get_mask(d, v, reg, 0xFFFFFFFF);
-            float fc_f = filter_coefficient((int16_t)(c & 0xFFFF));
+            float fc_f = filter_coefficient((int16_t)(c & 0xFFFF) + fc_bend);
+            float f_from =
+                d->vp.filters[v].peq_set ? d->vp.filters[v].peq_f[ch] : fc_f;
+            d->vp.filters[v].peq_f[ch] = fc_f;
             float g = (int16_t)(c >> 16) / 8192.0f * q_f;
             sv_filter *filter = &d->vp.filters[v].peq[ch];
             setup_svf(filter, fc_f, q_f, F_BP);
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                filter->f = f_from + (fc_f - f_from) * (i / 32.0f);
                 samples[i][ch] = svf_round(samples[i][ch] +
                                            g * run_svf(filter, samples[i][ch]));
             }
         }
     }
+    d->vp.filters[v].peq_set = peq;
 
     /* I3DL2 (measured on hardware): one-pole low-passes y = (1 - a) x + a y'
      * with a = FCB 15:0 / 65536 on routes 0-4 and 6, and FCB 31:16 / 65536

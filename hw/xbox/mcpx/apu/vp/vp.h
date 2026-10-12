@@ -53,6 +53,10 @@ typedef struct MCPXAPUVoiceFilter {
     bool gains;
     float pitch;
     bool pitched;
+    float dls2_f[2];
+    float peq_f[2];
+    bool dls2_set;
+    bool peq_set;
     HrtfFilter hrtf;
 } MCPXAPUVoiceFilter;
 
