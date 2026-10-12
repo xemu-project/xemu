@@ -610,9 +610,9 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
             d->regs[NV_PAPU_FECTL] |= NV_PAPU_FECTL_FETRAPREASON_REQUESTED;
             DPRINTF("idle voice %d\n", argument);
             d->set_irq = true;
-        } else {
-            assert(!"SE2FE_IDLE_VOICE called but NV_PAPU_FETFORCE1_SE2FE_IDLE_VOICE not enabled");
         }
+        /* Without the forced trap an idle voice is skipped: on hardware it can
+         * stay in a list with FETFORCE1 clear. */
         break;
     default:
         DPRINTF("Unrecognized method: 0x%08x\n", method);
