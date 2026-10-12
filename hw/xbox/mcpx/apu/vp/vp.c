@@ -93,6 +93,16 @@ static float clampf(float v, float min, float max)
     }
 }
 
+/* Filter coefficients take 2^(x / 4096) to a 1024th of an octave, then to
+ * the nearest 1/65536, at most FFFFh (measured: D97Eh gave 3043h). */
+static float filter_coefficient(double x)
+{
+    int k = floor(x / 4.0);
+    int octave = floor(k / 1024.0);
+    double c = ldexp(exp2((k - octave * 1024) / 1024.0) * 65536.0, octave);
+    return fmin(round(c), 65535.0) / 65536.0;
+}
+
 static float attenuate(uint16_t vol)
 {
     vol &= 0xFFF;
@@ -1486,16 +1496,15 @@ static void voice_process(MCPXAPUState *d,
             int16_t fc = voice_get_mask(
                 d, v, NV_PAVS_VOICE_TAR_FCA + (ch % channels) * 4,
                 NV_PAVS_VOICE_TAR_FCA_FC0);
-            float fc_f = clampf(pow(2, fc / 4096.0), 0.003906f, 1.0f);
+            float fc_f = filter_coefficient(fc);
             uint16_t q = voice_get_mask(
                 d, v, NV_PAVS_VOICE_TAR_FCA + (ch % channels) * 4,
                 NV_PAVS_VOICE_TAR_FCA_FC1);
-            float q_f = clampf(q / (1.0 * 0x8000), 0.079407f, 1.0f);
+            float q_f = q / (1.0 * 0x8000);
             sv_filter *filter = &d->vp.filters[v].svf[ch];
             setup_svf(filter, fc_f, q_f, F_LP);
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
                 samples[i][ch] = run_svf(filter, samples[i][ch]);
-                samples[i][ch] = fmin(fmax(samples[i][ch], -1.0), 1.0);
             }
         }
     }
@@ -1513,7 +1522,7 @@ static void voice_process(MCPXAPUState *d,
                          stereo  ? NV_PAVS_VOICE_TAR_FCA + ch * 4 :
                                    NV_PAVS_VOICE_TAR_FCB;
             uint32_t c = voice_get_mask(d, v, reg, 0xFFFFFFFF);
-            float fc_f = fminf(powf(2, (int16_t)(c & 0xFFFF) / 4096.0f), 1.0f);
+            float fc_f = filter_coefficient((int16_t)(c & 0xFFFF));
             float g = (int16_t)(c >> 16) / 8192.0f * q_f;
             sv_filter *filter = &d->vp.filters[v].peq[ch];
             setup_svf(filter, fc_f, q_f, F_BP);
