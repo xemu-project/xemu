@@ -55,6 +55,7 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
 {
     assert(v < MCPX_HW_MAX_VOICES);
     memset(&d->vp.filters[v].svf, 0, sizeof(d->vp.filters[v].svf));
+    memset(&d->vp.filters[v].peq, 0, sizeof(d->vp.filters[v].peq));
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
     if (d->vp.filters[v].resampler) {
         src_reset(d->vp.filters[v].resampler);
@@ -1438,13 +1439,17 @@ static void voice_process(MCPXAPUState *d,
                                NV_PAVS_VOICE_CFG_MISC_FMODE);
 
     // FIXME: Move to function
+    bool three_d = v < MCPX_HW_MAX_3D_VOICES;
     bool lpf = false;
-    if (v < MCPX_HW_MAX_3D_VOICES) {
+    bool peq = false;
+    if (three_d) {
         /* 1:DLS2+I3DL2 2:ParaEQ+I3DL2 3:I3DL2 */
         lpf = (fmode == 1);
+        peq = (fmode == 2);
     } else {
         /* 0:Bypass 1:DLS2 2:ParaEQ 3(Mono):DLS2+ParaEQ 3(Stereo):Bypass */
         lpf = stereo ? (fmode == 1) : (fmode & 1);
+        peq = stereo ? (fmode == 2) : (fmode >= 2);
     }
     if (lpf) {
         for (int ch = 0; ch < 2; ch++) {
@@ -1466,10 +1471,32 @@ static void voice_process(MCPXAPUState *d,
         }
     }
 
+    /* ParaEQ (measured on hardware): the DLS2 filter's SVF as a peaking EQ,
+     * y = x + G * q * band, with f = 2^(FC / 4096), G = gain / 8192 and
+     * q = 2^-Q. Its word is FCB on mono 2D voices, FCA on 3D voices and
+     * FCA/FCB per channel on stereo voices. */
+    if (peq) {
+        int q_field = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_MISC,
+                                     NV_PAVS_VOICE_CFG_MISC_PARAEQ_Q);
+        float q_f = ldexpf(1.0f, -q_field);
+        for (int ch = 0; ch < 2; ch++) {
+            hwaddr reg = three_d ? NV_PAVS_VOICE_TAR_FCA :
+                         stereo  ? NV_PAVS_VOICE_TAR_FCA + ch * 4 :
+                                   NV_PAVS_VOICE_TAR_FCB;
+            uint32_t c = voice_get_mask(d, v, reg, 0xFFFFFFFF);
+            float fc_f = fminf(powf(2, (int16_t)(c & 0xFFFF) / 4096.0f), 1.0f);
+            float g = (int16_t)(c >> 16) / 8192.0f * q_f;
+            sv_filter *filter = &d->vp.filters[v].peq[ch];
+            setup_svf(filter, fc_f, q_f, F_BP);
+            for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                samples[i][ch] += g * run_svf(filter, samples[i][ch]);
+            }
+        }
+    }
+
     /* Routes 0-1 of a 3D voice carry the HRTF's left ear and 2-3 its right,
      * and are silent without an HRTF entry; its other routes carry the voice
      * itself (measured on hardware). */
-    bool three_d = v < MCPX_HW_MAX_3D_VOICES;
     uint16_t hrtf_handle = HRTF_NULL_HANDLE;
     float ears[NUM_SAMPLES_PER_FRAME][2];
     if (three_d) {
@@ -1481,8 +1508,6 @@ static void voice_process(MCPXAPUState *d,
             memcpy(ears, samples, sizeof(ears));
         }
     }
-
-    // FIXME: ParaEQ
 
     for (int b = 0; b < 8; b++) {
         if (three_d && b < 4 && hrtf_handle == HRTF_NULL_HANDLE) {

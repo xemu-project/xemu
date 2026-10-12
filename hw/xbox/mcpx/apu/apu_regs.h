@@ -262,6 +262,7 @@
 #define NV_PAVS_VOICE_CFG_MISC                           0x00000018
 #   define NV_PAVS_VOICE_CFG_MISC_EF_RELEASERATE            (0xFFF << 0)
 #   define NV_PAVS_VOICE_CFG_MISC_FMODE                     (3 << 16)
+#   define NV_PAVS_VOICE_CFG_MISC_PARAEQ_Q                  (7 << 18)
 #define NV_PAVS_VOICE_CFG_HRTF_TARGET                    0x0000001C
 #   define NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE             0x0000FFFF
 #define NV_PAVS_VOICE_CUR_PSL_START                      0x00000020
