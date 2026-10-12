@@ -1488,15 +1488,10 @@ static void voice_process(MCPXAPUState *d,
         if (three_d && b < 4 && hrtf_handle == HRTF_NULL_HANDLE) {
             continue;
         }
-        float g = ea_value;
-        float hr;
-        if (three_d && (b < 4)) {
-            // FIXME: Not sure if submix/voice headroom factor in for HRTF
-            hr = 1 << d->vp.hrtf_headroom;
-        } else {
-            hr = 1 << d->vp.submix_headroom[bin[b]];
-        }
-        g *= attenuate(vol[b])/hr;
+        /* The bin's headroom applies to HRTF submixes too; the HRTF headroom
+         * has no measurable effect on hardware. */
+        float hr = 1 << d->vp.submix_headroom[bin[b]];
+        float g = ea_value * attenuate(vol[b]) / hr;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
             float x =
                 (three_d && b < 4) ? ears[i][b / 2] : samples[i][b % channels];
