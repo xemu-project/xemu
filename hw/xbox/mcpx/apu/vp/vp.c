@@ -56,6 +56,7 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
     assert(v < MCPX_HW_MAX_VOICES);
     memset(&d->vp.filters[v].svf, 0, sizeof(d->vp.filters[v].svf));
     memset(&d->vp.filters[v].peq, 0, sizeof(d->vp.filters[v].peq));
+    memset(&d->vp.filters[v].i3dl2, 0, sizeof(d->vp.filters[v].i3dl2));
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
     if (d->vp.filters[v].resampler) {
         src_reset(d->vp.filters[v].resampler);
@@ -1494,6 +1495,25 @@ static void voice_process(MCPXAPUState *d,
         }
     }
 
+    /* I3DL2 (measured on hardware): one-pole low-passes y = (1 - a) x + a y'
+     * with a = FCB 15:0 / 65536 on routes 0-4 and 6, and FCB 31:16 / 65536
+     * on routes 5 and 7. */
+    float room[NUM_SAMPLES_PER_FRAME];
+    bool i3dl2 = three_d && fmode != 0 && !stereo;
+    if (i3dl2) {
+        uint32_t fcb = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_FCB, 0xFFFFFFFF);
+        float a_direct = (fcb & 0xFFFF) / 65536.0f;
+        float a_room = (fcb >> 16) / 65536.0f;
+        float *state = d->vp.filters[v].i3dl2;
+        for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+            float x = samples[i][0];
+            state[0] = x + (state[0] - x) * a_direct;
+            state[1] = x + (state[1] - x) * a_room;
+            samples[i][0] = samples[i][1] = state[0];
+            room[i] = state[1];
+        }
+    }
+
     /* Routes 0-1 of a 3D voice carry the HRTF's left ear and 2-3 its right,
      * and are silent without an HRTF entry; its other routes carry the voice
      * itself (measured on hardware). */
@@ -1518,8 +1538,9 @@ static void voice_process(MCPXAPUState *d,
         float hr = 1 << d->vp.submix_headroom[bin[b]];
         float g = ea_value * attenuate(vol[b]) / hr;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-            float x =
-                (three_d && b < 4) ? ears[i][b / 2] : samples[i][b % channels];
+            float x = (three_d && b < 4)            ? ears[i][b / 2] :
+                      (i3dl2 && (b == 5 || b == 7)) ? room[i] :
+                                                      samples[i][b % channels];
             mixbins[bin[b]][i] += g * x;
         }
     }
