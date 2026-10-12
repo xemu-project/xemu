@@ -20,14 +20,10 @@
  */
 
 #include "hw/xbox/nv2a/nv2a_int.h"
-#include "ui/xui/debug-tools/addons/diagnostics/flip-stall-trace-hook.h"
-#include "ui/xui/debug-tools/addons/diagnostics/scheduler-trace-hook.h"
-#include "ui/xui/debug-tools/addons/diagnostics/ptimer-irq-delivery-trace.h"
 #include "qemu/main-loop.h"
 
 void nv2a_update_irq(NV2AState *d)
 {
-    const uint32_t previous_pmc_pending = d->pmc.pending_interrupts;
     /* PFIFO */
     if (d->pfifo.pending_interrupts & d->pfifo.enabled_interrupts) {
         d->pmc.pending_interrupts |= NV_PMC_INTR_0_PFIFO;
@@ -49,6 +45,7 @@ void nv2a_update_irq(NV2AState *d)
     } else {
         d->pmc.pending_interrupts &= ~NV_PMC_INTR_0_PGRAPH;
     }
+
     /* PTIMER */
     if (d->ptimer.pending_interrupts & d->ptimer.enabled_interrupts) {
         d->pmc.pending_interrupts |= NV_PMC_INTR_0_PTIMER;
@@ -56,32 +53,10 @@ void nv2a_update_irq(NV2AState *d)
         d->pmc.pending_interrupts &= ~NV_PMC_INTR_0_PTIMER;
     }
 
-    {
-        const uint32_t newly_active =
-            d->pmc.pending_interrupts & ~previous_pmc_pending;
-        if (newly_active & NV_PMC_INTR_0_PGRAPH) {
-            xemu_debug_tools_scheduler_trace_note_irq(
-                XEMU_DEBUG_TOOLS_SCHED_WAKE_PGRAPH,
-                qatomic_read(&d->pgraph.pending_interrupts),
-                qatomic_read(&d->pgraph.enabled_interrupts));
-        }
-        if (newly_active & NV_PMC_INTR_0_PFIFO) {
-            xemu_debug_tools_scheduler_trace_note_irq(
-                XEMU_DEBUG_TOOLS_SCHED_WAKE_PFIFO,
-                d->pfifo.pending_interrupts, d->pfifo.enabled_interrupts);
-        }
-    }
-
     if (d->pmc.pending_interrupts && d->pmc.enabled_interrupts) {
-        xemu_debug_tools_ptimer_irq_delivery_note_nv2a_line(
-            1, d->ptimer.pending_interrupts, d->ptimer.enabled_interrupts,
-            d->pmc.pending_interrupts, d->pmc.enabled_interrupts);
         trace_nv2a_irq(d->pmc.pending_interrupts);
         pci_irq_assert(PCI_DEVICE(d));
     } else {
-        xemu_debug_tools_ptimer_irq_delivery_note_nv2a_line(
-            0, d->ptimer.pending_interrupts, d->ptimer.enabled_interrupts,
-            d->pmc.pending_interrupts, d->pmc.enabled_interrupts);
         pci_irq_deassert(PCI_DEVICE(d));
     }
 }
@@ -234,12 +209,6 @@ static void nv2a_vga_gfx_update(void *opaque)
     NV2AState *d = container_of(vga, NV2AState, vga);
     d->pcrtc.pending_interrupts |= NV_PCRTC_INTR_0_VBLANK;
     d->pcrtc.raster = 0;
-    xemu_debug_tools_flip_stall_trace_record(
-        XEMU_DEBUG_TOOLS_FLIP_VBLANK_IRQ, &d->pgraph, 0,
-        d->pcrtc.pending_interrupts, 0, 0, 0);
-    xemu_debug_tools_scheduler_trace_note_irq(
-        XEMU_DEBUG_TOOLS_SCHED_WAKE_PCRTC_VBLANK,
-        d->pcrtc.pending_interrupts, d->pcrtc.enabled_interrupts);
 
     nv2a_update_irq(d);
 }
@@ -308,13 +277,13 @@ static void nv2a_lock_fifo(NV2AState *d)
     bql_unlock();
     qemu_cond_wait(&d->pfifo.fifo_idle_cond, &d->pfifo.lock);
     bql_lock();
-    PGRAPH_LOCK(&d->pgraph);
+    qemu_mutex_lock(&d->pgraph.lock);
 }
 
 static void nv2a_unlock_fifo(NV2AState *d)
 {
     pfifo_kick(d);
-    PGRAPH_UNLOCK(&d->pgraph);
+    qemu_mutex_unlock(&d->pgraph.lock);
     qemu_mutex_unlock(&d->pfifo.lock);
 }
 
