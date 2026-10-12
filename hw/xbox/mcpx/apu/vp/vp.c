@@ -1870,28 +1870,35 @@ static void voice_work_schedule(MCPXAPUState *d)
     bool group = false;
     uint32_t dirty = 0;
 
+    // To simplify submix scheduling, voices are grouped by DirectSound's
+    // multipass layout:
+    //
+    // - MP bin is constant
+    // - MP voice always clears MP bin
+    // - MP source voices are ordered consecutively in voice lists
+    //
+    // Hardware takes any bin, so a frame that departs from this runs all its
+    // voices in list order on one worker.
+    bool serial = false;
+    for (int i = 0; i < vwd->queue_len; i++) {
+        uint32_t src, dst, clr;
+        get_voice_bin_src_dst(d, vwd->queue[i].voice, &src, &dst, &clr);
+        if ((src && (src != MULTIPASS_BIN_MASK || clr != MULTIPASS_BIN_MASK)) ||
+            (!src && !(dst & MULTIPASS_BIN_MASK) &&
+             (dirty & MULTIPASS_BIN_MASK))) {
+            serial = true;
+        }
+        dirty = (dirty & ~clr) | dst;
+    }
+    dirty = 0;
+
     for (int i = 0; i < vwd->queue_len; i++) {
         uint32_t src, dst, clr;
         get_voice_bin_src_dst(d, vwd->queue[i].voice, &src, &dst, &clr);
 
-        // TODO: To simplify submix scheduling, we make a few assumptions based
-        // on Xbox software observations. However, the configurability of
-        // multipass sources suggests the hardware may not be so strict. We'll
-        // defer making this more robust for now.
-        //
-        // We currently assume that:
-        //
-        // - MP bin is constant
-        assert(!src || (src == MULTIPASS_BIN_MASK));
-        //
-        // - MP voice always clears MP bin
-        assert(!src || (clr == MULTIPASS_BIN_MASK));
-        //
-        // - MP source voices are ordered consecutively in voice lists
-        assert(src || (dst & MULTIPASS_BIN_MASK) ||
-               !(dirty & MULTIPASS_BIN_MASK));
-
-        if ((dst & MULTIPASS_BIN_MASK) & ~dirty) {
+        if (serial) {
+            group = true;
+        } else if ((dst & MULTIPASS_BIN_MASK) & ~dirty) {
             group = true;
         }
 
@@ -1901,7 +1908,7 @@ static void voice_work_schedule(MCPXAPUState *d)
         vwd->workers_pending |= 1 << next_worker_to_schedule;
 
         dirty = (dirty & ~clr) | dst;
-        if (clr & MULTIPASS_BIN_MASK) {
+        if ((clr & MULTIPASS_BIN_MASK) && !serial) {
             group = false;
         }
 
