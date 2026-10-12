@@ -519,17 +519,11 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
             argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_HANDLE;
         break;
     case NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET: {
-        // FIXME: Is there an upper limit for the SGE table size?
-        // FIXME: NV_PAPU_VPSGEADDR is probably bad, as inbuf SGE use the same
-        // handle range (or that is also wrong)
+        // FIXME: Where are outbuf SGEs stored? Not in the voices' SGE table:
+        // on hardware, setting them leaves its entries unchanged.
         // NV_PAPU_EPFADDR   EP outbufs
         // NV_PAPU_GPFADDR   GP outbufs
         // But how does it know which outbuf is being written?!
-        hwaddr sge_address =
-            d->regs[NV_PAPU_VPSGEADDR] + d->vp.outbuf_sge_handle * 8;
-        stl_le_phys(&address_space_memory, sge_address,
-                    argument &
-                        NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET_PARAMETER);
         DPRINTF("Wrote outbuf SGE[0x%X] = 0x%08X\n", d->vp.outbuf_sge_handle,
                 argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET_PARAMETER);
         break;
