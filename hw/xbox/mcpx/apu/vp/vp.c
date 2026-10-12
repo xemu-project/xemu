@@ -1531,9 +1531,17 @@ static void voice_process(MCPXAPUState *d,
 
     // FIXME: Move to function
     bool three_d = v < MCPX_HW_MAX_3D_VOICES;
+    uint16_t hrtf_handle = HRTF_NULL_HANDLE;
+    if (three_d) {
+        hrtf_handle = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_HRTF_TARGET,
+                                     NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE);
+    }
+    /* A 3D voice without an HRTF entry filters as a 2D voice, with no I3DL2
+     * (measured). */
+    bool spatial = three_d && hrtf_handle != HRTF_NULL_HANDLE;
     bool lpf = false;
     bool peq = false;
-    if (three_d) {
+    if (spatial) {
         /* 1:DLS2+I3DL2 2:ParaEQ+I3DL2 3:I3DL2 */
         lpf = (fmode == 1);
         peq = (fmode == 2);
@@ -1581,7 +1589,7 @@ static void voice_process(MCPXAPUState *d,
                                      NV_PAVS_VOICE_CFG_MISC_PARAEQ_Q);
         float q_f = ldexpf(1.0f, -q_field);
         for (int ch = 0; ch < 2; ch++) {
-            hwaddr reg = three_d ? NV_PAVS_VOICE_TAR_FCA :
+            hwaddr reg = spatial ? NV_PAVS_VOICE_TAR_FCA :
                          stereo  ? NV_PAVS_VOICE_TAR_FCA + ch * 4 :
                                    NV_PAVS_VOICE_TAR_FCB;
             uint32_t c = voice_get_mask(d, v, reg, 0xFFFFFFFF);
@@ -1605,7 +1613,7 @@ static void voice_process(MCPXAPUState *d,
      * with a = FCB 15:0 / 65536 on routes 0-4 and 6, and FCB 31:16 / 65536
      * on routes 5 and 7. */
     float room[NUM_SAMPLES_PER_FRAME];
-    bool i3dl2 = three_d && fmode != 0 && !stereo;
+    bool i3dl2 = spatial && fmode != 0 && !stereo;
     if (i3dl2) {
         uint32_t fcb = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_FCB, 0xFFFFFFFF);
         float a_direct = (fcb & 0xFFFF) / 65536.0f;
@@ -1623,12 +1631,9 @@ static void voice_process(MCPXAPUState *d,
     /* Routes 0-1 of a 3D voice carry the HRTF's left ear and 2-3 its right,
      * and are silent without an HRTF entry; its other routes carry the voice
      * itself (measured on hardware). */
-    uint16_t hrtf_handle = HRTF_NULL_HANDLE;
     float ears[NUM_SAMPLES_PER_FRAME][2];
     if (three_d) {
-        hrtf_handle = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_HRTF_TARGET,
-                                     NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE);
-        if (hrtf_handle != HRTF_NULL_HANDLE && g_config.audio.hrtf) {
+        if (spatial && g_config.audio.hrtf) {
             /* The entry is read every frame, so rewriting it or moving the
              * voice to another entry takes effect on the next frame. */
             assert(hrtf_handle < HRTF_ENTRY_COUNT);
