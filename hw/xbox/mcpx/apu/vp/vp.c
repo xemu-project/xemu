@@ -82,17 +82,6 @@ static bool voice_should_mute(uint16_t v)
     return m || mcpx_apu_debug_is_muted(v);
 }
 
-static float clampf(float v, float min, float max)
-{
-    if (v < min) {
-        return min;
-    } else if (v > max) {
-        return max;
-    } else {
-        return v;
-    }
-}
-
 /* Filter coefficients take 2^(x / 4096) to a 1024th of an octave, then to
  * the nearest 1/65536, at most FFFFh (measured: D97Eh gave 3043h). */
 static float filter_coefficient(double x)
@@ -278,7 +267,8 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
                                NV_PAVS_VOICE_CFG_ENV0_EA_DELAYTIME);
             voice_set_mask(d, selected_handle, NV_PAVS_VOICE_CUR_ECNT,
                            NV_PAVS_VOICE_CUR_ECNT_EACOUNT, delay_time * 16);
-        } else if (ea_start == NV_PAVS_VOICE_PAR_STATE_EFCUR_ATTACK) {
+        } else if (ea_start == NV_PAVS_VOICE_PAR_STATE_EFCUR_ATTACK ||
+                   ea_start == NV_PAVS_VOICE_PAR_STATE_EFCUR_DECAY) {
             voice_set_mask(d, selected_handle, NV_PAVS_VOICE_CUR_ECNT,
                            NV_PAVS_VOICE_CUR_ECNT_EACOUNT, 0);
         } else if (ea_start == NV_PAVS_VOICE_PAR_STATE_EFCUR_HOLD) {
@@ -299,7 +289,8 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
                                NV_PAVS_VOICE_CFG_ENV0_EA_DELAYTIME);
             voice_set_mask(d, selected_handle, NV_PAVS_VOICE_CUR_ECNT,
                            NV_PAVS_VOICE_CUR_ECNT_EFCOUNT, delay_time * 16);
-        } else if (ef_start == NV_PAVS_VOICE_PAR_STATE_EFCUR_ATTACK) {
+        } else if (ef_start == NV_PAVS_VOICE_PAR_STATE_EFCUR_ATTACK ||
+                   ef_start == NV_PAVS_VOICE_PAR_STATE_EFCUR_DECAY) {
             voice_set_mask(d, selected_handle, NV_PAVS_VOICE_CUR_ECNT,
                            NV_PAVS_VOICE_CUR_ECNT_EFCOUNT, 0);
         } else if (ef_start == NV_PAVS_VOICE_PAR_STATE_EFCUR_HOLD) {
@@ -726,154 +717,111 @@ static hwaddr get_data_ptr(hwaddr sge_base, unsigned int max_sge, uint32_t addr)
     return prd_address + addr % TARGET_PAGE_SIZE;
 }
 
+static float envelope_level(MCPXAPUState *d, uint16_t v, uint32_t lvl_reg,
+                            uint32_t lvl_mask, double units)
+{
+    voice_set_mask(d, v, lvl_reg, lvl_mask, MIN(255, (int)units / 8));
+    return units / 2048.0;
+}
+
+/* Steps an envelope by one frame and returns its level (measured):
+ * - Each phase steps before its frame plays; delay and hold last 16T + 1
+ *   frames. Attack rises to 2048ths in R * 16 frames.
+ * - Decay falls by e^(-1/2R) a frame from full to the sustain level, s/255;
+ *   a decay rate of 0 holds one frame at full.
+ * - Release holds the level byte (as 256ths) for a frame, falls by
+ *   e^(-1/2R) a frame, and from 11R frames runs in a straight line to
+ *   nothing at 15R, when the envelope ends.
+ * - The F envelope reads 0 while off. */
 static float voice_step_envelope(MCPXAPUState *d, uint16_t v, uint32_t reg_0,
                            uint32_t reg_a, uint32_t rr_reg, uint32_t rr_mask,
                            uint32_t lvl_reg, uint32_t lvl_mask,
                            uint32_t count_mask, uint32_t cur_mask)
 {
     uint8_t cur = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask);
+    uint32_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
+    uint32_t attack_rate =
+        voice_get_mask(d, v, reg_0, NV_PAVS_VOICE_CFG_ENV0_EA_ATTACKRATE);
+    uint32_t hold_time =
+        voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_HOLDTIME);
+    uint32_t decay_rate =
+        voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_DECAYRATE);
+    uint32_t sustain_level =
+        voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_SUSTAINLEVEL);
+    uint32_t release_rate = voice_get_mask(d, v, rr_reg, rr_mask);
+    double sustain = floor(sustain_level * 2048.0 / 255.0);
+    bool amplitude = count_mask == NV_PAVS_VOICE_CUR_ECNT_EACOUNT;
+
     switch (cur) {
     case NV_PAVS_VOICE_PAR_STATE_EFCUR_OFF:
         voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, 0);
-        voice_set_mask(d, v, lvl_reg, lvl_mask, 0xFF);
-        return 1.0f;
-    case NV_PAVS_VOICE_PAR_STATE_EFCUR_DELAY: {
-        uint16_t count =
-            voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
-        voice_set_mask(d, v, lvl_reg, lvl_mask, 0x00); // FIXME: Confirm this?
-
+        return envelope_level(d, v, lvl_reg, lvl_mask, amplitude ? 2048 : 0);
+    case NV_PAVS_VOICE_PAR_STATE_EFCUR_DELAY:
         if (count == 0) {
-            cur++;
-            voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
-            count = 0;
+            voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur + 1);
         } else {
             count--;
         }
         voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
-        return 0.0f;
-    }
+        return envelope_level(d, v, lvl_reg, lvl_mask, 0);
     case NV_PAVS_VOICE_PAR_STATE_EFCUR_ATTACK: {
-        uint16_t count =
-            voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
-        uint16_t attack_rate =
-            voice_get_mask(d, v, reg_0, NV_PAVS_VOICE_CFG_ENV0_EA_ATTACKRATE);
-
-        float value;
-        if (attack_rate == 0) {
-            // FIXME: [division by zero]
-            //       Got crackling sound in hardware for amplitude env.
-            value = 255.0f;
-        } else {
-            if (count <= (attack_rate * 16)) {
-                value = (count * 0xFF) / (attack_rate * 16);
-            } else {
-                // FIXME: Overflow in hardware
-                //       The actual value seems to overflow, but not sure how
-                value = 255.0f;
-            }
+        count = MIN(count + 1, 0xFFFF);
+        double units = 2048;
+        if (attack_rate != 0) {
+            units = MIN(2048, floor(2048.0 * count / (attack_rate * 16)));
         }
-        voice_set_mask(d, v, lvl_reg, lvl_mask, value);
-        // FIXME: Comparison could also be the other way around?! Test please.
-        if (count == (attack_rate * 16)) {
-            cur++;
-            voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
-            uint16_t hold_time =
-                voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_HOLDTIME);
-            count = hold_time * 16; // FIXME: Skip next phase if count is 0?
-                                    // [other instances too]
-        } else {
-            count++;
+        if (attack_rate == 0 || count >= attack_rate * 16) {
+            voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur + 1);
+            count = hold_time * 16;
         }
         voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
-        return value / 255.0f;
+        return envelope_level(d, v, lvl_reg, lvl_mask, units);
     }
-    case NV_PAVS_VOICE_PAR_STATE_EFCUR_HOLD: {
-        uint16_t count =
-            voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
-        voice_set_mask(d, v, lvl_reg, lvl_mask, 0xFF);
-
+    case NV_PAVS_VOICE_PAR_STATE_EFCUR_HOLD:
         if (count == 0) {
-            cur++;
-            voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
-            uint16_t decay_rate = voice_get_mask(
-                d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_DECAYRATE);
-            count = decay_rate * 16;
+            voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur + 1);
         } else {
             count--;
         }
         voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
-        return 1.0f;
-    }
+        return envelope_level(d, v, lvl_reg, lvl_mask, 2048);
     case NV_PAVS_VOICE_PAR_STATE_EFCUR_DECAY: {
-        uint16_t count =
-            voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
-        uint16_t decay_rate =
-            voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_DECAYRATE);
-        uint8_t sustain_level =
-            voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_SUSTAINLEVEL);
-
-        // FIXME: Decay should return a value no less than sustain
-        float value;
-        if (decay_rate == 0) {
-            value = 0.0f;
-        } else {
-            // FIXME: This formula and threshold is not accurate, but I can't
-            // get it any better for now
-            value = 255.0f * powf(0.99988799f, (decay_rate * 16 - count) *
-                                                   4096 / decay_rate);
+        double units = 2048;
+        if (decay_rate != 0) {
+            count = MIN(count + 1, 0xFFFF);
+            units = floor(2048.0 * exp(-(double)count / (2 * decay_rate)));
         }
-        if (value <= (sustain_level + 0.2f) || (value > 255.0f)) {
-            // FIXME: Should we still update lvl?
-            cur++;
-            voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
-        } else {
-            count--;
-            voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
-            voice_set_mask(d, v, lvl_reg, lvl_mask, value);
-        }
-        return value / 255.0f;
-    }
-    case NV_PAVS_VOICE_PAR_STATE_EFCUR_SUSTAIN: {
-        uint8_t sustain_level =
-            voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_SUSTAINLEVEL);
-        voice_set_mask(
-            d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask,
-            0x00); // FIXME: is this only set to 0 once or forced to zero?
-        voice_set_mask(d, v, lvl_reg, lvl_mask, sustain_level);
-        return sustain_level / 255.0f;
-    }
-    case NV_PAVS_VOICE_PAR_STATE_EFCUR_RELEASE: {
-        uint16_t count =
-            voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
-        uint16_t release_rate = voice_get_mask(d, v, rr_reg, rr_mask);
-
-        if (release_rate == 0) {
+        if (decay_rate == 0 || units <= sustain) {
+            units = decay_rate == 0 ? 2048 : sustain;
+            voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur + 1);
             count = 0;
         }
-
-        float value = 0;
-        if (count == 0) {
-            voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, ++cur);
-        } else {
-            // FIXME: Appears to be an exponential but unsure about actual
-            // curve; performing standard decay of current level to T60 over the
-            // release interval which seems about right.
-            // FIXME: Based on sustain level or just decay of current level?
-            // FIXME: Update level? A very similar, alternative decay function
-            // (probably what the hw actually does): y(t)=2^(-10t), which would
-            // permit simpler attenuation more efficiently and update level on
-            // each round.
-            float pos = clampf(1 - count / (release_rate * 16.0), 0, 1);
-            uint8_t lvl = voice_get_mask(d, v, lvl_reg, lvl_mask);
-            value = powf(M_E, -6.91*pos)*lvl;
-            count--; // FIXME: Should release count ascend or descend?
-            voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
+        voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
+        return envelope_level(d, v, lvl_reg, lvl_mask, units);
+    }
+    case NV_PAVS_VOICE_PAR_STATE_EFCUR_SUSTAIN:
+        voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, 0);
+        voice_set_mask(d, v, lvl_reg, lvl_mask, sustain_level);
+        return sustain / 2048.0;
+    case NV_PAVS_VOICE_PAR_STATE_EFCUR_RELEASE: {
+        /* The count runs down from R * 16 */
+        uint32_t t = release_rate * 16 > count ? release_rate * 16 - count : 0;
+        if (release_rate == 0 || t >= release_rate * 15) {
+            voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur + 1);
+            voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, 0);
+            return 0.0f;
         }
-
-        return value / 255.0f;
+        voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask,
+                       count ? count - 1 : 0);
+        double start = voice_get_mask(d, v, lvl_reg, lvl_mask) * 8.0;
+        double fall = floor(start * exp(-(double)t / (2 * release_rate)));
+        double tail = floor(start * 2.0 * (release_rate * 15 - t) /
+                                (2048.0 * release_rate) +
+                            0.5);
+        return (t < release_rate * 11 ? MAX(fall, tail) : tail) / 2048.0;
     }
     case NV_PAVS_VOICE_PAR_STATE_EFCUR_FORCE_RELEASE:
-        if (count_mask == NV_PAVS_VOICE_CUR_ECNT_EACOUNT) {
+        if (amplitude) {
             voice_off(d, v);
         }
         return 0.0f;
