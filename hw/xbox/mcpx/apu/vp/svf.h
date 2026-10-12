@@ -14,6 +14,13 @@
 
 #define flush_to_zero(x) x
 
+/* Hardware keeps filter values to 1/16 of a 24-bit sample, rounding halves
+ * up (measured). */
+static inline float svf_round(float x)
+{
+    return floorf(x * 524288.0f + 0.5f) / 524288.0f;
+}
+
 // Constants to match filter types
 #define F_LP 1
 #define F_HP 2
@@ -74,9 +81,9 @@ static inline float run_svf(sv_filter *sv, float in) {
     for (i=0; i < F_R; i++) {
         // regular state variable code here
         // the notch and peaking outputs are optional
-        sv->h = flush_to_zero(in - sv->l - sv->q * sv->b);
-        sv->b = sv->b + sv->f * sv->h;
-        sv->l = flush_to_zero(sv->l + sv->f * sv->b);
+        sv->h = svf_round(in - sv->l - sv->q * sv->b);
+        sv->b = svf_round(sv->b + sv->f * sv->h);
+        sv->l = svf_round(sv->l + sv->f * sv->b);
         sv->n = sv->l + sv->h;
         sv->p = sv->l - sv->h;
         out = *(sv->op);

@@ -1518,7 +1518,8 @@ static void voice_process(MCPXAPUState *d,
             sv_filter *filter = &d->vp.filters[v].peq[ch];
             setup_svf(filter, fc_f, q_f, F_BP);
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-                samples[i][ch] += g * run_svf(filter, samples[i][ch]);
+                samples[i][ch] = svf_round(samples[i][ch] +
+                                           g * run_svf(filter, samples[i][ch]));
             }
         }
     }
@@ -1535,8 +1536,8 @@ static void voice_process(MCPXAPUState *d,
         float *state = d->vp.filters[v].i3dl2;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
             float x = samples[i][0];
-            state[0] = x + (state[0] - x) * a_direct;
-            state[1] = x + (state[1] - x) * a_room;
+            state[0] = svf_round(x + (state[0] - x) * a_direct);
+            state[1] = svf_round(x + (state[1] - x) * a_room);
             samples[i][0] = samples[i][1] = state[0];
             room[i] = state[1];
         }
