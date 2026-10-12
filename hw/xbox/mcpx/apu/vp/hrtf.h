@@ -62,21 +62,10 @@ hrtf_filter_set_target_params(HrtfFilter *f, float hrir_coeff[2][HRTF_NUM_TAPS],
     f->itd_tar =
         fmaxf(-HRTF_MAX_DELAY_SAMPLES, fminf(itd, HRTF_MAX_DELAY_SAMPLES));
 
+    /* Taps apply as written: hardware does not normalize them. */
     for (int ch = 0; ch < 2; ch++) {
-        float *coeff = f->ch[ch].hrir_coeff_tar;
-        memcpy(coeff, hrir_coeff[ch], sizeof(f->ch[ch].hrir_coeff_tar));
-
-        // Normalize coefficients for unity filter gain
-        float s = 0.0f;
-        for (int k = 0; k < HRTF_NUM_TAPS; k++) {
-            s += fabsf(coeff[k]);
-        }
-        if (s == 0.0f || s == 1.0f) {
-            break;
-        }
-        for (int k = 0; k < HRTF_NUM_TAPS; k++) {
-            coeff[k] /= s;
-        }
+        memcpy(f->ch[ch].hrir_coeff_tar, hrir_coeff[ch],
+               sizeof(f->ch[ch].hrir_coeff_tar));
     }
 }
 
