@@ -57,10 +57,10 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
     memset(&d->vp.filters[v].svf, 0, sizeof(d->vp.filters[v].svf));
     memset(&d->vp.filters[v].peq, 0, sizeof(d->vp.filters[v].peq));
     memset(&d->vp.filters[v].i3dl2, 0, sizeof(d->vp.filters[v].i3dl2));
+    memset(&d->vp.filters[v].interp, 0, sizeof(d->vp.filters[v].interp));
+    d->vp.filters[v].interp_pos = 5 << 16;
+    d->vp.filters[v].resample_buf_pos = NUM_SAMPLES_PER_FRAME;
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
-    if (d->vp.filters[v].resampler) {
-        src_reset(d->vp.filters[v].resampler);
-    }
 }
 
 static bool voice_should_mute(uint16_t v)
@@ -1167,43 +1167,70 @@ static long voice_resample_callback(void *cb_data, float **data)
     return sample_count;
 }
 
+/* Hardware resamples with 8-point Lagrange interpolation, each weight rounded
+ * to 1/65536: at half a sample the weights are 1225, -245, 49 and -5 / 2048
+ * each side, and eighths of a sample match to the bit (measured). Between
+ * 256ths of a sample the weights are interpolated (assumed). */
+static float lagrange_rows[257][8];
+
+static void lagrange_init(void)
+{
+    for (int r = 0; r <= 256; r++) {
+        for (int k = -3; k <= 4; k++) {
+            double w = 1.0;
+            for (int j = -3; j <= 4; j++) {
+                if (j != k) {
+                    w *= (r / 256.0 - j) / (k - j);
+                }
+            }
+            lagrange_rows[r][k + 3] = round(w * 65536.0) / 65536.0;
+        }
+    }
+}
+
+/* step is the cursor's advance per output sample in 16.16 */
 static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
-                          int requested_num, float rate)
+                          int requested_num, uint32_t step)
 {
     assert(v < MCPX_HW_MAX_VOICES);
     MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
+    filter->voice = v;
 
-    if (filter->resampler == NULL) {
-        filter->voice = v;
-        int err;
-
-        /* Note: Using a sinc based resampler for quality. Unsure about
-         * hardware's actual interpolation method; it could just be linear, in
-         * which case using this resampler is overkill, but quality is good
-         * so use it for now.
-         */
-        // FIXME: Don't do 2ch resampling if this is a mono voice
-        filter->resampler = src_callback_new(&voice_resample_callback,
-                                           SRC_SINC_FASTEST, 2, &err, filter);
-        if (filter->resampler == NULL) {
-            fprintf(stderr, "src error: %s\n", src_strerror(err));
-            assert(0);
+    for (int n = 0; n < requested_num; n++) {
+        while (filter->interp_pos >= 0x10000) {
+            if (filter->resample_buf_pos >= NUM_SAMPLES_PER_FRAME) {
+                float *data;
+                voice_resample_callback(filter, &data);
+                filter->resample_buf_pos = 0;
+            }
+            memmove(filter->interp[0], filter->interp[1],
+                    sizeof(filter->interp[0]) * 7);
+            filter->interp[7][0] =
+                filter->resample_buf[2 * filter->resample_buf_pos];
+            filter->interp[7][1] =
+                filter->resample_buf[2 * filter->resample_buf_pos + 1];
+            filter->resample_buf_pos++;
+            filter->interp_pos -= 0x10000;
         }
+        uint32_t frac = filter->interp_pos;
+        const float *lo = lagrange_rows[frac >> 8];
+        const float *hi = lagrange_rows[(frac >> 8) + 1];
+        float a = (frac & 0xFF) / 256.0f;
+        for (int ch = 0; ch < 2; ch++) {
+            float acc = filter->interp[3][ch];
+            if (frac) {
+                acc = 0.0f;
+                for (int k = 0; k < 8; k++) {
+                    acc +=
+                        (lo[k] + (hi[k] - lo[k]) * a) * filter->interp[k][ch];
+                }
+            }
+            samples[n][ch] = acc;
+        }
+        filter->interp_pos += step;
     }
 
-    int count = src_callback_read(filter->resampler, rate, requested_num,
-                                  (float *)samples);
-    if (count == -1) {
-        DPRINTF("resample error\n");
-    }
-    if (count != requested_num) {
-        DPRINTF("resample returned fewer than expected: %d\n", count);
-
-        if (count == 0)
-            return -1;
-    }
-
-    return count;
+    return requested_num;
 }
 
 static int peek_ahead_multipass_bin(MCPXAPUState *d, uint16_t v,
@@ -1332,6 +1359,7 @@ static void voice_process(MCPXAPUState *d,
                                NV_PAVS_VOICE_CFG_ENV0_EF_PITCHSCALE);
     float rate = 1.0 / powf(2.0f, (p + ps * 32 * ef_value) / 4096.0f);
     dbg->rate = rate;
+    uint32_t step = exp2((p + ps * 32 * ef_value) / 4096.0) * 65536.0;
 
     float ea_value = voice_step_envelope(
         d, v, NV_PAVS_VOICE_CFG_ENV0, NV_PAVS_VOICE_CFG_ENVA,
@@ -1358,7 +1386,7 @@ static void voice_process(MCPXAPUState *d,
             }
             int count =
                 voice_resample(d, v, &samples[sample_count],
-                               NUM_SAMPLES_PER_FRAME - sample_count, rate);
+                               NUM_SAMPLES_PER_FRAME - sample_count, step);
             if (count < 0) {
                 break;
             }
@@ -1923,6 +1951,7 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
 
 void mcpx_apu_vp_init(MCPXAPUState *d)
 {
+    lagrange_init();
     voice_work_init(d);
 }
 
