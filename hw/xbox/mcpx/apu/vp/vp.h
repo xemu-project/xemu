@@ -57,6 +57,9 @@ typedef struct MCPXAPUVoiceFilter {
     float peq_f[2];
     bool dls2_set;
     bool peq_set;
+    uint16_t lfo_phase[2];
+    uint16_t lfo_wait[2];
+    bool lfo_armed;
     HrtfFilter hrtf;
 } MCPXAPUVoiceFilter;
 

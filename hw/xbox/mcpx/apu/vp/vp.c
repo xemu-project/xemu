@@ -64,6 +64,8 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
     d->vp.filters[v].pitched = false;
     d->vp.filters[v].dls2_set = false;
     d->vp.filters[v].peq_set = false;
+    memset(&d->vp.filters[v].lfo_phase, 0, sizeof(d->vp.filters[v].lfo_phase));
+    d->vp.filters[v].lfo_armed = false;
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
 }
 
@@ -423,8 +425,16 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_VOLC,
                        0xFFFFFFFF, argument);
         break;
+    case NV1BA0_PIO_SET_VOICE_LFO_DELAY:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_PAR_LFO_DELAY,
+                       0xFFFFFFFF, argument);
+        break;
     case NV1BA0_PIO_SET_VOICE_LFO_ENV:
         voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_LFO_ENV,
+                       0xFFFFFFFF, argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_LFO_MOD:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_LFO_MOD,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_TAR_FCA:
@@ -664,7 +674,9 @@ static void vp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     case NV1BA0_PIO_SET_VOICE_TAR_VOLA:
     case NV1BA0_PIO_SET_VOICE_TAR_VOLB:
     case NV1BA0_PIO_SET_VOICE_TAR_VOLC:
+    case NV1BA0_PIO_SET_VOICE_LFO_DELAY:
     case NV1BA0_PIO_SET_VOICE_LFO_ENV:
+    case NV1BA0_PIO_SET_VOICE_LFO_MOD:
     case NV1BA0_PIO_SET_VOICE_TAR_FCA:
     case NV1BA0_PIO_SET_VOICE_TAR_FCB:
     case NV1BA0_PIO_SET_VOICE_TAR_PITCH:
@@ -834,6 +846,61 @@ static float voice_step_envelope(MCPXAPUState *d, uint16_t v, uint32_t reg_0,
         assert(!"Unknown envelope state");
         return 0.0f;
     }
+}
+
+/* Steps the two LFOs by one frame (measured): each 16-bit phase advances by
+ * its delta a frame once its delay, in frames, has passed, as a bipolar
+ * triangle rising first. At full value a unit of depth is 8 attenuation
+ * units, 32 pitch units or 256 cutoff units. */
+static void voice_step_lfos(MCPXAPUState *d, uint16_t v, float *attenuation,
+                            float *pitch, float *cutoff)
+{
+    MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
+    if (!filter->lfo_armed) {
+        uint32_t misc =
+            voice_get_mask(d, v, NV_PAVS_VOICE_CFG_MISC, 0xFFFFFFFF);
+        filter->lfo_wait[0] =
+            (misc & NV_PAVS_VOICE_CFG_MISC_LFOA_DELAY_ENABLE) ?
+                voice_get_mask(d, v, NV_PAVS_VOICE_PAR_LFO_DELAY,
+                               NV_PAVS_VOICE_PAR_LFO_DELAY_LFOA) :
+                0;
+        filter->lfo_wait[1] =
+            (misc & NV_PAVS_VOICE_CFG_MISC_LFOF_DELAY_ENABLE) ?
+                voice_get_mask(d, v, NV_PAVS_VOICE_PAR_LFO_DELAY,
+                               NV_PAVS_VOICE_PAR_LFO_DELAY_LFOF) :
+                0;
+        filter->lfo_armed = true;
+    }
+
+    const uint32_t delta_mask[2] = { NV_PAVS_VOICE_TAR_LFO_ENV_LFOA_DELTA,
+                                     NV_PAVS_VOICE_TAR_LFO_ENV_LFOF_DELTA };
+    float value[2] = { 0.0f, 0.0f };
+    for (int k = 0; k < 2; k++) {
+        if (filter->lfo_wait[k]) {
+            filter->lfo_wait[k]--;
+            continue;
+        }
+        filter->lfo_phase[k] +=
+            voice_get_mask(d, v, NV_PAVS_VOICE_TAR_LFO_ENV, delta_mask[k]);
+        int p = filter->lfo_phase[k];
+        value[k] = (p < 0x4000 ? p :
+                    p < 0xC000 ? 0x8000 - p :
+                                 p - 0x10000) /
+                   16384.0f;
+    }
+
+    int8_t a_amplitude =
+        voice_get_mask(d, v, NV_PAVS_VOICE_TAR_LFO_MOD,
+                       NV_PAVS_VOICE_TAR_LFO_MOD_LFOA_AMPLITUDE);
+    int8_t a_pitch = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_LFO_MOD,
+                                    NV_PAVS_VOICE_TAR_LFO_MOD_LFOA_PITCH);
+    int8_t a_cutoff = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_LFO_MOD,
+                                     NV_PAVS_VOICE_TAR_LFO_MOD_LFOA_CUTOFF);
+    int8_t f_pitch = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_LFO_MOD,
+                                    NV_PAVS_VOICE_TAR_LFO_MOD_LFOF_PITCH);
+    *attenuation = a_amplitude * 8.0f * value[0];
+    *pitch = (a_pitch * value[0] + f_pitch * value[1]) * 32.0f;
+    *cutoff = a_cutoff * 256.0f * value[0];
 }
 
 static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
@@ -1346,7 +1413,9 @@ static void voice_process(MCPXAPUState *d,
                                NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH);
     int8_t ps = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_ENV0,
                                NV_PAVS_VOICE_CFG_ENV0_EF_PITCHSCALE);
-    double pitch = p + ps * 32 * ef_value;
+    float lfo_attenuation, lfo_pitch, lfo_cutoff;
+    voice_step_lfos(d, v, &lfo_attenuation, &lfo_pitch, &lfo_cutoff);
+    double pitch = p + ps * 32.0 * ef_value + lfo_pitch;
     float rate = 1.0 / powf(2.0f, pitch / 4096.0f);
     dbg->rate = rate;
 
@@ -1487,7 +1556,7 @@ static void voice_process(MCPXAPUState *d,
      * this frame's across the frame, linearly in f (measured). */
     int8_t fc_scale = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_ENV1,
                                      NV_PAVS_VOICE_CFG_ENV1_EF_FCSCALE);
-    double fc_bend = fc_scale * 256 * ef_value;
+    double fc_bend = fc_scale * 256.0 * ef_value + lfo_cutoff;
 
     if (lpf) {
         for (int ch = 0; ch < 2; ch++) {
@@ -1589,7 +1658,8 @@ static void voice_process(MCPXAPUState *d,
         float from = filter->gains ? filter->route_gain[b] : 0.0f;
         float to = 0.0f;
         if (vol[b] != 0xFFF) {
-            to = (attenuation_gain(vol[b]) * level) >> 11;
+            int att = vol[b] + (int)floorf(lfo_attenuation);
+            to = (attenuation_gain(att) * level) >> 11;
         }
         filter->route_gain[b] = to;
         if (from == 0.0f && to == 0.0f) {
