@@ -61,6 +61,7 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
     d->vp.filters[v].interp_pos = 5 << 16;
     d->vp.filters[v].resample_buf_pos = NUM_SAMPLES_PER_FRAME;
     d->vp.filters[v].gains = false;
+    d->vp.filters[v].pitched = false;
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
 }
 
@@ -1174,9 +1175,9 @@ static void lagrange_init(void)
     }
 }
 
-/* step is the cursor's advance per output sample in 16.16 */
+/* steps are the cursor's advance per output sample in 16.16 */
 static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
-                          int requested_num, uint32_t step)
+                          int requested_num, const uint32_t *steps)
 {
     assert(v < MCPX_HW_MAX_VOICES);
     MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
@@ -1213,7 +1214,7 @@ static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
             }
             samples[n][ch] = acc;
         }
-        filter->interp_pos += step;
+        filter->interp_pos += steps[n];
     }
 
     return requested_num;
@@ -1343,9 +1344,22 @@ static void voice_process(MCPXAPUState *d,
                                NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH);
     int8_t ps = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_ENV0,
                                NV_PAVS_VOICE_CFG_ENV0_EF_PITCHSCALE);
-    float rate = 1.0 / powf(2.0f, (p + ps * 32 * ef_value) / 4096.0f);
+    double pitch = p + ps * 32 * ef_value;
+    float rate = 1.0 / powf(2.0f, pitch / 4096.0f);
     dbg->rate = rate;
-    uint32_t step = exp2((p + ps * 32 * ef_value) / 4096.0) * 65536.0;
+
+    /* The pitch moves from the last frame's to this frame's across the frame
+     * in its log form (measured: pitch 0 to -1000h advanced the cursor 23
+     * samples on that frame, the sum of 2^(-n/32)). */
+    double pitch_from =
+        d->vp.filters[v].pitched ? d->vp.filters[v].pitch : pitch;
+    uint32_t steps[NUM_SAMPLES_PER_FRAME];
+    for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+        double p_i = pitch_from + (pitch - pitch_from) * i / 32.0;
+        steps[i] = exp2(p_i / 4096.0) * 65536.0;
+    }
+    d->vp.filters[v].pitch = pitch;
+    d->vp.filters[v].pitched = true;
 
     float ea_value = voice_step_envelope(
         d, v, NV_PAVS_VOICE_CFG_ENV0, NV_PAVS_VOICE_CFG_ENVA,
@@ -1370,9 +1384,9 @@ static void voice_process(MCPXAPUState *d,
             if (!active) {
                 return;
             }
-            int count =
-                voice_resample(d, v, &samples[sample_count],
-                               NUM_SAMPLES_PER_FRAME - sample_count, step);
+            int count = voice_resample(d, v, &samples[sample_count],
+                                       NUM_SAMPLES_PER_FRAME - sample_count,
+                                       &steps[sample_count]);
             if (count < 0) {
                 break;
             }
