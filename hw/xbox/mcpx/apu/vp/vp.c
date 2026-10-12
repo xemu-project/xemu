@@ -60,6 +60,7 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
     memset(&d->vp.filters[v].interp, 0, sizeof(d->vp.filters[v].interp));
     d->vp.filters[v].interp_pos = 5 << 16;
     d->vp.filters[v].resample_buf_pos = NUM_SAMPLES_PER_FRAME;
+    d->vp.filters[v].gains = false;
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
 }
 
@@ -1542,21 +1543,38 @@ static void voice_process(MCPXAPUState *d,
         }
     }
 
+    /* A route's gain, in 1/16384, is its attenuation's times the envelope's
+     * level in 2048ths, rounded down. It moves from where the last frame ended
+     * to this frame's across the frame, each sample's rounded down, and a new
+     * voice fades in from silence (measured). */
+    MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
+    uint32_t level = lrint(ea_value * 2048.0f);
     for (int b = 0; b < 8; b++) {
         if (three_d && b < 4 && hrtf_handle == HRTF_NULL_HANDLE) {
+            filter->route_gain[b] = 0.0f;
+            continue;
+        }
+        float from = filter->gains ? filter->route_gain[b] : 0.0f;
+        float to = 0.0f;
+        if (vol[b] != 0xFFF) {
+            to = (attenuation_gain(vol[b]) * level) >> 11;
+        }
+        filter->route_gain[b] = to;
+        if (from == 0.0f && to == 0.0f) {
             continue;
         }
         /* The bin's headroom applies to HRTF submixes too; the HRTF headroom
          * has no measurable effect on hardware. */
-        float hr = 1 << d->vp.submix_headroom[bin[b]];
-        float g = ea_value * attenuate(vol[b]) / hr;
+        float scale = 1.0f / (16384 << d->vp.submix_headroom[bin[b]]);
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+            float g = floorf(from + (to - from) * (i / 32.0f)) * scale;
             float x = (three_d && b < 4)            ? ears[i][b / 2] :
                       (i3dl2 && (b == 5 || b == 7)) ? room[i] :
                                                       samples[i][b % channels];
-            mixbins[bin[b]][i] += g * x;
+            mixbins[bin[b]][i] += x * g;
         }
     }
+    filter->gains = true;
 
     if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
         /* For VP mon, simply mix all voices together here, selecting the
