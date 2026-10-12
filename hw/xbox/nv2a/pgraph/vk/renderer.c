@@ -19,6 +19,7 @@
 
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "renderer.h"
+#include "ui/xui/debug-tools/addons/diagnostics/pgraph-flip-delay-trace-hook.h"
 
 #include "gloffscreen.h"
 
@@ -117,6 +118,9 @@ static void pgraph_vk_process_pending(NV2AState *d)
 {
     PGRAPHVkState *r = d->pgraph.vk_renderer_state;
 
+    xemu_debug_tools_pgraph_flip_delay_renderer_gate_begin(
+        &d->pgraph, XEMU_PGRAPH_FLIP_DELAY_RENDERER_VK);
+
     if (qatomic_read(&r->downloads_pending) ||
         qatomic_read(&r->download_dirty_surfaces_pending) ||
         qatomic_read(&d->pgraph.sync_pending) ||
@@ -124,7 +128,7 @@ static void pgraph_vk_process_pending(NV2AState *d)
     ) {
         qemu_mutex_unlock(&d->pfifo.lock);
         pgraph_wait_for_cpu_mmio_accesses(&d->pgraph);
-        qemu_mutex_lock(&d->pgraph.lock);
+        PGRAPH_LOCK(&d->pgraph);
         if (qatomic_read(&r->downloads_pending)) {
             pgraph_vk_process_pending_downloads(d);
         }
@@ -137,9 +141,10 @@ static void pgraph_vk_process_pending(NV2AState *d)
         if (qatomic_read(&d->pgraph.flush_pending)) {
             pgraph_vk_flush(d);
         }
-        qemu_mutex_unlock(&d->pgraph.lock);
+        PGRAPH_UNLOCK(&d->pgraph);
         qemu_mutex_lock(&d->pfifo.lock);
     }
+    xemu_debug_tools_pgraph_flip_delay_renderer_gate_cancel();
 }
 
 static void pgraph_vk_flip_stall(NV2AState *d)

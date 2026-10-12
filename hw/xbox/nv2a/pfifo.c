@@ -20,6 +20,9 @@
  */
 
 #include "nv2a_int.h"
+#include "ui/xui/debug-tools/addons/diagnostics/flip-stall-trace-hook.h"
+#include "ui/xui/debug-tools/addons/diagnostics/pgraph-flip-delay-trace-hook.h"
+#include "ui/xui/debug-tools/addons/diagnostics/pgraph-pusher-progress-trace-hook.h"
 
 typedef struct RAMHTEntry {
     uint32_t handle;
@@ -127,13 +130,17 @@ static bool pfifo_stall_for_flip(NV2AState *d)
     bool should_stall = false;
 
     if (qatomic_read(&d->pgraph.waiting_for_flip)) {
-        qemu_mutex_lock(&d->pgraph.lock);
+        PGRAPH_LOCK(&d->pgraph);
         if (!is_flip_stall_complete(d)) {
             should_stall = true;
+            xemu_debug_tools_flip_stall_trace_record(
+                XEMU_DEBUG_TOOLS_FLIP_PFIFO_CHECK_STALL, &d->pgraph,
+                NV097_FLIP_STALL, 0, 1, 0, 0);
         } else {
             d->pgraph.waiting_for_flip = false;
+            xemu_debug_tools_flip_stall_trace_end(&d->pgraph);
         }
-        qemu_mutex_unlock(&d->pgraph.lock);
+        PGRAPH_UNLOCK(&d->pgraph);
     }
 
     return should_stall;
@@ -183,11 +190,13 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         assert(subchannel < 8);
         SET_MASK(*engine_reg, 3 << (4*subchannel), entry.engine);
         SET_MASK(*pull1, NV_PFIFO_CACHE1_PULL1_ENGINE, entry.engine);
+        xemu_debug_tools_pgraph_flip_delay_pfifo_gate_begin(
+            &d->pgraph, 0, parameter);
 
         // TODO: this is fucked
         qemu_mutex_unlock(&d->pfifo.lock);
         pgraph_wait_for_cpu_mmio_accesses(&d->pgraph);
-        qemu_mutex_lock(&d->pgraph.lock);
+        PGRAPH_LOCK(&d->pgraph);
 
         // Switch contexts if necessary
         if (can_fifo_access(d)) {
@@ -199,7 +208,7 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
             }
         }
 
-        qemu_mutex_unlock(&d->pgraph.lock);
+        PGRAPH_UNLOCK(&d->pgraph);
         qemu_mutex_lock(&d->pfifo.lock);
 
     } else if (method >= 0x100) {
@@ -219,11 +228,13 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         enum FIFOEngine engine = GET_MASK(*engine_reg, 3 << (4*subchannel));
         assert(engine == ENGINE_GRAPHICS);
         SET_MASK(*pull1, NV_PFIFO_CACHE1_PULL1_ENGINE, engine);
+        xemu_debug_tools_pgraph_flip_delay_pfifo_gate_begin(
+            &d->pgraph, method, parameter);
 
         // TODO: this is fucked
         qemu_mutex_unlock(&d->pfifo.lock);
         pgraph_wait_for_cpu_mmio_accesses(&d->pgraph);
-        qemu_mutex_lock(&d->pgraph.lock);
+        PGRAPH_LOCK(&d->pgraph);
 
         if (can_fifo_access(d)) {
             num_proc =
@@ -231,7 +242,7 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
                               num_words_available, max_lookahead_words, inc);
         }
 
-        qemu_mutex_unlock(&d->pgraph.lock);
+        PGRAPH_UNLOCK(&d->pgraph);
         qemu_mutex_lock(&d->pfifo.lock);
     } else {
         assert(!"Unrecognized pfifo puller method");
@@ -292,6 +303,10 @@ static void pfifo_run_pusher(NV2AState *d)
 
     hwaddr dma_len;
     uint8_t *dma = nv_dma_map(d, dma_instance, &dma_len);
+    XemuDebugToolsPgraphPusherPfifoScope pusher_progress_scope;
+    uint32_t pusher_progress_method_words = 0;
+    xemu_debug_tools_pgraph_pusher_progress_pfifo_begin(
+        &pusher_progress_scope, channel_id, *dma_get, *dma_put);
 
     while (!pfifo_pusher_should_stall(d)) {
         uint32_t dma_get_v = *dma_get;
@@ -337,13 +352,20 @@ static void pfifo_run_pusher(NV2AState *d)
 
             *status &= ~NV_PFIFO_CACHE1_STATUS_LOW_MARK;
 
+            XemuDebugToolsPgraphPusherPullerScope method_breakdown_scope;
+            xemu_debug_tools_pgraph_pusher_method_breakdown_puller_begin(
+                &method_breakdown_scope);
             ssize_t num_words_processed =
                 pfifo_run_puller(d, method_entry, word, word_ptr,
                                  MIN(method_count, num_words_available),
                                  num_words_available);
+            xemu_debug_tools_pgraph_pusher_method_breakdown_puller_end(
+                &method_breakdown_scope,
+                num_words_processed > 0 ? (uint32_t)num_words_processed : 0);
             if (num_words_processed < 0) {
                 break;
             }
+            pusher_progress_method_words += (uint32_t)num_words_processed;
 
             dma_get_v += (num_words_processed-1)*4;
 
@@ -438,6 +460,13 @@ static void pfifo_run_pusher(NV2AState *d)
 
     // NV2A_DPRINTF("DMA pusher done: max 0x%" HWADDR_PRIx ", 0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx "\n",
     //      dma_len, control->dma_get, control->dma_put);
+
+    xemu_debug_tools_pgraph_pusher_progress_pfifo_end(
+        &pusher_progress_scope, *dma_get, *dma_put,
+        pusher_progress_method_words,
+        qatomic_read(&d->pgraph.waiting_for_nop) ? 1 : 0,
+        qatomic_read(&d->pgraph.waiting_for_flip) ? 1 : 0,
+        can_fifo_access(d) ? 1 : 0);
 
     uint32_t error = GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR);
     if (error) {

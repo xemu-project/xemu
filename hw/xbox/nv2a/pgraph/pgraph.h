@@ -28,6 +28,7 @@
 #include "qemu/units.h"
 #include "qemu/thread.h"
 #include "cpu.h"
+#include "ui/xui/debug-tools/addons/diagnostics/pgraph-lock-trace-hook.h"
 
 #include "surface.h"
 #include "texture.h"
@@ -279,6 +280,25 @@ typedef struct PGRAPHState {
         PGRAPHVkState *vk_renderer_state;
     };
 } PGRAPHState;
+
+static inline void pgraph_lock_observed(PGRAPHState *pg, const char *file,
+                                        int line)
+{
+    xemu_debug_tools_pgraph_lock_trace_lock_attempt(pg, file, line);
+    qemu_mutex_lock(&pg->lock);
+    xemu_debug_tools_pgraph_lock_trace_lock_acquired(pg, file, line);
+}
+
+static inline void pgraph_unlock_observed(PGRAPHState *pg, const char *file,
+                                          int line)
+{
+    xemu_debug_tools_pgraph_lock_trace_unlock_begin(pg, file, line);
+    qemu_mutex_unlock(&pg->lock);
+    xemu_debug_tools_pgraph_lock_trace_unlock_end(pg);
+}
+
+#define PGRAPH_LOCK(pg) pgraph_lock_observed((pg), __FILE__, __LINE__)
+#define PGRAPH_UNLOCK(pg) pgraph_unlock_observed((pg), __FILE__, __LINE__)
 
 static inline void pgraph_cpu_mmio_access_begin(PGRAPHState *pg)
 {

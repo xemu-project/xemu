@@ -21,6 +21,7 @@
 #include "qemu/thread.h"
 #include "hw/hw.h"
 #include "hw/xbox/nv2a/nv2a_int.h"
+#include "ui/xui/debug-tools/addons/diagnostics/pgraph-flip-delay-trace-hook.h"
 
 static void pgraph_null_sync(NV2AState *d)
 {
@@ -36,22 +37,26 @@ static void pgraph_null_flush(NV2AState *d)
 
 static void pgraph_null_process_pending(NV2AState *d)
 {
+    xemu_debug_tools_pgraph_flip_delay_renderer_gate_begin(
+        &d->pgraph, XEMU_PGRAPH_FLIP_DELAY_RENDERER_NULL);
+
     if (
         qatomic_read(&d->pgraph.sync_pending) ||
         qatomic_read(&d->pgraph.flush_pending)
         ) {
         qemu_mutex_unlock(&d->pfifo.lock);
         pgraph_wait_for_cpu_mmio_accesses(&d->pgraph);
-        qemu_mutex_lock(&d->pgraph.lock);
+        PGRAPH_LOCK(&d->pgraph);
         if (qatomic_read(&d->pgraph.sync_pending)) {
             pgraph_null_sync(d);
         }
         if (qatomic_read(&d->pgraph.flush_pending)) {
             pgraph_null_flush(d);
         }
-        qemu_mutex_unlock(&d->pgraph.lock);
+        PGRAPH_UNLOCK(&d->pgraph);
         qemu_mutex_lock(&d->pfifo.lock);
     }
+    xemu_debug_tools_pgraph_flip_delay_renderer_gate_cancel();
 }
 
 static void pgraph_null_clear_report_value(NV2AState *d)
