@@ -1466,21 +1466,31 @@ static void voice_process(MCPXAPUState *d,
         }
     }
 
-    if (v < MCPX_HW_MAX_3D_VOICES && g_config.audio.hrtf) {
-        uint16_t hrtf_handle =
-            voice_get_mask(d, v, NV_PAVS_VOICE_CFG_HRTF_TARGET,
-                           NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE);
-        if (hrtf_handle != HRTF_NULL_HANDLE) {
-            hrtf_filter_process(&d->vp.filters[v].hrtf, samples, samples);
+    /* Routes 0-1 of a 3D voice carry the HRTF's left ear and 2-3 its right,
+     * and are silent without an HRTF entry; its other routes carry the voice
+     * itself (measured on hardware). */
+    bool three_d = v < MCPX_HW_MAX_3D_VOICES;
+    uint16_t hrtf_handle = HRTF_NULL_HANDLE;
+    float ears[NUM_SAMPLES_PER_FRAME][2];
+    if (three_d) {
+        hrtf_handle = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_HRTF_TARGET,
+                                     NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE);
+        if (hrtf_handle != HRTF_NULL_HANDLE && g_config.audio.hrtf) {
+            hrtf_filter_process(&d->vp.filters[v].hrtf, samples, ears);
+        } else {
+            memcpy(ears, samples, sizeof(ears));
         }
     }
 
     // FIXME: ParaEQ
 
     for (int b = 0; b < 8; b++) {
+        if (three_d && b < 4 && hrtf_handle == HRTF_NULL_HANDLE) {
+            continue;
+        }
         float g = ea_value;
         float hr;
-        if ((v < MCPX_HW_MAX_3D_VOICES) && (b < 4)) {
+        if (three_d && (b < 4)) {
             // FIXME: Not sure if submix/voice headroom factor in for HRTF
             hr = 1 << d->vp.hrtf_headroom;
         } else {
@@ -1488,7 +1498,9 @@ static void voice_process(MCPXAPUState *d,
         }
         g *= attenuate(vol[b])/hr;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-            mixbins[bin[b]][i] += g*samples[i][b % channels];
+            float x =
+                (three_d && b < 4) ? ears[i][b / 2] : samples[i][b % channels];
+            mixbins[bin[b]][i] += g * x;
         }
     }
 
