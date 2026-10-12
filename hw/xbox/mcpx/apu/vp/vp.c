@@ -66,6 +66,7 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
     d->vp.filters[v].peq_set = false;
     memset(&d->vp.filters[v].lfo_phase, 0, sizeof(d->vp.filters[v].lfo_phase));
     d->vp.filters[v].lfo_armed = false;
+    d->vp.filters[v].hrtf.params_set = false;
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
 }
 
@@ -401,16 +402,6 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         int current_voice = d->regs[NV_PAPU_FECV];
         voice_set_mask(d, current_voice, NV_PAVS_VOICE_CFG_HRTF_TARGET,
                        NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE, handle);
-        if (current_voice < MCPX_HW_MAX_3D_VOICES &&
-            handle != HRTF_NULL_HANDLE) {
-            // FIXME: Xbox software seems to reliably set voice HRTF handles
-            // after updating filter parameters, however it may be possible to
-            // update parameter targets for an active voice.
-            assert(handle < HRTF_ENTRY_COUNT);
-            hrtf_filter_set_target_params(&d->vp.filters[current_voice].hrtf,
-                                          d->vp.hrtf.entries[handle].hrir,
-                                          d->vp.hrtf.entries[handle].itd);
-        }
         break;
     }
     case NV1BA0_PIO_SET_VOICE_TAR_VOLA:
@@ -1638,6 +1629,12 @@ static void voice_process(MCPXAPUState *d,
         hrtf_handle = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_HRTF_TARGET,
                                      NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE);
         if (hrtf_handle != HRTF_NULL_HANDLE && g_config.audio.hrtf) {
+            /* The entry is read every frame, so rewriting it or moving the
+             * voice to another entry takes effect on the next frame. */
+            assert(hrtf_handle < HRTF_ENTRY_COUNT);
+            hrtf_filter_set_target_params(&d->vp.filters[v].hrtf,
+                                          d->vp.hrtf.entries[hrtf_handle].hrir,
+                                          d->vp.hrtf.entries[hrtf_handle].itd);
             hrtf_filter_process(&d->vp.filters[v].hrtf, samples, ears);
         } else {
             memcpy(ears, samples, sizeof(ears));
