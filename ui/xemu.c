@@ -43,11 +43,14 @@
 #include "system/runstate-action.h"
 #include "system/system.h"
 #include "xui/xemu-hud.h"
+#include "xui/debug-tools/addons/diagnostics/bql-trace-hook.h"
 #include "xemu-input.h"
 #include "xemu-settings.h"
 #include "xemu-snapshots.h"
 #include "xemu-version.h"
 #include "xemu-os-utils.h"
+#include "xui/debug-tools/addons/Video-Recorder/video-recorder-c.h"
+#include "xui/debug-tools/addons/diagnostics/av-sync-trace-hook.h"
 
 #include "data/xemu_64x64.png.h"
 
@@ -360,11 +363,19 @@ static void process_key(struct xemu_console *scon, SDL_KeyboardEvent *ev)
     qkbd_state_key_event(scon->kbd, qcode, ev->type == SDL_EVENT_KEY_DOWN);
 }
 
+static bool video_record_hotkey_held;
+
 static void handle_keydown(SDL_Event *ev)
 {
     int win;
     struct xemu_console *scon = get_scon_from_window(ev->key.windowID);
     if (scon == NULL) return;
+    if (!scon->ignore_hotkeys && !ev->key.repeat &&
+        ev->key.scancode == SDL_SCANCODE_F9) {
+        video_record_hotkey_held = true;
+        xemu_video_recorder_toggle();
+        return;
+    }
     int gui_key_modifier_pressed = get_mod_state();
     int gui_keysym = 0;
 
@@ -424,6 +435,11 @@ static void handle_keyup(SDL_Event *ev)
 {
     struct xemu_console *scon = get_scon_from_window(ev->key.windowID);
     if (!scon) return;
+
+    if (ev->key.scancode == SDL_SCANCODE_F9 && video_record_hotkey_held) {
+        video_record_hotkey_held = false;
+        return;
+    }
 
     scon->ignore_hotkeys = false;
     process_key(scon, &ev->key);
@@ -751,6 +767,7 @@ static void process_vblank(struct xemu_console *scon)
 {
     assert(bql_locked());
 
+    xemu_debug_tools_av_sync_trace_note_vblank(vblank_interval_ns);
     update_fps();
 
 #if 0
@@ -792,6 +809,8 @@ static void *vblank_timer_thread(void *opaque)
             next_vblank = now;
         }
 
+        xemu_debug_tools_bql_trace_set_next_context(
+            XEMU_DEBUG_TOOLS_BQL_CONTEXT_UI_VBLANK);
         if (!qatomic_read(&qemu_exiting)) {
             xemu_main_loop_lock();
             process_vblank(scon);
@@ -826,7 +845,7 @@ static void report_stats(void)
  * Renders the main interface. Usually called from the main thread,
  * but may sometimes be called from another thread.
  */
-static void gl_render_frame(struct xemu_console *scon)
+static void gl_render_frame_common(struct xemu_console *scon, bool playback_only)
 {
     static bool rendering;
     if (qatomic_xchg(&rendering, true) || qatomic_read(&qemu_exiting)) {
@@ -853,6 +872,8 @@ static void gl_render_frame(struct xemu_console *scon)
     assert(glGetError() == GL_NO_ERROR);
 
     if (tex == 0) {
+        xemu_debug_tools_bql_trace_set_next_context(
+            XEMU_DEBUG_TOOLS_BQL_CONTEXT_UI_FRAMEBUFFER_CREATE);
         xemu_main_loop_lock();
         // FIXME: Don't upload if notdirty
         xb_surface_gl_create_texture(scon->surface);
@@ -878,14 +899,27 @@ static void gl_render_frame(struct xemu_console *scon)
      * lock and perform rendering, but release before swap to avoid
      * possible lengthy blocking (for vsync).
      */
+    xemu_debug_tools_bql_trace_set_next_context(
+        XEMU_DEBUG_TOOLS_BQL_CONTEXT_UI_HUD_UPDATE);
     xemu_main_loop_lock();
-    xemu_hud_update();
+    if (playback_only) {
+        xemu_hud_render_playback_only();
+    } else {
+        xemu_hud_update();
+    }
     xemu_main_loop_unlock();
 
-    xemu_hud_render();
+    if (!playback_only) {
+        /* All detached Debug Tools ImGui frames are built only after the
+         * emulator-global main-loop/BQL critical section has ended. */
+        xemu_hud_build_detached_frames_unlocked();
+        xemu_hud_render();
+    }
     glFinish();
 
     if (release_surface_texture) {
+        xemu_debug_tools_bql_trace_set_next_context(
+            XEMU_DEBUG_TOOLS_BQL_CONTEXT_UI_FRAMEBUFFER_DESTROY);
         xemu_main_loop_lock();
         xb_surface_gl_destroy_texture(scon->surface);
         xemu_main_loop_unlock();
@@ -911,6 +945,10 @@ static void gl_render_frame(struct xemu_console *scon)
 #endif
     assert(glGetError() == GL_NO_ERROR);
 
+    if (!playback_only) {
+        xemu_hud_process_deferred_actions();
+    }
+
     qatomic_set(&rendering, false);
 
 #if DEBUG_XEMU_C
@@ -918,13 +956,28 @@ static void gl_render_frame(struct xemu_console *scon)
 #endif
 }
 
+static void gl_render_frame(struct xemu_console *scon)
+{
+    gl_render_frame_common(scon, false);
+}
+
+static void gl_render_playback_frame(struct xemu_console *scon)
+{
+    gl_render_frame_common(scon, true);
+}
+
 static bool event_watch_callback(void *userdata, SDL_Event *event)
 {
     struct xemu_console *scon = (struct xemu_console *)userdata;
 
-    if (event->type == SDL_EVENT_WINDOW_RESIZED) {
+    /* Info: Console expose/resize events keep the full redraw path. */
+    if ((event->type == SDL_EVENT_WINDOW_EXPOSED ||
+         event->type == SDL_EVENT_WINDOW_RESIZED) &&
+        scon->real_window &&
+        event->window.windowID == SDL_GetWindowID(scon->real_window)) {
 #ifdef _WIN32
-        if (win32_dxgi_present_is_active()) {
+        if (event->type == SDL_EVENT_WINDOW_RESIZED &&
+            win32_dxgi_present_is_active()) {
             int width;
             int height;
             if (!SDL_GetWindowSizeInPixels(scon->real_window, &width,
@@ -937,9 +990,18 @@ static bool event_watch_callback(void *userdata, SDL_Event *event)
         }
 #endif
         gl_render_frame(scon);
-    } else if (event->type == SDL_EVENT_WINDOW_EXPOSED) {
-        gl_render_frame(scon);
+        return true; // Ignored
     }
+
+#if defined(_WIN32)
+    /* Info: Modal Win32 move/resize callbacks present playback only; Debug Tools are not re-entered. */
+    if ((event->type == SDL_EVENT_WINDOW_MOVED ||
+         event->type == SDL_EVENT_WINDOW_RESIZED ||
+         event->type == SDL_EVENT_WINDOW_EXPOSED) &&
+        xemu_hud_is_detached_window_id(event->window.windowID)) {
+        gl_render_playback_frame(scon);
+    }
+#endif
 
     return true; // Ignored
 }
@@ -953,6 +1015,8 @@ static void poll_events(struct xemu_console *scon)
     xemu_hud_should_capture_kbd_mouse(&kbd, &mouse);
 
     while (SDL_PollEvent(ev)) {
+        xemu_debug_tools_bql_trace_set_next_context(
+            XEMU_DEBUG_TOOLS_BQL_CONTEXT_UI_SDL_EVENT);
         xemu_main_loop_lock();
 
         // HUD must process events first so that if a controller is detached,
@@ -1001,9 +1065,23 @@ static void poll_events(struct xemu_console *scon)
         xemu_main_loop_unlock();
     }
 
+    /* SDL controller lifecycle events above and host sampling below execute
+     * serially on this UI thread. Preparing the host-only snapshot therefore
+     * does not need to pin qemu_main_loop_lock/BQL. commit() still revalidates
+     * each captured ControllerState while the emulator lock is held. */
+    XemuInputHostPollBatch *host_input_batch =
+        xemu_input_host_poll_prepare();
+
+    xemu_input_host_poll_sample(host_input_batch);
+
+    xemu_debug_tools_bql_trace_set_next_context(
+        XEMU_DEBUG_TOOLS_BQL_CONTEXT_UI_INPUT_COMMIT);
     xemu_main_loop_lock();
+    xemu_input_host_poll_commit(host_input_batch);
     xemu_input_update_controllers();
     xemu_main_loop_unlock();
+
+    xemu_input_host_poll_free(host_input_batch);
 }
 
 static void display_very_early_init(DisplayOptions *o)
@@ -1428,6 +1506,8 @@ int main(int argc, char **argv)
     tcg_register_init_ctx();
     qemu_set_current_aio_context(qemu_get_aio_context());
 
+    xemu_debug_tools_bql_trace_set_next_context(
+        XEMU_DEBUG_TOOLS_BQL_CONTEXT_UI_INPUT_INIT);
     xemu_main_loop_lock();
     xemu_input_init();
     xemu_main_loop_unlock();
