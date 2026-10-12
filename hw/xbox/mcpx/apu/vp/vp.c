@@ -1462,6 +1462,15 @@ static void voice_process(MCPXAPUState *d,
         return;
     }
 
+    /* A 3D voice plays its channel 0 alone, as a mono voice (measured). */
+    if (v < MCPX_HW_MAX_3D_VOICES && stereo) {
+        for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+            samples[i][1] = samples[i][0];
+        }
+        stereo = false;
+        channels = 1;
+    }
+
     int bin[8];
     bin[0] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
                             NV_PAVS_VOICE_CFG_VBIN_V0BIN);
