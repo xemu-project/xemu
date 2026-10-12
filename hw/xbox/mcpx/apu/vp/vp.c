@@ -154,11 +154,22 @@ static bool is_voice_locked(MCPXAPUState *d, uint16_t v)
     return (qatomic_read(&d->vp.voice_locked[v / 64]) & mask) != 0;
 }
 
+/* HRIR taps are sign-magnitude with a 3-bit exponent and 4-bit mantissa, from
+ * 1/2048 to 31/32 (measured on hardware). */
+static float hrir_tap_to_float(uint8_t tap)
+{
+    int e = (tap >> 4) & 7;
+    int m = tap & 15;
+    float v = (e ? (16 + m) << (e - 1) : m) / 2048.0f;
+    return (tap & 0x80) ? -v : v;
+}
+
 static void set_hrir_coeff_tar(MCPXAPUState *d, int channel, int coeff_idx,
-                               int8_t value)
+                               uint8_t value)
 {
     int entry = d->vp.hrtf.current_entry;
-    d->vp.hrtf.entries[entry].hrir[channel][coeff_idx] = int8_to_float(value);
+    d->vp.hrtf.entries[entry].hrir[channel][coeff_idx] =
+        hrir_tap_to_float(value);
 }
 
 static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
@@ -414,10 +425,10 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
     case NV1BA0_PIO_SET_HRIR ... NV1BA0_PIO_SET_HRIR_X - 1: {
         assert(d->vp.hrtf.current_entry < HRTF_ENTRY_COUNT);
         slot = (method - NV1BA0_PIO_SET_HRIR) / 4;
-        int8_t left0 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_LEFT0);
-        int8_t right0 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_RIGHT0);
-        int8_t left1 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_LEFT1);
-        int8_t right1 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_RIGHT1);
+        uint8_t left0 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_LEFT0);
+        uint8_t right0 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_RIGHT0);
+        uint8_t left1 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_LEFT1);
+        uint8_t right1 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_RIGHT1);
         int coeff_idx = slot * 2;
         set_hrir_coeff_tar(d, 0, coeff_idx, left0);
         set_hrir_coeff_tar(d, 1, coeff_idx, right0);
@@ -428,8 +439,8 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
     }
     case NV1BA0_PIO_SET_HRIR_X: {
         assert(d->vp.hrtf.current_entry < HRTF_ENTRY_COUNT);
-        int8_t left30 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_X_LEFT30);
-        int8_t right30 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_X_RIGHT30);
+        uint8_t left30 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_X_LEFT30);
+        uint8_t right30 = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_X_RIGHT30);
         int16_t itd = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_X_ITD);
         set_hrir_coeff_tar(d, 0, 30, left30);
         set_hrir_coeff_tar(d, 1, 30, right30);
