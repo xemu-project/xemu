@@ -177,6 +177,23 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     qemu_mutex_unlock(&d->pfifo.lock);
 }
 
+static void pgraph_update_irq_bh(void *opaque)
+{
+    NV2AState *d = opaque;
+    nv2a_update_irq(d);
+}
+
+/* Raising a PGRAPH interrupt needs the BQL, but taking the BQL from the
+ * pfifo thread can deadlock: a BQL holder may itself be blocked waiting on
+ * this very thread. For example, IDE DMA loading game data into RAM that
+ * overlaps a GPU-watched range holds the BQL and waits for the
+ * memory-access-callback flush that only the pfifo thread performs. Defer
+ * the IRQ raise to a main-loop bottom half, which runs with the BQL held. */
+static void pgraph_schedule_irq_update(NV2AState *d)
+{
+    aio_bh_schedule_oneshot(qemu_get_aio_context(), pgraph_update_irq_bh, d);
+}
+
 void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -198,12 +215,8 @@ void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
                             NV_PGRAPH_DEBUG_3_HW_CONTEXT_SWITCH));
 
         pg->waiting_for_context_switch = true;
-        qemu_mutex_unlock(&pg->lock);
-        bql_lock();
         pg->pending_interrupts |= NV_PGRAPH_INTR_CONTEXT_SWITCH;
-        nv2a_update_irq(d);
-        bql_unlock();
-        qemu_mutex_lock(&pg->lock);
+        pgraph_schedule_irq_update(d);
     }
 }
 
@@ -849,11 +862,7 @@ DEF_METHOD(NV097, NO_OPERATION)
     pg->pending_interrupts |= NV_PGRAPH_INTR_ERROR;
     pg->waiting_for_nop = true;
 
-    qemu_mutex_unlock(&pg->lock);
-    bql_lock();
-    nv2a_update_irq(d);
-    bql_unlock();
-    qemu_mutex_lock(&pg->lock);
+    pgraph_schedule_irq_update(d);
 }
 
 DEF_METHOD(NV097, WAIT_FOR_IDLE)
