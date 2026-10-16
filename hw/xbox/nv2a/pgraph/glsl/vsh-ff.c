@@ -346,21 +346,34 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 /* Everything done already */
                 break;
             case LIGHT_SPOT:
-                /* https://docs.microsoft.com/en-us/windows/win32/direct3d9/attenuation-and-spotlight-factor#spotlight-factor */
+                /* From https://patents.google.com/patent/US6417851B1/en the
+                 * factor s = dot(spotDir.xyz, VP) + spotDir.w is evaluated
+                 * with the rational approximation: (s + L) / (M * s + N)
+                 * where lightSpotFalloff(i) = (L, M, N).
+                 * When s >= 1.0, the vertex is inside the inner cone (1.0).
+                 * When s <= 0.0 or s <= -L, the factor is clamped to 0.0.
+                 */
                 mstring_append_fmt(body,
                     "    vec4 spotDir = lightSpotDirection(%d);\n"
-                    "    float invScale = 1/length(spotDir.xyz);\n"
-                    "    float cosHalfPhi = -invScale*spotDir.w;\n"
-                    "    float cosHalfTheta = invScale + cosHalfPhi;\n"
                     "    float spotDirDotVP = dot(spotDir.xyz, VP);\n"
-                    "    float rho = invScale*spotDirDotVP;\n"
-                    "    if (rho > cosHalfTheta) {\n"
-                    "    } else if (rho <= cosHalfPhi) {\n"
+                    "    float s = spotDirDotVP + spotDir.w;\n"
+                    "    if (s <= 0.0) {\n"
                     "      attenuation = 0.0;\n"
-                    "    } else {\n"
-                    "      attenuation *= spotDirDotVP + spotDir.w;\n" /* FIXME: lightSpotFalloff */
+                    "    } else if (s < 1.0) {\n"
+                    "      vec3 spotFalloff = lightSpotFalloff(%d);\n"
+                    "      float spotFactor = 0.0;\n"
+                    "      if (s > -spotFalloff.x) {\n"
+                    "        float denom = spotFalloff.y * s + spotFalloff.z;\n"
+                    "        if (denom == 0.0) {\n"
+                    "          spotFactor = 1.0;\n"
+                    "        } else if (denom > 0.0) {\n"
+                    "          float num = s + spotFalloff.x;\n"
+                    "          spotFactor = clamp(num / denom, 0.0, 1.0);\n"
+                    "        }\n"
+                    "      }\n"
+                    "      attenuation *= spotFactor;\n"
                     "    }\n",
-                    i);
+                    i, i);
                 break;
             default:
                 assert(!"Invalid light type");
