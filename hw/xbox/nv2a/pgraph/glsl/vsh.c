@@ -301,6 +301,7 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
     if (state->is_fixed_function) {
         pgraph_glsl_gen_vsh_ff(state, header, body);
     } else {
+        mstring_append(body, "  oFog = vshCarryFog;\n");
         pgraph_glsl_gen_vsh_prog(
             VSH_VERSION_XVS, (uint32_t *)state->programmable.program_data,
             state->programmable.program_length, header, body);
@@ -521,6 +522,11 @@ void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
         float height = (float)pg->surface_binding_dim.height / aa_height;
         values->surfaceSize[0][0] = width;
         values->surfaceSize[0][1] = height;
+    }
+
+    if (locs[VshUniform_vshCarryFog] != -1) {
+        memcpy(values->vshCarryFog, pg->vsh_carry_fog,
+               sizeof(values->vshCarryFog));
     }
 
     if (state->is_fixed_function) {
