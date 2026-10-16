@@ -1,0 +1,18 @@
+#version 450
+#extension GL_EXT_descriptor_heap: require
+
+layout(descriptor_heap, descriptor_stride = 512) buffer UBO {
+    mat4 projection;
+    mat4 view;
+    mat4 model[2];
+} ubo[];
+
+layout(descriptor_heap, descriptor_stride = 1024, rgba32f) uniform image2D img[];
+
+void main()
+{
+    mat4 mvp = ubo[1].projection * ubo[1].view * ubo[1].model[0];
+    ubo[9].model[1] = mvp;
+    vec4 texel = imageLoad(img[2], ivec2(0, 0));
+    imageStore(img[3], ivec2(0, 0), texel);
+}

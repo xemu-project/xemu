@@ -1,0 +1,11 @@
+spv.debugPrintf_Error.frag
+ERROR: 0:7: 'string' : Expected hex value in escape sequence 
+ERROR: 0:10: 'string' : Invalid escape sequence 
+ERROR: 0:14: 'debugPrintfEXT' : first argument must be a string literal 
+ERROR: 0:17: 'debugPrintfEXT' : first argument must be a string literal 
+ERROR: 0:21: 'debugPrintfEXT' : first argument must be a string literal 
+ERROR: 0:24: 'debugPrintfEXT' : first argument must be a string literal 
+ERROR: 6 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

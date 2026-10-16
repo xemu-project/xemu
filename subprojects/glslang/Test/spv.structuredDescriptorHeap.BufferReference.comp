@@ -1,0 +1,44 @@
+#version 460
+#extension GL_EXT_descriptor_heap : require
+#extension GL_EXT_structured_descriptor_heap : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference2 : require
+
+layout(local_size_x = 1) in;
+
+layout(buffer_reference) buffer ForwardRefType;
+
+layout(buffer_reference, std430, buffer_reference_align = 16) buffer VertexBuffer {
+    vec4 positions[];
+};
+
+layout(heap_offset = 256) resourceheap RefHeap {
+    VertexBuffer vertexBuffer;
+    layout(buffer_reference, std430) buffer {
+        uint data;
+    } inlineRef;
+    ForwardRefType forwardRef;
+    layout(buffer_reference, std430, buffer_reference_align = 4) buffer {
+        uint data;
+    } inlineRef2;
+} refHeap;
+
+layout(buffer_reference, std430) buffer ForwardRefType {
+    float value;
+    uint count;
+};
+
+layout(binding = 0, std430) buffer Output {
+    vec4 position;
+    uint count;
+    uint inlineData;
+    uint inlineData2;
+} outputBuffer;
+
+void main()
+{
+    outputBuffer.position = refHeap.vertexBuffer.positions[0];
+    outputBuffer.count = refHeap.forwardRef.count + uint(refHeap.forwardRef.value);
+    outputBuffer.inlineData = refHeap.inlineRef.data;
+    outputBuffer.inlineData2 = refHeap.inlineRef2.data;
+}

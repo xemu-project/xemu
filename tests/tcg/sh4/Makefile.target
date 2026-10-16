@@ -1,0 +1,25 @@
+# -*- Mode: makefile -*-
+#
+# SuperH specific tweaks
+#
+
+# This triggers failures for sh4-linux about 10% of the time.
+# Random SIGSEGV at unpredictable guest address, cause unknown.
+run-signals: signals
+	$(call skip-test, $<, "BROKEN")
+run-plugin-signals-with-%:
+	$(call skip-test, $<, "BROKEN")
+
+VPATH += $(SRC_PATH)/tests/tcg/sh4
+
+test-macl: CFLAGS += -O -g
+TESTS += test-macl
+
+test-macw: CFLAGS += -O -g
+TESTS += test-macw
+
+test-addv: CFLAGS += -O -g
+TESTS += test-addv
+
+test-subv: CFLAGS += -O -g
+TESTS += test-subv

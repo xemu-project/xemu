@@ -1,0 +1,22 @@
+#version 450 core
+#extension GL_KHR_memory_scope_semantics : enable
+#extension GL_KHR_cooperative_matrix : enable
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+#extension GL_NV_cooperative_matrix2 : enable
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+float16_t relu(const in uint32_t row, const in uint32_t col, const in float16_t x) { return max(x, float16_t(0)); }
+
+void main()
+{
+    coopmat<float16_t, gl_ScopeWorkgroup, 64, 32, gl_MatrixUseAccumulator> Acc;
+
+    // coopMatPerElementNV is declared with an empty prototype, so overload
+    // resolution accepts these malformed calls; each is missing at least one of
+    // the required (result matrix, input matrix, per-element function) arguments.
+    coopMatPerElementNV();
+    coopMatPerElementNV(relu);
+    coopMatPerElementNV(Acc);
+    coopMatPerElementNV(Acc, Acc);
+}

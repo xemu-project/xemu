@@ -1,0 +1,19 @@
+#version 450 core
+#extension GL_EXT_long_vector : enable
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Buf {
+    float o[4];
+} buf;
+
+void main()
+{
+    const vector<float, 8> c = vector<float, 8>(1.5);
+    vector<float, 8> v = vector<float, 8>(2.5);
+
+    buf.o[0] = c[8];
+    buf.o[1] = c[500];
+    buf.o[2] = v[500];
+    buf.o[3] = v[-1];
+}

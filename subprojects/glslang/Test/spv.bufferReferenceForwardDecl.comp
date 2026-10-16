@@ -1,0 +1,14 @@
+#version 450
+#extension GL_EXT_buffer_reference2 : require
+
+// Forward-declared buffer_reference block whose body is never defined, then used
+// in pointer arithmetic. The referent stays an empty member list, so the block
+// size is 0.
+layout(buffer_reference) buffer B;
+
+layout(local_size_x = 1) in;
+void main()
+{
+    B b;
+    b = b + 1;
+}

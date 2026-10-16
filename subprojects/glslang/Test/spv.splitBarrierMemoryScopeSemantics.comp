@@ -1,0 +1,24 @@
+#version 450
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_EXT_split_barrier : require
+#extension GL_ARB_gpu_shader_int64 : require
+
+#pragma use_vulkan_memory_model
+
+void main()
+{
+    controlBarrierArrive(gl_ScopeWorkgroup, gl_ScopeWorkgroup, gl_StorageSemanticsNone, gl_SemanticsRelaxed);
+    controlBarrierWait(gl_ScopeWorkgroup, gl_ScopeWorkgroup, gl_StorageSemanticsNone, gl_SemanticsRelaxed);
+
+    controlBarrierArrive(gl_ScopeWorkgroup, gl_ScopeWorkgroup, gl_StorageSemanticsBuffer, gl_SemanticsRelease);
+    controlBarrierWait(gl_ScopeWorkgroup, gl_ScopeWorkgroup, gl_StorageSemanticsBuffer, gl_SemanticsAcquire);
+
+    controlBarrierArrive(gl_ScopeWorkgroup, gl_ScopeWorkgroup, gl_StorageSemanticsImage, gl_SemanticsRelease);
+    controlBarrierWait(gl_ScopeWorkgroup, gl_ScopeWorkgroup, gl_StorageSemanticsImage, gl_SemanticsAcquire);
+
+    controlBarrierArrive(gl_ScopeWorkgroup, gl_ScopeWorkgroup, gl_StorageSemanticsOutput, gl_SemanticsRelease);
+    controlBarrierWait(gl_ScopeWorkgroup, gl_ScopeWorkgroup, gl_StorageSemanticsOutput, gl_SemanticsAcquire);
+
+    controlBarrierArrive(gl_ScopeWorkgroup, gl_ScopeWorkgroup, gl_StorageSemanticsBuffer | gl_StorageSemanticsShared, gl_SemanticsRelease);
+    controlBarrierWait(gl_ScopeWorkgroup, gl_ScopeWorkgroup, gl_StorageSemanticsBuffer | gl_StorageSemanticsShared, gl_SemanticsAcquire);
+}

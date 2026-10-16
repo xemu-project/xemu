@@ -1,0 +1,7 @@
+spv.functionControlAttributes.error.frag
+ERROR: 0:7: 'sameDeclaration' : function attributes are incompatible 
+ERROR: 0:14: 'prototypeConflict' : function attributes are incompatible 
+ERROR: 2 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

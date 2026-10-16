@@ -1,0 +1,93 @@
+#version 450 core
+#extension GL_KHR_memory_scope_semantics : enable
+#extension GL_KHR_cooperative_matrix : enable
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+#extension GL_NV_cooperative_matrix2 : enable
+#extension GL_NV_cooperative_matrix_decode_vector : enable
+#extension GL_EXT_buffer_reference : enable
+
+layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+buffer BufType {
+   float16_t x[];
+} Buf;
+
+buffer BufType8 {
+   uint8_t x[];
+} Buf8;
+
+layout(buffer_reference, std430, buffer_reference_align = 4) buffer dwordBuf {
+    uint32_t d;
+};
+
+float16_t decodeF16Scalar(const in dwordBuf b, const in uint32_t blockCoords[2], const in uint32_t coordInBlock[2])
+{
+    return float16_t(b.d);
+}
+
+f16vec2 decodeF16x2(const in dwordBuf b, const in uint32_t blockCoords[2], const in uint32_t coordInBlock[2])
+{
+    return unpackFloat2x16(b.d);
+}
+
+uint8_t decodeU8Scalar(const in dwordBuf b, const in uint32_t blockCoords[2], const in uint32_t coordInBlock[2])
+{
+    return uint8_t(b.d);
+}
+
+u8vec4 decodeU8x4(const in dwordBuf b, const in uint32_t blockCoords[2], const in uint32_t coordInBlock[2])
+{
+    return u8vec4(uint8_t(b.d), uint8_t(b.d >> 8), uint8_t(b.d >> 16), uint8_t(b.d >> 24));
+}
+
+float16_t decodeF16Scalar3d(const in dwordBuf b, const in uint32_t blockCoords[3], const in uint32_t coordInBlock[3])
+{
+    return float16_t(b.d);
+}
+
+f16vec2 decodeF16x2_3d(const in dwordBuf b, const in uint32_t blockCoords[3], const in uint32_t coordInBlock[3])
+{
+    return unpackFloat2x16(b.d);
+}
+
+void main()
+{
+    coopmat<float16_t, gl_ScopeWorkgroup, 64, 32, gl_MatrixUseB>           B;
+    coopmat<uint8_t,   gl_ScopeWorkgroup, 64, 32, gl_MatrixUseB>           Bu8;
+    coopmat<float16_t, gl_ScopeWorkgroup, 64, 32, gl_MatrixUseAccumulator> Acc;
+
+    tensorLayoutNV<2> t = createTensorLayoutNV(2);
+
+    // No restrictions on Use or TensorView with v2: every combination is a
+    // valid load and the implementation chooses per call site whether to
+    // invoke the vector function. Below: gl_MatrixUseB without a view, with
+    // a transposing view, and with an identity view; gl_MatrixUseAccumulator;
+    // and a 3D layout/view variant.
+
+    // gl_MatrixUseB, no view.
+    coopMatLoadTensorNV(B,   Buf.x,  0, t, decodeF16Scalar, decodeF16x2);
+
+    // gl_MatrixUseB, transposing view (swap of innermost two).
+    tensorViewNV<2, false, 1, 0> vT2 = createTensorViewNV(2, false, 1, 0);
+    coopMatLoadTensorNV(B,   Buf.x,  0, t, vT2, decodeF16Scalar, decodeF16x2);
+    coopMatLoadTensorNV(Bu8, Buf8.x, 0, t, vT2, decodeU8Scalar,  decodeU8x4);
+
+    // gl_MatrixUseB, identity view -- previously rejected, now accepted.
+    tensorViewNV<2, false, 0, 1> vI2 = createTensorViewNV(2, false, 0, 1);
+    coopMatLoadTensorNV(B,   Buf.x,  0, t, vI2, decodeF16Scalar, decodeF16x2);
+
+    // gl_MatrixUseAccumulator -- previously rejected for vector decode, now
+    // accepted.
+    coopMatLoadTensorNV(Acc, Buf.x,  0, t, decodeF16Scalar, decodeF16x2);
+
+    // 3D layout + identity-outer/swap-innermost view (still a valid shape).
+    tensorLayoutNV<3>            t3  = createTensorLayoutNV(3);
+    tensorViewNV<3, false, 0, 2, 1> vT3 = createTensorViewNV(3, false, 0, 2, 1);
+    coopMatLoadTensorNV(B, Buf.x, 0, t3, vT3, decodeF16Scalar3d, decodeF16x2_3d);
+
+    // 3D layout + arbitrary-permutation view -- previously rejected, now
+    // accepted (the implementation simply will not invoke the vector
+    // function at sites where it would not be profitable).
+    tensorViewNV<3, false, 1, 2, 0> vW3 = createTensorViewNV(3, false, 1, 2, 0);
+    coopMatLoadTensorNV(B, Buf.x, 0, t3, vW3, decodeF16Scalar3d, decodeF16x2_3d);
+}

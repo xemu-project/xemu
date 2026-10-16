@@ -1,0 +1,6 @@
+spv.khrComputeShaderDerivativesNoLayout.comp
+ERROR: 0:9: 'GL_KHR_compute_shader_derivatives' : requires one of derivative_group_quadsKHR or derivative_group_linearKHR layout qualifiers 
+ERROR: 1 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

@@ -1,0 +1,14 @@
+#version 320 es
+
+layout (local_size_x=3, local_size_y=3, local_size_z=1) in;
+
+layout (set=0, binding=1) uniform mediump sampler2D inTex;
+layout (rgba8, set=0, binding=2) uniform writeonly mediump image2D outColor;
+layout (push_constant, std430) uniform PCBlock { vec4 coords; vec2 size; float lod; } pc;
+
+void main()
+{
+    vec4 v = texture(inTex, pc.coords.xy);
+    imageStore(outColor, ivec2(gl_LocalInvocationID.xy), v);
+}
+

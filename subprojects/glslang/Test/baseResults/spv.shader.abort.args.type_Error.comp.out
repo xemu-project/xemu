@@ -1,0 +1,10 @@
+spv.shader.abort.args.type_Error.comp
+ERROR: 0:21: 'abortEXT' : argument cannot be an opaque type 
+ERROR: 0:24: 'abortEXT' : argument cannot be a run-time sized array 
+ERROR: 0:30: 'abortEXT' : argument cannot be an aggregate containing a bool 
+ERROR: 0:36: 'abortEXT' : argument cannot be an aggregate containing a bool 
+ERROR: 0:40: 'abortEXT' : argument cannot be a string, only the message may be a string 
+ERROR: 5 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

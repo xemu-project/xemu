@@ -1,0 +1,7 @@
+spv.floatocperrors.vert
+ERROR: 0:9: 'microscaling types not allowed as input/output' : qualifier 
+ERROR: 0:10: 'microscaling types not allowed as input/output' : qualifier 
+ERROR: 2 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

@@ -1,0 +1,27 @@
+glsl.nullInitializer.error.vert
+ERROR: 0:11: 'initializer list' : array initializer must be non-empty 
+ERROR: 1 compilation errors.  No code generated.
+
+
+Shader version: 460
+Requested GL_EXT_null_initializer
+ERROR: node is still EOpNull!
+0:9  Function Definition: main( ( global void)
+0:9    Function Parameters: 
+0:?   Linker Objects
+0:?     'gl_VertexID' ( gl_VertexId int VertexId)
+0:?     'gl_InstanceID' ( gl_InstanceId int InstanceId)
+
+
+Linked vertex stage:
+
+
+Shader version: 460
+Requested GL_EXT_null_initializer
+ERROR: node is still EOpNull!
+0:9  Function Definition: main( ( global void)
+0:9    Function Parameters: 
+0:?   Linker Objects
+0:?     'gl_VertexID' ( gl_VertexId int VertexId)
+0:?     'gl_InstanceID' ( gl_InstanceId int InstanceId)
+

@@ -1,0 +1,16 @@
+#version 450
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_EXT_split_barrier : require
+
+shared uint value;
+layout (binding = 0) buffer BufferU { coherent uint x; } bufferu;
+layout(binding = 1, r32ui) coherent uniform uimage2D imageu;
+
+void main()
+{
+    uint origu;
+
+    // Volatile must not be used with memoryBarrier or controlBarrier
+    controlBarrierArrive(gl_ScopeWorkgroup, gl_ScopeWorkgroup, gl_StorageSemanticsBuffer, gl_SemanticsRelease);
+    controlBarrierWait(gl_ScopeWorkgroup, gl_ScopeWorkgroup, gl_StorageSemanticsBuffer, gl_SemanticsAcquire | gl_SemanticsVolatile);
+}

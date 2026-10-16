@@ -1,0 +1,9 @@
+spv.longVectorBadParams.index.comp
+ERROR: 0:15: '[' :  vector index out of range '8'
+ERROR: 0:16: '[' :  vector index out of range '500'
+ERROR: 0:17: '[' :  vector index out of range '500'
+ERROR: 0:18: '[' :  index out of range '-1'
+ERROR: 4 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

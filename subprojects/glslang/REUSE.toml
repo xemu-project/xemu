@@ -1,0 +1,611 @@
+version = 1
+
+[[annotations]]
+precedence = "closest"
+path = [
+    "**.md",
+    ".clang-format",
+    ".gitattributes",
+    ".gitignore",
+    ".mailmap",
+    "_config.yml",
+    "known_good.json",
+    "known_good_khr.json",
+    "license-checker.cfg",
+    "LICENSE.txt",
+    ".github/dependabot.yml",
+    ".github/workflows/*.yml",
+    ".github/workflows/*.js",
+    "glslang/OSDependent/Web/glslang.pre.js",
+    "glslang/OSDependent/Web/glslang.after.js",
+    "Test/**",
+]
+SPDX-FileCopyrightText = "2026 The Khronos Group, Inc."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+    "Android.mk",
+    "build_info.h.tmpl",
+    "CMakeLists.txt",
+    "DEPS",
+    ".gn",
+    "standalone.gclient",
+    "External/CMakeLists.txt",
+    "build_overrides/build.gni",
+    "build_overrides/spirv_tools.gni",
+    "glslang/CMakeLists.txt",
+    "glslang/OSDependent/Unix/CMakeLists.txt",
+    "glslang/OSDependent/Web/CMakeLists.txt",
+    "glslang/OSDependent/Windows/CMakeLists.txt",
+    "glslang/updateGrammar",
+    "glslang/MachineIndependent/pch.h",
+    "glslang/OSDependent/Unix/CMakeLists.txt",
+    "glslang/OSDependent/Web/CMakeLists.txt",
+    "glslang/OSDependent/Web/glslang.after.js",
+    "glslang/OSDependent/Web/glslang.pre.js",
+    "glslang/OSDependent/Windows/CMakeLists.txt",
+    "glslang/stub.cpp",
+    "gtests/CMakeLists.txt",
+    "ndk_test/Android.mk",
+    "ndk_test/jni/Application.mk",
+    "SPIRV/CMakeLists.txt",
+    "StandAlone/CMakeLists.txt",
+    "Test/find_package/CMakeLists.txt",
+    "Test/find_package/example.c",
+    "Test/find_package/stub.cpp",
+    "glslang/HLSL/pch.h",
+    "Test/find_package/CMakeLists.txt",
+    "Test/find_package/example.c",
+    "Test/find_package/stub.cpp",
+    "Test/find_package/CMakeLists.txt",
+    "Test/find_package/example.c",
+    "Test/find_package/stub.cpp",
+    "gtests/InvertY.cpp",
+    "gtests/Discard.cpp",
+]
+SPDX-FileCopyrightText = "The Khronos Group Inc."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "Test/baseResults/spv.debuginfo.glsl.comp.out",
+    "Test/baseResults/spv.debuginfo.glsl.frag.out",
+    "Test/baseResults/spv.debuginfo.glsl.geom.out",
+    "Test/baseResults/spv.debuginfo.glsl.tesc.out",
+    "Test/baseResults/spv.debuginfo.glsl.tese.out",
+    "Test/baseResults/spv.debuginfo.glsl.vert.out",
+    "Test/baseResults/spv.debuginfo.hlsl.comp.out",
+    "Test/baseResults/spv.debuginfo.hlsl.frag.out",
+    "Test/baseResults/spv.debuginfo.hlsl.geom.out",
+    "Test/baseResults/spv.debuginfo.hlsl.tesc.out",
+    "Test/baseResults/spv.debuginfo.hlsl.tese.out",
+    "Test/baseResults/spv.debuginfo.hlsl.vert.out",
+    "Test/spv.debuginfo.glsl.comp",
+    "Test/spv.debuginfo.glsl.frag",
+    "Test/spv.debuginfo.glsl.geom",
+    "Test/spv.debuginfo.glsl.tesc",
+    "Test/spv.debuginfo.glsl.tese",
+    "Test/spv.debuginfo.glsl.vert",
+    "Test/spv.debuginfo.hlsl.comp",
+    "Test/spv.debuginfo.hlsl.frag",
+    "Test/spv.debuginfo.hlsl.geom",
+    "Test/spv.debuginfo.hlsl.tesc",
+    "Test/spv.debuginfo.hlsl.tese",
+    "Test/spv.debuginfo.hlsl.vert",
+]
+SPDX-FileCopyrightText = "Sascha Willems"
+SPDX-License-Identifier = "MIT"
+
+
+[[annotations]]
+path = [
+    "glslang/MachineIndependent/IntermTraverse.cpp",
+]
+SPDX-FileCopyrightText = [
+    "3Dlabs Inc. Ltd.",
+    "LunarG, Inc.",
+    "The ANGLE Project Authors.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "SPIRV/SpvBuilder.cpp",
+]
+SPDX-FileCopyrightText = [
+    "LunarG, Inc.",
+    "Google, Inc.",
+    "Advanced Micro Devices, Inc.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+
+[[annotations]]
+path = [
+  "SPIRV/GlslangToSpv.cpp",
+  "SPIRV/SpvBuilder.h",
+]
+SPDX-FileCopyrightText = [
+    "LunarG, Inc.",
+    "Google, Inc.",
+    "ARM Limited.",
+    "Advanced Micro Devices, Inc.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+
+[[annotations]]
+path = [
+    "glslang/ResourceLimits/ResourceLimits.cpp",
+    "glslang/Public/ResourceLimits.h",
+    "glslang/OSDependent/Web/glslang.js.cpp",
+    "glslang/glslang/HLSL/hlslOpMap.cpp",
+    "glslang/glslang/HLSL/hlslOpMap.h",
+    "glslang/glslang/HLSL/hlslScanContext.h",
+    "glslang/glslang/HLSL/hlslTokenStream.cpp",
+    "glslang/glslang/HLSL/hlslTokenStream.h",
+    "glslang/Include/defer.h",
+    "glslang/MachineIndependent/propagateNoContraction.cpp",
+    "glslang/MachineIndependent/propagateNoContraction.h",
+    "glslang/HLSL/hlslOpMap.cpp",
+    "glslang/HLSL/hlslOpMap.h",
+    "glslang/HLSL/hlslScanContext.h",
+    "glslang/HLSL/hlslTokenStream.cpp",
+    "glslang/HLSL/hlslTokenStream.h",
+    "gn_scripts/glslang_overrides_with_defaults.gni",
+    "gtests/AST.FromFile.cpp",
+    "gtests/BuiltInResource.FromFile.cpp",
+    "gtests/Config.FromFile.cpp",
+    "gtests/GlslMapIO.FromFile.cpp",
+    "gtests/Hlsl.FromFile.cpp",
+    "gtests/Initializer.h",
+    "gtests/Link.FromFile.cpp",
+    "gtests/Link.FromFile.Vk.cpp",
+    "gtests/main.cpp",
+    "gtests/pch.h",
+    "gtests/Pp.FromFile.cpp",
+    "gtests/README.md",
+    "gtests/Settings.cpp",
+    "gtests/Settings.h",
+    "gtests/Spv.FromFile.cpp",
+    "gtests/SpvDebugInfoTest.cpp",
+    "gtests/TestFixture.cpp",
+    "gtests/TestFixture.h",
+    "gtests/UboUnsizedArray.cpp",
+    "gtests/VkRelaxed.FromFile.cpp",
+    "SPIRV/SpvPostProcess.cpp",
+    "SPIRV/InReadableOrder.cpp",
+    "SPIRV/Logger.cpp",
+    "SPIRV/Logger.h",
+    "Test/baseResults/spv.debuginfo.hlsl.comp.out",
+    "Test/baseResults/spv.debuginfo.hlsl.frag.out",
+    "Test/baseResults/spv.debuginfo.hlsl.geom.out",
+    "Test/baseResults/spv.debuginfo.hlsl.tesc.out",
+    "Test/baseResults/spv.debuginfo.hlsl.tese.out",
+    "Test/baseResults/spv.debuginfo.hlsl.vert.out",
+    "Test/spv.debuginfo.hlsl.comp",
+    "Test/spv.debuginfo.hlsl.frag",
+    "Test/spv.debuginfo.hlsl.geom",
+    "Test/spv.debuginfo.hlsl.tesc",
+    "Test/spv.debuginfo.hlsl.tese",
+    "Test/spv.debuginfo.hlsl.vert",
+]
+SPDX-FileCopyrightText = "Google, Inc."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "SPIRV/spvUtil.h",
+]
+SPDX-FileCopyrightText = "Jan Kelemen"
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "update_glslang_sources.py",
+]
+SPDX-FileCopyrightText = "The Glslang Authors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+    "glslang/ResourceLimits/resource_limits_c.cpp ResourceLimits.cpp",
+    "glslang/Public/resource_limits_c.h",
+    "glslang/ResourceLimits/resource_limits_c.cpp",
+]
+SPDX-FileCopyrightText = "2019 Travis Fort"
+SPDX-License-Identifier = "BSD-2-Clause"
+
+[[annotations]]
+path = [
+    "glslang/CInterface/glslang_c_interface.cpp",
+    "glslang/Include/glslang_c_interface.h",
+    "glslang/Include/glslang_c_shader_types.h",
+    "glslang/Include/glslang_c_interface.h",
+    "glslang/Include/glslang_c_shader_types.h",
+    "SPIRV/CInterface/spirv_c_interface.cpp",
+]
+SPDX-FileCopyrightText = "2019 Viktor Latypov"
+SPDX-License-Identifier = "BSD-2-Clause"
+
+[[annotations]]
+path = [
+    "gtests/HexFloat.cpp",
+    "gtests/LiveTraverser.FromFile.cpp",
+]
+SPDX-FileCopyrightText = [
+    "The Khronos Group Inc.",
+    "Google LLC",
+]
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+    "build_info.py",
+    "BUILD.gn",
+    "build_overrides/glslang.gni",
+    "gen_extension_headers.py",
+    "parse_version.cmake",
+    "ndk_test/test.cpp",
+    "kokoro/**",
+    "gtests/Common.cpp",
+]
+SPDX-FileCopyrightText = "Google Inc."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+    "StandAlone/StandAlone.cpp",
+    "glslang/ExtensionHeaders/GL_EXT_shader_realtime_clock.glsl",
+]
+SPDX-FileCopyrightText = [
+    "3Dlabs Inc. Ltd.",
+    "LunarG, Inc.",
+    "Google, Inc.",
+    "Advanced Micro Devices, Inc.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = ["SPIRV/GLSL.ext.ARM.h"]
+SPDX-FileCopyrightText = "ARM Limited"
+SPDX-License-Identifier = "MIT-Khronos-old"
+
+[[annotations]]
+path = [
+    "glslang/glslang/HLSL/hlslAttributes.cpp",
+    "glslang/glslang/HLSL/hlslAttributes.h",
+    "glslang/glslang/HLSL/hlslParseables.cpp",
+    "glslang/glslang/HLSL/hlslParseables.h",
+    "glslang/Include/visibility.h",
+    "glslang/MachineIndependent/iomapper.cpp",
+    "glslang/MachineIndependent/iomapper.h",
+    "glslang/MachineIndependent/limits.cpp",
+    "glslang/MachineIndependent/LiveTraverser.h",
+    "glslang/MachineIndependent/ScanContext.h",
+    "glslang/MachineIndependent/span.h",
+    "glslang/MachineIndependent/reflection.cpp",
+    "glslang/MachineIndependent/reflection.h",
+    "glslang/HLSL/hlslAttributes.cpp",
+    "glslang/HLSL/hlslAttributes.h",
+    "glslang/HLSL/hlslParseables.cpp",
+    "glslang/HLSL/hlslParseables.h",
+    "StandAlone/Worklist.h",
+    "SPIRV/disassemble.cpp",
+    "SPIRV/disassemble.h",
+    "SPIRV/doc.h",
+    "Test/versionsClean.frag",
+    "Test/versionsClean.vert",
+    "Test/versionsErrors.frag",
+    "Test/versionsErrors.vert",
+]
+SPDX-FileCopyrightText = "LunarG Inc."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "SPIRV/GLSL.ext.AMD.h",
+    "SPIRV/GLSL.ext.EXT.h",
+    "SPIRV/GLSL.ext.NV.h",
+    "SPIRV/GLSL.ext.QCOM.h",
+    "SPIRV/GLSL.std.450.h",
+    "SPIRV/NonSemanticDebugPrintf.h",
+    "SPIRV/NonSemanticShaderDebugInfo.h",
+    "SPIRV/spirv.hpp11",
+    "glslang/MachineIndependent/gl_types.h",
+]
+SPDX-FileCopyrightText = "The Khronos Group Inc."
+SPDX-License-Identifier = "MIT-Khronos-old"
+
+
+[[annotations]]
+path = [
+    "SPIRV/doc.cpp",
+]
+SPDX-FileCopyrightText = [
+    "LunarG, Inc.",
+    "ARM Limited",
+    "Advanced Micro Devices, Inc.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+
+[[annotations]]
+path = [
+    "glslang/MachineIndependent/ParseContextBase.cpp",
+    "StandAlone/DirStackFileIncluder.h",
+]
+SPDX-FileCopyrightText = [
+  "3Dlabs Inc. Ltd",
+  "Google Inc.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+
+[[annotations]]
+path = ["SPIRV/GLSL.ext.KHR.h"]
+SPDX-FileCopyrightText = [
+    "The Khronos Group Inc.",
+    "Arm Limited",
+    "Advanced Micro Devices, Inc.",
+]
+SPDX-License-Identifier = "MIT-Khronos-old"
+
+[[annotations]]
+path = [
+    "glslang/MachineIndependent/preprocessor/PpAtom.cpp",
+    "glslang/MachineIndependent/preprocessor/PpContext.cpp",
+    "glslang/Include/arrays.h",
+    "glslang/Include/Common.h",
+    "glslang/Include/PoolAlloc.h",
+    "glslang/Include/ResourceLimits.h",
+    "glslang/MachineIndependent/Initialize.h",
+    "glslang/MachineIndependent/RemoveTree.cpp",
+    "glslang/MachineIndependent/Scan.h",
+]
+SPDX-FileCopyrightText = [
+    "3Dlabs Inc. Ltd.",
+    "LunarG, Inc.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "glslang/MachineIndependent/preprocessor/PpTokens.h",
+    "glslang/GenericCodeGen/Link.cpp",
+    "glslang/GenericCodeGen/CodeGen.cpp",
+    "glslang/OSDependent/osinclude.h",
+    "glslang/OSDependent/Unix/ossource.cpp",
+    "glslang/OSDependent/Windows/ossource.cpp",
+    "glslang/Include/InfoSink.h",
+    "glslang/Include/InitializeGlobals.h",
+    "glslang/Include/ShHandle.h",
+    "glslang/MachineIndependent/InfoSink.cpp",
+    "glslang/MachineIndependent/parseConst.cpp",
+    "glslang/MachineIndependent/PoolAlloc.cpp",
+    "glslang/MachineIndependent/RemoveTree.h",
+    "Test/sample.frag",
+    "Test/sample.vert",
+]
+SPDX-FileCopyrightText = "3Dlabs Inc. Ltd"
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "glslang/MachineIndependent/preprocessor/Pp.cpp",
+    "glslang/MachineIndependent/preprocessor/PpTokens.cpp",
+    "glslang/Public/ShaderLang.h",
+    "glslang/MachineIndependent/ParseHelper.h",
+    "glslang/MachineIndependent/ShaderLang.cpp",
+    "glslang/MachineIndependent/SymbolTable.h",
+]
+SPDX-FileCopyrightText = [
+    "3Dlabs Inc. Ltd.",
+    "LunarG, Inc.",
+    "Google, Inc.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "glslang/MachineIndependent/preprocessor/PpContext.h",
+    "glslang/glslang/HLSL/hlslParseHelper.cpp",
+    "glslang/glslang/HLSL/hlslParseHelper.h",
+    "glslang/glslang/HLSL/hlslScanContext.cpp",
+    "glslang/glslang/HLSL/hlslTokens.h",
+    "glslang/MachineIndependent/attribute.cpp",
+    "glslang/MachineIndependent/attribute.h",
+    "SPIRV/GlslangToSpv.h",
+    "SPIRV/SpvTools.cpp",
+    "SPIRV/SpvTools.h",
+    "SPIRV/spvIR.h",
+    "glslang/HLSL/hlslParseHelper.cpp",
+    "glslang/HLSL/hlslParseHelper.h",
+    "glslang/HLSL/hlslScanContext.cpp",
+    "glslang/HLSL/hlslTokens.h",
+]
+SPDX-FileCopyrightText = [
+    "LunarG, Inc.",
+    "Google, Inc.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "glslang/MachineIndependent/parseVersions.h",
+]
+SPDX-FileCopyrightText = [
+    "LunarG, Inc.",
+    "ARM Limited",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "glslang/glslang/HLSL/hlslGrammar.cpp",
+    "glslang/glslang/HLSL/hlslGrammar.h",
+    "glslang/HLSL/hlslGrammar.cpp",
+    "glslang/HLSL/hlslGrammar.h",
+]
+SPDX-FileCopyrightText = [
+    "LunarG, Inc.",
+    "Google, Inc.",
+    "Mobica Limited",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+  "glslang/Include/ConstantUnion.h",
+  "glslang/MachineIndependent/linkValidate.cpp",
+]
+SPDX-FileCopyrightText = [
+    "3Dlabs Inc. Ltd.",
+    "LunarG, Inc.",
+    "ARM Limited.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+  "glslang/Include/BaseTypes.h",
+  "glslang/Include/intermediate.h",
+  "glslang/Include/Types.h",
+  "glslang/MachineIndependent/intermOut.cpp",
+]
+SPDX-FileCopyrightText = [
+    "3Dlabs Inc. Ltd.",
+    "LunarG, Inc.",
+    "ARM Limited.",
+    "Advanced Micro Devices, Inc.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+  "glslang/Include/SpirvIntrinsics.h",
+  "glslang/MachineIndependent/SpirvIntrinsics.cpp",
+]
+SPDX-FileCopyrightText = [
+    "Advanced Micro Devices, Inc.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "glslang/MachineIndependent/Constant.cpp",
+    "glslang/MachineIndependent/Intermediate.cpp",
+    "glslang/MachineIndependent/localintermediate.h",
+]
+SPDX-FileCopyrightText = [
+    "3Dlabs Inc. Ltd.",
+    "LunarG, Inc.",
+    "Google, Inc.",
+    "ARM Limited.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "glslang/MachineIndependent/glslang.y",
+    "glslang/MachineIndependent/Initialize.cpp",
+    "glslang/MachineIndependent/glslang.y",
+    "glslang/MachineIndependent/Scan.cpp",
+    "glslang/MachineIndependent/SymbolTable.cpp",
+    "glslang/MachineIndependent/Versions.cpp",
+]
+SPDX-FileCopyrightText = [
+    "3Dlabs Inc. Ltd.",
+    "LunarG, Inc.",
+    "Google, Inc.",
+    "ARM Limited.",
+    "Advanced Micro Devices, Inc.",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "glslang/MachineIndependent/ParseHelper.cpp",
+]
+SPDX-FileCopyrightText = [
+    "3Dlabs Inc. Ltd.",
+    "LunarG, Inc.",
+    "Google, Inc.",
+    "ARM Limited.",
+    "Advanced Micro Devices, Inc.",
+    "Ravi Prakash Singh",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "glslang/MachineIndependent/Versions.h",
+]
+SPDX-FileCopyrightText = [
+    "3Dlabs Inc. Ltd.",
+    "LunarG, Inc.",
+    "Google, Inc.",
+    "ARM Limited.",
+    "Advanced Micro Devices, Inc.",
+    "Valve Corporation",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+  "glslang/MachineIndependent/preprocessor/PpScanner.cpp",
+]
+SPDX-FileCopyrightText = [
+    "3Dlabs Inc. Ltd.",
+    "LunarG, Inc.",
+    "ARM Limited.",
+    "Google, Inc.",
+    "Mobica Limited",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = [
+    "glslang/MachineIndependent/preprocessor/Pp.cpp",
+    "glslang/MachineIndependent/preprocessor/PpAtom.cpp",
+    "glslang/MachineIndependent/preprocessor/PpContext.cpp",
+    "glslang/MachineIndependent/preprocessor/PpContext.h",
+    "glslang/MachineIndependent/preprocessor/PpScanner.cpp",
+    "glslang/MachineIndependent/preprocessor/PpTokens.cpp",
+    "glslang/MachineIndependent/preprocessor/PpTokens.h",
+]
+SPDX-FileCopyrightText = "NVIDIA Corporation"
+SPDX-License-Identifier = "AML-glslang"
+
+[[annotations]]
+path = [
+    "Test/baseResults/spv.debuginfo.scalar_types.glsl.frag.out",
+    "Test/spv.debuginfo.scalar_types.glsl.frag",
+]
+SPDX-FileCopyrightText = "NVIDIA Corporation"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = [
+    "SPIRV/bitutils.h",
+    "SPIRV/hex_float.h",
+]
+SPDX-FileCopyrightText = "The Khronos Group Inc."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+    "gtests/SpvPatternTest.cpp",
+    "gtests/StructName.cpp",
+]
+SPDX-FileCopyrightText = "NVIDIA Corporation"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = [
+    "glslang/MachineIndependent/glslang_tab.cpp",
+    "glslang/MachineIndependent/glslang_tab.cpp.h",
+]
+SPDX-FileCopyrightText = "Free Software Foundation, Inc."
+SPDX-License-Identifier = "GPL-3.0-or-later WITH Bison-exception-2.2"

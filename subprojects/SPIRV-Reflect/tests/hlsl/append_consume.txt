@@ -1,0 +1,100 @@
+generator       : Google spiregg
+entry point     : main
+source lang     : HLSL
+source lang ver : 600
+source file     : hlsl/append_consume.hlsl
+shader stage    : PS
+
+
+  Input variables: 1
+
+    0:
+      spirv id  : 26
+      location  : (built-in) FragCoord
+      type      : float4
+      semantic  : SV_Position
+      name      : 
+      qualifier : 
+
+
+  Output variables: 1
+
+    0:
+      spirv id  : 30
+      location  : 0
+      type      : float4
+      semantic  : SV_TARGET
+      name      : out.var.SV_TARGET
+      qualifier : 
+
+
+  Descriptor bindings: 4
+
+    Binding 1.0
+      spirv id : 7
+      set      : 1
+      binding  : 0
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (UAV)
+      count    : 1
+      counter  : (set=1, binding=1, name=counter.var.BufferIn);
+      accessed : true
+      name     : BufferIn (type.ConsumeStructuredBuffer.Data)
+          // size = 0, padded size = 0
+          struct type.ConsumeStructuredBuffer.Data {
+
+              // abs offset = 0, rel offset = 0, size = 4, padded size = 4
+              struct Data { 
+                  uint rgba; // abs offset = 0, rel offset = 0, size = 4, padded size = 4
+              } ;           
+
+          } BufferIn;       
+
+
+    Binding 1.1
+      spirv id : 11
+      set      : 1
+      binding  : 1
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (UAV)
+      count    : 1
+      accessed : true
+      name     : counter.var.BufferIn (type.ACSBuffer.counter)
+          // size = 0, padded size = 0
+          struct type.ACSBuffer.counter {
+              int ; // abs offset = 0, rel offset = 0, size = 4, padded size = 4
+          } counter.var.BufferIn;
+
+
+    Binding 2.0
+      spirv id : 15
+      set      : 2
+      binding  : 0
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (UAV)
+      count    : 1
+      accessed : true
+      name     : counter.var.BufferOut (type.ACSBuffer.counter)
+          // size = 0, padded size = 0
+          struct type.ACSBuffer.counter {
+              int ; // abs offset = 0, rel offset = 0, size = 4, padded size = 4
+          } counter.var.BufferOut;
+
+
+    Binding 2.1
+      spirv id : 14
+      set      : 2
+      binding  : 1
+      type     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (UAV)
+      count    : 1
+      counter  : (set=2, binding=0, name=counter.var.BufferOut);
+      accessed : true
+      name     : BufferOut (type.AppendStructuredBuffer.Data)
+          // size = 0, padded size = 0
+          struct type.AppendStructuredBuffer.Data {
+
+              // abs offset = 0, rel offset = 0, size = 4, padded size = 4
+              struct Data { 
+                  uint rgba; // abs offset = 0, rel offset = 0, size = 4, padded size = 4
+              } ;           
+
+          } BufferOut;      
+
+

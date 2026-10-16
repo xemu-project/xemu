@@ -1,0 +1,18 @@
+#version 460
+#extension GL_EXT_ray_query : enable
+#extension GL_EXT_opacity_micromap_ray_query_mode : enable
+
+// Unconditionally enable opacity micromap support by redeclaring the built-in as true (no
+// specialization constant). This maps to OpConstantTrue, referenced by the OpacityMicromapIdKHR
+// execution mode.
+const bool gl_EnableOpacityMicromapEXT = true;
+
+layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+
+void main()
+{
+    rayQueryEXT rq;
+    rayQueryInitializeEXT(rq, topLevelAS, gl_RayFlagsNoneEXT, 0xFFu,
+                          vec3(0.0), 0.1, vec3(0.0, 0.0, 1.0), 100.0);
+    rayQueryProceedEXT(rq);
+}

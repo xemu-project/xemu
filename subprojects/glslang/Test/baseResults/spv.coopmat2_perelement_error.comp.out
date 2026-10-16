@@ -1,0 +1,9 @@
+spv.coopmat2_perelement_error.comp
+ERROR: 0:18: 'coopMatPerElementNV' : expected a result matrix, an input matrix, and a per-element function 
+ERROR: 0:19: 'coopMatPerElementNV' : expected a result matrix, an input matrix, and a per-element function 
+ERROR: 0:20: 'coopMatPerElementNV' : expected a result matrix, an input matrix, and a per-element function 
+ERROR: 0:21: 'coopMatPerElementNV' : expected a result matrix, an input matrix, and a per-element function 
+ERROR: 4 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

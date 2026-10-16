@@ -1,0 +1,16 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    int   i;
+    uint  u;
+    float f;
+} data;
+
+// One parameter of each mandated type, in specifier order.
+void main() {
+    abortEXT("mixed: %d %u %f", data.i, data.u, data.f);
+}

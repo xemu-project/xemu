@@ -1,0 +1,15 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    int a;
+    int b;
+} data;
+
+// Two int parameters, using both of the int specifiers.
+void main() {
+    abortEXT("ints: %d %i", data.a, data.b);
+}

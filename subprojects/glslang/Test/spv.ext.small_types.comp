@@ -1,0 +1,33 @@
+#version 450 core
+
+#extension GL_EXT_shader_explicit_arithmetic_types : require
+
+layout(set = 0, binding = 0) uniform UBO
+{
+    uint8_t m1[4];
+    u8vec4 m2[4];
+    int16_t m3;
+    i16vec4 m4;
+    float16_t m5;
+    f16vec4 m6;
+} _in;
+
+layout(set = 1, binding = 0) buffer SSBO
+{
+    uint8_t m1;
+    u8vec4 m2;
+    int16_t m3;
+    i16vec4 m4;
+    float16_t m5;
+    f16vec4 m6;
+} _out;
+
+void main()
+{
+    _out.m1 = clamp(_in.m1[0], _in.m1[1], _in.m1[2]);
+    _out.m2 = clamp(_in.m2[0], _in.m2[1], _in.m2[2]);
+    _out.m3 = abs(_in.m3);
+    _out.m4 = abs(_in.m4);
+    _out.m5 = abs(_in.m5);
+    _out.m6 = abs(_in.m6);
+}

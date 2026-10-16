@@ -1,0 +1,16 @@
+#version 460
+#extension GL_EXT_ray_query : enable
+#extension GL_EXT_opacity_micromap_ray_query_mode : enable
+
+// The extension is enabled but gl_EnableOpacityMicromapEXT is not redeclared. The OpacityMicromapIdKHR
+// execution mode is still emitted (enabling the extension is the declaration), referencing the default
+// value as OpConstantFalse.
+layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+
+void main()
+{
+    rayQueryEXT rq;
+    rayQueryInitializeEXT(rq, topLevelAS, gl_RayFlagsNoneEXT, 0xFFu,
+                          vec3(0.0), 0.1, vec3(0.0, 0.0, 1.0), 100.0);
+    rayQueryProceedEXT(rq);
+}

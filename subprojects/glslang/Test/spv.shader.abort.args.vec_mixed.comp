@@ -1,0 +1,21 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    int   i;
+    uint  u;
+    float f;
+    vec4  v4;
+    ivec3 v3;
+    uvec2 v2;
+} data;
+
+// Scalars and vectors interleaved, so that each vector member has to be
+// realigned past the scalar in front of it.
+void main() {
+    abortEXT("mixed: %d %v4f %u %v3i %f %v2u",
+             data.i, data.v4, data.u, data.v3, data.f, data.v2);
+}

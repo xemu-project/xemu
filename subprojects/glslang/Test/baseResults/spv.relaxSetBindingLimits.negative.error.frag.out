@@ -1,0 +1,7 @@
+spv.relaxSetBindingLimits.negative.error.frag
+ERROR: 0:3: 'layout-id value' : cannot be negative 
+ERROR: 0:4: 'layout-id value' : cannot be negative 
+ERROR: 2 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

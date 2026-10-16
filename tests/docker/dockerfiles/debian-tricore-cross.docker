@@ -1,0 +1,51 @@
+#
+# Docker TriCore cross-compiler target
+#
+# This docker target builds on the Debian Buster base image but
+# doesn't inherit from the common one to avoid bringing in unneeded
+# dependencies.
+#
+# Copyright (c) 2018 Philippe Mathieu-Daudé
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+FROM docker.io/library/debian:11-slim
+
+RUN apt update && \
+    DEBIAN_FRONTEND=noninteractive apt install -yy eatmydata && \
+    DEBIAN_FRONTEND=noninteractive eatmydata apt install -yy \
+       bison \
+       bzip2 \
+       ca-certificates \
+       ccache \
+       curl \
+       flex \
+       g++ \
+       gcc \
+       git \
+       libglib2.0-dev \
+       libpixman-1-dev \
+       locales \
+       make \
+       ninja-build \
+       pkgconf \
+       python3-pip \
+       python3-setuptools \
+       python3-wheel \
+       python3-venv && \
+       dpkg-query --showformat '${Package}_${Version}_${Architecture}\n' --show > /packages.txt
+
+RUN /usr/bin/pip3 install tomli
+
+RUN curl -#SL https://github.com/bkoppelmann/package_940/releases/download/tricore-toolchain-9.40/tricore-toolchain-9.4.0.tar.gz \
+    | tar -xzC /usr/local/
+
+# This image can only build a very minimal QEMU as well as the tests
+ENV DEF_TARGET_LIST tricore-softmmu
+ENV QEMU_CONFIGURE_OPTS --disable-user --disable-tools --disable-fdt
+ENV MAKE /usr/bin/make
+# As a final step configure the user (if env is defined)
+ARG USER
+ARG UID
+RUN if [ "${USER}" ]; then \
+  id ${USER} 2>/dev/null || useradd -u ${UID} -U ${USER}; fi

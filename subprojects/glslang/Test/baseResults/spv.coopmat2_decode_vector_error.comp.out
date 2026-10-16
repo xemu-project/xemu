@@ -1,0 +1,8 @@
+spv.coopmat2_decode_vector_error.comp
+ERROR: 0:49: 'decodeF16x2(1;u1[2];u1[2];' : decodeFunc return type must be the cooperative matrix component type (scalar) 
+ERROR: 0:52: 'decodeF16x3_badLength(1;u1[2];u1[2];' : decodeVectorFunc return vector length must be 2, 4, or 8 
+ERROR: 0:55: 'decodeF32x2_badType(1;u1[2];u1[2];' : decodeVectorFunc return type component must match cooperative matrix component type 
+ERROR: 3 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

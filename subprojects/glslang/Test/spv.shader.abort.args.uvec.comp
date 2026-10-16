@@ -1,0 +1,16 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    uvec2 v2;
+    uvec3 v3;
+    uvec4 v4;
+} data;
+
+// All three uint vector widths, %v2u / %v3u / %v4u.
+void main() {
+    abortEXT("uvecs: %v2u %v3u %v4u", data.v2, data.v3, data.v4);
+}

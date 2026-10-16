@@ -1,0 +1,69 @@
+Creating bottom <- middle <- top backing file chain...
+Starting VM...
+=== Testing drive-backup ===
+{"execute": "blockdev-add", "arguments": {"driver": "IMGFMT", "file": {"driver": "file", "filename": "TEST_DIR/PID-top"}, "node-name": "drv0"}}
+{"return": {}}
+{"execute": "drive-backup", "arguments": {"device": "drv0", "format": "IMGFMT", "job-id": "job0", "sync": "none", "target": "TEST_DIR/PID-target"}}
+{"return": {}}
+{"execute": "blockdev-del", "arguments": {"node-name": "drv0"}}
+{"error": {"class": "GenericError", "desc": "Node 'drv0' is busy: node is used as backing hd of 'NODE_NAME'"}}
+{"execute": "block-job-cancel", "arguments": {"device": "job0"}}
+{"return": {}}
+{"data": {"device": "job0", "len": 1048576, "offset": 0, "speed": 0, "type": "backup"}, "event": "BLOCK_JOB_CANCELLED", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
+{"execute": "blockdev-del", "arguments": {"node-name": "drv0"}}
+{"return": {}}
+
+=== Testing drive-mirror ===
+{"execute": "blockdev-add", "arguments": {"driver": "IMGFMT", "file": {"driver": "file", "filename": "TEST_DIR/PID-top"}, "node-name": "drv0"}}
+{"return": {}}
+{"execute": "drive-mirror", "arguments": {"device": "drv0", "format": "IMGFMT", "job-id": "job0", "sync": "none", "target": "TEST_DIR/PID-target"}}
+{"return": {}}
+{"data": {"device": "job0", "len": 0, "offset": 0, "speed": 0, "type": "mirror"}, "event": "BLOCK_JOB_READY", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
+{"execute": "blockdev-del", "arguments": {"node-name": "drv0"}}
+{"error": {"class": "GenericError", "desc": "Node 'drv0' is busy: block device is in use by block job: mirror"}}
+{"execute": "block-job-cancel", "arguments": {"device": "job0"}}
+{"return": {}}
+{"data": {"device": "job0", "len": 0, "offset": 0, "speed": 0, "type": "mirror"}, "event": "BLOCK_JOB_COMPLETED", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
+{"execute": "blockdev-del", "arguments": {"node-name": "drv0"}}
+{"return": {}}
+
+=== Testing active block-commit ===
+{"execute": "blockdev-add", "arguments": {"driver": "IMGFMT", "file": {"driver": "file", "filename": "TEST_DIR/PID-top"}, "node-name": "drv0"}}
+{"return": {}}
+{"execute": "block-commit", "arguments": {"device": "drv0", "job-id": "job0"}}
+{"return": {}}
+{"data": {"device": "job0", "len": 0, "offset": 0, "speed": 0, "type": "commit"}, "event": "BLOCK_JOB_READY", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
+{"execute": "blockdev-del", "arguments": {"node-name": "drv0"}}
+{"error": {"class": "GenericError", "desc": "Node 'drv0' is busy: block device is in use by block job: commit"}}
+{"execute": "block-job-cancel", "arguments": {"device": "job0"}}
+{"return": {}}
+{"data": {"device": "job0", "len": 0, "offset": 0, "speed": 0, "type": "commit"}, "event": "BLOCK_JOB_COMPLETED", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
+{"execute": "blockdev-del", "arguments": {"node-name": "drv0"}}
+{"return": {}}
+
+=== Testing non-active block-commit ===
+{"execute": "blockdev-add", "arguments": {"driver": "IMGFMT", "file": {"driver": "file", "filename": "TEST_DIR/PID-top"}, "node-name": "drv0"}}
+{"return": {}}
+{"execute": "block-commit", "arguments": {"device": "drv0", "job-id": "job0", "speed": 1, "top": "TEST_DIR/PID-middle"}}
+{"return": {}}
+{"execute": "blockdev-del", "arguments": {"node-name": "drv0"}}
+{"error": {"class": "GenericError", "desc": "Node 'drv0' is busy: block device is in use by block job: commit"}}
+{"execute": "block-job-cancel", "arguments": {"device": "job0"}}
+{"return": {}}
+{"data": {"device": "job0", "len": 1048576, "offset": 524288, "speed": 1, "type": "commit"}, "event": "BLOCK_JOB_CANCELLED", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
+{"execute": "blockdev-del", "arguments": {"node-name": "drv0"}}
+{"return": {}}
+
+=== Testing block-stream ===
+{"execute": "blockdev-add", "arguments": {"driver": "IMGFMT", "file": {"driver": "file", "filename": "TEST_DIR/PID-top"}, "node-name": "drv0"}}
+{"return": {}}
+{"execute": "block-stream", "arguments": {"device": "drv0", "job-id": "job0", "speed": 1}}
+{"return": {}}
+{"execute": "blockdev-del", "arguments": {"node-name": "drv0"}}
+{"error": {"class": "GenericError", "desc": "Node 'drv0' is busy: block device is in use by block job: stream"}}
+{"execute": "block-job-cancel", "arguments": {"device": "job0"}}
+{"return": {}}
+{"data": {"device": "job0", "len": 1048576, "offset": 524288, "speed": 1, "type": "stream"}, "event": "BLOCK_JOB_CANCELLED", "timestamp": {"microseconds": "USECS", "seconds": "SECS"}}
+{"execute": "blockdev-del", "arguments": {"node-name": "drv0"}}
+{"return": {}}
+

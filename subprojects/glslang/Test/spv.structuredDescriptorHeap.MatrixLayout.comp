@@ -1,0 +1,24 @@
+// Covers row_major/column_major layouts on direct heap matrix members.
+#version 460
+#extension GL_EXT_descriptor_heap : require
+#extension GL_EXT_structured_descriptor_heap : require
+#extension GL_EXT_scalar_block_layout : require
+
+layout(local_size_x = 1) in;
+
+layout(column_major, heap_offset = 2048) resourceheap MatrixHeap {
+    layout(row_major) mat4x3 rowMajorMatrix;
+    mat3x4 columnMajorMatrix;
+    texture2D textureDescriptor;
+} matrixHeap;
+
+layout(binding = 0, std430) buffer Result {
+    vec3 rowMajorValue;
+    vec4 columnMajorValue;
+} resultBuffer;
+
+void main()
+{
+    resultBuffer.rowMajorValue = matrixHeap.rowMajorMatrix[0];
+    resultBuffer.columnMajorValue = matrixHeap.columnMajorMatrix[0];
+}

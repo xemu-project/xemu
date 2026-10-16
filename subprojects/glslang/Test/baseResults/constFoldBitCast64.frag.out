@@ -1,0 +1,61 @@
+constFoldBitCast64.frag
+Shader version: 450
+Requested GL_ARB_gpu_shader_int64
+0:? Sequence
+0:4  Function Definition: main( ( global void)
+0:4    Function Parameters: 
+0:6    Sequence
+0:6      Sequence
+0:6        move second child to first child ( temp int64_t)
+0:6          'a' ( temp int64_t)
+0:6          Constant:
+0:6            4607182418800017408 (const int64_t)
+0:7      Sequence
+0:7        move second child to first child ( temp uint64_t)
+0:7          'b' ( temp uint64_t)
+0:7          Constant:
+0:7            4611686018427387904 (const uint64_t)
+0:8      Sequence
+0:8        move second child to first child ( temp double)
+0:8          'c' ( temp double)
+0:8          Constant:
+0:8            1.000000
+0:9      Sequence
+0:9        move second child to first child ( temp double)
+0:9          'd' ( temp double)
+0:9          Constant:
+0:9            -1.000000
+0:?   Linker Objects
+
+
+Linked fragment stage:
+
+
+Shader version: 450
+Requested GL_ARB_gpu_shader_int64
+0:? Sequence
+0:4  Function Definition: main( ( global void)
+0:4    Function Parameters: 
+0:6    Sequence
+0:6      Sequence
+0:6        move second child to first child ( temp int64_t)
+0:6          'a' ( temp int64_t)
+0:6          Constant:
+0:6            4607182418800017408 (const int64_t)
+0:7      Sequence
+0:7        move second child to first child ( temp uint64_t)
+0:7          'b' ( temp uint64_t)
+0:7          Constant:
+0:7            4611686018427387904 (const uint64_t)
+0:8      Sequence
+0:8        move second child to first child ( temp double)
+0:8          'c' ( temp double)
+0:8          Constant:
+0:8            1.000000
+0:9      Sequence
+0:9        move second child to first child ( temp double)
+0:9          'd' ( temp double)
+0:9          Constant:
+0:9            -1.000000
+0:?   Linker Objects
+

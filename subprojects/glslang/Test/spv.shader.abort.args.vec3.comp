@@ -1,0 +1,15 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    vec3 v;
+} data;
+
+// A 3-component float vector, %v3f. A vec3 has a 16-byte base alignment, so
+// this also covers padding a member out to more than its own size.
+void main() {
+    abortEXT("vec3: %v3f", data.v);
+}

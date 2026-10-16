@@ -1,0 +1,7 @@
+spv.splitBarrierWaitMemoryScopeSemantics_Error1.comp
+ERROR: 0:15: 'controlBarrierWait' : Semantics must be gl_SemanticsAcquire (optionally with gl_SemanticsMakeVisible) when used with non-zero storage class semantics 
+ERROR: 0:15: 'controlBarrierWait' : gl_SemanticsVolatile must not be used with controlBarrierWait 
+ERROR: 2 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

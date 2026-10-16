@@ -1,0 +1,11 @@
+#version 460
+#extension GL_EXT_ray_query : enable
+#extension GL_EXT_opacity_micromap_ray_query_mode : enable
+
+// The specialization-constant form must be the bare "layout(constant_id = N) gl_EnableOpacityMicromapEXT;".
+// Restating the type or specifying a value together with constant_id is not valid.
+layout(constant_id = 2) const bool gl_EnableOpacityMicromapEXT = false;
+
+void main()
+{
+}

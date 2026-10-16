@@ -1,0 +1,10 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+// Compile-time constant parameters rather than values loaded from a buffer.
+void main() {
+    abortEXT("constants: %d %u %f", -1, 2u, 3.5);
+}

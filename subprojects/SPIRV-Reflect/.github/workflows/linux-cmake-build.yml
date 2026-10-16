@@ -1,0 +1,58 @@
+name: Linux build
+
+on:
+  pull_request:
+
+# Cancel previous runs if a more recent commit is pushed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+permissions: read-all
+
+jobs:
+  linux-build:
+    name: Build and run tests on Linux using CMake
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        asan: ["ON", "OFF"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: '0'
+      - name: Clone submodules
+        run: git submodule update --init --recursive
+      - name: Build
+        run: |
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DSPIRV_REFLECT_BUILD_TESTS=ON -DSPIRV_REFLECT_ENABLE_ASAN=${{matrix.asan}}
+          make -j $(nproc)
+      - name: Run unit tests
+        run: |
+          cd build
+          ./test-spirv-reflect
+      - name: Clone SPIRV-Database
+        run: |
+          git clone https://github.com/LunarG/SPIRV-Database.git build/SPIRV-Database
+      - name: Test - SaschaWillemsVulkan
+        run: |
+          python tests/ci_database.py --dir build/SPIRV-Database/vulkan/SaschaWillemsVulkan/
+      - name: Test - clspv
+        run: |
+          python tests/ci_database.py --dir build/SPIRV-Database/vulkan/clspv/
+      - name: Test - dawn
+        run: |
+          python tests/ci_database.py --dir build/SPIRV-Database/vulkan/dawn/
+      - name: Test - gl_cts
+        run: |
+          python tests/ci_database.py --dir build/SPIRV-Database/vulkan/gl_cts/
+      - name: Test - naga
+        run: |
+          python tests/ci_database.py --dir build/SPIRV-Database/vulkan/naga/remaps/
+      - name: Test - tint
+        run: |
+          python tests/ci_database.py --dir build/SPIRV-Database/vulkan/tint/

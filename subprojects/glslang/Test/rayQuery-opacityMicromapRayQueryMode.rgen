@@ -1,0 +1,19 @@
+#version 460
+#extension GL_EXT_ray_query : enable
+#extension GL_EXT_ray_tracing : enable
+#extension GL_EXT_opacity_micromap_ray_query_mode : enable
+
+// The extension applies in all stages (Issue 1), including the ray-tracing stages added by
+// GL_EXT_ray_tracing when they also issue ray queries. The OpacityMicromapIdKHR execution mode is
+// emitted on this ray-generation entry point.
+layout(constant_id = 2) gl_EnableOpacityMicromapEXT;
+
+layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+
+void main()
+{
+    rayQueryEXT rq;
+    rayQueryInitializeEXT(rq, topLevelAS, gl_RayFlagsNoneEXT, 0xFFu,
+                          vec3(0.0), 0.1, vec3(0.0, 0.0, 1.0), 100.0);
+    rayQueryProceedEXT(rq);
+}

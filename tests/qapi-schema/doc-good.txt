@@ -1,0 +1,181 @@
+Section
+*******
+
+Just text, no heading.
+
+
+Subsection
+==========
+
+*with emphasis* "var" {in braces}
+
+* List item one
+
+* Two, multiple lines
+
+* Three Still in list
+
+Not in list
+
+* Second list Note: still in list
+
+Note: not in list
+
+1. Third list is numbered
+
+2. another item
+
+Returns: the King Since: the first age Notes:
+
+1. Lorem ipsum dolor sit amet
+
+2. Ut enim ad minim veniam
+
+Duis aute irure dolor
+
+Example:
+
+-> in <- out Examples: - *verbatim* - {braces}
+
+Enum Enum
+    *Availability*: "IFCOND"
+
+   Values:
+      * **one** -- The _one_ {and only}, description on the same line
+
+      * **two** -- Not documented
+
+   Features:
+      * **enum-feat** -- Also _one_ {and only}
+
+      * **enum-member-feat** -- a member feature
+
+   "two" is undocumented
+
+Object Base
+    *Availability*: "IFALL1 and IFALL2"
+
+   Members:
+      * **base1** ("Enum") -- description starts on a new line,
+        minimally indented
+
+Object Variant1
+
+   A paragraph
+
+   Another paragraph
+
+   "var1" is undocumented
+
+   Members:
+      * **var1** ("string") -- Not documented
+
+   Features:
+      * **variant1-feat** -- a feature
+
+      * **member-feat** -- a member feature
+
+Object Variant2
+
+Object Object
+
+   Members:
+      * The members of "Base".
+
+      * When "base1" is "one": The members of "Variant1".
+
+      * When "base1" is "two": The members of "Variant2".
+
+   Features:
+      * **union-feat1** -- a feature
+
+Alternate Alternate
+    *Availability*: "not (IFONE or IFTWO)"
+
+   Alternatives:
+      * **i** ("int") -- description starts on the same line remainder
+        indented the same "b" is undocumented
+
+      * **b** ("boolean") -- Not documented
+
+   Features:
+      * **alt-feat** -- a feature
+
+
+Another subsection
+==================
+
+Command cmd (Since: 2.10)
+
+   Arguments:
+      * **arg1** ("int") -- description starts on a new line, indented
+
+      * **arg2** ("string", *optional*) -- description starts on the
+        same line remainder indented differently
+
+      * **arg3** ("boolean") -- Not documented
+
+   Features:
+      * **cmd-feat1** -- a feature
+
+      * **cmd-feat2** -- another feature
+
+   Note:
+
+     "arg3" is undocumented
+
+   Return:
+      "Object" -- "Object"
+
+   Errors:
+      some
+
+   Notes:
+
+   * Lorem ipsum dolor sit amet
+
+   * Ut enim ad minim veniam
+
+   Duis aute irure dolor
+
+   Example: Ideal fast-food burger situation:
+
+      -> "in"
+      <- "out"
+
+   Examples:
+
+      - Not a QMP code block
+      - Merely a preformatted code block literal
+      It isn't even an rST list.
+      - *verbatim*
+      - {braces}
+
+   Note::
+      Ceci n'est pas une note
+
+Command cmd-boxed
+
+   If you're bored enough to read this, go see a video of boxed cats
+
+   Arguments:
+      * The members of "Object".
+
+   Features:
+      * **cmd-feat1** -- a feature
+
+      * **cmd-feat2** -- another feature
+
+   Example::
+
+      -> "this example"
+
+      <- ... has no title ...
+
+Event EVT_BOXED
+
+   Members:
+      * The members of "Object".
+
+   Features:
+      * **feat3** -- a feature

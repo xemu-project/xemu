@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+	<Type Name="toml::v3::date">
+		<Intrinsic Name="y" Expression="(int)year" />
+		<Intrinsic Name="m" Expression="(int)month" />
+		<Intrinsic Name="d" Expression="(int)day" />
+		<DisplayString Condition="y() &lt; 10 &amp;&amp; m() &lt; 10 &amp;&amp; d() &lt; 10">0{y()}-0{m()}-0{d()}</DisplayString>
+		<DisplayString Condition="y() &lt; 10 &amp;&amp; m() &lt; 10">0{y()}-0{m()}-{d()}</DisplayString>
+		<DisplayString Condition="y() &lt; 10 &amp;&amp; d() &lt; 10">0{y()}-{m()}-0{d()}</DisplayString>
+		<DisplayString Condition="m() &lt; 10 &amp;&amp; d() &lt; 10">{y()}-0{m()}-0{d()}</DisplayString>
+		<DisplayString Condition="y() &lt; 10">0{y()}-{m()}-{d()}</DisplayString>
+		<DisplayString Condition="m() &lt; 10">{y()}-0{m()}-{d()}</DisplayString>
+		<DisplayString Condition="d() &lt; 10">{y()}-{m()}-0{d()}</DisplayString>
+		<DisplayString>{y()}-{m()}-{d()}</DisplayString>
+		<Expand>
+			<Item Name="year" ExcludeView="simple">year</Item>
+			<Item Name="month" ExcludeView="simple">month</Item>
+			<Item Name="day" ExcludeView="simple">day</Item>
+		</Expand>
+	</Type>
+
+	<Type Name="toml::v3::time">
+		<Intrinsic Name="h" Expression="(int)hour" />
+		<Intrinsic Name="m" Expression="(int)minute" />
+		<Intrinsic Name="s" Expression="(int)(second + (int)(nanosecond / 1000000000.0))" />
+		<DisplayString Condition="h() &lt; 10 &amp;&amp; m() &lt; 10 &amp;&amp; s() &lt; 10">0{h()}:0{m()}:0{s()}</DisplayString>
+		<DisplayString Condition="h() &lt; 10 &amp;&amp; m() &lt; 10">0{h()}:0{m()}:{s()}</DisplayString>
+		<DisplayString Condition="h() &lt; 10 &amp;&amp; s() &lt; 10">0{h()}:{m()}:0{s()}</DisplayString>
+		<DisplayString Condition="m() &lt; 10 &amp;&amp; s() &lt; 10">{h()}:0{m()}:0{s()}</DisplayString>
+		<DisplayString Condition="h() &lt; 10">0{h()}:{m()}:{s()}</DisplayString>
+		<DisplayString Condition="m() &lt; 10">{h()}:0{m()}:{s()}</DisplayString>
+		<DisplayString Condition="s() &lt; 10">{h()}:{m()}:0{s()}</DisplayString>
+		<DisplayString>{h()}:{m()}:{s()}</DisplayString>
+		<Expand>
+			<Item Name="hour" ExcludeView="simple">hour</Item>
+			<Item Name="minute" ExcludeView="simple">minute</Item>
+			<Item Name="second" ExcludeView="simple">second</Item>
+			<Item Name="nanosecond" ExcludeView="simple">nanosecond</Item>
+		</Expand>
+	</Type>
+
+	<Type Name="toml::v3::time_offset">
+		<Intrinsic Name="absmin" Expression="((int)minutes ^ ((int)minutes >> 31)) - ((int)minutes >> 31)" />
+		<Intrinsic Name="h" Expression="absmin() / 60u" />
+		<Intrinsic Name="m" Expression="absmin() % 60u" />
+		<DisplayString Condition="minutes == 0">Z</DisplayString>
+		<DisplayString Condition="minutes &lt; 0 &amp;&amp; h() &lt; 10 &amp;&amp; m() &lt; 10">-0{h()}:0{m()}</DisplayString>
+		<DisplayString Condition="minutes &lt; 0 &amp;&amp; h() &lt; 10">-0{h()}:{m()}</DisplayString>
+		<DisplayString Condition="minutes &lt; 0 &amp;&amp; m() &lt; 10">-{h()}:0{m()}</DisplayString>
+		<DisplayString Condition="minutes &lt; 0">-{h()}:{m()}</DisplayString>
+		<DisplayString Condition="h() &lt; 10 &amp;&amp; m() &lt; 10">0{h()}:0{m()}</DisplayString>
+		<DisplayString Condition="h() &lt; 10">0{h()}:{m()}</DisplayString>
+		<DisplayString Condition="m() &lt; 10">{h()}:0{m()}</DisplayString>
+		<DisplayString>{h()}:{m()}</DisplayString>
+		<Expand>
+			<Item Name="minutes" ExcludeView="simple">minutes</Item>
+		</Expand>
+	</Type>
+
+	<Type Name="toml::v3::stdopt::date_time">
+		<AlternativeType Name="toml::v3::custopt::date_time" />
+		<DisplayString Condition="offset._Has_value">{date}T{time}{offset}</DisplayString>
+		<DisplayString>{date}T{time}</DisplayString>
+		<Expand>
+			<Item Name="date" ExcludeView="simple">date</Item>
+			<Item Name="time" ExcludeView="simple">time</Item>
+			<Item Name="offset" ExcludeView="simple">offset</Item>
+		</Expand>
+	</Type>
+
+	<Type Name="toml::v3::value&lt;std::basic_string&lt;char,*&gt;&gt;" Priority="High">
+		<DisplayString>{{ {val_,s8} }}</DisplayString>
+		<Expand>
+			<Item Name="value" ExcludeView="simple">val_,s8</Item>
+		</Expand>
+	</Type>
+
+	<Type Name="toml::v3::value&lt;*&gt;" Priority="MediumLow">
+		<DisplayString>{{ {val_} }}</DisplayString>
+		<Expand>
+			<Item Name="value" ExcludeView="simple">val_</Item>
+		</Expand>
+	</Type>
+
+	<Type Name="toml::v3::source_position">
+		<DisplayString>line {line,d}, column {column,d}</DisplayString>
+		<Expand>
+			<Item Name="line" ExcludeView="simple">line,d</Item>
+			<Item Name="column" ExcludeView="simple">column,d</Item>
+		</Expand>
+	</Type>
+
+	<Type Name="toml::v3::key">
+		<Intrinsic Name="source_begin_zero" Expression="!source_.begin.line &amp;&amp; !source_.begin.column" />
+		<DisplayString Condition="!source_begin_zero()">{key_,s8} ({source_.begin})</DisplayString>
+		<DisplayString Condition="source_begin_zero()">{key_,s8}</DisplayString>
+		<Expand>
+			<Item Name="[string]" ExcludeView="simple">key_,s8</Item>
+			<Item Name="[begin]" ExcludeView="simple">source_.begin</Item>
+			<Item Name="[end]" ExcludeView="simple">source_.end</Item>
+		</Expand>
+	</Type>
+
+	<Type Name="toml::v3::table">
+		<DisplayString>{map_}</DisplayString>
+		<Expand>
+			<!-- Modified from std::map visualizer in VS 2019 stl.natvis -->
+			<TreeItems>
+				<Size>map_._Mypair._Myval2._Myval2._Mysize</Size>
+				<HeadPointer>map_._Mypair._Myval2._Myval2._Myhead-&gt;_Parent</HeadPointer>
+				<LeftPointer>_Left</LeftPointer>
+				<RightPointer>_Right</RightPointer>
+				<ValueNode Condition="_Isnil == 0" Name="[{_Myval.first,s8}]">*_Myval.second</ValueNode>
+			</TreeItems>
+		</Expand>
+	</Type>
+
+	<Type Name="toml::v3::array">
+		<DisplayString>{elems_}</DisplayString>
+		<Expand>
+			<!-- Modified from std::vector visualizer in VS 2019 stl.natvis -->
+			<IndexListItems>
+				<Size>elems_._Mypair._Myval2._Mylast - elems_._Mypair._Myval2._Myfirst</Size>
+				<ValueNode>*elems_._Mypair._Myval2._Myfirst[$i]</ValueNode>
+			</IndexListItems>
+		</Expand>
+	</Type>
+
+	<Type Name="toml::v3::noex::parse_error">
+		<DisplayString>line {source_.begin.line}: {description_,s8b}</DisplayString>
+	</Type>
+
+	<Type Name="toml::v3::ex::parse_error">
+		<DisplayString>line {source_.begin.line}: {_Data._What,s8b}</DisplayString>
+	</Type>
+	
+	<Type Name="toml::v3::noex::parse_result">
+		<DisplayString Condition="!err_">{*reinterpret_cast&lt;toml::v3::table*&gt;(&amp;storage_.bytes)}</DisplayString>
+		<DisplayString Condition="err_">{*reinterpret_cast&lt;toml::v3::noex::parse_error*&gt;(&amp;storage_.bytes)}</DisplayString>
+		<Expand>
+			<Item Name="[table]" Condition="!err_">*reinterpret_cast&lt;toml::v3::table*&gt;(&amp;storage_.bytes)</Item>
+			<Item Name="[error]" Condition="err_">*reinterpret_cast&lt;toml::v3::noex::parse_error*&gt;(&amp;storage_.bytes)</Item>
+		</Expand>
+	</Type>
+
+
+</AutoVisualizer>

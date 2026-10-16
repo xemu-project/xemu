@@ -1,0 +1,2 @@
+returns-unknown.json: In command 'oops':
+returns-unknown.json:2: command's 'returns' uses unknown type 'NoSuchType'

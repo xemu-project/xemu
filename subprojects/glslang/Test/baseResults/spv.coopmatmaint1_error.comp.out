@@ -1,0 +1,30 @@
+spv.coopmatmaint1_error.comp
+ERROR: 0:39: 'coopMatTransposeEXT' : Cooperative matrix source Use must be Accumulator 
+ERROR: 0:39: 'coopMatTransposeEXT' : Cooperative matrix result Use must not be Accumulator 
+ERROR: 0:40: 'coopMatTransposeEXT' : Cooperative matrix source Use must be Accumulator 
+ERROR: 0:40: 'coopMatTransposeEXT' : Cooperative matrix result Use must not be Accumulator 
+ERROR: 0:49: 'coopMatReduceEXT' : reduceMask must be a constant expression 
+ERROR: 0:50: 'coopMatReduceEXT' : reduceMask must be a valid cooperative matrix reduction value 
+ERROR: 0:51: 'coopMatReduceEXT' : input and result component types must match 
+ERROR: 0:52: 'coopMatReduceEXT' : input and result scopes must match 
+ERROR: 0:53: 'coopMatReduceEXT' : input and result Use must be Accumulator 
+ERROR: 0:54: 'coopMatReduceEXT' : input and result Use must be Accumulator 
+ERROR: 0:55: 'coopMatReduceEXT' : result rows and columns must be half the input rows and columns for a 2x2 reduction 
+ERROR: 0:56: 'coopMatReduceEXT' : result rows must match input rows for a row reduction 
+ERROR: 0:57: 'coopMatReduceEXT' : result columns must match input columns for a column reduction 
+ERROR: 0:58: 'vectorCombine(vf162;vf162;' : parameter types must match cooperative matrix component type 
+ERROR: 0:58: 'vectorCombine(vf162;vf162;' : parameter types must match cooperative matrix component type 
+ERROR: 0:58: 'vectorCombine(vf162;vf162;' : return type must match cooperative matrix component type 
+ERROR: 0:77: '' : cooperative matrix input and result types must match 
+ERROR: 0:78: 'badCoordElem(vu2;u1;f161;' : row/column parameters must be uint32_t 
+ERROR: 0:79: 'vectorElem(u1;u1;vf162;' : third parameter must match cooperative matrix component type 
+ERROR: 0:79: 'vectorElem(u1;u1;vf162;' : return type must match cooperative matrix component type 
+ERROR: 0:80: 'optionalElem(u1;u1;f161;f161;' : optional cooperative matrix types must match the input matrix type 
+ERROR: 0:81: 'optionalElem(u1;u1;f161;f161;' : parameter types must match or be cooperative matrix component type 
+ERROR: 0:82: 'badMatrixOptionalElem(u1;u1;f161;vf162;' : parameters corresponding to cooperative matrices must match the matrix component type 
+ERROR: 0:88: 'coopMatTransposeEXT' : rows/columns must be swapped 
+ERROR: 0:89: 'coopMatTransposeEXT' : scope must match 
+ERROR: 25 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

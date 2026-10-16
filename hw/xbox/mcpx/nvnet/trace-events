@@ -1,0 +1,26 @@
+# See docs/devel/tracing.rst for syntax documentation.
+
+# nvnet.c
+nvnet_phy_reg_read(unsigned int phy_addr, uint8_t addr, const char *name, uint16_t val) "phy %d addr 0x%"PRIx8" %s val 0x%"PRIx16
+nvnet_phy_reg_write(unsigned int phy_addr, uint8_t addr, const char *name, uint16_t val) "phy %d addr 0x%"PRIx8" %s val 0x%"PRIx16
+nvnet_reg_read(uint32_t addr, const char *name, unsigned int size, uint64_t val) "addr 0x%"PRIx32" %s size %d val 0x%"PRIx64
+nvnet_reg_write(uint32_t addr, const char *name, unsigned int size, uint64_t val) "addr 0x%"PRIx32" %s size %d val 0x%"PRIx64
+nvnet_io_read(uint32_t addr, unsigned int size, uint64_t val) "addr 0x%"PRIx32" size %d val 0x%"PRIx64
+nvnet_io_write(uint32_t addr, unsigned int size, uint64_t val) "addr 0x%"PRIx32" size %d val 0x%"PRIx64
+nvnet_rx_filter_bcast_match(void) "broadcast match"
+nvnet_rx_filter_mcast_match(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4, uint8_t b5) "multicast match: %02x:%02x:%02x:%02x:%02x:%02x"
+nvnet_rx_filter_mcast_mismatch(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4, uint8_t b5) "multicast mismatch: %02x:%02x:%02x:%02x:%02x:%02x"
+nvnet_rx_filter_ucast_match(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4, uint8_t b5) "unicast match: %02x:%02x:%02x:%02x:%02x:%02x"
+nvnet_rx_filter_ucast_mismatch(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4, uint8_t b5) "unicast mismatch: %02x:%02x:%02x:%02x:%02x:%02x"
+nvnet_rx_oversized(size_t size) "Received packet dropped because it was oversized (%zu bytes)"
+nvnet_rx_filter_dropped(void) "Received packet dropped by RX filter"
+nvnet_link_negotiation_start(void) "Start link auto negotiation"
+nvnet_link_negotiation_done(void) "Auto negotiation is completed"
+nvnet_link_status_changed(bool status) "New link status: %d"
+nvnet_cant_rx(bool rx_en, bool dma_en, bool link_up, bool buf_avail) "rx_en:%d dma_en:%d link_up:%d buf_avail:%d"
+nvnet_cant_tx(bool tx_en, bool dma_en, bool link_up) "tx_en:%d dma_en:%d link_up:%d"
+nvnet_update_irq(uint32_t status, uint32_t mask) "status 0x%"PRIx32" mask 0x%"PRIx32
+nvnet_desc_store(uint32_t desc_addr, uint32_t buf_addr, uint16_t length, uint16_t flags) "addr 0x%"PRIx32" buf 0x%"PRIx32" length 0x%"PRIx16" flags 0x%"PRIx16
+nvnet_rx_dma(uint32_t addr, size_t size) "addr 0x%"PRIx32" size 0x%zx"
+nvnet_tx_dma(uint32_t addr, size_t size) "addr 0x%"PRIx32" size 0x%zx"
+nvnet_packet_tx(size_t size) "size 0x%zx"

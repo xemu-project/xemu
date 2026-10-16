@@ -1,0 +1,28 @@
+// Covers buffer_type descriptors nested in a structured resourceheap.
+#version 460
+#extension GL_EXT_descriptor_heap : require
+#extension GL_EXT_structured_descriptor_heap : require
+#extension GL_EXT_scalar_block_layout : require
+
+layout(local_size_x = 1) in;
+
+layout(buffer_type, scalar) buffer DataBuffer {
+    uint data0;
+    uint data1;
+};
+
+struct Material {
+    vec4 data0;
+    DataBuffer dataBuffer;
+};
+
+layout(heap_offset = 1024) resourceheap BufferHeap {
+    uint count;
+    DataBuffer dataBuffer;
+    Material materials[];
+} bufferHeap;
+
+void main()
+{
+    bufferHeap.dataBuffer.data1 = bufferHeap.materials[3].dataBuffer.data1;
+}

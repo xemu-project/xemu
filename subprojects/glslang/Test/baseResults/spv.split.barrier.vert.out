@@ -1,0 +1,7 @@
+spv.split.barrier.vert
+ERROR: spv.split.barrier.vert:6: 'controlBarrierArrive' : no matching overloaded function found 
+ERROR: spv.split.barrier.vert:7: 'controlBarrierWait' : no matching overloaded function found 
+ERROR: 2 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

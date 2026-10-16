@@ -1,0 +1,86 @@
+option(
+    '32-endjmp',
+    type: 'boolean',
+    value: false,
+    description: 'Switch multi-branch finalization stage of XXH32 by a single jump',
+)
+option(
+    'cli',
+    type: 'boolean',
+    value: true,
+    description: 'Build the CLI',
+)
+option(
+    'cpu-little-endian',
+    type: 'feature',
+    value: 'auto',
+    description: 'Force endianness',
+)
+option(
+    'dispatch',
+    type: 'boolean',
+    value: false,
+    description: 'See DISPATCH=1 for information about xxh_x86dispatch.c',
+)
+option(
+    'force-align-check',
+    type: 'feature',
+    value: 'auto',
+    description: 'Use a faster direct read path when input is aligned',
+)
+option(
+    'force-memory-access',
+    type: 'combo',
+    choices: ['default', 'attribute', 'unaligned-reads', 'byteshift'],
+    value: 'default',
+    description: 'See XXH_FORCE_MEMORY_ACCESS',
+)
+option(
+    'inline-all',
+    type: 'boolean',
+    value: false,
+    description: 'Make all functions inline',
+)
+option(
+    'inline-hints',
+    type: 'feature',
+    value: 'auto',
+    description: 'See XXH_NO_INLINE_HINTS',
+)
+option(
+    'long-long',
+    type: 'boolean',
+    value: true,
+    description: 'Include compilation of algorithms relying on 64-bit types',
+)
+option(
+    'namespace',
+    type: 'string',
+    value: '',
+    description: 'Prefixes all symbols with the value of XXH_NAMESPACE',
+)
+option(
+    'prefetch',
+    type: 'boolean',
+    value: true,
+    description: 'Disable prefetching. XXH3 only',
+)
+option(
+    'prefetch-dist',
+    type: 'integer',
+    value: 0,
+    description: 'Select prefetching distance. XXH3 only',
+)
+option(
+    'vector',
+    type: 'combo',
+    choices: ['default', 'scalar', 'sse2', 'avx2', 'avx512', 'neon', 'vsx'],
+    value: 'default',
+    description: 'Manually select a vector instruction set',
+)
+option(
+    'xxh3',
+    type: 'boolean',
+    value: true,
+    description: 'Removes symbols related to XXH3 (both 64 & 128 bits) from generated binary',
+)

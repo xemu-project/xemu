@@ -1,0 +1,38 @@
+generator       : Khronos Glslang Reference Front End
+source lang     : GLSL
+source lang ver : 460
+source file     : buffer_pointer.glsl
+entry point     : main (stage=PS)
+
+
+  Output variables: 1
+
+    0:
+      spirv id  : 26
+      location  : 0
+      type      : float4
+      semantic  :
+      name      : Color
+      qualifier :
+
+
+  Push constant blocks: 1
+
+    0:
+      spirv id : 14
+      name     : push (PushData)
+          // size = 16, padded size = 16
+          struct PushData {
+
+              // abs offset = 0, rel offset = 0, size = 8, padded size = 16
+              ref struct Data {
+                  float g0; // abs offset = 0, rel offset = 0, size = 4, padded
+size = 4 UNUSED
+                  float g1; // abs offset = 4, rel offset = 4, size = 4, padded
+size = 4
+                  float g2; // abs offset = 8, rel offset = 8, size = 4, padded
+size = 8 UNUSED
+              } data_ptr;
+
+          } push;
+

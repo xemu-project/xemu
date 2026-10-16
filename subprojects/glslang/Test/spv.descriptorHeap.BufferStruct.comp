@@ -1,0 +1,18 @@
+#version 450
+#extension GL_EXT_descriptor_heap: require
+
+struct Data
+{
+    mat4 m;
+    float f;
+};
+
+layout(descriptor_heap) uniform U { Data inputData;    }  ubo[];
+layout(descriptor_heap)  buffer O { Data outputData[]; } ssbo[];
+
+void main()
+{
+    Data data = ubo[1].inputData;
+    data.f += 1.0;
+    ssbo[2].outputData[3] = data;
+}

@@ -1,0 +1,30 @@
+9c9,10
+<                OpEntryPoint Vertex %main "main" %oUV %iUV %_ %pos %colour
+---
+> 	       OpEntryPoint Vertex %entry_vert_ "entry_vert" %_ %iUV %oUV %pos
+> 	       OpEntryPoint Fragment %entry_frag_ "entry_frag" %iUV %colour
+13d13
+<                OpName %main "main"
+28a29,31
+>                OpName %PushConstantFrag "PushConstantFrag"
+>                OpMemberName %PushConstantFrag 0 "val"
+>                OpName %push_constant_frag "push_constant_frag"
+42c45
+<                OpDecorate %colour Location 1
+---
+>                OpDecorate %colour Location 0
+70a74,76
+> %PushConstantFrag = OpTypeStruct %float
+> %_ptr_PushConstant_PushConstantFrag = OpTypePointer PushConstant %PushConstantFrag
+> %push_constant_frag = OpVariable %_ptr_PushConstant_PushConstantFrag PushConstant
+79,84d84
+<        %main = OpFunction %void None %3
+<           %5 = OpLabel
+<          %68 = OpFunctionCall %void %entry_vert_
+<          %69 = OpFunctionCall %void %entry_frag_
+<                OpReturn
+<                OpFunctionEnd
+114c114
+<          %63 = OpAccessChain %_ptr_PushConstant_float %push_constant_vert %int_0
+---
+>          %63 = OpAccessChain %_ptr_PushConstant_float %push_constant_frag %int_0

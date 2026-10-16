@@ -1,0 +1,17 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    int i;
+} data;
+
+// A message supplied by a macro. It expands to a string literal token, so it is
+// still a string literal and must keep compiling.
+#define MSG "macro: %d"
+
+void main() {
+    abortEXT(MSG, data.i);
+}

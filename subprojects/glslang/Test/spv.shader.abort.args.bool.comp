@@ -1,0 +1,14 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    int  i;
+    ivec3 v;
+} data;
+
+void main() {
+    abortEXT("bools: %d %v3d", data.i > 0, greaterThan(data.v, ivec3(0)));
+}

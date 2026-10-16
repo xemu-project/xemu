@@ -1,0 +1,12 @@
+spv.pragma.stdgl.oob.vert
+ERROR: 0:5: '#pragma' : truncated STDGL declaration 
+ERROR: 0:6: '#pragma' : truncated STDGL declaration 
+ERROR: 0:7: '#pragma' : truncated STDGL declaration 
+ERROR: 0:8: '#pragma' : Unknown STDGL declaration: something
+ERROR: 0:9: '#pragma' : truncated STDGL declaration 
+ERROR: 0:10: '#pragma' : Invalid STDGL declaration 
+ERROR: 0:11: '#pragma' : Invalid STDGL invariant declaration: 'some' (expected 'all')
+ERROR: 7 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

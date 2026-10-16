@@ -1,0 +1,11 @@
+#version 460
+#extension GL_EXT_ray_query : enable
+#extension GL_EXT_opacity_micromap_ray_query_mode : enable
+
+// gl_EnableOpacityMicromapEXT may only be redeclared as a 'const bool' (or turned into a
+// specialization constant with constant_id); a non-const redeclaration is an error.
+bool gl_EnableOpacityMicromapEXT = true;
+
+void main()
+{
+}

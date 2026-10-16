@@ -1,0 +1,55 @@
+#version 450 core
+#extension GL_KHR_memory_scope_semantics : enable
+
+#extension GL_KHR_cooperative_matrix : enable
+#extension GL_QCOM_multiple_wait_queues : enable
+
+layout(constant_id = 0)  const uint TOTAL_K = 1;
+
+layout(constant_id = 3)  const uint TILE_M = 1;
+layout(constant_id = 4)  const uint TILE_N = 1;
+layout(constant_id = 7)  const uint TILE_K = 1;
+
+layout(set=0, binding=0) readonly buffer InputA { float x[]; } inputA;
+layout(set=0, binding=1) readonly buffer InputB { float x[]; } inputB;
+layout(set=0, binding=2) readonly buffer InputC { float x[]; } inputC;
+
+layout(local_size_x = 64, local_size_y = 2, local_size_z = 2) in;
+
+#define STRIDE_A 16
+#define STRIDE_B 16
+
+void coop_matmul(uint row, uint col)
+{
+  coopmat<float, gl_ScopeSubgroup, TILE_M, 8, gl_MatrixUseA> matA;
+  coopmat<float, gl_ScopeSubgroup, 8, TILE_N, gl_MatrixUseB> matB;
+  coopmat<float, gl_ScopeSubgroup, TILE_M, TILE_N, gl_MatrixUseAccumulator> matC;
+  uint step;
+
+  [[multiple_wait_queuesQCOM]]
+  for (step = 0; step < TOTAL_K; step += TILE_K) {
+    uint subMatrixAStart = row * STRIDE_A + step;
+    uint subMatrixBStart = col * STRIDE_B + step;
+
+    coopMatLoad(matA, inputA.x, subMatrixAStart, STRIDE_A, gl_CooperativeMatrixLayoutRowMajor); // Global to CoopMat
+    coopMatLoad(matB, inputB.x, subMatrixBStart, STRIDE_B, gl_CooperativeMatrixLayoutColumnMajor); // Global to CoopMat
+
+    matC = coopMatMulAdd(matA, matB, matC);
+  }
+
+  [[multiple_wait_queuesQCOM(2)]]
+  for (step = 0; step < TOTAL_K; step += TILE_K) {
+    uint subMatrixAStart = row * STRIDE_A + step;
+    uint subMatrixBStart = col * STRIDE_B + step;
+
+    coopMatLoad(matA, inputA.x, subMatrixAStart, STRIDE_A, gl_CooperativeMatrixLayoutRowMajor); // Global to CoopMat
+    coopMatLoad(matB, inputB.x, subMatrixBStart, STRIDE_B, gl_CooperativeMatrixLayoutColumnMajor); // Global to CoopMat
+
+    matC = coopMatMulAdd(matA, matB, matC);
+  }
+}
+
+void main()
+{
+  coop_matmul(0, 0);
+}

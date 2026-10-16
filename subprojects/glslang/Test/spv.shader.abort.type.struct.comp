@@ -1,0 +1,30 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+struct Inner {
+    int  i;
+    vec2 v;
+};
+
+struct Outer {
+    Inner inner;
+    float arr[3];
+    mat2  m;
+};
+
+layout(set = 0, binding = 0) buffer Data {
+    float seed;
+} data;
+
+// Structures, including one nesting a struct, an array and a matrix. Every
+// level needs member offsets of its own, and the matrix its stride.
+void main() {
+    float s = data.seed;
+    Inner inner = Inner(int(s), vec2(s));
+    Outer outer = Outer(inner, float[3](s, s, s), mat2(s));
+
+    abortEXT("", inner, outer);
+}

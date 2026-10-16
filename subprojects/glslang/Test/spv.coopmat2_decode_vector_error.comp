@@ -1,0 +1,56 @@
+#version 450 core
+#extension GL_KHR_memory_scope_semantics : enable
+#extension GL_KHR_cooperative_matrix : enable
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+#extension GL_NV_cooperative_matrix2 : enable
+#extension GL_NV_cooperative_matrix_decode_vector : enable
+#extension GL_EXT_buffer_reference : enable
+
+layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+buffer BufType {
+   float16_t x[];
+} Buf;
+
+layout(buffer_reference, std430, buffer_reference_align = 4) buffer dwordBuf {
+    uint32_t d;
+};
+
+float16_t decodeF16Scalar(const in dwordBuf b, const in uint32_t blockCoords[2], const in uint32_t coordInBlock[2])
+{
+    return float16_t(b.d);
+}
+
+f16vec2 decodeF16x2(const in dwordBuf b, const in uint32_t blockCoords[2], const in uint32_t coordInBlock[2])
+{
+    return unpackFloat2x16(b.d);
+}
+
+// Vector return with V == 3, not in {2, 4, 8}.
+f16vec3 decodeF16x3_badLength(const in dwordBuf b, const in uint32_t blockCoords[2], const in uint32_t coordInBlock[2])
+{
+    return f16vec3(0);
+}
+
+// Vector return whose component type doesn't match the matrix type.
+vec2 decodeF32x2_badType(const in dwordBuf b, const in uint32_t blockCoords[2], const in uint32_t coordInBlock[2])
+{
+    return vec2(0);
+}
+
+void main()
+{
+    coopmat<float16_t, gl_ScopeWorkgroup, 64, 32, gl_MatrixUseA> A;
+
+    tensorLayoutNV<2> t  = createTensorLayoutNV(2);
+
+    // Single-arg form must be scalar; a vector return is only legal in
+    // the second function position now.
+    coopMatLoadTensorNV(A, Buf.x, 0, t, decodeF16x2);
+
+    // V == 3, not in {2, 4, 8}.
+    coopMatLoadTensorNV(A, Buf.x, 0, t, decodeF16Scalar, decodeF16x3_badLength);
+
+    // Vector component type doesn't match the matrix component type.
+    coopMatLoadTensorNV(A, Buf.x, 0, t, decodeF16Scalar, decodeF32x2_badType);
+}

@@ -1,0 +1,20 @@
+#version 460
+#extension GL_EXT_long_vector : enable
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, std430) buffer InBuf {
+    vector<int, 12> vals[];
+} inbuf;
+
+layout(set = 0, binding = 1, std430) buffer OutBuf {
+    int out_len;
+    int out_last;
+} outbuf;
+
+void main()
+{
+    int n = inbuf.vals.length();
+    outbuf.out_len = n;
+    outbuf.out_last = inbuf.vals[n - 1][11];
+}

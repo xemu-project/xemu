@@ -1,0 +1,12 @@
+#version 460 core
+
+#extension GL_ARM_tensors : enable
+#extension GL_EXT_bfloat16 : enable
+#extension GL_EXT_float_e5m2 : enable
+#extension GL_EXT_float_e4m3 : enable
+
+uniform tensorARM<bfloat16_t, 1> bfloat16;
+uniform tensorARM<floate5m2_t, 1> floate5m2;
+uniform tensorARM<floate4m3_t, 1> floate4m3;
+
+void main() {}

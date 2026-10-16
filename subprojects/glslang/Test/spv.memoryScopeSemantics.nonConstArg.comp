@@ -1,0 +1,24 @@
+#version 450
+#extension GL_KHR_memory_scope_semantics : require
+
+layout(local_size_x = 1) in;
+layout(binding = 0) buffer BufferU { coherent uint x; } bufferu;
+layout(binding = 1, r32ui) coherent uniform uimage2D imageu;
+
+void main()
+{
+    // The Scope, storage-class-semantics and semantics operands of these
+    // operations must be compile-time constants. Passing a non-constant used to
+    // crash the front end (null TIntermConstantUnion) or trip an id/immediate
+    // assert in SPIR-V generation for the Scope; each must now be diagnosed.
+    int dyn = int(gl_GlobalInvocationID.x);
+
+    uint origu = atomicAdd(bufferu.x, 1u, gl_ScopeDevice, gl_StorageSemanticsBuffer, dyn);
+    origu = atomicLoad(bufferu.x, gl_ScopeDevice, dyn, 0);
+    atomicStore(bufferu.x, 1u, dyn, gl_StorageSemanticsBuffer, gl_SemanticsRelease);
+    origu = atomicCompSwap(bufferu.x, 0u, 1u, gl_ScopeDevice, gl_StorageSemanticsBuffer,
+                           gl_SemanticsAcquireRelease, gl_StorageSemanticsBuffer, dyn);
+    imageAtomicAdd(imageu, ivec2(0, 0), 1u, gl_ScopeDevice, gl_StorageSemanticsImage, dyn);
+    memoryBarrier(gl_ScopeWorkgroup, gl_StorageSemanticsBuffer, dyn);
+    controlBarrier(dyn, gl_ScopeWorkgroup, gl_StorageSemanticsBuffer, gl_SemanticsAcquireRelease);
+}

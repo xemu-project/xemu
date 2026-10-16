@@ -1,0 +1,7 @@
+[wrap-git]
+url = https://github.com/KhronosGroup/SPIRV-Reflect
+revision = f3e261fda74ca81b44d1941931c6b7b5fe236d0e
+depth = 1
+
+[update]
+tag_regex = ^(vulkan-sdk-)?[\d\.]+$

@@ -1,0 +1,24 @@
+#version 450
+
+#extension GL_EXT_abort : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    float seed;
+} data;
+
+// 16-bit floats, scalar, vector and matrix. The matrices are built from explicit
+// columns because f16mat2(scalar) and friends currently miscompile, emitting a
+// 32-bit zero for the off-diagonal entries.
+void main() {
+    float16_t s = float16_t(data.seed);
+    f16vec2 c2 = f16vec2(s);
+    f16vec3 c3 = f16vec3(s);
+    f16vec4 c4 = f16vec4(s);
+    abortEXT("", s, c2, c3, c4,
+             f16mat2(c2, c2),
+             f16mat3(c3, c3, c3),
+             f16mat4(c4, c4, c4, c4));
+}
