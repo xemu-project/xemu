@@ -519,6 +519,8 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                                    bool force);
 void pgraph_vk_surface_update(NV2AState *d, bool upload, bool color_write,
                               bool zeta_write);
+void pgraph_vk_sync_region_for_transfer(NV2AState *d, hwaddr addr, hwaddr size,
+                                        bool prepare_write);
 SurfaceBinding *pgraph_vk_surface_get(NV2AState *d, hwaddr addr);
 void pgraph_vk_set_surface_dirty(PGRAPHState *pg, bool color, bool zeta);
 void pgraph_vk_set_surface_scale_factor(NV2AState *d, unsigned int scale);
