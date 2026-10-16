@@ -127,7 +127,7 @@ void pgraph_gl_clear_surface(NV2AState *d, uint32_t parameter)
     if (r->zeta_binding) {
         r->zeta_binding->cleared = full_clear && write_zeta;
     }
-    
+
     pg->clearing = false;
 }
 
@@ -485,6 +485,5 @@ void pgraph_gl_flush_draw(NV2AState *d)
                      0, index_count);
     } else {
         NV2A_GL_DPRINTF(true, "EMPTY NV097_SET_BEGIN_END");
-        NV2A_UNCONFIRMED("EMPTY NV097_SET_BEGIN_END");
     }
 }
