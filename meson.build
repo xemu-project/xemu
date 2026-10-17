@@ -282,7 +282,8 @@ enable_modules = get_option('modules') \
 # Check version if FreeBSD host
 freebsd_version_int = 0
 if host_os == 'freebsd'
-  freebsd_version_str = run_command('sysctl', '-n', 'kern.osreldate').stdout().strip()
+  freebsd_version_str = cc.get_define('__FreeBSD_version',
+                                     prefix: '#include <sys/param.h>')
   freebsd_version_int = freebsd_version_str.to_int()
 endif
 
