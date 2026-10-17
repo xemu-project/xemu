@@ -206,13 +206,9 @@ static void nv2a_vga_gfx_update(void *opaque)
     VGACommonState *vga = opaque;
     vga->hw_ops->gfx_update(vga);
 
-
     NV2AState *d = container_of(vga, NV2AState, vga);
-    if (!(d->pcrtc.pending_interrupts & NV_PCRTC_INTR_0_VBLANK)) {
-        smbus_cx25871_notify_vblank();
-        d->pcrtc.pending_interrupts |= NV_PCRTC_INTR_0_VBLANK;
-    }
-
+    d->pcrtc.pending_interrupts |= NV_PCRTC_INTR_0_VBLANK;
+    smbus_cx25871_notify_vblank();
     d->pcrtc.raster = 0;
 
     nv2a_update_irq(d);
