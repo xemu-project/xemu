@@ -73,6 +73,40 @@ static void patch_alpha(uint8_t *dest, size_t width_pixels, size_t height,
     }
 }
 
+static bool surface_fully_overwritten(const SurfaceBinding *surface,
+                                      hwaddr dest_addr, size_t dest_pitch,
+                                      size_t row_bytes, size_t num_rows)
+{
+    if (surface->swizzle || !dest_pitch || surface->pitch != dest_pitch ||
+        surface->vram_addr < dest_addr) {
+        return false;
+    }
+
+    hwaddr offset = surface->vram_addr - dest_addr;
+    hwaddr first_row = offset / dest_pitch;
+    hwaddr first_col = offset % dest_pitch;
+    hwaddr surface_row_bytes = surface->width * surface->fmt.bytes_per_pixel;
+
+    return first_col + surface_row_bytes <= row_bytes &&
+           first_row + surface->height <= num_rows;
+}
+
+static void discard_overwritten_surfaces(PGRAPHState *pg, hwaddr dest_addr,
+                                         size_t dest_pitch, size_t row_bytes,
+                                         size_t num_rows)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    SurfaceBinding *surface;
+
+    QTAILQ_FOREACH (surface, &r->surfaces, entry) {
+        if (surface_fully_overwritten(surface, dest_addr, dest_pitch, row_bytes,
+                                      num_rows)) {
+            surface->download_pending = false;
+            surface->draw_dirty = false;
+        }
+    }
+}
+
 void pgraph_vk_image_blit(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -156,8 +190,15 @@ void pgraph_vk_image_blit(NV2AState *d)
                                        (leftover_bytes ? leftover_bytes : row_pixels * bytes_per_pixel) : 0;
     pgraph_vk_download_surfaces_in_range_if_dirty(pg, source_addr, source_size);
 
-    // TODO: just clear dirty_draw flag on surfaces that are fully overlapped.
-    pgraph_vk_download_surfaces_in_range_if_dirty(pg, dest_addr, clipped_dest_size);
+    // Must happen after the source download so that surfaces overlapping both
+    // regions are synchronized before being discarded.
+    if (image_blit->operation == NV09F_SET_OPERATION_SRCCOPY) {
+        discard_overwritten_surfaces(pg, dest_addr,
+                                     context_surfaces->dest_pitch, row_bytes,
+                                     adjusted_height);
+    }
+    pgraph_vk_download_surfaces_in_range_if_dirty(pg, dest_addr,
+                                                  clipped_dest_size);
 
     NV2A_DPRINTF("  blit 0x%tx -> 0x%tx (Size: %llu, Clipped Height: %zu)\n",
                  source_addr, dest_addr, dest_size, adjusted_height);
