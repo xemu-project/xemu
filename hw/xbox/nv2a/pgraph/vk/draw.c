@@ -1387,6 +1387,10 @@ static void begin_pre_draw(PGRAPHState *pg)
     }
 
     pgraph_vk_ensure_command_buffer(pg);
+
+    if (!pg->clearing) {
+        pgraph_vk_update_texture_timestamps(pg);
+    }
 }
 
 static float clamp_line_width_to_device_limits(PGRAPHState *pg, float width)
