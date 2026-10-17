@@ -1215,12 +1215,16 @@ typedef void (*qemu_plugin_command_cb_t)(const char *args);
 
 /**
  * qemu_plugin_register_command() - registers a debug monitor command
+ * @id: plugin ID
  * @name: String prefix used to route arguments to the callback.
  * @cb: The callback to be invoked when "plugin <name>" is entered in the debug
  *      monitor.
+ *
+ * Commands are automatically unregistered when the plugin is reset or
+ * uninstalled.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_command(const char *name,
+void qemu_plugin_register_command(qemu_plugin_id_t id, const char *name,
                                   qemu_plugin_command_cb_t cb);
 
 /**

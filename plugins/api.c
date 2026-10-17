@@ -51,16 +51,21 @@
 // <xemu>
 extern struct qemu_plugin_state plugin;
 
-typedef void (*qemu_plugin_command_cb_t)(const char *args);
+struct qemu_plugin_command {
+    qemu_plugin_id_t id;
+    qemu_plugin_command_cb_t callback;
+};
+
 static GHashTable *plugin_cmd_table = NULL;
 
-void qemu_plugin_register_command(const char *name, void (*cb)(const char *))
+void qemu_plugin_register_command(qemu_plugin_id_t id, const char *name,
+                                  qemu_plugin_command_cb_t cb)
 {
     QEMU_LOCK_GUARD(&plugin.lock);
 
     if (!plugin_cmd_table) {
         plugin_cmd_table =
-            g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+            g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     }
 
     if (g_hash_table_contains(plugin_cmd_table, name)) {
@@ -69,7 +74,10 @@ void qemu_plugin_register_command(const char *name, void (*cb)(const char *))
                 name);
     }
 
-    g_hash_table_insert(plugin_cmd_table, g_strdup(name), (gpointer)cb);
+    struct qemu_plugin_command *cmd = g_new(struct qemu_plugin_command, 1);
+    cmd->id = id;
+    cmd->callback = cb;
+    g_hash_table_insert(plugin_cmd_table, g_strdup(name), cmd);
 }
 
 QEMU_DISABLE_CFI
@@ -81,10 +89,11 @@ bool qemu_plugin_dispatch_cmd(const char *name, const char *args)
         return false;
     }
 
-    qemu_plugin_command_cb_t cb =
-        (qemu_plugin_command_cb_t)g_hash_table_lookup(plugin_cmd_table, name);
+    struct qemu_plugin_command *cmd =
+        g_hash_table_lookup(plugin_cmd_table, name);
 
-    if (cb) {
+    if (cmd) {
+        qemu_plugin_command_cb_t cb = cmd->callback;
         cb(args ? args : "");
         return true;
     }
@@ -97,6 +106,20 @@ void qemu_plugin_unregister_command(const char *name)
 
     if (plugin_cmd_table) {
         g_hash_table_remove(plugin_cmd_table, name);
+    }
+}
+
+static gboolean plugin_cmd_owned_by(gpointer key, gpointer value,
+                                    gpointer user_data)
+{
+    struct qemu_plugin_command *cmd = value;
+    return cmd->id == *(qemu_plugin_id_t *)user_data;
+}
+
+void qemu_plugin_unregister_commands__locked(qemu_plugin_id_t id)
+{
+    if (plugin_cmd_table) {
+        g_hash_table_foreach_remove(plugin_cmd_table, plugin_cmd_owned_by, &id);
     }
 }
 // </xemu>
