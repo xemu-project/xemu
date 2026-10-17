@@ -293,6 +293,9 @@ unsigned int pgraph_gl_get_surface_scale_factor(NV2AState *d);
 int pgraph_gl_get_framebuffer_surface(NV2AState *d);
 /**  Note: The caller must set up a clean GL context before invoking. */
 void pgraph_gl_determine_gpu_properties(void);
+#define PROBE_GLSL_VERSION_DIRECTIVE "#version 400\n"
+#define PROBE_GL_VERSION_STRING "4.0"
+
 GPUProperties *pgraph_gl_get_gpu_properties(void);
 
 #endif
