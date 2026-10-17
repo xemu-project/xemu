@@ -3007,7 +3007,7 @@ void pgraph_get_clear_color(PGRAPHState *pg, float rgba[4])
         *a = 0.f;
         break;
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_Z1A7R8G8B8:
-        *a = ((clear_color >> 24) & 0x7F) / 127.0f;
+        *a = ((clear_color >> 24) & 0x7F) / 255.0f;
         break;
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_O1A7R8G8B8:
         *a = (0x80 | ((clear_color >> 24) & 0x7F)) / 255.0f;
