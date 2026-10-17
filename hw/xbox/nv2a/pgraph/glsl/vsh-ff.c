@@ -185,7 +185,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         /* Set each component individually */
         /* FIXME: could be nicer if some channels share the same texgen */
         for (j = 0; j < 4; j++) {
-            /* TODO: TexGen View Model missing! */
             char c = "xyzw"[j];
             char cSuffix = "STRQ"[j];
             switch (state->fixed_function.texgen[i][j]) {
@@ -205,7 +204,11 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 assert(j < 2);  /* Channels S,T only! */
                 mstring_append(body, "{\n");
                 /* FIXME: u, r and m only have to be calculated once */
-                mstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
+                if (state->fixed_function.texgen_infinite_viewer) {
+                    mstring_append(body, "  vec3 u = vec3(0.0, 0.0, 1.0);\n");
+                } else {
+                    mstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
+                }
                 //FIXME: tNormal before or after normalization? Always normalize?
                 mstring_append(body, "  vec3 r = reflect(u, tNormal);\n");
 
@@ -225,7 +228,11 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 assert(j < 3); /* Channels S,T,R only! */
                 mstring_append(body, "{\n");
                 /* FIXME: u and r only have to be calculated once, can share the one from SPHERE_MAP */
-                mstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
+                if (state->fixed_function.texgen_infinite_viewer) {
+                    mstring_append(body, "  vec3 u = vec3(0.0, 0.0, 1.0);\n");
+                } else {
+                    mstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
+                }
                 mstring_append(body, "  vec3 r = reflect(u, tNormal);\n");
                 mstring_append_fmt(body, "  oT%d.%c = r.%c;\n",
                                    i, c, c);
@@ -258,9 +265,9 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         mstring_append(body, "  oB1 = backSpecular;\n");
     } else {
         //FIXME: Do 2 passes if we want 2 sided-lighting?
-        static char alpha_source_diffuse[] = "diffuse.a";
-        static char alpha_source_specular[] = "specular.a";
-        static char alpha_source_material[] = "material_alpha";
+        static const char alpha_source_diffuse[] = "diffuse.a";
+        static const char alpha_source_specular[] = "specular.a";
+        static const char alpha_source_material[] = "material_alpha";
         const char *alpha_source = alpha_source_diffuse;
         if (state->fixed_function.diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) {
             alpha_source = alpha_source_material;
@@ -268,21 +275,44 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             alpha_source = alpha_source_specular;
         }
 
-        if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
-            mstring_append_fmt(body, "oD0 = vec4(sceneAmbientColor, %s);\n", alpha_source);
-        } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
-            mstring_append_fmt(body, "oD0 = vec4(diffuse.rgb, %s);\n", alpha_source);
-        } else if (state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
-            mstring_append_fmt(body, "oD0 = vec4(specular.rgb, %s);\n", alpha_source);
-        }
+        const char *emission_src =
+            state->fixed_function.emission_src == MATERIAL_COLOR_SRC_DIFFUSE ?
+                "diffuse.rgb" :
+                "specular.rgb";
+        const char *ambient_src =
+            state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE ?
+                "diffuse.rgb" :
+                "specular.rgb";
 
-        mstring_append(body, "oD0.rgb *= materialEmissionColor.rgb;\n");
-        if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_MATERIAL) {
-            mstring_append(body, "oD0.rgb += sceneAmbientColor;\n");
-        } else if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_DIFFUSE) {
-            mstring_append(body, "oD0.rgb += diffuse.rgb;\n");
-        } else if (state->fixed_function.emission_src == MATERIAL_COLOR_SRC_SPECULAR) {
-            mstring_append(body, "oD0.rgb += specular.rgb;\n");
+        bool use_scene_ambient =
+            state->fixed_function.emission_src == MATERIAL_COLOR_SRC_MATERIAL ||
+            state->fixed_function.ambient_src == MATERIAL_COLOR_SRC_MATERIAL;
+        if (use_scene_ambient) {
+            mstring_append_fmt(body, "oD0 = vec4(sceneAmbientColor, %s);\n",
+                               alpha_source);
+
+            const char *added_src = NULL;
+            if (state->fixed_function.emission_src !=
+                MATERIAL_COLOR_SRC_MATERIAL) {
+                added_src = emission_src;
+            } else if (state->fixed_function.ambient_src !=
+                       MATERIAL_COLOR_SRC_MATERIAL) {
+                added_src = ambient_src;
+            }
+            if (added_src) {
+                mstring_append_fmt(body,
+                                   "oD0.rgb += %s * materialEmissionColor;\n",
+                                   added_src);
+            }
+        } else {
+            // If emission and ambient sources are both taken from vertex
+            // colors, the scene ambient color must be reconstructed. The
+            // materialEmissionColor modifies the vertex color assigned as the
+            // ambient source and this is added to the vertex color assigned as
+            // the emissive source.
+            mstring_append_fmt(
+                body, "oD0 = vec4(%s + %s * materialEmissionColor, %s);\n",
+                emission_src, ambient_src, alpha_source);
         }
 
         mstring_append(body, "oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n");
@@ -346,41 +376,74 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 /* Everything done already */
                 break;
             case LIGHT_SPOT:
-                /* https://docs.microsoft.com/en-us/windows/win32/direct3d9/attenuation-and-spotlight-factor#spotlight-factor */
+                /* From https://patents.google.com/patent/US6417851B1/en the
+                 * factor s = dot(spotDir.xyz, VP) + spotDir.w is evaluated
+                 * with the rational approximation: (s + L) / (M * s + N)
+                 * where lightSpotFalloff(i) = (L, M, N).
+                 * When s >= 1.0, the vertex is inside the inner cone (1.0).
+                 * When s <= 0.0 or s <= -L, the factor is clamped to 0.0.
+                 */
                 mstring_append_fmt(body,
                     "    vec4 spotDir = lightSpotDirection(%d);\n"
-                    "    float invScale = 1/length(spotDir.xyz);\n"
-                    "    float cosHalfPhi = -invScale*spotDir.w;\n"
-                    "    float cosHalfTheta = invScale + cosHalfPhi;\n"
                     "    float spotDirDotVP = dot(spotDir.xyz, VP);\n"
-                    "    float rho = invScale*spotDirDotVP;\n"
-                    "    if (rho > cosHalfTheta) {\n"
-                    "    } else if (rho <= cosHalfPhi) {\n"
+                    "    float s = spotDirDotVP + spotDir.w;\n"
+                    "    if (s <= 0.0) {\n"
                     "      attenuation = 0.0;\n"
-                    "    } else {\n"
-                    "      attenuation *= spotDirDotVP + spotDir.w;\n" /* FIXME: lightSpotFalloff */
+                    "    } else if (s < 1.0) {\n"
+                    "      vec3 spotFalloff = lightSpotFalloff(%d);\n"
+                    "      float spotFactor = 0.0;\n"
+                    "      if (s > -spotFalloff.x) {\n"
+                    "        float denom = spotFalloff.y * s + spotFalloff.z;\n"
+                    "        if (denom == 0.0) {\n"
+                    "          spotFactor = 1.0;\n"
+                    "        } else if (denom > 0.0) {\n"
+                    "          float num = s + spotFalloff.x;\n"
+                    "          spotFactor = clamp(num / denom, 0.0, 1.0);\n"
+                    "        }\n"
+                    "      }\n"
+                    "      attenuation *= spotFactor;\n"
                     "    }\n",
-                    i);
+                    i, i);
                 break;
             default:
                 assert(!"Invalid light type");
                 break;
             }
 
+            /* From https://patents.google.com/patent/US6417851B1/en the
+             * coefficients are used to calculate
+             *    (x + L) / (M x + N)
+             *  where x is the dot product of the normal and half angle vector.
+             *  specularParams = (L, M , N)
+             */
             mstring_append_fmt(body,
-                "    float pf;\n"
-                "    if (nDotVP == 0.0 || nDotHV == 0.0) {\n"
-                "      pf = 0.0;\n"
-                "    } else {\n"
-                "      pf = pow(nDotHV, specularPower);\n"
+                "    float pf = 0.0;\n"
+                "    if (nDotVP > 0.0 && nDotHV > -specularParams.x) {\n"
+                "      float denom = specularParams.y * nDotHV + specularParams.z;\n"
+                "      if (denom == 0.0) {\n"
+                "        pf = 10000.0;\n"
+                "      } else if (denom > 0.0) {\n"
+                "        pf = clamp((nDotHV + specularParams.x) / denom, 0.0, 10000.0);\n"
+                "      }\n"
                 "    }\n"
                 "    vec3 lightAmbient = lightAmbientColor(%d) * attenuation;\n"
                 "    vec3 lightDiffuse = lightDiffuseColor(%d) * attenuation * nDotVP;\n"
                 "    vec3 lightSpecular = lightSpecularColor(%d) * attenuation * pf;\n",
                 i, i, i);
 
-            mstring_append(body,
-                "    oD0.xyz += lightAmbient;\n");
+            switch (state->fixed_function.ambient_src) {
+            case MATERIAL_COLOR_SRC_MATERIAL:
+                mstring_append(body, "    oD0.rgb += lightAmbient;\n");
+                break;
+            case MATERIAL_COLOR_SRC_DIFFUSE:
+                mstring_append(body,
+                               "    oD0.rgb += diffuse.rgb * lightAmbient;\n");
+                break;
+            case MATERIAL_COLOR_SRC_SPECULAR:
+                mstring_append(body,
+                               "    oD0.rgb += specular.rgb * lightAmbient;\n");
+                break;
+            }
 
             switch (state->fixed_function.diffuse_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:

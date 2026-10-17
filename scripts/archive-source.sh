@@ -61,7 +61,7 @@ subprojects=(
   glslang
   imgui
   implot
-  json
+  nlohmann_json
   keycodemapdb
   nv2a_vsh_cpu
   SPIRV-Reflect

@@ -833,6 +833,9 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
         glUseProgram(r->shader_binding->gl_program);
     }
 
+    // FIXME: Clear only the registers that are consumed by this binding.
+    pgraph_clear_dirty_reg_map(pg);
+
     NV2A_GL_DGROUP_END();
 
 update_uniforms:
