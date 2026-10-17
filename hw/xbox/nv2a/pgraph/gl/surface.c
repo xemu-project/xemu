@@ -1453,6 +1453,7 @@ void pgraph_gl_sync_region_for_transfer(NV2AState *d, hwaddr addr, hwaddr size,
         memory_region_set_client_dirty(d->vram, addr, size, DIRTY_MEMORY_VGA);
         memory_region_set_client_dirty(d->vram, addr, size,
                                        DIRTY_MEMORY_NV2A_TEX);
+        memory_region_set_client_dirty(d->vram, addr, size, DIRTY_MEMORY_NV2A);
     }
 }
 
