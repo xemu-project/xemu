@@ -43,30 +43,39 @@ void FirstBootWindow::Draw()
     ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always);
 
     ImGui::SetNextWindowSize(size, ImGuiCond_Appearing);
-    if (!ImGui::Begin("First Boot", &is_open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (!ImGui::Begin(_("First Boot"), &is_open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         return;
     }
 
     Logo();
 
-    const char *msg = "Configure machine settings to get started";
+    const char *msg = _("Configure machine settings to get started");
     ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
     ImGui::Text("%s", msg);
 
     ImGui::Dummy(ImVec2(0,20*g_viewport_mgr.m_scale));
 
     ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_viewport_mgr.m_scale)/2);
-    if (ImGui::Button("Settings", ImVec2(120*g_viewport_mgr.m_scale, 0))) {
+    if (ImGui::Button(_("Settings"), ImVec2(120*g_viewport_mgr.m_scale, 0))) {
         g_main_menu.ShowSystem();
         g_config.general.show_welcome = false;
     }
 
     ImGui::Dummy(ImVec2(0,50*g_viewport_mgr.m_scale));
 
-    msg = "Visit https://xemu.app for more information";
-    ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
-    Hyperlink(msg, "https://xemu.app");
+    const char *visit = _("Visit");
+    const char *url = "https://xemu.app";
+    const char *more = _("for more information");
+    float line_width = ImGui::CalcTextSize(visit).x + ImGui::CalcTextSize(" ").x +
+                       ImGui::CalcTextSize(url).x + ImGui::CalcTextSize(" ").x +
+                       ImGui::CalcTextSize(more).x;
+    ImGui::SetCursorPosX((ImGui::GetWindowWidth()-line_width)/2);
+    ImGui::Text("%s", visit);
+    ImGui::SameLine();
+    Hyperlink(url, url);
+    ImGui::SameLine();
+    ImGui::Text("%s", more);
 
     ImGui::Dummy(ImVec2(400*g_viewport_mgr.m_scale,20*g_viewport_mgr.m_scale));
 
