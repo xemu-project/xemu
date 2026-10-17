@@ -624,6 +624,22 @@ static bool check_render_pass_dirty(PGRAPHState *pg)
                   sizeof(state)) != 0;
 }
 
+static void get_blend_factors(PGRAPHState *pg, uint32_t *sfactor,
+                              uint32_t *dfactor)
+{
+    const uint32_t blend_reg = pgraph_reg_r(pg, NV_PGRAPH_BLEND);
+    if (!(blend_reg & NV_PGRAPH_BLEND_EN)) {
+        *sfactor = 0;
+        *dfactor = 0;
+        return;
+    }
+
+    *sfactor = fixup_blend_factor_for_surface(
+        GET_MASK(blend_reg, NV_PGRAPH_BLEND_SFACTOR), &pg->surface_shape);
+    *dfactor = fixup_blend_factor_for_surface(
+        GET_MASK(blend_reg, NV_PGRAPH_BLEND_DFACTOR), &pg->surface_shape);
+}
+
 // Quickly check for any state changes that would require more analysis
 static bool check_pipeline_dirty(PGRAPHState *pg)
 {
@@ -631,6 +647,13 @@ static bool check_pipeline_dirty(PGRAPHState *pg)
 
     if (!r->pipeline_binding || r->shader_bindings_changed ||
         r->texture_bindings_changed || check_render_pass_dirty(pg)) {
+        return true;
+    }
+
+    uint32_t sfactor, dfactor;
+    get_blend_factors(pg, &sfactor, &dfactor);
+    if (sfactor != r->pipeline_binding->key.blend_sfactor ||
+        dfactor != r->pipeline_binding->key.blend_dfactor) {
         return true;
     }
 
@@ -669,6 +692,7 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
 
     memset(key, 0, sizeof(*key));
     init_render_pass_state(pg, &key->render_pass_state);
+    get_blend_factors(pg, &key->blend_sfactor, &key->blend_dfactor);
     memcpy(&key->shader_state, &r->shader_binding->state, sizeof(ShaderState));
     memcpy(key->binding_descriptions, r->vertex_binding_descriptions,
            sizeof(key->binding_descriptions[0]) *
@@ -885,11 +909,8 @@ static void create_pipeline(PGRAPHState *pg)
     if (pgraph_reg_r(pg, NV_PGRAPH_BLEND) & NV_PGRAPH_BLEND_EN) {
         color_blend_attachment.blendEnable = VK_TRUE;
 
-        const uint32_t blend_reg = pgraph_reg_r(pg, NV_PGRAPH_BLEND);
-        uint32_t sfactor = fixup_blend_factor_for_surface(
-            GET_MASK(blend_reg, NV_PGRAPH_BLEND_SFACTOR), &pg->surface_shape);
-        uint32_t dfactor = fixup_blend_factor_for_surface(
-            GET_MASK(blend_reg, NV_PGRAPH_BLEND_DFACTOR), &pg->surface_shape);
+        uint32_t sfactor = key.blend_sfactor;
+        uint32_t dfactor = key.blend_dfactor;
 
         assert(sfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
         assert(dfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
