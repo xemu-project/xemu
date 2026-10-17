@@ -1445,6 +1445,7 @@ void pgraph_gl_sync_region_for_transfer(NV2AState *d, hwaddr addr, hwaddr size,
         if (prepare_write) {
             surface->upload_pending = true;
             pg->draw_time++;
+            surface->draw_time = pg->draw_time;
         }
     }
 
