@@ -857,8 +857,9 @@ int mem_access_callback_address_matches(CPUState *cpu, hwaddr addr, hwaddr len)
 {
     int ret = 0;
 
+    RCU_READ_LOCK_GUARD();
     MemAccessCallback *cb;
-    QTAILQ_FOREACH(cb, &cpu->mem_access_callbacks, entry) {
+    QTAILQ_FOREACH_RCU(cb, &cpu->mem_access_callbacks, entry) {
         if (access_callback_address_matches(cb, addr, len)) {
             ret |= BP_MEM_READ | BP_MEM_WRITE;
         }
@@ -871,7 +872,7 @@ static void do_mem_access_callback_insert(CPUState *cpu, run_on_cpu_data data)
 
 {
     MemAccessCallback *cb = (MemAccessCallback *)data.host_ptr;
-    QTAILQ_INSERT_TAIL(&cpu->mem_access_callbacks, cb, entry);
+    QTAILQ_INSERT_TAIL_RCU(&cpu->mem_access_callbacks, cb, entry);
 }
 
 MemAccessCallback *mem_access_callback_insert(CPUState *cpu, MemoryRegion *mr,
@@ -901,8 +902,9 @@ static void do_mem_access_callback_remove_by_ref(CPUState *cpu,
                                                  run_on_cpu_data data)
 {
     MemAccessCallback *cb = (MemAccessCallback *)data.host_ptr;
-    QTAILQ_REMOVE(&cpu->mem_access_callbacks, cb, entry);
-    g_free(cb);
+    QTAILQ_REMOVE_RCU(&cpu->mem_access_callbacks, cb, entry);
+    /* Readers (e.g., DMA from non-vCPU threads) may still hold a reference. */
+    g_free_rcu(cb, rcu);
 }
 
 void mem_access_callback_remove_by_ref(CPUState *cpu, MemAccessCallback *cb)
@@ -930,8 +932,9 @@ void mem_check_access_callback_vaddr(CPUState *cpu,
 void mem_check_access_callback_ramaddr(CPUState *cpu,
                                        hwaddr ram_addr, vaddr len, int flags)
 {
+    RCU_READ_LOCK_GUARD();
     MemAccessCallback *cb;
-    QTAILQ_FOREACH(cb, &cpu->mem_access_callbacks, entry) {
+    QTAILQ_FOREACH_RCU(cb, &cpu->mem_access_callbacks, entry) {
         if (access_callback_address_matches(cb, ram_addr, len)) {
             ram_addr_t ram_addr_base = memory_region_get_ram_addr(cb->mr);
             assert(ram_addr_base != RAM_ADDR_INVALID);
@@ -3872,9 +3875,11 @@ void *address_space_map(AddressSpace *as,
     bool direct_access = memory_access_is_direct(mr, is_write, attrs);
     if (direct_access) {
         CPUState *cpu = qemu_get_cpu(0);
-        ram_addr_t ram_addr = addr + memory_region_get_ram_addr(mr);
-        int callback_guarded = mem_access_callback_address_matches(cpu, ram_addr, len);
-        direct_access = (callback_guarded & (is_write ? BP_MEM_WRITE : BP_MEM_READ)) == 0;
+        ram_addr_t ram_addr = xlat + memory_region_get_ram_addr(mr);
+        int callback_guarded =
+            mem_access_callback_address_matches(cpu, ram_addr, l);
+        direct_access =
+            (callback_guarded & (is_write ? BP_MEM_WRITE : BP_MEM_READ)) == 0;
     }
 
     if (!direct_access) {
