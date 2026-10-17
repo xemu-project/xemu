@@ -80,24 +80,50 @@ void qemu_plugin_register_command(qemu_plugin_id_t id, const char *name,
     g_hash_table_insert(plugin_cmd_table, g_strdup(name), cmd);
 }
 
+struct qemu_plugin_command_work {
+    char *name;
+    char *args;
+};
+
 QEMU_DISABLE_CFI
+static void plugin_dispatch_cmd_work(CPUState *cpu, run_on_cpu_data data)
+{
+    struct qemu_plugin_command_work *work = data.host_ptr;
+
+    WITH_QEMU_LOCK_GUARD(&plugin.lock) {
+        struct qemu_plugin_command *cmd =
+            plugin_cmd_table ? g_hash_table_lookup(plugin_cmd_table, work->name)
+                             : NULL;
+
+        if (!cmd) {
+            return;
+        }
+
+        qemu_plugin_command_cb_t cb = cmd->callback;
+        cb(work->args);
+    }
+
+    g_free(work->name);
+    g_free(work->args);
+    g_free(work);
+}
+
 bool qemu_plugin_dispatch_cmd(const char *name, const char *args)
 {
-    QEMU_LOCK_GUARD(&plugin.lock);
-
-    if (!plugin_cmd_table) {
-        return false;
+    WITH_QEMU_LOCK_GUARD(&plugin.lock) {
+        if (!plugin_cmd_table ||
+            !g_hash_table_contains(plugin_cmd_table, name)) {
+            return false;
+        }
     }
 
-    struct qemu_plugin_command *cmd =
-        g_hash_table_lookup(plugin_cmd_table, name);
-
-    if (cmd) {
-        qemu_plugin_command_cb_t cb = cmd->callback;
-        cb(args ? args : "");
-        return true;
-    }
-    return false;
+    struct qemu_plugin_command_work *work =
+        g_new(struct qemu_plugin_command_work, 1);
+    work->name = g_strdup(name);
+    work->args = g_strdup(args ? args : "");
+    async_safe_run_on_cpu(first_cpu, plugin_dispatch_cmd_work,
+                          RUN_ON_CPU_HOST_PTR(work));
+    return true;
 }
 
 void qemu_plugin_unregister_command(const char *name)

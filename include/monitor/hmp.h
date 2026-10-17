@@ -182,6 +182,10 @@ void hmp_dumpdtb(Monitor *mon, const QDict *qdict);
 void hmp_info_firmware_log(Monitor *mon, const QDict *qdict);
 
 // <xemu>
+// Dispatches the given command/args for execution.
+// Note that this is performed asynchronously on a vCPU thread, a `true` return
+// only indicates that the command was dispatched, the associated plugin could
+// be unloaded before it runs.
 bool qemu_plugin_dispatch_cmd(const char *name, const char *args);
 void hmp_plugin_cmd(Monitor *mon, const QDict *qdict);
 // </xemu>

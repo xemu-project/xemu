@@ -1220,6 +1220,10 @@ typedef void (*qemu_plugin_command_cb_t)(const char *args);
  * @cb: The callback to be invoked when "plugin <name>" is entered in the debug
  *      monitor.
  *
+ * The callback runs asynchronously on a vCPU thread while all vCPUs are
+ * stopped, so it may safely call qemu_plugin_reset() or
+ * qemu_plugin_uninstall().
+ *
  * Commands are automatically unregistered when the plugin is reset or
  * uninstalled.
  */
