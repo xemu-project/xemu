@@ -29,6 +29,7 @@
 #include "hw/i2c/smbus_slave.h"
 #include "smbus.h"
 #include "qapi/error.h"
+#include "migration/vmstate.h"
 
 #define TYPE_SMBUS_CX25871 "smbus-cx25871"
 #define SMBUS_CX25871(obj) OBJECT_CHECK(SMBusCX25871Device, (obj), TYPE_SMBUS_CX25871)
@@ -87,11 +88,24 @@ static void smbus_cx25871_realize(DeviceState *dev, Error **errp)
     cx->cmd = 0;
 }
 
+static const VMStateDescription vmstate_smbus_cx25871 = {
+    .name = TYPE_SMBUS_CX25871,
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]){
+        VMSTATE_SMBUS_DEVICE(smbusdev, SMBusCX25871Device),
+        VMSTATE_UINT8_ARRAY(registers, SMBusCX25871Device, 256),
+        VMSTATE_UINT8(cmd, SMBusCX25871Device),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void smbus_cx25871_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     SMBusDeviceClass *sc = SMBUS_DEVICE_CLASS(klass);
 
+    dc->vmsd = &vmstate_smbus_cx25871;
     dc->realize = smbus_cx25871_realize;
     sc->quick_cmd = smbus_cx25871_quick_cmd;
     sc->receive_byte = smbus_cx25871_receive_byte;
