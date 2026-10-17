@@ -738,6 +738,7 @@ static void pgraph_m2mf_transfer(NV2AState *d)
                     out_max - m2mf->offset_out);
 
             if (d->pgraph.renderer->ops.sync_region_for_transfer) {
+                d->pgraph.renderer->ops.surface_update(d, false, true, true);
                 d->pgraph.renderer->ops.sync_region_for_transfer(
                     d, src_start, src_span, false);
                 d->pgraph.renderer->ops.sync_region_for_transfer(
