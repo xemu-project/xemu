@@ -702,13 +702,15 @@ static void pgraph_m2mf_transfer(NV2AState *d)
         uint8_t *out_base =
             (uint8_t *)nv_dma_map(d, m2mf->dma_buffer_out, &out_len);
 
+        uint64_t vram_size = memory_region_size(d->vram);
+        hwaddr in_max = 0;
+        hwaddr out_max = 0;
         if (in_base && out_base) {
-            uint64_t vram_size = memory_region_size(d->vram);
-            hwaddr in_max =
-                MIN(in_len + 1, vram_size - (in_base - d->vram_ptr));
-            hwaddr out_max =
-                MIN(out_len + 1, vram_size - (out_base - d->vram_ptr));
+            in_max = MIN(in_len + 1, vram_size - (in_base - d->vram_ptr));
+            out_max = MIN(out_len + 1, vram_size - (out_base - d->vram_ptr));
+        }
 
+        if (m2mf->offset_in < in_max && m2mf->offset_out < out_max) {
             uint32_t stride_in = m2mf->format & 0xFF;
             if (!stride_in) {
                 // TODO: Hardware raises an exception in this case.
@@ -727,11 +729,13 @@ static void pgraph_m2mf_transfer(NV2AState *d)
             hwaddr dst_line_span =
                 (hwaddr)(m2mf->line_length_in - 1) * stride_out + 1;
             hwaddr src_span =
-                (hwaddr)(m2mf->line_count - 1) * m2mf->pitch_in +
-                src_line_span;
+                MIN((hwaddr)(m2mf->line_count - 1) * m2mf->pitch_in +
+                        src_line_span,
+                    in_max - m2mf->offset_in);
             hwaddr dst_span =
-                (hwaddr)(m2mf->line_count - 1) * m2mf->pitch_out +
-                dst_line_span;
+                MIN((hwaddr)(m2mf->line_count - 1) * m2mf->pitch_out +
+                        dst_line_span,
+                    out_max - m2mf->offset_out);
 
             if (d->pgraph.renderer->ops.sync_region_for_transfer) {
                 d->pgraph.renderer->ops.sync_region_for_transfer(
@@ -754,7 +758,9 @@ static void pgraph_m2mf_transfer(NV2AState *d)
         hwaddr notify_len = 0;
         uint8_t *notify_data =
             (uint8_t *)nv_dma_map(d, m2mf->dma_notify, &notify_len);
-        if (notify_data && notify_len >= 0x1F) {
+        if (notify_data && notify_len >= 0x1F &&
+            memory_region_size(d->vram) - (notify_data - d->vram_ptr) >=
+                0x20) {
             uint32_t ptimer_lo = (uint32_t)ptimer_read(d, NV_PTIMER_TIME_0, 4);
             uint32_t ptimer_hi = (uint32_t)ptimer_read(d, NV_PTIMER_TIME_1, 4);
 
