@@ -4,7 +4,6 @@ xemu_ss.add(files(
   'compat.cc',
   'debug.cc',
   'font-manager.cc',
-  'github-issue.cc',
   'gl-helpers.cc',
   'input-manager.cc',
   'main-menu.cc',
@@ -23,6 +22,8 @@ xemu_ss.add(files(
   'welcome.cc',
   'widgets.cc',
 ))
+
+xemu_ss.add([curl, files('github-issue.cc')])
 
 if host_os == 'windows'
   xemu_ss.add(files('update.cc', 'win32-dxgi-present.cc'))

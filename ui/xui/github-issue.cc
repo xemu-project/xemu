@@ -7,10 +7,16 @@
 #include <glib/gunicode.h>
 #include "hw/xbox/nv2a/nv2a.h"
 #include "qemu/http.h"
+#include "qemu/units.h"
 #include "ui/xemu-os-utils.h"
 #include "ui/xemu-settings.h"
 #include "xemu-version.h"
 #include "xemu-xbe.h"
+
+extern "C" {
+#include "qapi/qapi-commands-machine.h"
+#include "qom/object.h"
+}
 
 static constexpr char base_compatibility_url[] = "https://xemu.app/titles/";
 static constexpr char base_issue_url[] =
@@ -22,7 +28,7 @@ static std::string BuildTitleInformation(struct xbe *xbe)
     std::string ret = base_compatibility_url;
 
     char title_id_buffer[32];
-    snprintf(title_id_buffer, sizeof(title_id_buffer), "%x",
+    snprintf(title_id_buffer, sizeof(title_id_buffer), "%08x",
              xbe->cert->m_titleid);
     ret += title_id_buffer;
 
@@ -70,14 +76,21 @@ static std::string BuildSystemInformation()
     ret += xemu_get_cpu_info();
     ret += "\n";
 
-    ret += "GPU Info:\n* Vendor: ";
-    ret += safe_gl_str(GL_VENDOR);
-    ret += "\n* Renderer: ";
-    ret += safe_gl_str(GL_RENDERER);
-    ret += "\n* GL Version: ";
-    ret += safe_gl_str(GL_VERSION);
-    ret += "\n* GLSL Version: ";
-    ret += safe_gl_str(GL_SHADING_LANGUAGE_VERSION);
+    ret += "GPU Info:";
+    if (g_config.display.renderer == CONFIG_DISPLAY_RENDERER_VULKAN) {
+        const char *device = g_config.display.vulkan.preferred_physical_device;
+        ret += "\n* Vulkan device: ";
+        ret += (device && *device) ? device : "<<Unknown>>";
+    } else {
+        ret += "\n* GL Vendor: ";
+        ret += safe_gl_str(GL_VENDOR);
+        ret += "\n* GL Renderer: ";
+        ret += safe_gl_str(GL_RENDERER);
+        ret += "\n* GL Version: ";
+        ret += safe_gl_str(GL_VERSION);
+        ret += "\n* GLSL Version: ";
+        ret += safe_gl_str(GL_SHADING_LANGUAGE_VERSION);
+    }
     ret += "\n";
 
     return ret;
@@ -113,48 +126,25 @@ static std::string BuildAdditionalInformation()
     ret += g_config.audio.use_dsp ? "ON" : "OFF";
     ret += "\n";
 
-    ret += "* System memory: ";
-    switch (g_config.sys.mem_limit) {
-    case CONFIG_SYS_MEM_LIMIT_64:
-        ret += "64MiB";
-        break;
-    case CONFIG_SYS_MEM_LIMIT_128:
-        ret += "128MiB";
-        break;
-    default:
-        ret += "UNKNOWN - update ";
-        ret += __FILE__;
-        break;
-    }
-    ret += "\n";
+    // These settings require a restart to apply and must be read from machine
+    // state rather than g_config.
+    {
+        MemoryInfo *mem_info = qmp_query_memory_size_summary(nullptr);
+        snprintf(buf, sizeof(buf), "* System memory: %" PRIu64 "MiB\n",
+                 mem_info->base_memory / MiB);
+        qapi_free_MemoryInfo(mem_info);
+        ret += buf;
 
-    ret += "* AV pack: ";
-    switch (g_config.sys.avpack) {
-    case CONFIG_SYS_AVPACK_SCART:
-        ret += "SCART";
-        break;
-    case CONFIG_SYS_AVPACK_HDTV:
-        ret += "HDTV";
-        break;
-    case CONFIG_SYS_AVPACK_VGA:
-        ret += "VGA";
-        break;
-    case CONFIG_SYS_AVPACK_RFU:
-        ret += "RFU";
-        break;
-    case CONFIG_SYS_AVPACK_SVIDEO:
-        ret += "SVIDEO";
-        break;
-    case CONFIG_SYS_AVPACK_COMPOSITE:
-        ret += "Composite";
-        break;
-    case CONFIG_SYS_AVPACK_NONE:
-        ret += "None";
-        break;
-    default:
-        ret += "UNKNOWN - update ";
-        ret += __FILE__;
-        break;
+        ret += "* AV pack: ";
+        Object *machine =
+            object_resolve_path_component(object_get_root(), "machine");
+        char *avpack = nullptr;
+        if (machine) {
+            avpack = object_property_get_str(machine, "avpack", nullptr);
+        }
+        ret += avpack ? avpack : "<<Unknown>>";
+        g_free(avpack);
+        ret += "\n";
     }
 
     return ret;
@@ -198,12 +188,18 @@ static std::string BuildGitHubTitleIssueURL(struct xbe *xbe)
 
 void ShowReportGitHubIssueMenuItem()
 {
-    struct xbe *xbe = xemu_get_xbe_info();
-    if (!xbe) {
-        return;
+    static bool title_available = false;
+    if (ImGui::IsWindowAppearing()) {
+        title_available = xemu_get_xbe_info() != nullptr;
     }
 
-    if (ImGui::MenuItem("Report GitHub Title Issue...", NULL)) {
+    if (ImGui::MenuItem("Report GitHub Title Issue...", NULL, false,
+                        title_available)) {
+        struct xbe *xbe = xemu_get_xbe_info();
+        if (!xbe) {
+            return;
+        }
+
         SDL_OpenURL(BuildGitHubTitleIssueURL(xbe).c_str());
     }
 }
