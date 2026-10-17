@@ -31,6 +31,11 @@
 #include "qapi/error.h"
 #include "actions.hh"
 
+#include <SDL3/SDL.h>
+
+#include <vector>
+#include <string>
+
 #include "../xemu-input.h"
 #include "../xemu-notifications.h"
 #include "../xemu-settings.h"
@@ -775,6 +780,34 @@ void MainMenuDisplayView::Draw()
     Toggle("Exclusive fullscreen",
            &g_config.display.window.fullscreen_exclusive,
            "May improve responsiveness, but slows window switching");
+    if (g_config.display.window.fullscreen_exclusive) {
+        // Get available fullscreen display modes
+        SDL_DisplayID display = SDL_GetDisplayForWindow(xemu_get_window());
+        int num_modes = 0;
+        SDL_DisplayMode **modes = SDL_GetFullscreenDisplayModes(display, &num_modes);
+        
+        if (modes && num_modes > 0) {
+            // Create a list of mode strings
+            std::vector<std::string> mode_strings;
+            for (int i = 0; i < num_modes; i++) {
+                char buf[64];
+                snprintf(buf, sizeof(buf), "%dx%d @ %.0fHz", modes[i]->w, modes[i]->h, modes[i]->refresh_rate);
+                mode_strings.push_back(buf);
+            }
+            
+            // Create null-separated string for ChevronCombo
+            std::string items;
+            for (const auto& str : mode_strings) {
+                items += str;
+                items += '\0';
+            }
+            items += '\0'; // Double null terminate
+            
+            ChevronCombo("Fullscreen resolution", &g_config.display.window.fullscreen_resolution,
+                        items.c_str(), "Select preferred fullscreen resolution");
+        }
+        SDL_free(modes);
+    }
     if (ChevronCombo("Window size", &g_config.display.window.startup_size,
                      "Last Used\0"
                      "640x480\0"
