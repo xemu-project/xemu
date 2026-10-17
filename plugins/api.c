@@ -49,11 +49,15 @@
 #include "plugin.h"
 
 // <xemu>
+extern struct qemu_plugin_state plugin;
+
 typedef void (*qemu_plugin_command_cb_t)(const char *args);
 static GHashTable *plugin_cmd_table = NULL;
 
 void qemu_plugin_register_command(const char *name, void (*cb)(const char *))
 {
+    QEMU_LOCK_GUARD(&plugin.lock);
+
     if (!plugin_cmd_table) {
         plugin_cmd_table =
             g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
@@ -71,6 +75,8 @@ void qemu_plugin_register_command(const char *name, void (*cb)(const char *))
 QEMU_DISABLE_CFI
 bool qemu_plugin_dispatch_cmd(const char *name, const char *args)
 {
+    QEMU_LOCK_GUARD(&plugin.lock);
+
     if (!plugin_cmd_table) {
         return false;
     }
@@ -87,6 +93,8 @@ bool qemu_plugin_dispatch_cmd(const char *name, const char *args)
 
 void qemu_plugin_unregister_command(const char *name)
 {
+    QEMU_LOCK_GUARD(&plugin.lock);
+
     if (plugin_cmd_table) {
         g_hash_table_remove(plugin_cmd_table, name);
     }
