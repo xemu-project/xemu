@@ -354,19 +354,19 @@ bool pgraph_gl_check_surface_to_texture_compatibility(
 {
     // FIXME: Better checks/handling on formats and surface-texture compat
 
-    if ((!surface->swizzle && surface->pitch != shape->pitch) ||
-        surface->width != shape->width ||
-        surface->height != shape->height) {
+    if (!surface->swizzle && surface->pitch != shape->pitch) {
         return false;
     }
 
     int surface_fmt = surface->shape.color_format;
+    int surface_zeta_fmt = surface->shape.zeta_format;
+    int surface_zeta_z_format = surface->shape.z_format;
     int texture_fmt = shape->color_format;
 
-    if (!surface->color) {
-        // FIXME: Support zeta to color
-        return false;
-    }
+    assert(texture_fmt < ARRAY_SIZE(kelvin_color_format_gl_map));
+
+    const ColorFormatInfo *texture_fmt_info =
+        &kelvin_color_format_gl_map[texture_fmt];
 
     if (shape->cubemap) {
         // FIXME: Support rendering surface to cubemap face
@@ -375,6 +375,33 @@ bool pgraph_gl_check_surface_to_texture_compatibility(
 
     if (shape->levels > 1) {
         // FIXME: Support rendering surface to mip levels
+        return false;
+    }
+
+    if (surface->width != shape->width ||
+        surface->height != shape->height) {
+
+        if (surface->width * surface->height * surface->fmt.bytes_per_pixel ==
+            shape->width * shape->height * texture_fmt_info->bytes_per_pixel)
+        {
+            if (!surface->color && !surface_zeta_z_format) {
+                switch (surface_zeta_fmt) {
+                case NV097_SET_SURFACE_FORMAT_ZETA_Z24S8: switch (texture_fmt) {
+                    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_Y16: return true;
+                    default: break;
+                    }
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    if (!surface->color) {
+        // FIXME: Support zeta to color
         return false;
     }
 
