@@ -1172,7 +1172,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     void *palette_data = (char*)d->vram_ptr + texture_palette_vram_offset;
 
     uint64_t content_hash = 0;
-    if (!surface_to_texture && possibly_dirty) {
+    if (!surface_to_texture && (snode->draw_time || possibly_dirty)) {
         content_hash = fast_hash(texture_data, texture_length);
         if (is_indexed) {
             content_hash ^= fast_hash(palette_data, texture_palette_data_size);
@@ -1181,17 +1181,18 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
 
     if (binding_found) {
         if (surface_to_texture) {
-            // FIXME: Add draw time tracking
             if (surface->draw_time != snode->draw_time) {
                 copy_surface_to_texture(pg, surface, snode);
             }
         } else {
-            if (possibly_dirty && content_hash != snode->hash) {
+            if (snode->draw_time || (possibly_dirty && content_hash != snode->hash)) {
                 upload_texture_image(pg, texture_idx, snode);
                 snode->hash = content_hash;
+                snode->draw_time = 0;
             }
         }
 
+        snode->possibly_dirty = false;
         NV2A_VK_DGROUP_END();
         return;
     }
@@ -1452,6 +1453,9 @@ static void texture_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     snode->allocation = VK_NULL_HANDLE;
     snode->image_view = VK_NULL_HANDLE;
     snode->sampler = VK_NULL_HANDLE;
+    snode->draw_time = 0;
+    snode->hash = 0;
+    snode->possibly_dirty = false;
 }
 
 static void texture_cache_release_node_resources(PGRAPHVkState *r, TextureBinding *snode)
