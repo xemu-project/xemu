@@ -156,7 +156,12 @@ jobs:
         tar -C appimage -xf data.tar*
         install -DT src/xemu.metainfo.xml appimage/usr/share/metainfo/xemu.metainfo.xml
 
-        ./linuxdeploy-${{ matrix.arch }}.AppImage --output appimage --appdir appimage
+        # Use the host's GLib. SDL dlopens the host's libdecor to draw window
+        # decorations on Wayland compositors without server-side decorations
+        # (e.g. GNOME), and its GTK plugin fails to load against an older
+        # bundled GLib, leaving windows undecorated.
+        ./linuxdeploy-${{ matrix.arch }}.AppImage --output appimage --appdir appimage \
+          --exclude-library 'libglib-2.0.so*'
     - name: Bundle artifacts
       run: |
         mkdir -p dist
