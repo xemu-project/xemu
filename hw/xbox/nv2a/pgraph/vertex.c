@@ -175,6 +175,11 @@ void pgraph_vsh_carryover_reset(PGRAPHState *pg)
 
 void pgraph_vsh_carryover_update(PGRAPHState *pg)
 {
+    if (!pg->draw_arrays_length && !pg->inline_elements_length &&
+        !pg->inline_buffer_length && !pg->inline_array_length) {
+        return;
+    }
+
     if (pg->vsh_carry_cache_dirty) {
         pgraph_vsh_carryover_invalidate_cache(pg);
         pg->vsh_carry_cache_dirty = false;

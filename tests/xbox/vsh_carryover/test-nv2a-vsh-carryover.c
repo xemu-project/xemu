@@ -40,6 +40,9 @@ static void setup_pgraph_test_state(PGRAPHState *pg)
     uint32_t c = pgraph_reg_r(pg, NV_PGRAPH_CSV0_C);
     SET_MASK(c, NV_PGRAPH_CSV0_C_CHEOPS_PROGRAM_START, 0);
     pgraph_reg_w(pg, NV_PGRAPH_CSV0_C, c);
+
+    /* Simulate a single vertex submitted via the inline buffer. */
+    pg->inline_buffer_length = 1;
 }
 
 static void test_vsh_carryover_reset_defaults(void)
@@ -220,6 +223,22 @@ static void test_vsh_carryover_multi_program_cache(void)
     pgraph_vsh_carryover_invalidate_cache(&pg);
 }
 
+/* A draw without vertices must not modify the carried fog. */
+static void test_vsh_carryover_empty_draw(void)
+{
+    PGRAPHState pg;
+    setup_pgraph_test_state(&pg);
+    pg.inline_buffer_length = 0;
+
+    make_mov_output(pg.program_data[0], NV2AOR_FOG_COORD, 0xF, 0, true);
+    pg.vertex_attributes[0].inline_value[0] = 0.5f;
+
+    pgraph_vsh_carryover_update(&pg);
+
+    assert_float_near(pg.vsh_carry_fog[0], 0.0f);
+    g_assert_null(pg.vsh_carry_cached_programs[0]);
+}
+
 int main(int argc, char **argv)
 {
     g_test_init(&argc, &argv, NULL);
@@ -234,6 +253,9 @@ int main(int argc, char **argv)
                     test_vsh_carryover_program_cache_invalidation);
     g_test_add_func("/xbox/vsh_carryover/multi_program_cache",
                     test_vsh_carryover_multi_program_cache);
+
+    g_test_add_func("/xbox/vsh_carryover/empty_draw",
+                    test_vsh_carryover_empty_draw);
 
     return g_test_run();
 }
