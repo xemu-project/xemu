@@ -30,7 +30,6 @@
 #define HRTF_NUM_TAPS           31
 #define HRTF_MAX_DELAY_SAMPLES  42
 #define HRTF_BUFLEN             (HRTF_NUM_TAPS + HRTF_MAX_DELAY_SAMPLES)
-#define HRTF_PARAM_SMOOTH_ALPHA 0.01f
 
 typedef struct {
     int buf_pos;
@@ -41,6 +40,7 @@ typedef struct {
     } ch[2];
     float itd_cur;
     float itd_tar;
+    bool params_set;
 } HrtfFilter;
 
 static inline void hrtf_filter_init(HrtfFilter *f)
@@ -62,58 +62,47 @@ hrtf_filter_set_target_params(HrtfFilter *f, float hrir_coeff[2][HRTF_NUM_TAPS],
     f->itd_tar =
         fmaxf(-HRTF_MAX_DELAY_SAMPLES, fminf(itd, HRTF_MAX_DELAY_SAMPLES));
 
+    /* Taps apply as written: hardware does not normalize them. */
     for (int ch = 0; ch < 2; ch++) {
-        float *coeff = f->ch[ch].hrir_coeff_tar;
-        memcpy(coeff, hrir_coeff[ch], sizeof(f->ch[ch].hrir_coeff_tar));
-
-        // Normalize coefficients for unity filter gain
-        float s = 0.0f;
-        for (int k = 0; k < HRTF_NUM_TAPS; k++) {
-            s += fabsf(coeff[k]);
-        }
-        if (s == 0.0f || s == 1.0f) {
-            break;
-        }
-        for (int k = 0; k < HRTF_NUM_TAPS; k++) {
-            coeff[k] /= s;
-        }
+        memcpy(f->ch[ch].hrir_coeff_tar, hrir_coeff[ch],
+               sizeof(f->ch[ch].hrir_coeff_tar));
     }
 }
 
-static inline float hrtf_filter_smooth_param(float cur, float tar)
-{
-    // FIXME: Match hardware parameter transition
-    return cur + HRTF_PARAM_SMOOTH_ALPHA * (tar - cur);
-}
-
-static inline void hrtf_filter_step_parameters(HrtfFilter *f)
+static inline void hrtf_filter_settle_parameters(HrtfFilter *f)
 {
     for (int ch = 0; ch < 2; ch++) {
-        float *coeff_cur = f->ch[ch].hrir_coeff_cur;
-        float *coeff_tar = f->ch[ch].hrir_coeff_tar;
-        for (int k = 0; k < HRTF_NUM_TAPS; k++) {
-            coeff_cur[k] = hrtf_filter_smooth_param(coeff_cur[k], coeff_tar[k]);
-        }
+        memcpy(f->ch[ch].hrir_coeff_cur, f->ch[ch].hrir_coeff_tar,
+               sizeof(f->ch[ch].hrir_coeff_cur));
     }
-    f->itd_cur = hrtf_filter_smooth_param(f->itd_cur, f->itd_tar);
+    f->itd_cur = f->itd_tar;
 }
 
 static inline void hrtf_filter_process(HrtfFilter *f,
                                        float in[HRTF_SAMPLES_PER_FRAME][2],
                                        float out[HRTF_SAMPLES_PER_FRAME][2])
 {
+    /* Taps and delay move from the last frame's to the target across one
+     * frame (measured); a voice's first frame starts at the target. */
+    if (!f->params_set) {
+        hrtf_filter_settle_parameters(f);
+        f->params_set = true;
+    }
+
     for (int n = 0; n < HRTF_SAMPLES_PER_FRAME; n++) {
-        hrtf_filter_step_parameters(f);
+        float w = n / (float)HRTF_SAMPLES_PER_FRAME;
 
         for (int ch = 0; ch < 2; ch++) {
             float *buf = f->ch[ch].buf;
-            float *coeff = f->ch[ch].hrir_coeff_cur;
+            float *coeff_cur = f->ch[ch].hrir_coeff_cur;
+            float *coeff_tar = f->ch[ch].hrir_coeff_tar;
 
             // Push new sample
             buf[f->buf_pos] = in[n][ch];
 
             // Interaural time difference (channel delay)
-            float d = f->itd_cur * (ch == 0 ? +1.0f : -1.0f);
+            float itd = f->itd_cur + (f->itd_tar - f->itd_cur) * w;
+            float d = itd * (ch == 0 ? +1.0f : -1.0f);
             if (d < 0.0f) {
                 d = 0.0f;
             }
@@ -131,7 +120,7 @@ static inline void hrtf_filter_process(HrtfFilter *f,
                     int idx2 = (idx1 - 1 + HRTF_BUFLEN) % HRTF_BUFLEN;
                     s = s * (1 - dfrac) + buf[idx2] * dfrac;
                 }
-                acc += coeff[k] * s;
+                acc += (coeff_cur[k] + (coeff_tar[k] - coeff_cur[k]) * w) * s;
             }
 
             out[n][ch] = acc;
@@ -139,6 +128,8 @@ static inline void hrtf_filter_process(HrtfFilter *f,
 
         f->buf_pos = (f->buf_pos + 1) % HRTF_BUFLEN;
     }
+
+    hrtf_filter_settle_parameters(f);
 }
 
 #endif
