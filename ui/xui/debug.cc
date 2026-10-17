@@ -1,7 +1,7 @@
 //
 // xemu User Interface
 //
-// Copyright (C) 2020-2022 Matt Borgerson
+// Copyright (C) 2020-2026 Matt Borgerson
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -203,22 +203,79 @@ void DebugApuWindow::Draw()
 
     static int mon = 0;
     mon = (int)mcpx_apu_debug_get_monitor();
-    if (ImGui::Combo("Monitor", &mon, "AC97\0VP Only\0GP Only\0EP Only\0GP/EP if enabled\0")) {
+    if (ImGui::Combo("Monitor", &mon,
+                     "AC97\0VP\0GP\0EP (analog)\0EP S/PDIF (AC-3 5.1)\0"
+                     "EP (auto)\0")) {
         mcpx_apu_debug_set_monitor((McpxApuDebugMonitorPoint)mon);
     }
 
-    ImGui::Checkbox("JIT Engine\n", &g_config.audio.use_dsp_jit);
+    /* Per-channel mute/solo over the layout the monitor is playing, each
+     * with a small peak meter. Wrapped two per row: this is a two-column
+     * window, so a longer row runs past the column edge and is clipped. */
+    {
+        int nch = mcpx_apu_debug_get_monitor_channels();
+        uint32_t mask = mcpx_apu_debug_get_monitor_channel_mask();
+        static const char *const six[6] = { "FL", "FR", "FC",
+                                            "LFE", "BL", "BR" };
+        static const char *const two[2] = { "L", "R" };
+        const char *const *names = nch == 6 ? six : two;
+        bool open = ImGui::CollapsingHeader("Monitor Channels");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Mute channels of what the monitor plays; "
+                              "leave one checked to solo it. The meters "
+                              "show each channel's held peak.");
+        }
+        const float col_w = ImGui::GetContentRegionAvail().x / 2.0f;
+        const float col_x = ImGui::GetCursorPosX();
+        for (int c = 0; open && c < nch; c++) {
+            if (c % 2) {
+                ImGui::SameLine(col_w);
+            }
+            bool on = mask & (1u << c);
+            ImGui::PushID(c);
+            if (ImGui::Checkbox(names[c], &on)) {
+                mask = on ? (mask | (1u << c)) : (mask & ~(1u << c));
+                mcpx_apu_debug_set_monitor_channel_mask(mask);
+            }
+            ImGui::PopID();
 
-    static bool gp_realtime;
-    gp_realtime = dbg->gp_realtime;
-    if (ImGui::Checkbox("GP Realtime\n", &gp_realtime)) {
-        mcpx_apu_debug_set_gp_realtime_enabled(gp_realtime);
-    }
-
-    static bool ep_realtime;
-    ep_realtime = dbg->ep_realtime;
-    if (ImGui::Checkbox("EP Realtime\n", &ep_realtime)) {
-        mcpx_apu_debug_set_ep_realtime_enabled(ep_realtime);
+            /* Peak meter: held peak of the channel's last monitor pushes,
+             * on a dB scale from -60 dBFS (empty) to 0 dBFS (full), green
+             * below -12 dB, yellow to -3 dB, red above. */
+            ImGui::SameLine();
+            float level = mcpx_apu_debug_get_monitor_channel_level(c);
+            float db = level > 1e-5f ? 20.0f * log10f(level) : -100.0f;
+            float fill = db <= -60.0f ? 0.0f : (db >= 0.0f ? 1.0f :
+                         (db + 60.0f) / 60.0f);
+            float h = ImGui::GetTextLineHeight();
+            /* Stay inside this channel's column: the left one ends where
+             * the right one's checkbox starts. */
+            float w = (c % 2) ? ImGui::GetContentRegionAvail().x :
+                      col_x + col_w - ImGui::GetCursorPosX() -
+                      ImGui::GetStyle().ItemSpacing.x;
+            float max_w = ImGui::GetFontSize() * 4.0f;
+            w = w > max_w ? max_w : (w < 8.0f ? 8.0f : w);
+            ImVec2 p0 = ImGui::GetCursorScreenPos();
+            p0.y += (ImGui::GetFrameHeight() - h) * 0.5f;
+            ImVec2 p1(p0.x + w, p0.y + h);
+            ImDrawList *dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(p0, p1, IM_COL32(40, 40, 40, 255), 2.0f);
+            if (fill > 0.0f) {
+                ImU32 col = db > -3.0f  ? IM_COL32(220, 60, 60, 255) :
+                            db > -12.0f ? IM_COL32(220, 200, 60, 255) :
+                                          IM_COL32(60, 200, 90, 255);
+                dl->AddRectFilled(p0, ImVec2(p0.x + w * fill, p1.y), col,
+                                  2.0f);
+            }
+            dl->AddRect(p0, p1, IM_COL32(90, 90, 90, 255), 2.0f);
+            ImGui::Dummy(ImVec2(w, ImGui::GetFrameHeight()));
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("%s peak %.1f dBFS", names[c], db);
+            }
+        }
+        if (open && ImGui::SmallButton("All")) {
+            mcpx_apu_debug_set_monitor_channel_mask((1u << nch) - 1);
+        }
     }
 
     ImGui::Checkbox("HRTF Filtering\n", &g_config.audio.hrtf);
