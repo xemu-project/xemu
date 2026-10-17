@@ -68,6 +68,7 @@ void qemu_plugin_register_command(const char *name, void (*cb)(const char *))
     g_hash_table_insert(plugin_cmd_table, g_strdup(name), (gpointer)cb);
 }
 
+QEMU_DISABLE_CFI
 bool qemu_plugin_dispatch_cmd(const char *name, const char *args)
 {
     if (!plugin_cmd_table) {
