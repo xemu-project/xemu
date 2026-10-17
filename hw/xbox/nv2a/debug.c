@@ -27,8 +27,7 @@
 
 static GLenum framebuffer_attachments[] = { GL_COLOR_ATTACHMENT0,
                                             GL_DEPTH_ATTACHMENT,
-                                            GL_STENCIL_ATTACHMENT,
-                                            GL_DEPTH_STENCIL_ATTACHMENT };
+                                            GL_STENCIL_ATTACHMENT };
 
 void gl_debug_assert_framebuffer_complete(const char *source_file, int line)
 {
