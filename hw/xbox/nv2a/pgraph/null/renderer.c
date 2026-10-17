@@ -22,6 +22,15 @@
 #include "qemu/thread.h"
 #include "hw/xbox/nv2a/nv2a_int.h"
 
+#include "gloffscreen.h"
+
+static GloContext *g_null_gl_context;
+
+static void early_context_init(void)
+{
+    g_null_gl_context = glo_context_create();
+}
+
 static void pgraph_null_init(NV2AState *d, Error **errp)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -35,7 +44,9 @@ static void pgraph_null_finalize(NV2AState *d)
     PGRAPHNullState *r = pg->null_renderer_state;
     if (r) {
         if (r->blank_texture) {
+            glo_set_current(g_null_gl_context);
             glDeleteTextures(1, &r->blank_texture);
+            glo_set_current(NULL);
         }
         g_free(r);
         pg->null_renderer_state = NULL;
@@ -156,6 +167,7 @@ static PGRAPHRenderer
     pgraph_null_renderer = { .type = CONFIG_DISPLAY_RENDERER_NULL,
                              .name = "Null",
                              .ops = {
+                                 .early_context_init = early_context_init,
                                  .init = pgraph_null_init,
                                  .finalize = pgraph_null_finalize,
                                  .clear_report_value =
