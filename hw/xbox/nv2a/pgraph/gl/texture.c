@@ -268,7 +268,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
             bool reusable = false;
             if (surf_to_tex) {
                 reusable = tbind->draw_time == surface->draw_time;
-            } else if (!tbind->draw_time) {
+            } else if (!surface && !tbind->draw_time) {
                 possibly_dirty = check_texture_possibly_dirty(
                         d,
                         texture_vram_offset,
