@@ -46,6 +46,9 @@ void PrepareComboTitleDescription(const char *label, const char *description,
 bool ChevronCombo(const char *label, int *current_item,
                   bool (*items_getter)(void *, int, const char **), void *data,
                   int items_count, const char *description = NULL);
+bool ChevronCombo(const char *label, int *current_item,
+                  const char *const *items, int items_count,
+                  const char *description = NULL);
 bool ChevronCombo(const char* label, int* current_item, const char* items_separated_by_zeros, const char *description = NULL);
 void Hyperlink(const char *text, const char *url);
 void HelpMarker(const char* desc);

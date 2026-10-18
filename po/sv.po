@@ -5,8 +5,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: QEMU 2.12.91\n"
-"Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-04-25 20:32+0200\n"
+"Report-Msgid-Bugs-To: qemu-devel@nongnu.org\n"
+"POT-Creation-Date: 2026-10-18 09:34+0200\n"
 "PO-Revision-Date: 2026-04-25 20:00+0200\n"
 "Last-Translator: Daniel Nylander <daniel@danielnylander.se>\n"
 "Language-Team: Swedish <tp-sv@listor.tp-sv.se>\n"
@@ -170,189 +170,349 @@ msgstr "Hoppa över hela Xbox-startanimationen"
 msgid "Skip startup animation"
 msgstr "Hoppa över startanimation"
 
+#: ui/xui/main-menu.cc:74
+msgid "Screenshot output directory"
+msgstr "Utdatamapp för skärmbilder"
+
+#: ui/xui/main-menu.cc:78
+msgid "Games directory"
+msgstr "Spelmapp"
+
 #: ui/xui/main-menu.cc:107
 msgid "Controllers"
 msgstr "Handkontroller"
 
-#: ui/xui/main-menu.cc:207
+#: ui/xui/main-menu.cc:200 ui/xui/main-menu.cc:216
+msgid "Xbox Controller"
+msgstr "Xbox-handkontroll"
+
+#: ui/xui/main-menu.cc:202 ui/xui/main-menu.cc:217
+msgid "Xbox Controller S"
+msgstr "Xbox-handkontroll S"
+
+#: ui/xui/main-menu.cc:208
 msgid "Emulated Device"
 msgstr "Emulerad enhet"
 
-#: ui/xui/main-menu.cc:246
+#: ui/xui/main-menu.cc:247
 msgid "Input Device"
 msgstr "Inmatningsenhet"
 
-#: ui/xui/main-menu.cc:368
+#: ui/xui/main-menu.cc:252
+msgid "Not Connected"
+msgstr "Inte ansluten"
+
+#: ui/xui/main-menu.cc:355
+msgid "Please select an available input device"
+msgstr "Välj en tillgänglig inmatningsenhet"
+
+#: ui/xui/main-menu.cc:370
 msgid "Expansion Slots"
 msgstr "Expansionsplatser"
 
-#: ui/xui/main-menu.cc:483
+#: ui/xui/main-menu.cc:485
 msgid "New Image"
 msgstr "Ny avbild"
 
-#: ui/xui/main-menu.cc:522
+#: ui/xui/main-menu.cc:504
+msgid "Image"
+msgstr "Avbild"
+
+#: ui/xui/main-menu.cc:524
 msgid "Mapping"
 msgstr "Mappning"
 
-#: ui/xui/main-menu.cc:545
+#: ui/xui/main-menu.cc:547
 msgid "Enable Rumble"
 msgstr "Aktivera vibration"
 
-#: ui/xui/main-menu.cc:547
+#: ui/xui/main-menu.cc:549
 msgid "Invert Left X Axis"
 msgstr "Invertera vänster X-axel"
 
-#: ui/xui/main-menu.cc:550
+#: ui/xui/main-menu.cc:552
 msgid "Invert Left Y Axis"
 msgstr "Invertera vänster Y-axel"
 
-#: ui/xui/main-menu.cc:553
+#: ui/xui/main-menu.cc:555
 msgid "Invert Right X Axis"
 msgstr "Invertera höger X-axel"
 
-#: ui/xui/main-menu.cc:556
+#: ui/xui/main-menu.cc:558
 msgid "Invert Right Y Axis"
 msgstr "Invertera höger Y-axel"
 
-#: ui/xui/main-menu.cc:561
+#: ui/xui/main-menu.cc:563
 msgid "Reset to Default"
 msgstr "Återställ till standard"
 
-#: ui/xui/main-menu.cc:569 ui/xui/main-menu.cc:956
+#: ui/xui/main-menu.cc:571 ui/xui/main-menu.cc:958
 msgid "Options"
 msgstr "Alternativ"
 
-#: ui/xui/main-menu.cc:570
+#: ui/xui/main-menu.cc:572
 msgid "Auto-bind controllers"
 msgstr "Bind handkontroller automatiskt"
 
-#: ui/xui/main-menu.cc:572
+#: ui/xui/main-menu.cc:574
 msgid "Background controller input capture"
 msgstr "Fånga handkontrollsinmatning i bakgrunden"
 
-#: ui/xui/main-menu.cc:742
+#: ui/xui/main-menu.cc:744
 msgid "Renderer"
 msgstr "Renderare"
 
-#: ui/xui/main-menu.cc:767
+#: ui/xui/main-menu.cc:745
+msgid "Backend"
+msgstr "Återgivningsmotor"
+
+#: ui/xui/main-menu.cc:754
+msgid "Internal resolution scale"
+msgstr "Intern upplösningsskala"
+
+#: ui/xui/main-menu.cc:769
 msgid "Window"
 msgstr "Fönster"
 
-#: ui/xui/main-menu.cc:769
+#: ui/xui/main-menu.cc:771
 msgid "Enable fullscreen now"
 msgstr "Aktivera helskärm nu"
 
-#: ui/xui/main-menu.cc:769
+#: ui/xui/main-menu.cc:771 ui/xui/popup-menu.cc:319
 msgid "Fullscreen"
 msgstr "Helskärm"
 
-#: ui/xui/main-menu.cc:772
+#: ui/xui/main-menu.cc:774
 msgid "Fullscreen on startup"
 msgstr "Helskärm vid start"
 
-#: ui/xui/main-menu.cc:775
+#: ui/xui/main-menu.cc:777
 msgid "Exclusive fullscreen"
 msgstr "Exklusiv helskärm"
 
-#: ui/xui/main-menu.cc:792
+#: ui/xui/main-menu.cc:780
+msgid "Window size"
+msgstr "Fönsterstorlek"
+
+#: ui/xui/main-menu.cc:794
 msgid "Vertical refresh sync"
 msgstr "Vertikal synkronisering"
 
-#: ui/xui/main-menu.cc:795
+#: ui/xui/main-menu.cc:797
 msgid "Interface"
 msgstr "Gränssnitt"
 
-#: ui/xui/main-menu.cc:796
+#: ui/xui/main-menu.cc:798
 msgid "Show main menu bar"
 msgstr "Visa huvudmenyrad"
 
-#: ui/xui/main-menu.cc:798
+#: ui/xui/main-menu.cc:800
 msgid "Show notifications"
 msgstr "Visa aviseringar"
 
-#: ui/xui/main-menu.cc:800
+#: ui/xui/main-menu.cc:802
 msgid "Hide mouse cursor"
 msgstr "Dölj muspekare"
 
-#: ui/xui/main-menu.cc:823
+#: ui/xui/main-menu.cc:813
+msgid "UI scale"
+msgstr "Gränssnittsskala"
+
+#: ui/xui/main-menu.cc:825
 msgid "Animations"
 msgstr "Animationer"
 
-#: ui/xui/main-menu.cc:840
+#: ui/xui/main-menu.cc:827
+msgid "Display mode"
+msgstr "Visningsläge"
+
+#: ui/xui/main-menu.cc:832
+msgid "Aspect ratio"
+msgstr "Bildförhållande"
+
+#: ui/xui/main-menu.cc:842
 msgid "Volume"
 msgstr "Volym"
 
-#: ui/xui/main-menu.cc:844
+#: ui/xui/main-menu.cc:846
 msgid "Output volume limit"
 msgstr "Gräns för utvolym"
 
-#: ui/xui/main-menu.cc:846
+#: ui/xui/main-menu.cc:848
 msgid "Quality"
 msgstr "Kvalitet"
 
-#: ui/xui/main-menu.cc:847
+#: ui/xui/main-menu.cc:849
 msgid "Real-time DSP processing"
 msgstr "DSP-bearbetning i realtid"
 
-#: ui/xui/main-menu.cc:932
+#: ui/xui/main-menu.cc:934
 msgid "Adapter"
 msgstr "Nätverkskort"
 
-#: ui/xui/main-menu.cc:935
+#: ui/xui/main-menu.cc:937
 msgid "Enable"
 msgstr "Aktivera"
 
-#: ui/xui/main-menu.cc:986
+#: ui/xui/main-menu.cc:951
+msgid "Attached to"
+msgstr "Ansluten till"
+
+#: ui/xui/main-menu.cc:988
 msgid "Install Npcap"
 msgstr "Installera Npcap"
 
-#: ui/xui/main-menu.cc:1067
+#: ui/xui/main-menu.cc:1069
 msgid "Remove"
 msgstr "Ta bort"
 
-#: ui/xui/main-menu.cc:1093
+#: ui/xui/main-menu.cc:1095
 msgid "Add"
 msgstr "Lägg till"
 
-#: ui/xui/main-menu.cc:1294
+#: ui/xui/main-menu.cc:1296 ui/xui/main-menu.cc:1720
 msgid "Snapshots"
 msgstr "Ögonblicksbilder"
 
-#: ui/xui/main-menu.cc:1295
+#: ui/xui/main-menu.cc:1297
 msgid "Filter by current title"
 msgstr "Filtrera efter aktuell titel"
 
-#: ui/xui/main-menu.cc:1534
+#: ui/xui/main-menu.cc:1529
+msgid "Application restart required to apply settings"
+msgstr "Programmet måste startas om för att tillämpa inställningarna"
+
+#: ui/xui/main-menu.cc:1533
+msgid "Setting AV Pack to NONE disables video output."
+msgstr "Om AV-paketet anges till Inget inaktiveras videoutmatningen."
+
+#: ui/xui/main-menu.cc:1536
 msgid "System Configuration"
 msgstr "Systemkonfiguration"
 
-#: ui/xui/main-menu.cc:1551
+#: ui/xui/main-menu.cc:1539
+msgid "64 MiB (Default)"
+msgstr "64 MiB (standard)"
+
+#: ui/xui/main-menu.cc:1540
+msgid "128 MiB"
+msgstr "128 MiB"
+
+#: ui/xui/main-menu.cc:1542
+msgid "System Memory"
+msgstr "Systemminne"
+
+#: ui/xui/main-menu.cc:1544
+msgid "Increase to 128 MiB for debug or homebrew applications"
+msgstr "Öka till 128 MiB för felsökning eller egenutvecklade program"
+
+#: ui/xui/main-menu.cc:1549
+msgid "SCART"
+msgstr "SCART"
+
+#: ui/xui/main-menu.cc:1549
+msgid "HDTV (Default)"
+msgstr "HDTV (standard)"
+
+#: ui/xui/main-menu.cc:1549
+msgid "VGA"
+msgstr "VGA"
+
+#: ui/xui/main-menu.cc:1549
+msgid "RFU"
+msgstr "RFU"
+
+#: ui/xui/main-menu.cc:1550
+msgid "S-Video"
+msgstr "S-video"
+
+#: ui/xui/main-menu.cc:1550
+msgid "Composite"
+msgstr "Komposit"
+
+#: ui/xui/main-menu.cc:1550
+msgid "None"
+msgstr "Inget"
+
+#: ui/xui/main-menu.cc:1552
+msgid "AV Pack"
+msgstr "AV-paket"
+
+#: ui/xui/main-menu.cc:1554
+msgid "Select the attached AV pack"
+msgstr "Välj anslutet AV-paket"
+
+#: ui/xui/main-menu.cc:1558
 msgid "Files"
 msgstr "Filer"
 
-#: ui/xui/main-menu.cc:1637
+#: ui/xui/main-menu.cc:1559
+msgid "MCPX Boot ROM"
+msgstr "MCPX-start-ROM"
+
+#: ui/xui/main-menu.cc:1565
+msgid "Flash ROM (BIOS)"
+msgstr "Flash-ROM (BIOS)"
+
+#: ui/xui/main-menu.cc:1571
+msgid "Hard Disk"
+msgstr "Hårddisk"
+
+#: ui/xui/main-menu.cc:1576
+msgid "EEPROM"
+msgstr "EEPROM"
+
+#: ui/xui/main-menu.cc:1644
 msgid "Build Information"
 msgstr "Bygginformation"
 
-#: ui/xui/main-menu.cc:1645
+#: ui/xui/main-menu.cc:1652
 msgid "System Information"
 msgstr "Systeminformation"
 
-#: ui/xui/main-menu.cc:1653
+#: ui/xui/main-menu.cc:1660
 msgid "Config Information"
 msgstr "Konfigurationsinformation"
 
-#: ui/xui/main-menu.cc:1661
+#: ui/xui/main-menu.cc:1668
 msgid "Community"
 msgstr "Gemenskap"
 
-#: ui/xui/main-menu.cc:1663 ui/xui/welcome.cc:67
+#: ui/xui/main-menu.cc:1670 ui/xui/welcome.cc:67
 msgid "Visit"
 msgstr "Besök"
 
-#: ui/xui/main-menu.cc:1669 ui/xui/welcome.cc:69
+#: ui/xui/main-menu.cc:1676 ui/xui/welcome.cc:69
 msgid "for more information"
 msgstr "för mer information"
+
+#: ui/xui/main-menu.cc:1715
+msgid "General"
+msgstr "Allmänt"
+
+#: ui/xui/main-menu.cc:1716
+msgid "Input"
+msgstr "Inmatning"
+
+#: ui/xui/main-menu.cc:1717
+msgid "Display"
+msgstr "Bild"
+
+#: ui/xui/main-menu.cc:1718
+msgid "Audio"
+msgstr "Ljud"
+
+#: ui/xui/main-menu.cc:1719
+msgid "Network"
+msgstr "Nätverk"
+
+#: ui/xui/main-menu.cc:1721
+msgid "System"
+msgstr "System"
+
+#: ui/xui/main-menu.cc:1722
+msgid "About"
+msgstr "Om"
 
 #: ui/xui/monitor.cc:51
 msgid "Monitor"
@@ -365,6 +525,66 @@ msgstr "OK"
 #: ui/xui/notifications.cc:129
 msgid "Notification"
 msgstr "Avisering"
+
+#: ui/xui/popup-menu.cc:322
+msgid "Display Mode"
+msgstr "Visningsläge"
+
+#: ui/xui/popup-menu.cc:326
+msgid "Aspect Ratio"
+msgstr "Bildförhållande"
+
+#: ui/xui/popup-menu.cc:330
+msgid "Snapshots..."
+msgstr "Ögonblicksbilder…"
+
+#: ui/xui/popup-menu.cc:335
+msgid "All settings..."
+msgstr "Alla inställningar…"
+
+#: ui/xui/popup-menu.cc:374
+msgid "No games found"
+msgstr "Inga spel hittades"
+
+#: ui/xui/popup-menu.cc:427
+msgid "Pause"
+msgstr "Pausa"
+
+#: ui/xui/popup-menu.cc:432
+msgid "Resume"
+msgstr "Fortsätt"
+
+#: ui/xui/popup-menu.cc:437
+msgid "Screenshot"
+msgstr "Skärmbild"
+
+#: ui/xui/popup-menu.cc:441
+msgid "Save Snapshot"
+msgstr "Spara ögonblicksbild"
+
+#: ui/xui/popup-menu.cc:446
+msgid "Games"
+msgstr "Spel"
+
+#: ui/xui/popup-menu.cc:450
+msgid "Eject Disc"
+msgstr "Mata ut skiva"
+
+#: ui/xui/popup-menu.cc:454
+msgid "Load Disc..."
+msgstr "Läs in skiva…"
+
+#: ui/xui/popup-menu.cc:458 ui/xui/welcome.cc:60
+msgid "Settings"
+msgstr "Inställningar"
+
+#: ui/xui/popup-menu.cc:462 ui/xui/update.cc:123
+msgid "Restart"
+msgstr "Starta om"
+
+#: ui/xui/popup-menu.cc:466
+msgid "Exit"
+msgstr "Avsluta"
 
 #: ui/xui/snapshot-manager.cc:125
 msgid ""
@@ -418,10 +638,6 @@ msgstr "Aktuell version: %s"
 msgid "Latest version: %s"
 msgstr "Senaste version: %s"
 
-#: ui/xui/update.cc:123
-msgid "Restart"
-msgstr "Starta om"
-
 #: ui/xui/update.cc:131
 msgid "Check for Update"
 msgstr "Sök efter uppdatering"
@@ -434,178 +650,6 @@ msgstr "Första start"
 msgid "Configure machine settings to get started"
 msgstr "Konfigurera maskininställningarna för att komma igång"
 
-#: ui/xui/welcome.cc:60
-msgid "Settings"
-msgstr "Inställningar"
-
 #: ui/xui/widgets.cc:310
 msgid "(None Selected)"
 msgstr "(Inget valt)"
-
-#: ui/xui/main-menu.cc:0
-msgid "General"
-msgstr "Allmänt"
-
-#: ui/xui/main-menu.cc:0
-msgid "Input"
-msgstr "Inmatning"
-
-#: ui/xui/main-menu.cc:0
-msgid "Display"
-msgstr "Bild"
-
-#: ui/xui/main-menu.cc:0
-msgid "Audio"
-msgstr "Ljud"
-
-#: ui/xui/main-menu.cc:0
-msgid "Network"
-msgstr "Nätverk"
-
-#: ui/xui/main-menu.cc:0
-msgid "System"
-msgstr "System"
-
-#: ui/xui/main-menu.cc:0
-msgid "About"
-msgstr "Om"
-
-#: ui/xui/main-menu.cc:0
-msgid "System Memory"
-msgstr "Systemminne"
-
-#: ui/xui/main-menu.cc:0
-msgid "64 MiB (Default)"
-msgstr "64 MiB (standard)"
-
-#: ui/xui/main-menu.cc:0
-msgid "128 MiB"
-msgstr "128 MiB"
-
-#: ui/xui/main-menu.cc:0
-msgid "Increase to 128 MiB for debug or homebrew applications"
-msgstr "Öka till 128 MiB för felsökning eller egenutvecklade program"
-
-#: ui/xui/main-menu.cc:0
-msgid "AV Pack"
-msgstr "AV-paket"
-
-#: ui/xui/main-menu.cc:0
-msgid "SCART"
-msgstr "SCART"
-
-#: ui/xui/main-menu.cc:0
-msgid "HDTV (Default)"
-msgstr "HDTV (standard)"
-
-#: ui/xui/main-menu.cc:0
-msgid "VGA"
-msgstr "VGA"
-
-#: ui/xui/main-menu.cc:0
-msgid "RFU"
-msgstr "RFU"
-
-#: ui/xui/main-menu.cc:0
-msgid "S-Video"
-msgstr "S-video"
-
-#: ui/xui/main-menu.cc:0
-msgid "Composite"
-msgstr "Komposit"
-
-#: ui/xui/main-menu.cc:0
-msgid "None"
-msgstr "Inget"
-
-#: ui/xui/main-menu.cc:0
-msgid "Select the attached AV pack"
-msgstr "Välj anslutet AV-paket"
-
-#: ui/xui/main-menu.cc:0
-msgid "MCPX Boot ROM"
-msgstr "MCPX-start-ROM"
-
-#: ui/xui/main-menu.cc:0
-msgid "Flash ROM (BIOS)"
-msgstr "Flash-ROM (BIOS)"
-
-#: ui/xui/main-menu.cc:0
-msgid "Hard Disk"
-msgstr "Hårddisk"
-
-#: ui/xui/main-menu.cc:0
-msgid "EEPROM"
-msgstr "EEPROM"
-
-#: ui/xui/main-menu.cc:0
-msgid "Application restart required to apply settings"
-msgstr "Programmet måste startas om för att tillämpa inställningarna"
-
-#: ui/xui/main-menu.cc:0
-msgid "Setting AV Pack to NONE disables video output."
-msgstr "Om AV-paketet anges till Inget inaktiveras videoutmatningen."
-
-#: ui/xui/main-menu.cc:0
-msgid "Xbox Controller"
-msgstr "Xbox-handkontroll"
-
-#: ui/xui/main-menu.cc:0
-msgid "Xbox Controller S"
-msgstr "Xbox-handkontroll S"
-
-#: ui/xui/main-menu.cc:0
-msgid "Not Connected"
-msgstr "Inte ansluten"
-
-#: ui/xui/main-menu.cc:0
-msgid "Please select an available input device"
-msgstr "Välj en tillgänglig inmatningsenhet"
-
-#~ msgid "Screenshot output directory"
-#~ msgstr "Utdatamapp för skärmbilder"
-
-#~ msgid "Games directory"
-#~ msgstr "Spelmapp"
-
-#~ msgid "Image"
-#~ msgstr "Avbild"
-
-#~ msgid "Display Mode"
-#~ msgstr "Visningsläge"
-
-#~ msgid "Aspect Ratio"
-#~ msgstr "Bildförhållande"
-
-#~ msgid "Snapshots..."
-#~ msgstr "Ögonblicksbilder…"
-
-#~ msgid "All settings..."
-#~ msgstr "Alla inställningar…"
-
-#~ msgid "No games found"
-#~ msgstr "Inga spel hittades"
-
-#~ msgid "Pause"
-#~ msgstr "Pausa"
-
-#~ msgid "Resume"
-#~ msgstr "Fortsätt"
-
-#~ msgid "Screenshot"
-#~ msgstr "Skärmbild"
-
-#~ msgid "Save Snapshot"
-#~ msgstr "Spara ögonblicksbild"
-
-#~ msgid "Games"
-#~ msgstr "Spel"
-
-#~ msgid "Eject Disc"
-#~ msgstr "Mata ut skiva"
-
-#~ msgid "Load Disc..."
-#~ msgstr "Läs in skiva…"
-
-#~ msgid "Exit"
-#~ msgstr "Avsluta"
