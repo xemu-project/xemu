@@ -43,10 +43,12 @@ void PopupMenuItemDelegate::PushFocus() {}
 void PopupMenuItemDelegate::PopFocus() {}
 bool PopupMenuItemDelegate::DidPop() { return false; }
 
-static bool PopupMenuButton(std::string text, std::string icon = "")
+static bool PopupMenuButton(std::string text, std::string icon = "",
+                            bool translate = true)
 {
     ImGui::PushFont(g_font_mgr.m_menu_font);
-    auto button_text = string_format("%s %s", icon.c_str(), text.c_str());
+    const char *label = translate ? _(text.c_str()) : text.c_str();
+    auto button_text = string_format("%s %s", icon.c_str(), label);
     bool status = ImGui::Button(button_text.c_str(), ImVec2(-FLT_MIN, 0));
     ImGui::PopFont();
     return status;
@@ -361,7 +363,7 @@ public:
         }
 
         for (const auto &[label, file_path] : sorted_file_names) {
-            if (PopupMenuButton(label, ICON_FA_COMPACT_DISC)) {
+            if (PopupMenuButton(label, ICON_FA_COMPACT_DISC, false)) {
                 ActionLoadDiscFile(file_path.c_str());
                 nav.ClearMenuStack();
                 pop = true;

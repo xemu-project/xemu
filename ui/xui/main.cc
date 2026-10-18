@@ -133,6 +133,7 @@ static void InitializeStyle()
 static void xemu_i18n_init(void)
 {
     setlocale(LC_ALL, "");
+    setlocale(LC_NUMERIC, "C");
     char *dir = get_relocated_path(CONFIG_QEMU_LOCALEDIR);
     bindtextdomain(GETTEXT_PACKAGE, dir);
     bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8");

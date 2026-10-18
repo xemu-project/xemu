@@ -197,9 +197,9 @@ void MainMenuInputView::Draw()
     const char *driver = bound_drivers[active];
 
     if (strcmp(driver, DRIVER_DUKE) == 0)
-        driver = DRIVER_DUKE_DISPLAY_NAME;
+        driver = N_("Xbox Controller");
     else if (strcmp(driver, DRIVER_S) == 0)
-        driver = DRIVER_S_DISPLAY_NAME;
+        driver = N_("Xbox Controller S");
     const char *translated_driver = _(driver);
 
     ImGui::Columns(2, "", false);
@@ -213,8 +213,8 @@ void MainMenuInputView::Draw()
     if (ImGui::BeginCombo("###InputDrivers", translated_driver,
                           ImGuiComboFlags_NoArrowButton)) {
         const char *available_drivers[] = { DRIVER_DUKE, DRIVER_S };
-        const char *driver_display_names[] = { DRIVER_DUKE_DISPLAY_NAME,
-                                               DRIVER_S_DISPLAY_NAME };
+        const char *driver_display_names[] = { N_("Xbox Controller"),
+                                               N_("Xbox Controller S") };
         bool is_selected = false;
         int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);
         for (int i = 0; i < num_drivers; i++) {
@@ -1535,18 +1535,23 @@ void MainMenuSystemView::Draw()
 
     SectionTitle("System Configuration");
 
-    if (ChevronCombo(
-            N_("System Memory"), &g_config.sys.mem_limit,
-            "64 MiB (Default)\0"
-            "128 MiB\0",
-            N_("Increase to 128 MiB for debug or homebrew applications"))) {
+    static const char *const memory_options[] = {
+        N_("64 MiB (Default)"),
+        N_("128 MiB"),
+    };
+    if (ChevronCombo(N_("System Memory"), &g_config.sys.mem_limit,
+                     memory_options, G_N_ELEMENTS(memory_options),
+                     N_("Increase to 128 MiB for debug or homebrew applications"))) {
         m_dirty = true;
     }
 
-    if (ChevronCombo(
-            N_("AV Pack"), &g_config.sys.avpack,
-            "SCART\0HDTV (Default)\0VGA\0RFU\0S-Video\0Composite\0None\0",
-            N_("Select the attached AV pack"))) {
+    static const char *const avpack_options[] = {
+        N_("SCART"), N_("HDTV (Default)"), N_("VGA"), N_("RFU"),
+        N_("S-Video"), N_("Composite"), N_("None"),
+    };
+    if (ChevronCombo(N_("AV Pack"), &g_config.sys.avpack,
+                     avpack_options, G_N_ELEMENTS(avpack_options),
+                     N_("Select the attached AV pack"))) {
         m_dirty = true;
     }
 

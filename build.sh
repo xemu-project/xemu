@@ -8,10 +8,34 @@ project_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd
 
 target_arch=$(uname -m)
 
+install_translation_catalogs() {
+    local destination="$1"
+    local locale_dir
+    locale_dir=$(sed -n 's/^#define CONFIG_QEMU_LOCALEDIR "\(.*\)"$/\1/p' build/config-host.h)
+    test -n "${locale_dir}"
+    case "${platform}" in
+        CYGWIN*|MINGW*|MSYS*|win64-cross) locale_dir="${locale_dir#?:}" ;;
+    esac
+    find build/po -path '*/LC_MESSAGES/qemu.mo' -type f -print -quit | grep -q .
+
+    while IFS= read -r catalog; do
+        local language
+        language=$(basename "$(dirname "$(dirname "${catalog}")")")
+        local target="${destination}/qemu-bundle${locale_dir}/${language}/LC_MESSAGES/qemu.mo"
+        mkdir -p "$(dirname "${target}")"
+        install -m 0644 "${catalog}" "${target}"
+    done < <(find build/po -path '*/LC_MESSAGES/qemu.mo' -type f)
+}
+
+build_translation_catalogs() {
+    ninja -C build qemu-gmo
+}
+
 package_windows() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386w.exe dist/xemu.exe
+    install_translation_catalogs dist
     python3 "${project_source_dir}/get_deps.py" dist/xemu.exe dist
 }
 
@@ -19,6 +43,7 @@ package_wincross() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386w.exe dist/xemu.exe
+    install_translation_catalogs dist
     python3 ./scripts/gen-license.py --platform windows > dist/LICENSE.txt
 }
 
@@ -65,6 +90,7 @@ package_macos() {
     iconutil --convert icns --output dist/xemu.app/Contents/Resources/xemu.icns xemu.iconset
 
     cp Info.plist dist/xemu.app/Contents/
+    install_translation_catalogs dist/xemu.app/Contents/MacOS
 
     if [[ -e "${project_source_dir}/XEMU_VERSION" ]]; then
       xemu_version="$(cat ${project_source_dir}/XEMU_VERSION | cut -f1 -d-)"
@@ -83,6 +109,7 @@ package_linux() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386 dist/xemu
+    install_translation_catalogs dist
     if test -e "${project_source_dir}/XEMU_LICENSE"; then
       cp "${project_source_dir}/XEMU_LICENSE" dist/LICENSE.txt
     else
@@ -270,5 +297,6 @@ set -x # Print commands from now on
     "$@"
 
 time make -j"${job_count}" ${target} 2>&1 | tee build.log
+build_translation_catalogs
 
 "${postbuild}" # call post build functions
