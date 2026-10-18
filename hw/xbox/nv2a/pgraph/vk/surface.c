@@ -1677,7 +1677,8 @@ void pgraph_vk_surface_update(NV2AState *d, bool upload, bool color_write,
     prune_invalid_surfaces(r, num_invalid_surfaces_to_keep);
 }
 
-void pgraph_vk_sync_region_for_transfer(NV2AState *d, hwaddr addr, hwaddr size, bool prepare_write)
+void pgraph_vk_sync_region_for_transfer(NV2AState *d, hwaddr addr, hwaddr size,
+                                        bool prepare_write)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -1690,13 +1691,14 @@ void pgraph_vk_sync_region_for_transfer(NV2AState *d, hwaddr addr, hwaddr size, 
         pgraph_vk_surface_download_if_dirty(d, surface);
         if (prepare_write) {
             surface->upload_pending = true;
-            pg->draw_time++;
+            surface->draw_time = ++pg->draw_time;
         }
     }
 
     if (prepare_write) {
         memory_region_set_client_dirty(d->vram, addr, size, DIRTY_MEMORY_VGA);
-        memory_region_set_client_dirty(d->vram, addr, size, DIRTY_MEMORY_NV2A_TEX);
+        memory_region_set_client_dirty(d->vram, addr, size,
+                                       DIRTY_MEMORY_NV2A_TEX);
         memory_region_set_client_dirty(d->vram, addr, size, DIRTY_MEMORY_NV2A);
         for (int i = 0; i < NV2A_MAX_TEXTURES; ++i) {
             TextureBinding *binding = r->texture_bindings[i];
