@@ -28,7 +28,8 @@ multi = "multi"
 windows = "windows"
 macos = "darwin"
 linux = "linux"
-all_platforms = {windows, macos, linux}
+freebsd = "freebsd"
+all_platforms = {windows, macos, linux, freebsd}
 current_platform = linux
 
 versions = {}
@@ -122,7 +123,9 @@ class Lib:
                 .strip()
             )
             return self._version
-
+        elif current_platform == freebsd and self.pkg_mac:
+            self._version = versions[self.pkg_mac]
+            return self._version
         assert False, "Failed to get version info for " + self.name
 
     @property
