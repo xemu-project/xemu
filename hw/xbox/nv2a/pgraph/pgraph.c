@@ -762,8 +762,13 @@ static void pgraph_m2mf_transfer(NV2AState *d)
         if (notify_data && notify_len >= 0x1F &&
             memory_region_size(d->vram) - (notify_data - d->vram_ptr) >=
                 0x20) {
-            uint32_t ptimer_lo = (uint32_t)ptimer_read(d, NV_PTIMER_TIME_0, 4);
-            uint32_t ptimer_hi = (uint32_t)ptimer_read(d, NV_PTIMER_TIME_1, 4);
+            uint32_t ptimer_lo;
+			uint32_t ptimer_hi;
+            do {
+                ptimer_hi = (uint32_t)ptimer_read(d, NV_PTIMER_TIME_1, 4);
+                ptimer_lo = (uint32_t)ptimer_read(d, NV_PTIMER_TIME_0, 4);
+            } while (ptimer_hi !=
+                     (uint32_t)ptimer_read(d, NV_PTIMER_TIME_1, 4));
 
             stl_le_p(&notify_data[0x10], ptimer_lo);
             stl_le_p(&notify_data[0x14], ptimer_hi);
