@@ -163,36 +163,31 @@ static int pgraph_null_get_framebuffer_surface(NV2AState *d)
     return 0;
 }
 
-static PGRAPHRenderer
-    pgraph_null_renderer = { .type = CONFIG_DISPLAY_RENDERER_NULL,
-                             .name = "Null",
-                             .ops = {
-                                 .early_context_init = early_context_init,
-                                 .init = pgraph_null_init,
-                                 .finalize = pgraph_null_finalize,
-                                 .clear_report_value =
-                                     pgraph_null_clear_report_value,
-                                 .clear_surface = pgraph_null_clear_surface,
-                                 .draw_begin = pgraph_null_draw_begin,
-                                 .draw_end = pgraph_null_draw_end,
-                                 .flip_stall = pgraph_null_flip_stall,
-                                 .flush_draw = pgraph_null_flush_draw,
-                                 .get_report = pgraph_null_get_report,
-                                 .image_blit = pgraph_null_image_blit,
-                                 .pre_savevm_trigger =
-                                     pgraph_null_pre_savevm_trigger,
-                                 .pre_savevm_wait = pgraph_null_pre_savevm_wait,
-                                 .pre_shutdown_trigger =
-                                     pgraph_null_pre_shutdown_trigger,
-                                 .pre_shutdown_wait =
-                                     pgraph_null_pre_shutdown_wait,
-                                 .process_pending = pgraph_null_process_pending,
-                                 .process_pending_reports =
-                                     pgraph_null_process_pending_reports,
-                                 .surface_update = pgraph_null_surface_update,
-                                 .get_framebuffer_surface =
-                                     pgraph_null_get_framebuffer_surface,
-                             } };
+static PGRAPHRenderer pgraph_null_renderer = {
+    .type = CONFIG_DISPLAY_RENDERER_NULL,
+    .name = "Null",
+    .ops = {
+        .early_context_init = early_context_init,
+        .init = pgraph_null_init,
+        .finalize = pgraph_null_finalize,
+        .clear_report_value = pgraph_null_clear_report_value,
+        .clear_surface = pgraph_null_clear_surface,
+        .draw_begin = pgraph_null_draw_begin,
+        .draw_end = pgraph_null_draw_end,
+        .flip_stall = pgraph_null_flip_stall,
+        .flush_draw = pgraph_null_flush_draw,
+        .get_report = pgraph_null_get_report,
+        .image_blit = pgraph_null_image_blit,
+        .pre_savevm_trigger = pgraph_null_pre_savevm_trigger,
+        .pre_savevm_wait = pgraph_null_pre_savevm_wait,
+        .pre_shutdown_trigger = pgraph_null_pre_shutdown_trigger,
+        .pre_shutdown_wait = pgraph_null_pre_shutdown_wait,
+        .process_pending = pgraph_null_process_pending,
+        .process_pending_reports = pgraph_null_process_pending_reports,
+        .surface_update = pgraph_null_surface_update,
+        .get_framebuffer_surface = pgraph_null_get_framebuffer_surface,
+    },
+};
 
 static void __attribute__((constructor)) register_renderer(void)
 {
