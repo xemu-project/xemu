@@ -130,25 +130,6 @@ static const glslang_resource_t
                             .general_constant_matrix_vector_indexing = 1,
                         } };
 
-static glslang_target_client_version_t g_client_version =
-    GLSLANG_TARGET_VULKAN_1_1;
-static glslang_target_language_version_t g_target_spv =
-    GLSLANG_TARGET_SPV_1_3;
-
-void pgraph_vk_set_glsl_target(uint32_t device_api_version)
-{
-    if (device_api_version >= VK_API_VERSION_1_3) {
-        g_client_version = GLSLANG_TARGET_VULKAN_1_3;
-        g_target_spv = GLSLANG_TARGET_SPV_1_6;
-    } else if (device_api_version >= VK_API_VERSION_1_2) {
-        g_client_version = GLSLANG_TARGET_VULKAN_1_2;
-        g_target_spv = GLSLANG_TARGET_SPV_1_5;
-    } else {
-        g_client_version = GLSLANG_TARGET_VULKAN_1_1;
-        g_target_spv = GLSLANG_TARGET_SPV_1_3;
-    }
-}
-
 void pgraph_vk_init_glsl_compiler(void)
 {
     glslang_initialize_process();
@@ -159,16 +140,31 @@ void pgraph_vk_finalize_glsl_compiler(void)
     glslang_finalize_process();
 }
 
-GByteArray *pgraph_vk_compile_glsl_to_spv(glslang_stage_t stage,
+GByteArray *pgraph_vk_compile_glsl_to_spv(PGRAPHVkState *r,
+                                          glslang_stage_t stage,
                                           const char *glsl_source)
 {
+    glslang_target_client_version_t client_version;
+    glslang_target_language_version_t target_spv;
+
+    if (r->vk_api_version >= VK_API_VERSION_1_3) {
+        client_version = GLSLANG_TARGET_VULKAN_1_3;
+        target_spv = GLSLANG_TARGET_SPV_1_6;
+    } else if (r->vk_api_version >= VK_API_VERSION_1_2) {
+        client_version = GLSLANG_TARGET_VULKAN_1_2;
+        target_spv = GLSLANG_TARGET_SPV_1_5;
+    } else {
+        client_version = GLSLANG_TARGET_VULKAN_1_1;
+        target_spv = GLSLANG_TARGET_SPV_1_3;
+    }
+
     const glslang_input_t input = {
         .language = GLSLANG_SOURCE_GLSL,
         .stage = stage,
         .client = GLSLANG_CLIENT_VULKAN,
-        .client_version = g_client_version,
+        .client_version = client_version,
         .target_language = GLSLANG_TARGET_SPV,
-        .target_language_version = g_target_spv,
+        .target_language_version = target_spv,
         .code = glsl_source,
         .default_version = 460,
         .default_profile = GLSLANG_NO_PROFILE,
@@ -390,7 +386,7 @@ ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
     info->refcnt = 0;
     info->glsl = strdup(glsl);
     info->spirv = pgraph_vk_compile_glsl_to_spv(
-        vk_shader_stage_to_glslang_stage(stage), glsl);
+        r, vk_shader_stage_to_glslang_stage(stage), glsl);
     info->module = pgraph_vk_create_shader_module_from_spv(r, info->spirv);
     init_layout_from_spv(info);
     return info;
