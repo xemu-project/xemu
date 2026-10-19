@@ -149,10 +149,11 @@ void ShowMainMenu()
                     const char *disc_path = g_config.general.recent.discs[i];
                     const char *filename = g_path_get_basename(disc_path);
 
-                        if (ImGui::MenuItem(filename))
-                        {
-                           ActionLoadDiscFile(disc_path);
-                        }
+                    ImGui::PushID(disc_path);
+                    if (ImGui::MenuItem(filename)) {
+                        ActionLoadDiscFile(disc_path);
+                    }
+                    ImGui::PopID();
 
                         g_free((void *)filename);
                 }
