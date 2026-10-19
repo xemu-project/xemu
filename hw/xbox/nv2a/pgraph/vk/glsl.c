@@ -153,10 +153,13 @@ GByteArray *pgraph_vk_compile_glsl_to_spv(PGRAPHVkState *r,
         target_spv = GLSLANG_TARGET_SPV_1_6;
     } else
 #endif
+#ifdef VK_API_VERSION_1_3
     if (r->vk_api_version >= VK_API_VERSION_1_3) {
         client_version = GLSLANG_TARGET_VULKAN_1_3;
         target_spv = GLSLANG_TARGET_SPV_1_6;
-    } else if (r->vk_api_version >= VK_API_VERSION_1_2) {
+    } else
+#endif
+    if (r->vk_api_version >= VK_API_VERSION_1_2) {
         client_version = GLSLANG_TARGET_VULKAN_1_2;
         target_spv = GLSLANG_TARGET_SPV_1_5;
     } else {

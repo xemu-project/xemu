@@ -144,10 +144,12 @@ add_optional_instance_extension_names(PGRAPHState *pg,
                                    VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 }
 
-#ifdef VK_API_VERSION_1_4
+#if defined(VK_API_VERSION_1_4)
 #define MAX_VK_API_VERSION VK_API_VERSION_1_4
-#else
+#elif defined(VK_API_VERSION_1_3)
 #define MAX_VK_API_VERSION VK_API_VERSION_1_3
+#else
+#define MAX_VK_API_VERSION VK_API_VERSION_1_2
 #endif
 
 static bool create_instance(PGRAPHState *pg, Error **errp)
