@@ -19,6 +19,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
+
 #include "surface.h"
 
 #include "hw/xbox/nv2a/nv2a_regs.h"
