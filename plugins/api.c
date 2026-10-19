@@ -89,17 +89,18 @@ QEMU_DISABLE_CFI
 static void plugin_dispatch_cmd_work(CPUState *cpu, run_on_cpu_data data)
 {
     struct qemu_plugin_command_work *work = data.host_ptr;
+    qemu_plugin_command_cb_t cb = NULL;
 
     WITH_QEMU_LOCK_GUARD(&plugin.lock) {
         struct qemu_plugin_command *cmd =
             plugin_cmd_table ? g_hash_table_lookup(plugin_cmd_table, work->name)
                              : NULL;
-
-        if (!cmd) {
-            return;
+        if (cmd) {
+            cb = cmd->callback;
         }
+    }
 
-        qemu_plugin_command_cb_t cb = cmd->callback;
+    if (cb) {
         cb(work->args);
     }
 
