@@ -668,25 +668,38 @@ static inline void pgraph_m2mf_copy_strided(const M2MFState *m2mf,
                                             uint32_t stride_in,
                                             uint32_t stride_out)
 {
-    const uint8_t *in_end = in_base + in_max;
-    uint8_t *out_end = out_base + out_max;
-    const uint8_t *src_line = in_base + m2mf->offset_in;
-    uint8_t *dst_line = out_base + m2mf->offset_out;
+    hwaddr src_line_off = m2mf->offset_in;
+    hwaddr dst_line_off = m2mf->offset_out;
 
     for (uint32_t y = 0; y < m2mf->line_count; ++y) {
-        const uint8_t *src = src_line;
-        uint8_t *dst = dst_line;
+        if (src_line_off >= in_max || dst_line_off >= out_max) {
+            break;
+        }
+        hwaddr src_off = src_line_off;
+        hwaddr dst_off = dst_line_off;
         for (uint32_t x = 0; x < m2mf->line_length_in; ++x) {
-            if (src >= in_end || dst >= out_end) {
+            if (src_off >= in_max || dst_off >= out_max) {
                 break;
             }
-            *dst = *src;
-            src += stride_in;
-            dst += stride_out;
+            out_base[dst_off] = in_base[src_off];
+            src_off += stride_in;
+            dst_off += stride_out;
         }
-        src_line += m2mf->pitch_in;
-        dst_line += m2mf->pitch_out;
+        src_line_off += m2mf->pitch_in;
+        dst_line_off += m2mf->pitch_out;
     }
+}
+
+static inline hwaddr pgraph_m2mf_span(uint32_t line_count, uint32_t pitch,
+                                      uint32_t line_length, uint32_t stride,
+                                      hwaddr avail)
+{
+    hwaddr rows_span = (hwaddr)(line_count - 1) * pitch;
+    if (rows_span >= avail) {
+        return avail;
+    }
+    hwaddr line_span = (hwaddr)(line_length - 1) * stride + 1;
+    return MIN(line_span, avail - rows_span) + rows_span;
 }
 
 static void pgraph_m2mf_transfer(NV2AState *d)
@@ -724,18 +737,12 @@ static void pgraph_m2mf_transfer(NV2AState *d)
 
             hwaddr src_start = (in_base - d->vram_ptr) + m2mf->offset_in;
             hwaddr dst_start = (out_base - d->vram_ptr) + m2mf->offset_out;
-            hwaddr src_line_span =
-                (hwaddr)(m2mf->line_length_in - 1) * stride_in + 1;
-            hwaddr dst_line_span =
-                (hwaddr)(m2mf->line_length_in - 1) * stride_out + 1;
-            hwaddr src_span =
-                MIN((hwaddr)(m2mf->line_count - 1) * m2mf->pitch_in +
-                        src_line_span,
-                    in_max - m2mf->offset_in);
-            hwaddr dst_span =
-                MIN((hwaddr)(m2mf->line_count - 1) * m2mf->pitch_out +
-                        dst_line_span,
-                    out_max - m2mf->offset_out);
+            hwaddr src_span = pgraph_m2mf_span(m2mf->line_count, m2mf->pitch_in,
+                                               m2mf->line_length_in, stride_in,
+                                               in_max - m2mf->offset_in);
+            hwaddr dst_span = pgraph_m2mf_span(
+                m2mf->line_count, m2mf->pitch_out, m2mf->line_length_in,
+                stride_out, out_max - m2mf->offset_out);
 
             if (d->pgraph.renderer->ops.sync_region_for_transfer) {
                 d->pgraph.renderer->ops.surface_update(d, false, true, true);
