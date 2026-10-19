@@ -147,6 +147,12 @@ GByteArray *pgraph_vk_compile_glsl_to_spv(PGRAPHVkState *r,
     glslang_target_client_version_t client_version;
     glslang_target_language_version_t target_spv;
 
+#ifdef VK_API_VERSION_1_4
+    if (r->vk_api_version >= VK_API_VERSION_1_4) {
+        client_version = GLSLANG_TARGET_VULKAN_1_4;
+        target_spv = GLSLANG_TARGET_SPV_1_6;
+    } else
+#endif
     if (r->vk_api_version >= VK_API_VERSION_1_3) {
         client_version = GLSLANG_TARGET_VULKAN_1_3;
         target_spv = GLSLANG_TARGET_SPV_1_6;

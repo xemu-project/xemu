@@ -144,6 +144,12 @@ add_optional_instance_extension_names(PGRAPHState *pg,
                                    VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 }
 
+#ifdef VK_API_VERSION_1_4
+#define MAX_VK_API_VERSION VK_API_VERSION_1_4
+#else
+#define MAX_VK_API_VERSION VK_API_VERSION_1_3
+#endif
+
 static bool create_instance(PGRAPHState *pg, Error **errp)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -158,7 +164,7 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
     uint32_t instance_version = VK_API_VERSION_1_0;
     if (vkEnumerateInstanceVersion) {
         vkEnumerateInstanceVersion(&instance_version);
-        instance_version = MIN(instance_version, VK_API_VERSION_1_3);
+        instance_version = MIN(instance_version, MAX_VK_API_VERSION);
     }
     if (instance_version < VK_API_VERSION_1_1) {
         error_setg(errp, "Vulkan 1.1 or higher is required");
