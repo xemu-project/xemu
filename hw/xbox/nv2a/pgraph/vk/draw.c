@@ -623,20 +623,22 @@ static bool check_render_pass_dirty(PGRAPHState *pg)
                   sizeof(state)) != 0;
 }
 
-static void get_blend_factors(PGRAPHState *pg, uint32_t *sfactor,
-                              uint32_t *dfactor)
+static uint32_t get_blend_reg(PGRAPHState *pg)
 {
-    const uint32_t blend_reg = pgraph_reg_r(pg, NV_PGRAPH_BLEND);
+    uint32_t blend_reg = pgraph_reg_r(pg, NV_PGRAPH_BLEND);
     if (!(blend_reg & NV_PGRAPH_BLEND_EN)) {
-        *sfactor = 0;
-        *dfactor = 0;
-        return;
+        return blend_reg;
     }
 
-    *sfactor = fixup_blend_factor_for_surface(
-        GET_MASK(blend_reg, NV_PGRAPH_BLEND_SFACTOR), &pg->surface_shape);
-    *dfactor = fixup_blend_factor_for_surface(
-        GET_MASK(blend_reg, NV_PGRAPH_BLEND_DFACTOR), &pg->surface_shape);
+    SET_MASK(blend_reg, NV_PGRAPH_BLEND_SFACTOR,
+             fixup_blend_factor_for_surface(
+                 GET_MASK(blend_reg, NV_PGRAPH_BLEND_SFACTOR),
+                 &pg->surface_shape));
+    SET_MASK(blend_reg, NV_PGRAPH_BLEND_DFACTOR,
+             fixup_blend_factor_for_surface(
+                 GET_MASK(blend_reg, NV_PGRAPH_BLEND_DFACTOR),
+                 &pg->surface_shape));
+    return blend_reg;
 }
 
 // Quickly check for any state changes that would require more analysis
@@ -649,10 +651,7 @@ static bool check_pipeline_dirty(PGRAPHState *pg)
         return true;
     }
 
-    uint32_t sfactor, dfactor;
-    get_blend_factors(pg, &sfactor, &dfactor);
-    if (sfactor != r->pipeline_binding->key.blend_sfactor ||
-        dfactor != r->pipeline_binding->key.blend_dfactor) {
+    if (get_blend_reg(pg) != r->pipeline_binding->key.regs[0]) {
         return true;
     }
 
@@ -691,7 +690,6 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
 
     memset(key, 0, sizeof(*key));
     init_render_pass_state(pg, &key->render_pass_state);
-    get_blend_factors(pg, &key->blend_sfactor, &key->blend_dfactor);
     memcpy(&key->shader_state, &r->shader_binding->state, sizeof(ShaderState));
     memcpy(key->binding_descriptions, r->vertex_binding_descriptions,
            sizeof(key->binding_descriptions[0]) *
@@ -703,13 +701,14 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
     // FIXME: Register masking
     // FIXME: Use more dynamic state updates
     const int regs[] = {
-        NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,  NV_PGRAPH_CONTROL_0,
-        NV_PGRAPH_CONTROL_1,   NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
-        NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
+        NV_PGRAPH_BLENDCOLOR,  NV_PGRAPH_CONTROL_0,     NV_PGRAPH_CONTROL_1,
+        NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,     NV_PGRAPH_SETUPRASTER,
+        NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
     };
-    assert(ARRAY_SIZE(regs) == ARRAY_SIZE(key->regs));
+    assert(ARRAY_SIZE(regs) + 1 == ARRAY_SIZE(key->regs));
+    key->regs[0] = get_blend_reg(pg);
     for (int i = 0; i < ARRAY_SIZE(regs); i++) {
-        key->regs[i] = pgraph_reg_r(pg, regs[i]);
+        key->regs[i + 1] = pgraph_reg_r(pg, regs[i]);
     }
 }
 
@@ -904,11 +903,11 @@ static void create_pipeline(PGRAPHState *pg)
 
     float blend_constant[4] = { 0, 0, 0, 0 };
 
-    if (pgraph_reg_r(pg, NV_PGRAPH_BLEND) & NV_PGRAPH_BLEND_EN) {
+    if (key.regs[0] & NV_PGRAPH_BLEND_EN) {
         color_blend_attachment.blendEnable = VK_TRUE;
 
-        uint32_t sfactor = key.blend_sfactor;
-        uint32_t dfactor = key.blend_dfactor;
+        uint32_t sfactor = GET_MASK(key.regs[0], NV_PGRAPH_BLEND_SFACTOR);
+        uint32_t dfactor = GET_MASK(key.regs[0], NV_PGRAPH_BLEND_DFACTOR);
 
         assert(sfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
         assert(dfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
@@ -921,8 +920,7 @@ static void create_pipeline(PGRAPHState *pg)
         color_blend_attachment.dstAlphaBlendFactor =
             pgraph_blend_factor_vk_map[dfactor];
 
-        uint32_t equation =
-            GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND), NV_PGRAPH_BLEND_EQN);
+        uint32_t equation = GET_MASK(key.regs[0], NV_PGRAPH_BLEND_EQN);
         assert(equation < ARRAY_SIZE(pgraph_blend_equation_vk_map));
 
         color_blend_attachment.colorBlendOp =

@@ -65,8 +65,6 @@ typedef struct PipelineKey {
     bool clear;
     RenderPassState render_pass_state;
     ShaderState shader_state;
-    uint32_t blend_sfactor;
-    uint32_t blend_dfactor;
     uint32_t regs[9];
     VkVertexInputBindingDescription binding_descriptions[NV2A_VERTEXSHADER_ATTRIBUTES];
     VkVertexInputAttributeDescription attribute_descriptions[NV2A_VERTEXSHADER_ATTRIBUTES];
