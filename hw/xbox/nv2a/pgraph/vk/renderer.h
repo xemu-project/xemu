@@ -507,6 +507,9 @@ VkDeviceSize pgraph_vk_update_vertex_inline_buffer(PGRAPHState *pg, void **data,
                                                    size_t count);
 
 // surface.c
+bool pgraph_vk_is_image_format_supported(VkPhysicalDevice device,
+                                         VkFormat format,
+                                         VkImageUsageFlags usage);
 void pgraph_vk_init_surfaces(PGRAPHState *pg);
 void pgraph_vk_finalize_surfaces(PGRAPHState *pg);
 void pgraph_vk_surface_flush(NV2AState *d);
