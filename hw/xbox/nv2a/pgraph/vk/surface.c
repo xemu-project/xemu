@@ -1677,8 +1677,9 @@ void pgraph_vk_surface_update(NV2AState *d, bool upload, bool color_write,
     prune_invalid_surfaces(r, num_invalid_surfaces_to_keep);
 }
 
-static bool check_format_and_usage_supported(PGRAPHVkState *r, VkFormat format,
-                                             VkImageUsageFlags usage)
+bool pgraph_vk_is_image_format_supported(VkPhysicalDevice device,
+                                         VkFormat format,
+                                         VkImageUsageFlags usage)
 {
     VkPhysicalDeviceImageFormatInfo2 pdif2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2,
@@ -1690,8 +1691,8 @@ static bool check_format_and_usage_supported(PGRAPHVkState *r, VkFormat format,
     VkImageFormatProperties2 props = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2,
     };
-    VkResult result = vkGetPhysicalDeviceImageFormatProperties2(
-        r->physical_device, &pdif2, &props);
+    VkResult result =
+        vkGetPhysicalDeviceImageFormatProperties2(device, &pdif2, &props);
     return result == VK_SUCCESS;
 }
 
@@ -1702,8 +1703,8 @@ static bool check_surface_internal_formats_supported(
     for (int i = 0; i < count; i++) {
         const SurfaceFormatInfo *f = &fmts[i];
         if (f->host_bytes_per_pixel) {
-            all_supported &=
-                check_format_and_usage_supported(r, f->vk_format, f->usage);
+            all_supported &= pgraph_vk_is_image_format_supported(
+                r->physical_device, f->vk_format, f->usage);
         }
     }
     return all_supported;
@@ -1712,13 +1713,6 @@ static bool check_surface_internal_formats_supported(
 void pgraph_vk_init_surfaces(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
-
-    // Make sure all surface format types are supported. We don't expect issue
-    // with these, and therefore have no fallback mechanism.
-    bool color_formats_supported = check_surface_internal_formats_supported(
-        r, kelvin_surface_color_format_vk_map,
-        ARRAY_SIZE(kelvin_surface_color_format_vk_map));
-    assert(color_formats_supported);
 
     // Check if the device supports preferred VK_FORMAT_D24_UNORM_S8_UINT
     // format, fall back to D32_SFLOAT_S8_UINT otherwise.
