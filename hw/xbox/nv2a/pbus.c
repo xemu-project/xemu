@@ -20,26 +20,33 @@
  */
 
 #include "nv2a_int.h"
+#include "hw/pci/pci_host.h"
+
+/* PCI config space mirror; hardware decodes it twice (address bit 8 ignored). */
+#define NV_PBUS_PCI_NV_MIRROR_SIZE (2 * PCI_CONFIG_SPACE_SIZE)
+
+static bool pbus_pci_mirror_offset(hwaddr addr, uint32_t *cfg_addr)
+{
+    if (addr < NV_PBUS_PCI_NV_0 ||
+        addr >= NV_PBUS_PCI_NV_0 + NV_PBUS_PCI_NV_MIRROR_SIZE) {
+        return false;
+    }
+
+    *cfg_addr = (addr - NV_PBUS_PCI_NV_0) & (PCI_CONFIG_SPACE_SIZE - 1);
+    return true;
+}
 
 /* PBUS - bus control */
 uint64_t pbus_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *s = opaque;
     PCIDevice *d = PCI_DEVICE(s);
+    uint32_t cfg_addr;
 
     uint64_t r = 0;
-    switch (addr) {
-    case NV_PBUS_PCI_NV_0:
-        r = pci_get_long(d->config + PCI_VENDOR_ID);
-        break;
-    case NV_PBUS_PCI_NV_1:
-        r = pci_get_long(d->config + PCI_COMMAND);
-        break;
-    case NV_PBUS_PCI_NV_2:
-        r = pci_get_long(d->config + PCI_CLASS_REVISION);
-        break;
-    default:
-        break;
+    if (pbus_pci_mirror_offset(addr, &cfg_addr)) {
+        r = pci_host_config_read_common(d, cfg_addr, PCI_CONFIG_SPACE_SIZE,
+                                        size);
     }
 
     nv2a_reg_log_read(NV_PBUS, addr, size, r);
@@ -50,14 +57,12 @@ void pbus_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *s = opaque;
     PCIDevice *d = PCI_DEVICE(s);
+    uint32_t cfg_addr;
 
     nv2a_reg_log_write(NV_PBUS, addr, size, val);
 
-    switch (addr) {
-    case NV_PBUS_PCI_NV_1:
-        pci_set_long(d->config + PCI_COMMAND, val);
-        break;
-    default:
-        break;
+    if (pbus_pci_mirror_offset(addr, &cfg_addr)) {
+        pci_host_config_write_common(d, cfg_addr, PCI_CONFIG_SPACE_SIZE,
+                                     (uint32_t)val, size);
     }
 }
