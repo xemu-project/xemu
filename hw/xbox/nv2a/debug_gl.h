@@ -28,8 +28,6 @@
         GLenum error;                                                        \
         while ((error = glGetError()) != GL_NO_ERROR) {                      \
             ++error_count;                                                   \
-            fprintf(stderr, "OpenGL error: 0x%X (%d) at %s:%d\n", error,     \
-                    error, __FILE__, __LINE__);                              \
             nv2a_log_fatal_error("OpenGL error 0x%X (%d) detected at %s:%d", \
                                  error, error, __FILE__, __LINE__);          \
         }                                                                    \
@@ -50,10 +48,6 @@ void gl_debug_assert_framebuffer_complete(const char *source_file, int line);
     do {                                                          \
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER); \
         if (status != GL_FRAMEBUFFER_COMPLETE) {                  \
-            fprintf(stderr,                                       \
-                    "OpenGL framebuffer status 0x%X (%d) != "     \
-                    "GL_FRAMEBUFFER_COMPLETE at %s:%d\n",         \
-                    status, status, __FILE__, __LINE__);          \
             nv2a_log_fatal_error(                                 \
                 "OpenGL framebuffer status not complete: 0x%X "   \
                 "(%d)\nat %s:%d\n",                               \

@@ -38,16 +38,6 @@ void nv2a_set_fatal_error_log_path(const gchar *path)
 
 void nv2a_log_fatal_error(const char *msg, ...)
 {
-    FILE *error_log = stderr;
-    if (fatal_error_log_path) {
-        error_log = fopen(fatal_error_log_path, "w");
-        if (!error_log) {
-            fprintf(stderr, "Failed to open fatal error log at '%s'\n",
-                    fatal_error_log_path);
-            error_log = stderr;
-        }
-    }
-
     time_t now = time(NULL);
     struct tm *local_time = localtime(&now);
 
@@ -56,18 +46,25 @@ void nv2a_log_fatal_error(const char *msg, ...)
     };
     strftime(timestamp, sizeof(timestamp), "%Y%m%d at %T", local_time);
 
-    fprintf(error_log, "%s\n", timestamp);
-
     va_list args;
     va_start(args, msg);
-    vfprintf(error_log, msg, args);
+    gchar *formatted = g_strdup_vprintf(msg, args);
     va_end(args);
 
-    fprintf(error_log, "\n\n");
+    fprintf(stderr, "%s\n%s\n\n", timestamp, formatted);
 
-    if (error_log != stderr) {
-        fclose(error_log);
+    if (fatal_error_log_path) {
+        FILE *error_log = fopen(fatal_error_log_path, "w");
+        if (error_log) {
+            fprintf(error_log, "%s\n%s\n\n", timestamp, formatted);
+            fclose(error_log);
+        } else {
+            fprintf(stderr, "Failed to open fatal error log at '%s'\n",
+                    fatal_error_log_path);
+        }
     }
+
+    g_free(formatted);
 }
 
 #ifdef XEMU_DEBUG_BUILD
