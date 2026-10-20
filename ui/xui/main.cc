@@ -291,9 +291,11 @@ void xemu_hud_update(void)
             g_scene_mgr.PushScene(g_popup_menu);
         } else if (menu_button ||
                    (ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
-                    !ImGui::IsAnyItemFocused() && !ImGui::IsAnyItemHovered())) {
+                    !ImGui::IsAnyItemFocused() && !ImGui::IsAnyItemHovered() &&
+                    !xemu_mouse_input_to_guest())) {
             g_scene_mgr.PushScene(g_popup_menu);
-        } else if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        } else if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
+                   !xemu_mouse_input_to_guest()) {
             xemu_toggle_fullscreen();
         }
 
