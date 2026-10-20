@@ -33,28 +33,29 @@
         }                                          \
     } while (0)
 
-#define NV2A_ASSERT_FATAL(x)                                             \
-    do {                                                                 \
-        if (!(x)) {                                                      \
-            nv2a_log_fatal_error("Check failed!\n'%s'\nat %s:%d\n", #x,  \
-                                 __FILE__, __LINE__);                    \
-            assert((x) &&                                                \
-                   "A fatal error occurred. Check the xemu fatal error " \
-                   "log in your home directory for details.");           \
-            exit(127);                                                   \
-        }                                                                \
+#define NV2A_ASSERT_FATAL(x)                                                \
+    do {                                                                    \
+        if (!(x)) {                                                         \
+            nv2a_log_timestamped_message("Check failed!\n'%s'\nat %s:%d\n", \
+                                         #x, __FILE__, __LINE__);           \
+            assert((x) &&                                                   \
+                   "A fatal error occurred. Check xemu.log or the console " \
+                   "output for details.");                                  \
+            exit(127);                                                      \
+        }                                                                   \
     } while (0)
 
-#define NV2A_ASSERT_FATAL_FRIENDLY(x, msg)                                     \
-    do {                                                                       \
-        if (!(x)) {                                                            \
-            nv2a_log_fatal_error("%s\n\nCheck failed!\n'%s'\nat %s:%d\n", msg, \
-                                 #x, __FILE__, __LINE__);                      \
-            assert((x) && msg &&                                               \
-                   "A fatal error occurred. Check the xemu fatal error log "   \
-                   "in your home directory for details.");                     \
-            exit(127);                                                         \
-        }                                                                      \
+#define NV2A_ASSERT_FATAL_FRIENDLY(x, msg)                                  \
+    do {                                                                    \
+        if (!(x)) {                                                         \
+            nv2a_log_timestamped_message(                                   \
+                "%s\n\nCheck failed!\n'%s'\nat %s:%d\n", msg, #x, __FILE__, \
+                __LINE__);                                                  \
+            assert((x) && msg &&                                            \
+                   "A fatal error occurred. Check xemu.log or the console " \
+                   "output for details.");                                  \
+            exit(127);                                                      \
+        }                                                                   \
     } while (0)
 
 #ifndef DEBUG_NV2A
@@ -178,13 +179,10 @@ static inline void nv2a_profile_inc_counter(enum NV2A_PROF_COUNTERS_ENUM cnt)
     g_nv2a_stats.frame_working.counters[cnt] += 1;
 }
 
-void nv2a_set_fatal_error_log_path(const gchar *path);
-
 /**
- * Writes a fatal error message to the fatal error log and forcibly kills the
- * application.
+ * Writes a timestamped message to stderr.
  */
-void nv2a_log_fatal_error(const char *msg, ...);
+void nv2a_log_timestamped_message(const char *msg, ...);
 
 #ifdef CONFIG_RENDERDOC
 void nv2a_dbg_renderdoc_init(void);

@@ -22,16 +22,17 @@
 
 #include <epoxy/gl.h>
 
-#define ASSERT_NO_GL_ERROR()                                                 \
-    do {                                                                     \
-        int error_count = 0;                                                 \
-        GLenum error;                                                        \
-        while ((error = glGetError()) != GL_NO_ERROR) {                      \
-            ++error_count;                                                   \
-            nv2a_log_fatal_error("OpenGL error 0x%X (%d) detected at %s:%d", \
-                                 error, error, __FILE__, __LINE__);          \
-        }                                                                    \
-        assert(!error_count && "OpenGL error(s) detected");                  \
+#define ASSERT_NO_GL_ERROR()                                              \
+    do {                                                                  \
+        int error_count = 0;                                              \
+        GLenum error;                                                     \
+        while ((error = glGetError()) != GL_NO_ERROR) {                   \
+            ++error_count;                                                \
+            nv2a_log_timestamped_message(                                 \
+                "OpenGL error 0x%X (%d) detected at %s:%d", error, error, \
+                __FILE__, __LINE__);                                      \
+        }                                                                 \
+        assert(!error_count && "OpenGL error(s) detected");               \
     } while (0)
 
 
@@ -48,7 +49,7 @@ void gl_debug_assert_framebuffer_complete(const char *source_file, int line);
     do {                                                          \
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER); \
         if (status != GL_FRAMEBUFFER_COMPLETE) {                  \
-            nv2a_log_fatal_error(                                 \
+            nv2a_log_timestamped_message(                         \
                 "OpenGL framebuffer status not complete: 0x%X "   \
                 "(%d)\nat %s:%d\n",                               \
                 status, status, __FILE__, __LINE__);              \

@@ -25,18 +25,7 @@
 #include "qemu/osdep.h"
 
 
-static gchar *fatal_error_log_path = NULL;
-
-void nv2a_set_fatal_error_log_path(const gchar *path)
-{
-    if (fatal_error_log_path) {
-        g_free(fatal_error_log_path);
-    }
-
-    fatal_error_log_path = path ? g_strdup(path) : NULL;
-}
-
-void nv2a_log_fatal_error(const char *msg, ...)
+void nv2a_log_timestamped_message(const char *msg, ...)
 {
     time_t now = time(NULL);
     struct tm *local_time = localtime(&now);
@@ -52,17 +41,6 @@ void nv2a_log_fatal_error(const char *msg, ...)
     va_end(args);
 
     fprintf(stderr, "%s\n%s\n\n", timestamp, formatted);
-
-    if (fatal_error_log_path) {
-        FILE *error_log = fopen(fatal_error_log_path, "w");
-        if (error_log) {
-            fprintf(error_log, "%s\n%s\n\n", timestamp, formatted);
-            fclose(error_log);
-        } else {
-            fprintf(stderr, "Failed to open fatal error log at '%s'\n",
-                    fatal_error_log_path);
-        }
-    }
 
     g_free(formatted);
 }

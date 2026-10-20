@@ -1332,12 +1332,8 @@ static void init_sdl_app_metadata(void)
                                "https://xemu.app");
 }
 
-int main(int argc, char **argv)
+static void maybe_redirect_output_to_log_file(void)
 {
-    QemuThread thread;
-
-    setlocale(LC_NUMERIC, "C");
-
 #ifdef _WIN32
     if (AttachConsole(ATTACH_PARENT_PROCESS)) {
         // Launched with a console. If stdout and stderr are not associated with
@@ -1360,16 +1356,34 @@ int main(int argc, char **argv)
     }
 
     _set_error_mode(_OUT_TO_STDERR);
+#else
+    if (isatty(STDERR_FILENO)) {
+        return;
+    }
+
+    gchar *log_dir = g_path_get_dirname(xemu_settings_get_path());
+    gchar *log_path = g_build_filename(log_dir, "xemu.log", NULL);
+    g_free(log_dir);
+
+    FILE *logfile = fopen(log_path, "w");
+    if (logfile) {
+        fclose(logfile);
+        if (freopen(log_path, "a", stdout)) {
+            setvbuf(stdout, NULL, _IOLBF, 0);
+        }
+        if (freopen(log_path, "a", stderr)) {
+            setvbuf(stderr, NULL, _IONBF, 0);
+        }
+    }
+    g_free(log_path);
 #endif
+}
 
-    fprintf(stderr, "xemu_version: %s\n", xemu_version);
-    fprintf(stderr, "xemu_commit: %s\n", xemu_commit);
-    fprintf(stderr, "xemu_date: %s\n", xemu_date);
+int main(int argc, char **argv)
+{
+    QemuThread thread;
 
-    gchar *fatal_error_log_path = g_build_filename(g_get_home_dir(), "xemu-fatal-error.log", NULL);
-    nv2a_set_fatal_error_log_path(fatal_error_log_path);
-    fprintf(stderr, "xemu fatal error log path: %s\n", fatal_error_log_path);
-    g_free(fatal_error_log_path);
+    setlocale(LC_NUMERIC, "C");
 
     init_sdl_app_metadata();
 
@@ -1386,6 +1400,14 @@ int main(int argc, char **argv)
             break;
         }
     }
+
+    maybe_redirect_output_to_log_file();
+
+    fprintf(stderr, "xemu_version: %s\n", xemu_version);
+    fprintf(stderr, "xemu_commit: %s\n", xemu_commit);
+    fprintf(stderr, "xemu_date: %s\n", xemu_date);
+    fprintf(stderr, "xemu base path: %s\n", xemu_settings_get_base_path());
+    fprintf(stderr, "xemu config path: %s\n", xemu_settings_get_path());
 
     if (!xemu_settings_load()) {
         const char *err_msg = xemu_settings_get_error_message();
