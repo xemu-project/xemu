@@ -101,7 +101,9 @@ static void plugin_dispatch_cmd_work(CPUState *cpu, run_on_cpu_data data)
     }
 
     if (cb) {
+        qemu_plugin_set_cb_flags(cpu, QEMU_PLUGIN_CB_RW_REGS);
         cb(work->args);
+        qemu_plugin_set_cb_flags(cpu, QEMU_PLUGIN_CB_NO_REGS);
     }
 
     g_free(work->name);
