@@ -696,15 +696,6 @@ static void xb_surface_gl_create_texture(DisplaySurface *surface)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 }
 
-static void xb_surface_gl_destroy_texture(DisplaySurface *surface)
-{
-    if (!surface || !surface->texture) {
-        return;
-    }
-    glDeleteTextures(1, &surface->texture);
-    surface->texture = 0;
-}
-
 static bool xb_console_gl_check_format(DisplayChangeListener *dcl,
                                        pixman_format_code_t format)
 {
@@ -858,6 +849,7 @@ static void gl_render_frame(struct xemu_console *scon)
         // FIXME: Don't upload if notdirty
         xb_surface_gl_create_texture(scon->surface);
         tex = scon->surface->texture;
+        scon->surface->texture = 0;
         flip_required = true;
         release_surface_texture = true;
         xemu_main_loop_unlock();
@@ -887,9 +879,7 @@ static void gl_render_frame(struct xemu_console *scon)
     glFinish();
 
     if (release_surface_texture) {
-        xemu_main_loop_lock();
-        xb_surface_gl_destroy_texture(scon->surface);
-        xemu_main_loop_unlock();
+        glDeleteTextures(1, &tex);
     }
 
     nv2a_release_framebuffer_surface();
