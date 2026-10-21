@@ -900,6 +900,10 @@ static bool check_surface_to_texture_compatiblity(const SurfaceBinding *surface,
         return true;
     }
 
+    if (shape->color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5) {
+        return false;
+    }
+
     VkColorFormatInfo tex_vkf = kelvin_color_format_vk_map[shape->color_format];
     return tex_vkf.vk_format &&
            surface->host_fmt.host_bytes_per_pixel == vk_format_texel_size(tex_vkf.vk_format);
