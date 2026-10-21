@@ -1,0 +1,11 @@
+#version 450
+#extension GL_KHR_compute_shader_derivatives : require
+
+// Test declarying the group layout ahead of the local size
+layout(derivative_group_quadsKHR) in;
+layout(local_size_x = 2, local_size_y = 2) in;
+
+void main()
+{
+    float dx = dFdx(float(gl_LocalInvocationID.x));
+}

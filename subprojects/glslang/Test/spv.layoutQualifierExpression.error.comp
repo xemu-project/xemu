@@ -1,0 +1,14 @@
+#version 460
+
+uint bindingIndex = 0;
+
+layout(local_size_x = 1) in;
+
+layout(binding = bindingIndex) buffer Output {
+    uint value;
+} outputBuffer;
+
+void main()
+{
+    outputBuffer.value = 0;
+}

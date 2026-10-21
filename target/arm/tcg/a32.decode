@@ -1,0 +1,557 @@
+# A32 conditional instructions
+#
+#  Copyright (c) 2019 Linaro, Ltd
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, see <http://www.gnu.org/licenses/>.
+
+#
+# This file is processed by scripts/decodetree.py
+#
+# All of the insn that have a COND field in insn[31:28] are here.
+# All insns that have 0xf in insn[31:28] are in a32-uncond.decode.
+#
+
+&empty
+&s_rrr_shi       s rd rn rm shim shty
+&s_rrr_shr       s rn rd rm rs shty
+&s_rri_rot       s rn rd imm rot
+&s_rrrr          s rd rn rm ra
+&rrrr            rd rn rm ra
+&rrr_rot         rd rn rm rot
+&rrr             rd rn rm
+&rr              rd rm
+&ri              rd imm
+&r               rm
+&i               imm
+&msr_reg         rn r mask
+&mrs_reg         rd r
+&msr_bank        rn r sysm
+&mrs_bank        rd r sysm
+&ldst_rr         p w u rn rt rm shimm shtype
+&ldst_ri         p w u rn rt imm
+&ldst_block      rn i b u w list
+&strex           rn rd rt rt2 imm
+&ldrex           rn rt rt2 imm
+&bfx             rd rn lsb widthm1
+&bfi             rd rn lsb msb
+&sat             rd rn satimm imm sh
+&pkh             rd rn rm imm tb
+&mcr             cp opc1 crn crm opc2 rt
+&mcrr            cp opc1 crm rt rt2
+
+# Data-processing (register)
+
+@s_rrr_shi       ---- ... .... s:1 rn:4 rd:4 shim:5 shty:2 . rm:4 \
+                 &s_rrr_shi
+@s_rxr_shi       ---- ... .... s:1 .... rd:4 shim:5 shty:2 . rm:4 \
+                 &s_rrr_shi rn=0
+@S_xrr_shi       ---- ... .... .   rn:4 .... shim:5 shty:2 . rm:4 \
+                 &s_rrr_shi s=1 rd=0
+
+AND_rrri         .... 000 0000 . .... .... ..... .. 0 ....    @s_rrr_shi
+EOR_rrri         .... 000 0001 . .... .... ..... .. 0 ....    @s_rrr_shi
+SUB_rrri         .... 000 0010 . .... .... ..... .. 0 ....    @s_rrr_shi
+RSB_rrri         .... 000 0011 . .... .... ..... .. 0 ....    @s_rrr_shi
+ADD_rrri         .... 000 0100 . .... .... ..... .. 0 ....    @s_rrr_shi
+ADC_rrri         .... 000 0101 . .... .... ..... .. 0 ....    @s_rrr_shi
+SBC_rrri         .... 000 0110 . .... .... ..... .. 0 ....    @s_rrr_shi
+RSC_rrri         .... 000 0111 . .... .... ..... .. 0 ....    @s_rrr_shi
+TST_xrri         .... 000 1000 1 .... 0000 ..... .. 0 ....    @S_xrr_shi
+TEQ_xrri         .... 000 1001 1 .... 0000 ..... .. 0 ....    @S_xrr_shi
+CMP_xrri         .... 000 1010 1 .... 0000 ..... .. 0 ....    @S_xrr_shi
+CMN_xrri         .... 000 1011 1 .... 0000 ..... .. 0 ....    @S_xrr_shi
+ORR_rrri         .... 000 1100 . .... .... ..... .. 0 ....    @s_rrr_shi
+MOV_rxri         .... 000 1101 . 0000 .... ..... .. 0 ....    @s_rxr_shi
+BIC_rrri         .... 000 1110 . .... .... ..... .. 0 ....    @s_rrr_shi
+MVN_rxri         .... 000 1111 . 0000 .... ..... .. 0 ....    @s_rxr_shi
+
+%imm16           16:4 0:12
+@mov16           ---- .... .... .... rd:4 ............        &ri imm=%imm16
+
+MOVW             .... 0011 0000 .... .... ............        @mov16
+MOVT             .... 0011 0100 .... .... ............        @mov16
+
+# Data-processing (register-shifted register)
+
+@s_rrr_shr       ---- ... .... s:1 rn:4 rd:4 rs:4 . shty:2 . rm:4 \
+                 &s_rrr_shr
+@s_rxr_shr       ---- ... .... s:1 .... rd:4 rs:4 . shty:2 . rm:4 \
+                 &s_rrr_shr rn=0
+@S_xrr_shr       ---- ... .... .   rn:4 .... rs:4 . shty:2 . rm:4 \
+                 &s_rrr_shr rd=0 s=1
+
+AND_rrrr         .... 000 0000 . .... .... .... 0 .. 1 ....   @s_rrr_shr
+EOR_rrrr         .... 000 0001 . .... .... .... 0 .. 1 ....   @s_rrr_shr
+SUB_rrrr         .... 000 0010 . .... .... .... 0 .. 1 ....   @s_rrr_shr
+RSB_rrrr         .... 000 0011 . .... .... .... 0 .. 1 ....   @s_rrr_shr
+ADD_rrrr         .... 000 0100 . .... .... .... 0 .. 1 ....   @s_rrr_shr
+ADC_rrrr         .... 000 0101 . .... .... .... 0 .. 1 ....   @s_rrr_shr
+SBC_rrrr         .... 000 0110 . .... .... .... 0 .. 1 ....   @s_rrr_shr
+RSC_rrrr         .... 000 0111 . .... .... .... 0 .. 1 ....   @s_rrr_shr
+TST_xrrr         .... 000 1000 1 .... 0000 .... 0 .. 1 ....   @S_xrr_shr
+TEQ_xrrr         .... 000 1001 1 .... 0000 .... 0 .. 1 ....   @S_xrr_shr
+CMP_xrrr         .... 000 1010 1 .... 0000 .... 0 .. 1 ....   @S_xrr_shr
+CMN_xrrr         .... 000 1011 1 .... 0000 .... 0 .. 1 ....   @S_xrr_shr
+ORR_rrrr         .... 000 1100 . .... .... .... 0 .. 1 ....   @s_rrr_shr
+MOV_rxrr         .... 000 1101 . 0000 .... .... 0 .. 1 ....   @s_rxr_shr
+BIC_rrrr         .... 000 1110 . .... .... .... 0 .. 1 ....   @s_rrr_shr
+MVN_rxrr         .... 000 1111 . 0000 .... .... 0 .. 1 ....   @s_rxr_shr
+
+# Data-processing (immediate)
+
+%a32extrot       8:4 !function=times_2
+
+@s_rri_rot       ---- ... .... s:1 rn:4 rd:4 .... imm:8 \
+                 &s_rri_rot rot=%a32extrot
+@s_rxi_rot       ---- ... .... s:1 .... rd:4 .... imm:8 \
+                 &s_rri_rot rot=%a32extrot rn=0
+@S_xri_rot       ---- ... .... .   rn:4 .... .... imm:8 \
+                 &s_rri_rot rot=%a32extrot rd=0 s=1
+
+AND_rri          .... 001 0000 . .... .... ............       @s_rri_rot
+EOR_rri          .... 001 0001 . .... .... ............       @s_rri_rot
+SUB_rri          .... 001 0010 . .... .... ............       @s_rri_rot
+RSB_rri          .... 001 0011 . .... .... ............       @s_rri_rot
+ADD_rri          .... 001 0100 . .... .... ............       @s_rri_rot
+ADC_rri          .... 001 0101 . .... .... ............       @s_rri_rot
+SBC_rri          .... 001 0110 . .... .... ............       @s_rri_rot
+RSC_rri          .... 001 0111 . .... .... ............       @s_rri_rot
+TST_xri          .... 001 1000 1 .... 0000 ............       @S_xri_rot
+TEQ_xri          .... 001 1001 1 .... 0000 ............       @S_xri_rot
+CMP_xri          .... 001 1010 1 .... 0000 ............       @S_xri_rot
+CMN_xri          .... 001 1011 1 .... 0000 ............       @S_xri_rot
+ORR_rri          .... 001 1100 . .... .... ............       @s_rri_rot
+MOV_rxi          .... 001 1101 . 0000 .... ............       @s_rxi_rot
+BIC_rri          .... 001 1110 . .... .... ............       @s_rri_rot
+MVN_rxi          .... 001 1111 . 0000 .... ............       @s_rxi_rot
+
+# Multiply and multiply accumulate
+
+@s_rdamn         ---- .... ... s:1 rd:4 ra:4 rm:4 .... rn:4   &s_rrrr
+@s_rd0mn         ---- .... ... s:1 rd:4 .... rm:4 .... rn:4   &s_rrrr ra=0
+@rdamn           ---- .... ... .   rd:4 ra:4 rm:4 .... rn:4   &rrrr
+@rd0mn           ---- .... ... .   rd:4 .... rm:4 .... rn:4   &rrrr ra=0
+
+MUL              .... 0000 000 . .... 0000 .... 1001 ....     @s_rd0mn
+MLA              .... 0000 001 . .... .... .... 1001 ....     @s_rdamn
+UMAAL            .... 0000 010 0 .... .... .... 1001 ....     @rdamn
+MLS              .... 0000 011 0 .... .... .... 1001 ....     @rdamn
+UMULL            .... 0000 100 . .... .... .... 1001 ....     @s_rdamn
+UMLAL            .... 0000 101 . .... .... .... 1001 ....     @s_rdamn
+SMULL            .... 0000 110 . .... .... .... 1001 ....     @s_rdamn
+SMLAL            .... 0000 111 . .... .... .... 1001 ....     @s_rdamn
+
+# Saturating addition and subtraction
+
+@rndm            ---- .... .... rn:4 rd:4 .... .... rm:4      &rrr
+
+QADD             .... 0001 0000 .... .... 0000 0101 ....      @rndm
+QSUB             .... 0001 0010 .... .... 0000 0101 ....      @rndm
+QDADD            .... 0001 0100 .... .... 0000 0101 ....      @rndm
+QDSUB            .... 0001 0110 .... .... 0000 0101 ....      @rndm
+
+# Halfword multiply and multiply accumulate
+
+SMLABB           .... 0001 0000 .... .... .... 1000 ....      @rdamn
+SMLABT           .... 0001 0000 .... .... .... 1100 ....      @rdamn
+SMLATB           .... 0001 0000 .... .... .... 1010 ....      @rdamn
+SMLATT           .... 0001 0000 .... .... .... 1110 ....      @rdamn
+SMLAWB           .... 0001 0010 .... .... .... 1000 ....      @rdamn
+SMULWB           .... 0001 0010 .... 0000 .... 1010 ....      @rd0mn
+SMLAWT           .... 0001 0010 .... .... .... 1100 ....      @rdamn
+SMULWT           .... 0001 0010 .... 0000 .... 1110 ....      @rd0mn
+SMLALBB          .... 0001 0100 .... .... .... 1000 ....      @rdamn
+SMLALBT          .... 0001 0100 .... .... .... 1100 ....      @rdamn
+SMLALTB          .... 0001 0100 .... .... .... 1010 ....      @rdamn
+SMLALTT          .... 0001 0100 .... .... .... 1110 ....      @rdamn
+SMULBB           .... 0001 0110 .... 0000 .... 1000 ....      @rd0mn
+SMULBT           .... 0001 0110 .... 0000 .... 1100 ....      @rd0mn
+SMULTB           .... 0001 0110 .... 0000 .... 1010 ....      @rd0mn
+SMULTT           .... 0001 0110 .... 0000 .... 1110 ....      @rd0mn
+
+# MSR (immediate) and hints
+
+&msr_i           r mask rot imm
+@msr_i           ---- .... .... mask:4 .... rot:4 imm:8       &msr_i
+
+{
+  {
+    [
+      YIELD      ---- 0011 0010 0000 1111 ---- 0000 0001
+      WFE        ---- 0011 0010 0000 1111 ---- 0000 0010
+      WFI        ---- 0011 0010 0000 1111 ---- 0000 0011
+
+      # TODO: Implement SEV, SEVL; may help SMP performance.
+      # SEV      ---- 0011 0010 0000 1111 ---- 0000 0100
+      # SEVL     ---- 0011 0010 0000 1111 ---- 0000 0101
+
+      ESB        ---- 0011 0010 0000 1111 ---- 0001 0000
+    ]
+
+    # The canonical nop ends in 00000000, but the whole of the
+    # rest of the space executes as nop if otherwise unsupported.
+    NOP          ---- 0011 0010 0000 1111 ---- ---- ----
+  }
+  # Note mask = 0 is covered by NOP
+  MSR_imm        .... 0011 0010 .... 1111 .... .... ....      @msr_i r=0
+}
+MSR_imm          .... 0011 0110 .... 1111 .... .... ....      @msr_i r=1
+
+# Cyclic Redundancy Check
+
+CRC32B           .... 0001 0000 .... .... 0000 0100 ....      @rndm
+CRC32H           .... 0001 0010 .... .... 0000 0100 ....      @rndm
+CRC32W           .... 0001 0100 .... .... 0000 0100 ....      @rndm
+CRC32CB          .... 0001 0000 .... .... 0010 0100 ....      @rndm
+CRC32CH          .... 0001 0010 .... .... 0010 0100 ....      @rndm
+CRC32CW          .... 0001 0100 .... .... 0010 0100 ....      @rndm
+
+# Miscellaneous instructions
+
+%sysm            8:1 16:4
+%imm16_8_0       8:12 0:4
+
+@rm              ---- .... .... .... .... .... .... rm:4      &r
+@rdm             ---- .... .... .... rd:4 .... .... rm:4      &rr
+@i16             ---- .... .... .... .... .... .... ....      &i imm=%imm16_8_0
+
+MRS_bank         ---- 0001 0 r:1 00 .... rd:4 001. 0000 0000  &mrs_bank %sysm
+MSR_bank         ---- 0001 0 r:1 10 .... 1111 001. 0000 rn:4  &msr_bank %sysm
+
+MRS_reg          ---- 0001 0 r:1 00 1111   rd:4 0000 0000 0000  &mrs_reg
+MSR_reg          ---- 0001 0 r:1 10 mask:4 1111 0000 0000 rn:4  &msr_reg
+
+BX               .... 0001 0010 1111 1111 1111 0001 ....      @rm
+BXJ              .... 0001 0010 1111 1111 1111 0010 ....      @rm
+BLX_r            .... 0001 0010 1111 1111 1111 0011 ....      @rm
+
+CLZ              .... 0001 0110 1111 .... 1111 0001 ....      @rdm
+
+ERET             ---- 0001 0110 0000 0000 0000 0110 1110
+
+HLT              .... 0001 0000 .... .... .... 0111 ....      @i16
+BKPT             .... 0001 0010 .... .... .... 0111 ....      @i16
+HVC              .... 0001 0100 .... .... .... 0111 ....      @i16
+SMC              ---- 0001 0110 0000 0000 0000 0111 imm:4     &i
+
+# Load/Store Dual, Half, Signed Byte (register)
+
+@ldst_rr_p1w     ---- ...1 u:1 . w:1 . rn:4 rt:4 .... .... rm:4 \
+                 &ldst_rr p=1 shimm=0 shtype=0
+@ldst_rr_pw0     ---- ...0 u:1 . 0   . rn:4 rt:4 .... .... rm:4 \
+                 &ldst_rr p=0 w=0 shimm=0 shtype=0
+
+STRH_rr          .... 000. .0.0 .... .... 0000 1011 ....      @ldst_rr_pw0
+STRH_rr          .... 000. .0.0 .... .... 0000 1011 ....      @ldst_rr_p1w
+
+LDRD_rr          .... 000. .0.0 .... .... 0000 1101 ....      @ldst_rr_pw0
+LDRD_rr          .... 000. .0.0 .... .... 0000 1101 ....      @ldst_rr_p1w
+
+STRD_rr          .... 000. .0.0 .... .... 0000 1111 ....      @ldst_rr_pw0
+STRD_rr          .... 000. .0.0 .... .... 0000 1111 ....      @ldst_rr_p1w
+
+LDRH_rr          .... 000. .0.1 .... .... 0000 1011 ....      @ldst_rr_pw0
+LDRH_rr          .... 000. .0.1 .... .... 0000 1011 ....      @ldst_rr_p1w
+
+LDRSB_rr         .... 000. .0.1 .... .... 0000 1101 ....      @ldst_rr_pw0
+LDRSB_rr         .... 000. .0.1 .... .... 0000 1101 ....      @ldst_rr_p1w
+
+LDRSH_rr         .... 000. .0.1 .... .... 0000 1111 ....      @ldst_rr_pw0
+LDRSH_rr         .... 000. .0.1 .... .... 0000 1111 ....      @ldst_rr_p1w
+
+# Note the unpriv load/stores use the previously invalid P=0, W=1 encoding,
+# and act as normal post-indexed (P=0, W=0).
+@ldst_rr_p0w1    ---- ...0 u:1 . 1   . rn:4 rt:4 .... .... rm:4 \
+                 &ldst_rr p=0 w=0 shimm=0 shtype=0
+
+STRHT_rr         .... 000. .0.0 .... .... 0000 1011 ....      @ldst_rr_p0w1
+LDRHT_rr         .... 000. .0.1 .... .... 0000 1011 ....      @ldst_rr_p0w1
+LDRSBT_rr        .... 000. .0.1 .... .... 0000 1101 ....      @ldst_rr_p0w1
+LDRSHT_rr        .... 000. .0.1 .... .... 0000 1111 ....      @ldst_rr_p0w1
+
+# Load/Store word and unsigned byte (register)
+
+@ldst_rs_p1w     ---- ...1 u:1 . w:1 . rn:4 rt:4 shimm:5 shtype:2 . rm:4 \
+                 &ldst_rr p=1
+@ldst_rs_pw0     ---- ...0 u:1 . 0   . rn:4 rt:4 shimm:5 shtype:2 . rm:4 \
+                 &ldst_rr p=0 w=0
+
+STR_rr           .... 011. .0.0 .... .... .... ...0 ....      @ldst_rs_pw0
+STR_rr           .... 011. .0.0 .... .... .... ...0 ....      @ldst_rs_p1w
+STRB_rr          .... 011. .1.0 .... .... .... ...0 ....      @ldst_rs_pw0
+STRB_rr          .... 011. .1.0 .... .... .... ...0 ....      @ldst_rs_p1w
+
+LDR_rr           .... 011. .0.1 .... .... .... ...0 ....      @ldst_rs_pw0
+LDR_rr           .... 011. .0.1 .... .... .... ...0 ....      @ldst_rs_p1w
+LDRB_rr          .... 011. .1.1 .... .... .... ...0 ....      @ldst_rs_pw0
+LDRB_rr          .... 011. .1.1 .... .... .... ...0 ....      @ldst_rs_p1w
+
+@ldst_rs_p0w1    ---- ...0 u:1 . 1   . rn:4 rt:4 shimm:5 shtype:2 . rm:4 \
+                 &ldst_rr p=0 w=0
+
+STRT_rr          .... 011. .0.0 .... .... .... ...0 ....      @ldst_rs_p0w1
+STRBT_rr         .... 011. .1.0 .... .... .... ...0 ....      @ldst_rs_p0w1
+LDRT_rr          .... 011. .0.1 .... .... .... ...0 ....      @ldst_rs_p0w1
+LDRBT_rr         .... 011. .1.1 .... .... .... ...0 ....      @ldst_rs_p0w1
+
+# Load/Store Dual, Half, Signed Byte (immediate)
+
+%imm8s_8_0       8:4 0:4
+@ldst_ri8_p1w    ---- ...1 u:1 . w:1 . rn:4 rt:4 .... .... .... \
+                 &ldst_ri imm=%imm8s_8_0 p=1
+@ldst_ri8_pw0    ---- ...0 u:1 . 0   . rn:4 rt:4 .... .... .... \
+                 &ldst_ri imm=%imm8s_8_0 p=0 w=0
+
+STRH_ri          .... 000. .1.0 .... .... .... 1011 ....      @ldst_ri8_pw0
+STRH_ri          .... 000. .1.0 .... .... .... 1011 ....      @ldst_ri8_p1w
+
+LDRD_ri_a32      .... 000. .1.0 .... .... .... 1101 ....      @ldst_ri8_pw0
+LDRD_ri_a32      .... 000. .1.0 .... .... .... 1101 ....      @ldst_ri8_p1w
+
+STRD_ri_a32      .... 000. .1.0 .... .... .... 1111 ....      @ldst_ri8_pw0
+STRD_ri_a32      .... 000. .1.0 .... .... .... 1111 ....      @ldst_ri8_p1w
+
+LDRH_ri          .... 000. .1.1 .... .... .... 1011 ....      @ldst_ri8_pw0
+LDRH_ri          .... 000. .1.1 .... .... .... 1011 ....      @ldst_ri8_p1w
+
+LDRSB_ri         .... 000. .1.1 .... .... .... 1101 ....      @ldst_ri8_pw0
+LDRSB_ri         .... 000. .1.1 .... .... .... 1101 ....      @ldst_ri8_p1w
+
+LDRSH_ri         .... 000. .1.1 .... .... .... 1111 ....      @ldst_ri8_pw0
+LDRSH_ri         .... 000. .1.1 .... .... .... 1111 ....      @ldst_ri8_p1w
+
+# Note the unpriv load/stores use the previously invalid P=0, W=1 encoding,
+# and act as normal post-indexed (P=0, W=0).
+@ldst_ri8_p0w1   ---- ...0 u:1 . 1   . rn:4 rt:4 .... .... .... \
+                 &ldst_ri imm=%imm8s_8_0 p=0 w=0
+
+STRHT_ri         .... 000. .1.0 .... .... .... 1011 ....      @ldst_ri8_p0w1
+LDRHT_ri         .... 000. .1.1 .... .... .... 1011 ....      @ldst_ri8_p0w1
+LDRSBT_ri        .... 000. .1.1 .... .... .... 1101 ....      @ldst_ri8_p0w1
+LDRSHT_ri        .... 000. .1.1 .... .... .... 1111 ....      @ldst_ri8_p0w1
+
+# Load/Store word and unsigned byte (immediate)
+
+@ldst_ri12_p1w   ---- ...1 u:1 . w:1 . rn:4 rt:4 imm:12       &ldst_ri p=1
+@ldst_ri12_pw0   ---- ...0 u:1 . 0   . rn:4 rt:4 imm:12       &ldst_ri p=0 w=0
+
+STR_ri           .... 010. .0.0 .... .... ............        @ldst_ri12_p1w
+STR_ri           .... 010. .0.0 .... .... ............        @ldst_ri12_pw0
+STRB_ri          .... 010. .1.0 .... .... ............        @ldst_ri12_p1w
+STRB_ri          .... 010. .1.0 .... .... ............        @ldst_ri12_pw0
+
+LDR_ri           .... 010. .0.1 .... .... ............        @ldst_ri12_p1w
+LDR_ri           .... 010. .0.1 .... .... ............        @ldst_ri12_pw0
+LDRB_ri          .... 010. .1.1 .... .... ............        @ldst_ri12_p1w
+LDRB_ri          .... 010. .1.1 .... .... ............        @ldst_ri12_pw0
+
+@ldst_ri12_p0w1  ---- ...0 u:1 . 1 . rn:4 rt:4 imm:12         &ldst_ri p=0 w=0
+
+STRT_ri          .... 010. .0.0 .... .... ............        @ldst_ri12_p0w1
+STRBT_ri         .... 010. .1.0 .... .... ............        @ldst_ri12_p0w1
+LDRT_ri          .... 010. .0.1 .... .... ............        @ldst_ri12_p0w1
+LDRBT_ri         .... 010. .1.1 .... .... ............        @ldst_ri12_p0w1
+
+# Synchronization primitives
+
+@swp             ---- .... .... rn:4 rt:4 .... .... rt2:4
+
+SWP              .... 0001 0000 .... .... 0000 1001 ....      @swp
+SWPB             .... 0001 0100 .... .... 0000 1001 ....      @swp
+
+# Load/Store Exclusive and Load-Acquire/Store-Release
+#
+# Note rt2 for STREXD/LDREXD is set by the helper after checking rt is even.
+
+@strex           ---- .... .... rn:4 rd:4 .... .... rt:4 \
+                 &strex imm=0 rt2=15
+@ldrex           ---- .... .... rn:4 rt:4 .... .... .... \
+                 &ldrex imm=0 rt2=15
+@stl             ---- .... .... rn:4 .... .... .... rt:4 \
+                 &ldrex imm=0 rt2=15
+
+STREX            .... 0001 1000 .... .... 1111 1001 ....      @strex
+STREXD_a32       .... 0001 1010 .... .... 1111 1001 ....      @strex
+STREXB           .... 0001 1100 .... .... 1111 1001 ....      @strex
+STREXH           .... 0001 1110 .... .... 1111 1001 ....      @strex
+
+STLEX            .... 0001 1000 .... .... 1110 1001 ....      @strex
+STLEXD_a32       .... 0001 1010 .... .... 1110 1001 ....      @strex
+STLEXB           .... 0001 1100 .... .... 1110 1001 ....      @strex
+STLEXH           .... 0001 1110 .... .... 1110 1001 ....      @strex
+
+STL              .... 0001 1000 .... 1111 1100 1001 ....      @stl
+STLB             .... 0001 1100 .... 1111 1100 1001 ....      @stl
+STLH             .... 0001 1110 .... 1111 1100 1001 ....      @stl
+
+LDREX            .... 0001 1001 .... .... 1111 1001 1111      @ldrex
+LDREXD_a32       .... 0001 1011 .... .... 1111 1001 1111      @ldrex
+LDREXB           .... 0001 1101 .... .... 1111 1001 1111      @ldrex
+LDREXH           .... 0001 1111 .... .... 1111 1001 1111      @ldrex
+
+LDAEX            .... 0001 1001 .... .... 1110 1001 1111      @ldrex
+LDAEXD_a32       .... 0001 1011 .... .... 1110 1001 1111      @ldrex
+LDAEXB           .... 0001 1101 .... .... 1110 1001 1111      @ldrex
+LDAEXH           .... 0001 1111 .... .... 1110 1001 1111      @ldrex
+
+LDA              .... 0001 1001 .... .... 1100 1001 1111      @ldrex
+LDAB             .... 0001 1101 .... .... 1100 1001 1111      @ldrex
+LDAH             .... 0001 1111 .... .... 1100 1001 1111      @ldrex
+
+# Media instructions
+
+# usad8 is usada8 w/ ra=15
+USADA8           ---- 0111 1000 rd:4 ra:4 rm:4 0001 rn:4
+
+# ubfx and sbfx
+@bfx             ---- .... ... widthm1:5 rd:4 lsb:5 ... rn:4  &bfx
+
+SBFX             .... 0111 101 ..... .... ..... 101 ....      @bfx
+UBFX             .... 0111 111 ..... .... ..... 101 ....      @bfx
+
+# bfc is bfi w/ rn=15
+BFCI             ---- 0111 110 msb:5 rd:4 lsb:5 001 rn:4      &bfi
+
+# While we could get UDEF by not including this, add the pattern for
+# documentation and to conflict with any other typos in this file.
+UDF              1110 0111 1111 ---- ---- ---- 1111 ----
+
+# Parallel addition and subtraction
+
+SADD16           .... 0110 0001 .... .... 1111 0001 ....      @rndm
+SASX             .... 0110 0001 .... .... 1111 0011 ....      @rndm
+SSAX             .... 0110 0001 .... .... 1111 0101 ....      @rndm
+SSUB16           .... 0110 0001 .... .... 1111 0111 ....      @rndm
+SADD8            .... 0110 0001 .... .... 1111 1001 ....      @rndm
+SSUB8            .... 0110 0001 .... .... 1111 1111 ....      @rndm
+
+QADD16           .... 0110 0010 .... .... 1111 0001 ....      @rndm
+QASX             .... 0110 0010 .... .... 1111 0011 ....      @rndm
+QSAX             .... 0110 0010 .... .... 1111 0101 ....      @rndm
+QSUB16           .... 0110 0010 .... .... 1111 0111 ....      @rndm
+QADD8            .... 0110 0010 .... .... 1111 1001 ....      @rndm
+QSUB8            .... 0110 0010 .... .... 1111 1111 ....      @rndm
+
+SHADD16          .... 0110 0011 .... .... 1111 0001 ....      @rndm
+SHASX            .... 0110 0011 .... .... 1111 0011 ....      @rndm
+SHSAX            .... 0110 0011 .... .... 1111 0101 ....      @rndm
+SHSUB16          .... 0110 0011 .... .... 1111 0111 ....      @rndm
+SHADD8           .... 0110 0011 .... .... 1111 1001 ....      @rndm
+SHSUB8           .... 0110 0011 .... .... 1111 1111 ....      @rndm
+
+UADD16           .... 0110 0101 .... .... 1111 0001 ....      @rndm
+UASX             .... 0110 0101 .... .... 1111 0011 ....      @rndm
+USAX             .... 0110 0101 .... .... 1111 0101 ....      @rndm
+USUB16           .... 0110 0101 .... .... 1111 0111 ....      @rndm
+UADD8            .... 0110 0101 .... .... 1111 1001 ....      @rndm
+USUB8            .... 0110 0101 .... .... 1111 1111 ....      @rndm
+
+UQADD16          .... 0110 0110 .... .... 1111 0001 ....      @rndm
+UQASX            .... 0110 0110 .... .... 1111 0011 ....      @rndm
+UQSAX            .... 0110 0110 .... .... 1111 0101 ....      @rndm
+UQSUB16          .... 0110 0110 .... .... 1111 0111 ....      @rndm
+UQADD8           .... 0110 0110 .... .... 1111 1001 ....      @rndm
+UQSUB8           .... 0110 0110 .... .... 1111 1111 ....      @rndm
+
+UHADD16          .... 0110 0111 .... .... 1111 0001 ....      @rndm
+UHASX            .... 0110 0111 .... .... 1111 0011 ....      @rndm
+UHSAX            .... 0110 0111 .... .... 1111 0101 ....      @rndm
+UHSUB16          .... 0110 0111 .... .... 1111 0111 ....      @rndm
+UHADD8           .... 0110 0111 .... .... 1111 1001 ....      @rndm
+UHSUB8           .... 0110 0111 .... .... 1111 1111 ....      @rndm
+
+# Packing, unpacking, saturation, and reversal
+
+PKH              ---- 0110 1000 rn:4 rd:4 imm:5 tb:1 01 rm:4  &pkh
+
+@sat             ---- .... ... satimm:5  rd:4 imm:5 sh:1 .. rn:4  &sat
+@sat16           ---- .... .... satimm:4 rd:4 .... .... rn:4 \
+                 &sat imm=0 sh=0
+
+SSAT             .... 0110 101. .... .... .... ..01 ....      @sat
+USAT             .... 0110 111. .... .... .... ..01 ....      @sat
+
+SSAT16           .... 0110 1010 .... .... 1111 0011 ....      @sat16
+USAT16           .... 0110 1110 .... .... 1111 0011 ....      @sat16
+
+@rrr_rot         ---- .... .... rn:4 rd:4 rot:2 ...... rm:4   &rrr_rot
+
+SXTAB16          .... 0110 1000 .... .... ..00 0111 ....      @rrr_rot
+SXTAB            .... 0110 1010 .... .... ..00 0111 ....      @rrr_rot
+SXTAH            .... 0110 1011 .... .... ..00 0111 ....      @rrr_rot
+UXTAB16          .... 0110 1100 .... .... ..00 0111 ....      @rrr_rot
+UXTAB            .... 0110 1110 .... .... ..00 0111 ....      @rrr_rot
+UXTAH            .... 0110 1111 .... .... ..00 0111 ....      @rrr_rot
+
+SEL              .... 0110 1000 .... .... 1111 1011 ....      @rndm
+REV              .... 0110 1011 1111 .... 1111 0011 ....      @rdm
+REV16            .... 0110 1011 1111 .... 1111 1011 ....      @rdm
+REVSH            .... 0110 1111 1111 .... 1111 1011 ....      @rdm
+RBIT             .... 0110 1111 1111 .... 1111 0011 ....      @rdm
+
+# Signed multiply, signed and unsigned divide
+
+@rdmn            ---- .... .... rd:4 .... rm:4 .... rn:4      &rrr
+
+SMLAD            .... 0111 0000 .... .... .... 0001 ....      @rdamn
+SMLADX           .... 0111 0000 .... .... .... 0011 ....      @rdamn
+SMLSD            .... 0111 0000 .... .... .... 0101 ....      @rdamn
+SMLSDX           .... 0111 0000 .... .... .... 0111 ....      @rdamn
+
+SDIV             .... 0111 0001 .... 1111 .... 0001 ....      @rdmn
+UDIV             .... 0111 0011 .... 1111 .... 0001 ....      @rdmn
+
+SMLALD           .... 0111 0100 .... .... .... 0001 ....      @rdamn
+SMLALDX          .... 0111 0100 .... .... .... 0011 ....      @rdamn
+SMLSLD           .... 0111 0100 .... .... .... 0101 ....      @rdamn
+SMLSLDX          .... 0111 0100 .... .... .... 0111 ....      @rdamn
+
+SMMLA            .... 0111 0101 .... .... .... 0001 ....      @rdamn
+SMMLAR           .... 0111 0101 .... .... .... 0011 ....      @rdamn
+SMMLS            .... 0111 0101 .... .... .... 1101 ....      @rdamn
+SMMLSR           .... 0111 0101 .... .... .... 1111 ....      @rdamn
+
+# Block data transfer
+
+STM              ---- 100 b:1 i:1 u:1 w:1 0 rn:4 list:16   &ldst_block
+LDM_a32          ---- 100 b:1 i:1 u:1 w:1 1 rn:4 list:16   &ldst_block
+
+# Branch, branch with link
+
+%imm26           0:s24  !function=times_4
+@branch          ---- .... ........................           &i imm=%imm26
+
+B                .... 1010 ........................           @branch
+BL               .... 1011 ........................           @branch
+
+# Coprocessor instructions
+
+# We decode MCR, MCR, MRRC and MCRR only, because for QEMU the
+# other coprocessor instructions always UNDEF.
+# The trans_ functions for these will ignore cp values 8..13 for v7 or
+# earlier, and 0..13 for v8 and later, because those areas of the
+# encoding space may be used for other things, such as VFP or Neon.
+
+@mcr             ---- .... opc1:3 . crn:4 rt:4 cp:4 opc2:3 . crm:4 &mcr
+@mcrr            ---- .... .... rt2:4 rt:4 cp:4 opc1:4 crm:4       &mcrr
+
+MCRR             .... 1100 0100 .... .... .... .... .... @mcrr
+MRRC             .... 1100 0101 .... .... .... .... .... @mcrr
+
+MCR              .... 1110 ... 0 .... .... .... ... 1 .... @mcr
+MRC              .... 1110 ... 1 .... .... .... ... 1 .... @mcr
+
+# Supervisor call
+
+SVC              ---- 1111 imm:24                             &i

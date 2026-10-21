@@ -1,0 +1,14 @@
+spv.longVectorBadParams.decls.comp
+ERROR: 0:11: 'void' : invalid element type for vector 
+ERROR: 0:11: 'noElemType' : expected two type parameters 
+ERROR: 0:11: 'noElemType' : illegal use of type 'void' 
+ERROR: 0:12: 'void' : invalid element type for vector 
+ERROR: 0:12: 'badElemType' : illegal use of type 'void' 
+ERROR: 0:13: '' : vector type requires exactly 1 element count 
+ERROR: 0:13: 'missingCount' : expected two type parameters 
+ERROR: 0:14: '' : vector type requires exactly 1 element count 
+ERROR: 0:14: 'excessCount' : expected two type parameters 
+ERROR: 9 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

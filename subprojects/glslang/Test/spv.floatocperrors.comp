@@ -1,0 +1,48 @@
+#version 450 core
+
+#extension GL_EXT_float_e2m1 : require
+#extension GL_EXT_float_e3m2 : require
+#extension GL_EXT_float_e2m3 : require
+#extension GL_EXT_float_ue8m0 : require
+#extension GL_EXT_float_mxint8 : require
+#extension GL_KHR_memory_scope_semantics : enable
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+#extension GL_EXT_scalar_block_layout : enable
+#extension GL_EXT_long_vector : enable
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+struct NestedSubByte { floate2m1_t value; };
+
+layout(scalar) buffer B {
+    floate2m1_t b1;
+    floate3m2_t b2;
+    floate2m3_t b3;
+    NestedSubByte nested;
+} buf;
+
+shared floate2m1_t s1;
+shared floate3m2_t s2;
+shared floate2m3_t s3;
+shared NestedSubByte s4;
+
+floate2m1_t funcfe2m1(floate2m1_t x)
+{
+    return x;
+}
+
+void main()
+{
+    float f = 2.0;
+    funcfe2m1(f);
+
+    floatue8m0_t ue8m0 = 1.0fue8m0;
+    float implicitFloat = ue8m0;
+    double implicitDouble = ue8m0;
+
+    floate2m1_t fe2m1 = floate2m1_t(f);
+    floate3m2_t fe3m2 = floate3m2_t(f);
+    floate2m3_t fe2m3 = floate2m3_t(f);
+    floatue8m0_t fue8m0 = floatue8m0_t(f);
+    floatmxint8_t fmxint8 = floatmxint8_t(f);
+}

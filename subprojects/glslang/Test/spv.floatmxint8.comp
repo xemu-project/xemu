@@ -1,0 +1,77 @@
+#version 450 core
+
+#extension GL_EXT_bfloat16 : require
+#extension GL_EXT_float_mxint8 : require
+#extension GL_KHR_cooperative_matrix : enable
+#extension GL_NV_cooperative_matrix2 : enable
+#extension GL_KHR_memory_scope_semantics : enable
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+#extension GL_EXT_scalar_block_layout : enable
+#extension GL_EXT_long_vector : enable
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+const floatmxint8_t bc10 = floatmxint8_t(10);
+const fmxint8vec2 b2c20 = fmxint8vec2(20);
+layout(constant_id = 1) const floatmxint8_t bsc10 = floatmxint8_t(10);
+
+struct S { floatmxint8_t b; };
+const S sc = S(bc10);
+
+const floatmxint8_t bca[2] = {bc10, bc10};
+
+shared floatmxint8_t bfs[10];
+
+layout(scalar) buffer B {
+    fmxint8vec3 b3;
+    fmxint8vec2 b2;
+    floatmxint8_t b1;
+} buf;
+
+floatmxint8_t funcfmxint8(floatmxint8_t x)
+{
+    return x;
+}
+
+void main()
+{
+    float f = 2.0;
+    floatmxint8_t b = floatmxint8_t(1.0fmxint8);
+
+    float16_t f16 = float16_t(7);
+    float32_t f32 = 7;
+    float64_t f64 = 7;
+    f16 = float16_t(b);
+    f32 = float32_t(b);
+    f64 = float64_t(b);
+
+    b = funcfmxint8(b);
+
+    b = buf.b1;
+    fmxint8vec2 b2 = buf.b2;
+    fmxint8vec3 b3 = buf.b3;
+
+    int8_t i8_1 = floatmxint8BitsToIntEXT(b);
+    i8vec2 i8_2 = floatmxint8BitsToIntEXT(b2);
+    i8vec3 i8_3 = floatmxint8BitsToIntEXT(fmxint8vec3(b2, b));
+    i8vec4 i8_4 = floatmxint8BitsToIntEXT(fmxint8vec4(b2, b2));
+    vector<int8_t, 5> i8_5 = floatmxint8BitsToIntEXT(vector<floatmxint8_t, 5>(b2, b2, b));
+
+    uint8_t u8_1 = floatmxint8BitsToUintEXT(b);
+    u8vec2  u8_2 = floatmxint8BitsToUintEXT(b2);
+    u8vec3  u8_3 = floatmxint8BitsToUintEXT(fmxint8vec3(b2, b));
+    u8vec4  u8_4 = floatmxint8BitsToUintEXT(fmxint8vec4(b2, b2));
+    vector<uint8_t, 5> u8_5 = floatmxint8BitsToUintEXT(vector<floatmxint8_t, 5>(b2, b2, b));
+
+    floatmxint8_t f8_1 = intBitsToFloatmxint8EXT(i8_1);
+    fmxint8vec2   f8_2 = intBitsToFloatmxint8EXT(i8_2);
+    fmxint8vec3   f8_3 = intBitsToFloatmxint8EXT(i8_3);
+    fmxint8vec4   f8_4 = intBitsToFloatmxint8EXT(i8_4);
+    vector<floatmxint8_t, 5> f8_5 = intBitsToFloatmxint8EXT(i8_5);
+
+    f8_1 = uintBitsToFloatmxint8EXT(u8_1);
+    f8_2 = uintBitsToFloatmxint8EXT(u8_2);
+    f8_3 = uintBitsToFloatmxint8EXT(u8_3);
+    f8_4 = uintBitsToFloatmxint8EXT(u8_4);
+    f8_5 = uintBitsToFloatmxint8EXT(u8_5);
+}

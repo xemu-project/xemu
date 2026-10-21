@@ -1,0 +1,142 @@
+# -*- Mode: makefile -*-
+
+.PHONY: check-help
+check-help:
+	@echo "Regression testing targets:"
+	@echo " $(MAKE) check                    Run block, qapi-schema, unit, softfloat, qtest and decodetree tests"
+	@echo " $(MAKE) bench                    Run speed tests"
+	@echo
+	@echo "Individual test suites:"
+	@echo " $(MAKE) check-qtest-TARGET       Run qtest tests for given target"
+	@echo " $(MAKE) check-qtest              Run qtest tests"
+	@echo " $(MAKE) check-functional         Run python-based functional tests"
+	@echo " $(MAKE) check-functional-TARGET  Run functional tests for a given target"
+	@echo " $(MAKE) check-unit               Run qobject tests"
+	@echo " $(MAKE) check-qapi-schema        Run QAPI schema tests"
+	@echo " $(MAKE) check-tracetool          Run tracetool generator tests"
+	@echo " $(MAKE) check-block              Run block tests"
+ifneq ($(filter $(all-check-targets), check-softfloat),)
+	@echo " $(MAKE) check-tcg                Run TCG tests"
+	@echo " $(MAKE) check-softfloat          Run FPU emulation tests"
+endif
+	@echo
+	@echo " $(MAKE) check-report.junit.xml   Generates an aggregated XML test report"
+	@echo " $(MAKE) check-venv               Creates a Python venv for tests"
+	@echo " $(MAKE) check-clean              Clean the tests and related data"
+	@echo
+	@echo "The following are useful for CI builds"
+	@echo " $(MAKE) check-build              Build most test binaries"
+	@echo
+	@echo
+	@echo "The variable SPEED can be set to control the gtester speed setting."
+	@echo "Default options are -k and (for $(MAKE) V=1) --verbose; they can be"
+	@echo "changed with variable GTESTER_OPTIONS."
+
+ifneq ($(wildcard config-host.mak),)
+export SRC_PATH
+
+SPEED = quick
+
+
+# TCG_TESTS_WITH_COMPILERS represents the test targets we have cross compiler
+# support for, CONFIGURED_TEST_TARGETS it what meson has finally
+# configured having rejected stuff we can't build.
+CONFIGURED_TCG_TARGETS=$(patsubst %-config-target.h, %, $(wildcard *-config-target.h))
+
+# This is the intersection of what tests we can build and is configured
+TCG_TESTS_TARGETS=$(filter $(CONFIGURED_TCG_TARGETS), $(TCG_TESTS_WITH_COMPILERS))
+
+# Per guest TCG tests
+BUILD_TCG_TARGET_RULES=$(patsubst %,build-tcg-tests-%, $(TCG_TESTS_TARGETS))
+CLEAN_TCG_TARGET_RULES=$(patsubst %,clean-tcg-tests-%, $(TCG_TESTS_TARGETS))
+DISTCLEAN_TCG_TARGET_RULES=$(patsubst %,distclean-tcg-tests-%, $(TCG_TESTS_TARGETS))
+RUN_TCG_TARGET_RULES=$(patsubst %,run-tcg-tests-%, $(TCG_TESTS_TARGETS))
+
+$(foreach TARGET,$(TCG_TESTS_TARGETS), \
+        $(eval $(BUILD_DIR)/tests/tcg/config-$(TARGET).mak: config-host.mak))
+
+.PHONY: $(TCG_TESTS_TARGETS:%=build-tcg-tests-%)
+$(TCG_TESTS_TARGETS:%=build-tcg-tests-%): build-tcg-tests-%: $(BUILD_DIR)/tests/tcg/config-%.mak
+	$(call quiet-command, \
+            $(MAKE) -C tests/tcg/$* $(SUBDIR_MAKEFLAGS), \
+        "BUILD","$* guest-tests")
+
+.PHONY: $(TCG_TESTS_TARGETS:%=run-tcg-tests-%)
+$(TCG_TESTS_TARGETS:%=run-tcg-tests-%): run-tcg-tests-%: build-tcg-tests-%
+	$(call quiet-command, \
+           $(MAKE) -C tests/tcg/$* $(SUBDIR_MAKEFLAGS) SPEED=$(SPEED) run, \
+        "RUN", "$* guest-tests")
+
+.PHONY: $(TCG_TESTS_TARGETS:%=clean-tcg-tests-%)
+$(TCG_TESTS_TARGETS:%=clean-tcg-tests-%): clean-tcg-tests-%:
+	$(call quiet-command, \
+           $(MAKE) -C tests/tcg/$* $(SUBDIR_MAKEFLAGS) clean, \
+        "CLEAN", "$* guest-tests")
+
+.PHONY: $(TCG_TESTS_TARGETS:%=distclean-tcg-tests-%)
+$(TCG_TESTS_TARGETS:%=distclean-tcg-tests-%): distclean-tcg-tests-%:
+	$(call quiet-command, \
+           $(MAKE) -C tests/tcg/$* $(SUBDIR_MAKEFLAGS) distclean, \
+        "CLEAN", "$* guest-tests")
+
+.PHONY: build-tcg
+build-tcg: $(BUILD_TCG_TARGET_RULES)
+
+.PHONY: check-tcg
+.ninja-goals.check-tcg = all test-plugins
+check-tcg: $(RUN_TCG_TARGET_RULES)
+
+.PHONY: clean-tcg
+clean-tcg: $(CLEAN_TCG_TARGET_RULES)
+
+.PHONY: distclean-tcg
+distclean-tcg: $(DISTCLEAN_TCG_TARGET_RULES)
+
+# Python venv for running tests
+
+.PHONY: check-venv
+
+# Build up our target list from the filtered list of ninja targets
+TARGETS=$(patsubst libqemu-%.a, %, $(filter libqemu-%.a, $(ninja-targets)))
+
+TESTS_VENV_TOKEN=$(BUILD_DIR)/pyvenv/tests.group
+
+quiet-venv-pip = $(quiet-@)$(call quiet-command-run, \
+    $(PYTHON) -m pip -q --disable-pip-version-check $1, \
+    "VENVPIP","$1")
+
+$(TESTS_VENV_TOKEN): $(SRC_PATH)/pythondeps.toml
+	$(call quiet-venv-pip,install -e "$(SRC_PATH)/python/")
+	$(MKVENV_ENSUREGROUP) $< testdeps
+	$(call quiet-command, touch $@)
+
+check-venv: $(TESTS_VENV_TOKEN)
+
+FUNCTIONAL_TARGETS=$(patsubst %-softmmu,check-functional-%, $(filter %-softmmu,$(TARGETS)))
+.PHONY: $(FUNCTIONAL_TARGETS)
+$(FUNCTIONAL_TARGETS): check-venv
+	@$(MAKE) SPEED=thorough $(subst -functional,-func,$@)
+
+.PHONY: check-functional
+check-functional: check-venv
+	@$(NINJA) precache-functional
+	@$(PYTHON) $(SRC_PATH)/scripts/clean_functional_cache.py
+	@QEMU_TEST_NO_DOWNLOAD=1 $(MAKE) SPEED=thorough check-func check-func-quick
+
+.PHONY: check-func check-func-quick
+check-func check-func-quick:
+
+# Consolidated targets
+
+.PHONY: check check-clean
+check:
+
+check-build: run-ninja
+
+check-clean:
+	rm -rf $(BUILD_DIR)/tests/functional
+
+clean: check-clean clean-tcg
+distclean: distclean-tcg
+
+endif

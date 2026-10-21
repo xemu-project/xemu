@@ -1,0 +1,20 @@
+#version 450
+
+#extension GL_EXT_abort : require
+#extension GL_EXT_buffer_reference : require
+
+layout(local_size_x = 1) in;
+
+layout(buffer_reference, std430) buffer Payload {
+    int value;
+};
+
+layout(set = 0, binding = 0) buffer Data {
+    Payload payload;
+} data;
+
+// A PhysicalStorageBuffer pointer. This is 8 bytes wide and is the only
+// pointer type with a defined size and layout.
+void main() {
+    abortEXT("", data.payload);
+}

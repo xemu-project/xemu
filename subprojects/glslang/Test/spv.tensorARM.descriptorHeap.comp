@@ -1,0 +1,16 @@
+#version 460 core
+#extension GL_ARM_tensors : enable
+#extension GL_EXT_descriptor_heap : require
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+
+layout(set = 0, binding = 0) uniform tensorARM<int32_t, 4> t;
+
+layout(descriptor_heap) buffer O {
+    int32_t out_data;
+} ssbo[];
+
+void main()
+{
+    tensorReadARM(t, uint[](1, 2, 3, 4), ssbo[1].out_data);
+}
+

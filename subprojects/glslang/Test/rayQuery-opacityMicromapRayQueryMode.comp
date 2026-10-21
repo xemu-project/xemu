@@ -1,0 +1,19 @@
+#version 460
+#extension GL_EXT_ray_query : enable
+#extension GL_EXT_opacity_micromap_ray_query_mode : enable
+
+// Redeclaring gl_EnableOpacityMicromapEXT as a specialization constant (the bare form - no restated
+// type or value) lets the opacity-micromap ray query mode be controlled at pipeline creation time.
+// The generated SPIR-V emits the OpacityMicromapIdKHR execution mode referencing the
+// OpSpecConstantFalse, plus the SPV_KHR_opacity_micromap capability/extension.
+layout(constant_id = 2) gl_EnableOpacityMicromapEXT;
+
+layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+
+void main()
+{
+    rayQueryEXT rq;
+    rayQueryInitializeEXT(rq, topLevelAS, gl_RayFlagsNoneEXT, 0xFFu,
+                          vec3(0.0), 0.1, vec3(0.0, 0.0, 1.0), 100.0);
+    rayQueryProceedEXT(rq);
+}

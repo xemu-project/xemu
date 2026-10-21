@@ -1,0 +1,110 @@
+msys2-64bit:
+  extends: .base_job_template
+  tags:
+  - saas-windows-medium-amd64
+  cache:
+    key: "$CI_JOB_NAME"
+    paths:
+      - msys64/var/cache
+      - ccache
+    when: always
+  needs: []
+  stage: build
+  timeout: 100m
+  variables:
+    # Select the "64 bit, gcc and MSVCRT" MSYS2 environment
+    MSYSTEM: MINGW64
+    # This feature doesn't (currently) work with PowerShell, it stops
+    # the echo'ing of commands being run and doesn't show any timing
+    FF_SCRIPT_SECTIONS: 0
+    CONFIGURE_ARGS: --disable-system --enable-tools -Ddebug=false -Doptimization=0
+    # The Windows git is a bit older so override the default
+    GIT_FETCH_EXTRA_FLAGS: --no-tags --prune --quiet
+  artifacts:
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
+    expire_in: 7 days
+    paths:
+      - build/meson-logs
+      - build/cache-log.txt
+    reports:
+      junit: build/meson-logs/*.junit.xml
+  before_script:
+  - Write-Output "Acquiring msys2.exe installer at $(Get-Date -Format u)"
+  - If ( !(Test-Path -Path msys64\var\cache ) ) {
+      mkdir msys64\var\cache
+    }
+  - Invoke-WebRequest
+    "https://repo.msys2.org/distrib/msys2-x86_64-latest.sfx.exe.sig"
+    -outfile "msys2.exe.sig"
+  - if ( Test-Path -Path msys64\var\cache\msys2.exe.sig ) {
+      Write-Output "Cached installer sig" ;
+      if ( ((Get-FileHash msys2.exe.sig).Hash -ne (Get-FileHash msys64\var\cache\msys2.exe.sig).Hash) ) {
+        Write-Output "Mis-matched installer sig, new installer download required" ;
+        Remove-Item -Path msys64\var\cache\msys2.exe.sig ;
+        if ( Test-Path -Path msys64\var\cache\msys2.exe ) {
+          Remove-Item -Path msys64\var\cache\msys2.exe
+        }
+      } else {
+        Write-Output "Matched installer sig, cached installer still valid"
+      }
+    } else {
+      Write-Output "No cached installer sig, new installer download required" ;
+      if ( Test-Path -Path msys64\var\cache\msys2.exe ) {
+        Remove-Item -Path msys64\var\cache\msys2.exe
+      }
+    }
+  - if ( !(Test-Path -Path msys64\var\cache\msys2.exe ) ) {
+      Write-Output "Fetching latest installer" ;
+      Invoke-WebRequest
+      "https://repo.msys2.org/distrib/msys2-x86_64-latest.sfx.exe"
+      -outfile "msys64\var\cache\msys2.exe" ;
+      Copy-Item -Path msys2.exe.sig -Destination msys64\var\cache\msys2.exe.sig
+    } else {
+      Write-Output "Using cached installer"
+    }
+  - Write-Output "Invoking msys2.exe installer at $(Get-Date -Format u)"
+  - msys64\var\cache\msys2.exe -y
+  - ((Get-Content -path .\msys64\etc\\post-install\\07-pacman-key.post -Raw)
+      -replace '--refresh-keys', '--version') |
+     Set-Content -Path ${CI_PROJECT_DIR}\msys64\etc\\post-install\\07-pacman-key.post
+  - .\msys64\usr\bin\bash -lc "sed -i 's/^CheckSpace/#CheckSpace/g' /etc/pacman.conf"
+  - .\msys64\usr\bin\bash -lc 'pacman --noconfirm -Syuu'  # Core update
+  - .\msys64\usr\bin\bash -lc 'pacman --noconfirm -Syuu'  # Normal update
+  - taskkill /F /FI "MODULES eq msys-2.0.dll"
+  script:
+  - Write-Output "Installing mingw packages at $(Get-Date -Format u)"
+  - .\msys64\usr\bin\bash -lc "pacman -Sy --noconfirm --needed
+      bison diffutils flex
+      git grep make sed
+      mingw-w64-x86_64-binutils
+      mingw-w64-x86_64-ccache
+      mingw-w64-x86_64-curl-winssl
+      mingw-w64-x86_64-gcc
+      mingw-w64-x86_64-glib2
+      mingw-w64-x86_64-libnfs
+      mingw-w64-x86_64-libssh
+      mingw-w64-x86_64-ninja
+      mingw-w64-x86_64-pixman
+      mingw-w64-x86_64-pkgconf
+      mingw-w64-x86_64-python
+      mingw-w64-x86_64-zstd"
+  - .\msys64\usr\bin\bash -lc "pacman -Sc --noconfirm"
+  - Write-Output "Running build at $(Get-Date -Format u)"
+  - $env:JOBS = $(.\msys64\usr\bin\bash -lc nproc)
+  - $env:CHERE_INVOKING = 'yes'  # Preserve the current working directory
+  - $env:MSYS = 'winsymlinks:native' # Enable native Windows symlink
+  - $env:CCACHE_BASEDIR = "$env:CI_PROJECT_DIR"
+  - $env:CCACHE_DIR = "$env:CCACHE_BASEDIR/ccache"
+  - $env:CCACHE_MAXSIZE = "180M"
+  - $env:CCACHE_DEPEND = 1 # cache misses are too expensive with preprocessor mode
+  - $env:CC = "ccache gcc"
+  - mkdir build
+  - cd build
+  - ..\msys64\usr\bin\bash -lc "ccache --zero-stats"
+  - ..\msys64\usr\bin\bash -lc "../configure $CONFIGURE_ARGS"
+  - ..\msys64\usr\bin\bash -lc "make -j$env:JOBS"
+  - ..\msys64\usr\bin\bash -lc "make check MTESTARGS='$TEST_ARGS' || { cat meson-logs/testlog.txt; exit 1; } ;"
+  - ..\msys64\usr\bin\bash -lc "ls -lR /var/cache > cache-log.txt"
+  - ..\msys64\usr\bin\bash -lc "du -sh ."
+  - ..\msys64\usr\bin\bash -lc "ccache --show-stats"
+  - Write-Output "Finished build at $(Get-Date -Format u)"

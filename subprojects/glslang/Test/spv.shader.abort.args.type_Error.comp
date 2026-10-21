@@ -1,0 +1,41 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    int i;
+    int unsized[];
+} data;
+
+layout(set = 0, binding = 1) uniform sampler2D tex;
+
+struct WithBool {
+    int  a;
+    bool b;
+};
+
+void main() {
+    // an opaque type has no in-memory representation
+    abortEXT("opaque: %d", tex);
+
+    // a run-time sized array has no size to lay out
+    abortEXT("unsized: %d", data.unsized);
+
+    // a bool nested inside a struct
+    WithBool s;
+    s.a = data.i;
+    s.b = data.i > 0;
+    abortEXT("struct: %d", s);
+
+    // a bool nested inside an array
+    bool arr[2];
+    arr[0] = data.i > 0;
+    arr[1] = data.i < 0;
+    abortEXT("array: %d", arr);
+
+    // a string is only allowed as the message itself; packing a string argument as an
+    // array of bytes is not implemented
+    abortEXT("string: %s", "arg");
+}

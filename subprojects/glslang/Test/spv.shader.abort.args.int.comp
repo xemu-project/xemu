@@ -1,0 +1,14 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    int i;
+} data;
+
+// A single int parameter, %d.
+void main() {
+    abortEXT("int: %d", data.i);
+}

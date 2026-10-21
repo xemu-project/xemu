@@ -1,0 +1,12 @@
+spv.memoryScopeSemantics.nonConstArg.comp
+ERROR: 0:16: 'atomicAdd' : argument must be a compile-time constant 
+ERROR: 0:17: 'atomicLoad' : argument must be a compile-time constant 
+ERROR: 0:18: 'atomicStore' : argument must be a compile-time constant 
+ERROR: 0:20: 'atomicCompSwap' : argument must be a compile-time constant 
+ERROR: 0:21: 'imageAtomicAdd' : argument must be a compile-time constant 
+ERROR: 0:22: 'memoryBarrier' : argument must be a compile-time constant 
+ERROR: 0:23: 'controlBarrier' : argument must be a compile-time constant 
+ERROR: 7 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

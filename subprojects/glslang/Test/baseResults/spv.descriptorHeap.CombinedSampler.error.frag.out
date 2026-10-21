@@ -1,0 +1,6 @@
+spv.descriptorHeap.CombinedSampler.error.frag
+ERROR: 0:4: 'u_image' : layout(descriptor_heap) cannot be used with combined image samplers. 
+ERROR: 1 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

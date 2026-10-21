@@ -1,0 +1,14 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    float f;
+} data;
+
+// A single float parameter, %f.
+void main() {
+    abortEXT("float: %f", data.f);
+}

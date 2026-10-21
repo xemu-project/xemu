@@ -1,0 +1,2 @@
+bad-ident.json: In struct '*oops':
+bad-ident.json:2: struct has an invalid name

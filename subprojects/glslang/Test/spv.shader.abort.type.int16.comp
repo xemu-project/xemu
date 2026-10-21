@@ -1,0 +1,19 @@
+#version 450
+
+#extension GL_EXT_abort : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    int seed;
+} data;
+
+// 16-bit integers, scalar and vector.
+void main() {
+    int16_t  s = int16_t(data.seed);
+    uint16_t u = uint16_t(data.seed);
+    abortEXT("", s, u,
+             i16vec2(s), i16vec3(s), i16vec4(s),
+             u16vec2(u), u16vec3(u), u16vec4(u));
+}

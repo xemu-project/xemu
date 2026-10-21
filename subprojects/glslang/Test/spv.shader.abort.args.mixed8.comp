@@ -1,0 +1,23 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    int   i0;
+    uint  u0;
+    float f0;
+    int   i1;
+    uint  u1;
+    float f1;
+    int   i2;
+    uint  u2;
+} data;
+
+// Eight parameters, cycling through the mandated types, to exercise the
+// offsets of members packed after the message string.
+void main() {
+    abortEXT("mixed8: %d %u %f %i %u %f %d %u",
+             data.i0, data.u0, data.f0, data.i1, data.u1, data.f1, data.i2, data.u2);
+}

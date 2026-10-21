@@ -1,0 +1,20 @@
+#version 450
+
+#extension GL_EXT_abort : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    int seed;
+} data;
+
+// 8-bit integers, scalar and vector. There is no format specifier for these, so
+// the message is empty and the values ride along as parameters on their own.
+void main() {
+    int8_t  s = int8_t(data.seed);
+    uint8_t u = uint8_t(data.seed);
+    abortEXT("", s, u,
+             i8vec2(s), i8vec3(s), i8vec4(s),
+             u8vec2(u), u8vec3(u), u8vec4(u));
+}

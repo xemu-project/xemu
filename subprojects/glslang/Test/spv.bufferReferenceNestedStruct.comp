@@ -1,0 +1,28 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+layout(buffer_reference, std430) buffer ProbeInfo
+{
+  float validity[];
+};
+
+struct GridInfo
+{
+  ProbeInfo probes;
+};
+
+layout(buffer_reference, std430) buffer Args
+{
+  GridInfo gridInfo;
+  uint colorSpace;
+};
+
+layout(push_constant, std430) uniform PushConstants
+{
+  Args args;
+};
+
+layout(local_size_x = 16, local_size_y = 16) in;
+void main()
+{
+}

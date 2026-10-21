@@ -1,0 +1,90 @@
+#version 450 core
+#extension GL_KHR_memory_scope_semantics : enable
+#extension GL_KHR_cooperative_matrix : enable
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+#extension GL_EXT_cooperative_matrix_maintenance1 : enable
+#extension GL_EXT_float_e5m2 : enable
+
+layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+float16_t combine(const in float16_t a, const in float16_t b) { return a + b; }
+f16vec2 vectorCombine(const in f16vec2 a, const in f16vec2 b) { return a + b; }
+float16_t elem(const in uint32_t row, const in uint32_t col, const in float16_t x) { return x; }
+float16_t badCoordElem(const in uvec2 row, const in uint32_t col, const in float16_t x) { return x; }
+f16vec2 vectorElem(const in uint32_t row, const in uint32_t col, const in f16vec2 x) { return x; }
+float16_t optionalElem(const in uint32_t row, const in uint32_t col, const in float16_t x,
+                       const in float16_t y) { return x + y; }
+float16_t badMatrixOptionalElem(const in uint32_t row, const in uint32_t col, const in float16_t x,
+                                const in f16vec2 y) { return x + y.x; }
+
+layout(constant_id = 0) const int SpecRows = 16;
+layout(constant_id = 1) const int SpecCols = 8;
+layout(constant_id = 2) const int SpecScope = gl_ScopeWorkgroup;
+const int SpecScopeAlias = SpecScope * 1;
+const int SpecRowResultRows = SpecRows * 1;
+const int SpecRowResultCols = SpecCols * 3;
+const int SpecColumnResultRows = SpecRows * 3;
+const int SpecColumnResultCols = SpecCols * 1;
+const int SpecTransposeRows = SpecCols * 1;
+const int SpecTransposeCols = SpecRows * 1;
+
+void main()
+{
+    coopmat<float16_t, gl_ScopeWorkgroup, 16, 16, gl_MatrixUseA> A;
+    coopmat<float16_t, gl_ScopeWorkgroup, 16, 16, gl_MatrixUseB> B;
+    coopmat<float16_t, gl_ScopeWorkgroup, 16, 16, gl_MatrixUseAccumulator> Acc;
+
+    coopMatTransposeEXT(A, Acc); // ok
+    coopMatTransposeEXT(B, Acc); // ok
+    coopMatTransposeEXT(Acc, A); // error
+    coopMatTransposeEXT(Acc, B); // error
+
+    coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> AccSubgroup;
+    coopmat<float32_t, gl_ScopeWorkgroup, 16, 16, gl_MatrixUseAccumulator> AccFloat;
+    coopmat<float16_t, gl_ScopeWorkgroup, 8, 8, gl_MatrixUseAccumulator> Acc8x8;
+    coopmat<float16_t, gl_ScopeWorkgroup, 8, 16, gl_MatrixUseAccumulator> Acc8x16;
+    coopmat<float16_t, gl_ScopeWorkgroup, 16, 8, gl_MatrixUseAccumulator> Acc16x8;
+
+    int dynamicMask = gl_CooperativeMatrixReduceRowEXT;
+    coopMatReduceEXT(Acc, Acc, dynamicMask, combine); // error: mask is not constant
+    coopMatReduceEXT(Acc, Acc, 5, combine); // error: invalid mask
+    coopMatReduceEXT(AccFloat, Acc, gl_CooperativeMatrixReduceRowEXT, combine); // error: component type
+    coopMatReduceEXT(AccSubgroup, Acc, gl_CooperativeMatrixReduceRowEXT, combine); // error: scope
+    coopMatReduceEXT(A, Acc, gl_CooperativeMatrixReduceRowEXT, combine); // error: result Use
+    coopMatReduceEXT(Acc, A, gl_CooperativeMatrixReduceRowEXT, combine); // error: input Use
+    coopMatReduceEXT(Acc, Acc, gl_CooperativeMatrixReduce2x2EXT, combine); // error: 2x2 dimensions
+    coopMatReduceEXT(Acc8x16, Acc, gl_CooperativeMatrixReduceRowEXT, combine); // error: row count
+    coopMatReduceEXT(Acc16x8, Acc, gl_CooperativeMatrixReduceColumnEXT, combine); // error: column count
+    coopMatReduceEXT(Acc, Acc, gl_CooperativeMatrixReduceRowEXT, vectorCombine); // error: callback types
+
+    const int constantMask = gl_CooperativeMatrixReduceRowEXT;
+    coopMatReduceEXT(Acc, Acc, constantMask, combine); // ok
+    coopMatReduceEXT(Acc16x8, Acc, gl_CooperativeMatrixReduceRowEXT, combine); // ok
+    coopMatReduceEXT(Acc8x16, Acc, gl_CooperativeMatrixReduceColumnEXT, combine); // ok
+    coopMatReduceEXT(Acc8x8, Acc, gl_CooperativeMatrixReduceRowAndColumnEXT, combine); // ok
+
+    coopmat<float16_t, SpecScope, SpecRows, SpecCols, gl_MatrixUseAccumulator> SpecAcc;
+    coopmat<float16_t, SpecScopeAlias, SpecRowResultRows, SpecRowResultCols,
+            gl_MatrixUseAccumulator> SpecRowResult;
+    coopmat<float16_t, SpecScopeAlias, SpecColumnResultRows, SpecColumnResultCols,
+            gl_MatrixUseAccumulator> SpecColumnResult;
+    coopmat<float16_t, SpecScopeAlias, SpecTransposeRows, SpecTransposeCols,
+            gl_MatrixUseB> SpecTransposeResult;
+    coopMatReduceEXT(SpecRowResult, SpecAcc, gl_CooperativeMatrixReduceRowEXT, combine); // ok
+    coopMatReduceEXT(SpecColumnResult, SpecAcc, gl_CooperativeMatrixReduceColumnEXT, combine); // ok
+    coopMatTransposeEXT(SpecTransposeResult, SpecAcc); // ok
+
+    coopMatPerElementEXT(Acc8x8, Acc, elem); // error: result type
+    coopMatPerElementEXT(Acc, Acc, badCoordElem); // error: coordinate type
+    coopMatPerElementEXT(Acc, Acc, vectorElem); // error: component and return types
+    coopMatPerElementEXT(Acc, Acc, optionalElem, Acc8x8); // error: optional matrix type
+    coopMatPerElementEXT(Acc, Acc, optionalElem, f16vec2(1.0)); // error: optional value type
+    coopMatPerElementEXT(Acc, Acc, badMatrixOptionalElem, Acc); // error: optional callback parameter type
+    coopMatPerElementEXT(Acc, Acc, optionalElem, Acc); // ok
+
+    coopmat<float16_t, gl_ScopeWorkgroup, 16, 8, gl_MatrixUseAccumulator> AccRect;
+    coopmat<float16_t, gl_ScopeWorkgroup, 16, 8, gl_MatrixUseB> BadTransposeShape;
+    coopmat<float16_t, gl_ScopeSubgroup, 8, 16, gl_MatrixUseB> BadTransposeScope;
+    coopMatTransposeEXT(BadTransposeShape, AccRect); // error: dimensions
+    coopMatTransposeEXT(BadTransposeScope, AccRect); // error: scope
+}

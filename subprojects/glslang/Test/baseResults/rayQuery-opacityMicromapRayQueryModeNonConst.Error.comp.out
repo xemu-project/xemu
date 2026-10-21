@@ -1,0 +1,6 @@
+rayQuery-opacityMicromapRayQueryModeNonConst.Error.comp
+ERROR: 0:7: 'redeclaration' : can only be redeclared as 'const bool gl_EnableOpacityMicromapEXT = <true|false>;' or 'layout(constant_id = N) gl_EnableOpacityMicromapEXT;' gl_EnableOpacityMicromapEXT
+ERROR: 1 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

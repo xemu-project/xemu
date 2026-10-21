@@ -1,0 +1,16 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    ivec2 v2;
+    ivec3 v3;
+    ivec4 v4;
+} data;
+
+// All three int vector widths, %v2i / %v3i / %v4i.
+void main() {
+    abortEXT("ivecs: %v2i %v3i %v4i", data.v2, data.v3, data.v4);
+}

@@ -1,0 +1,12 @@
+#version 460
+
+layout (push_constant, std430) uniform PCBlock { vec4 coords; vec2 size; float lod; } pc;
+layout (set=0, binding=0) uniform sampler2D inTex;
+layout (rgba8, set=0, binding=2) uniform image2D outColor;
+layout (local_size_x=3, local_size_y=3, local_size_z=1) in;
+
+void main(void) {
+    const vec2 texCoords = pc.coords.xy;
+    const vec4 pixel = texture(inTex, texCoords);
+    imageStore(outColor, ivec2(gl_LocalInvocationID.xy), pixel);
+}

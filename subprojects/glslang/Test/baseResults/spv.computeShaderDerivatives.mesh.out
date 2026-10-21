@@ -1,0 +1,7 @@
+spv.computeShaderDerivatives.mesh
+ERROR: 0:6: 'derivative_group_linearnv' : can only apply to compute shaders 
+ERROR: 0:20: 'dFdx' : required extension not requested: GL_KHR_compute_shader_derivatives
+ERROR: 2 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

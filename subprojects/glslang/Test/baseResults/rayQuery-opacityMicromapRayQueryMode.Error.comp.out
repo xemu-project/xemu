@@ -1,0 +1,6 @@
+rayQuery-opacityMicromapRayQueryMode.Error.comp
+ERROR: 0:7: 'redeclaration' : cannot restate the type or specify a value with constant_id; use 'layout(constant_id = N) gl_EnableOpacityMicromapEXT;' gl_EnableOpacityMicromapEXT
+ERROR: 1 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

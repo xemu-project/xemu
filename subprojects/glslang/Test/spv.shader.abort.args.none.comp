@@ -1,0 +1,10 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+// A format string with no format specifiers and no trailing arguments.
+void main() {
+    abortEXT("no parameters");
+}

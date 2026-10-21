@@ -1,0 +1,26 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    int i;
+} data;
+
+// The message, when present, must be a string literal. Calling abortEXT with no
+// arguments at all is allowed, and is covered by the positive tests.
+void main() {
+    // not a compile-time constant
+    abortEXT(data.i);
+
+    // constant, but not a string
+    abortEXT(1, 2);
+
+    // a compile-time constant of the wrong type is still not a string literal
+    const int notAString = 3;
+    abortEXT(notAString);
+
+    // a parenthesized string literal is an expression, not a string literal
+    abortEXT(("%d"), data.i);
+}

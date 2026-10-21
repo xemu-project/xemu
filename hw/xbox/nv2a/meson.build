@@ -1,0 +1,18 @@
+specific_ss.add(files(
+	'debug.c',
+	'nv2a.c',
+	'pbus.c',
+	'pcrtc.c',
+	'pfb.c',
+	'pfifo.c',
+	'pmc.c',
+	'pramdac.c',
+	'prmcio.c',
+	'prmdio.c',
+	'prmvio.c',
+	'ptimer.c',
+	'pvideo.c',
+	'stubs.c',
+	'user.c',
+	))
+subdir('pgraph')

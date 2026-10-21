@@ -1,0 +1,59 @@
+# Copyright (C) 2020 The Khronos Group Inc.
+#
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+#    Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+#
+#    Redistributions in binary form must reproduce the above
+#    copyright notice, this list of conditions and the following
+#    disclaimer in the documentation and/or other materials provided
+#    with the distribution.
+#
+#    Neither the name of The Khronos Group Inc. nor the names of its
+#    contributors may be used to endorse or promote products derived
+#    from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+# COPYRIGHT HOLDERS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+# Use the mostly-generic build configuration that comes from Chromium.
+# Do this to ensure that this project can be embedded in Chromium itself
+# or a Chromium-adjacent project.
+buildconfig = "//build/config/BUILDCONFIG.gn"
+
+# Use Python3 to run scripts. On Windows this will use python.exe or python.bat
+script_executable = "python3"
+
+default_args = {
+  # Requst a non-hermetic build.
+  # This is reasonable for standalone usage in upstream Glslang.
+  # It avoids a lot of overhead in the DEPS file and developer source trees.
+  # For example, don't download and use a custom Clang and libc++.
+  is_clang = false
+
+  # Disable various things that are are automatically turned on even
+  # we don't request a hermetic build with Clang.
+  use_custom_libcxx = false
+  # Needed only for std::atomic_ref<T> for large Ts http://crbug.com/402171653
+  # Disable it to avoid the need to add the compiler-rt third_party dependency.
+  use_llvm_libatomic = false
+}
+
+# Export compile_commands.json to the build dir for all generated targets.
+# This is useful for editors that parse the compilation database for symbol lookup.
+export_compile_commands = [ "*" ]

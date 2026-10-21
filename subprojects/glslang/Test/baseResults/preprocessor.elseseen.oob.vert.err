@@ -1,0 +1,15 @@
+ERROR: 0:18: 'preprocessor evaluation' : bad expression 
+ERROR: 0:18: '#if' : unexpected tokens following directive 
+ERROR: 0:31: '#endif' : mismatched statements 
+ERROR: 0:32: '#endif' : mismatched statements 
+ERROR: 0:33: '#endif' : mismatched statements 
+ERROR: 0:34: '#endif' : mismatched statements 
+ERROR: 0:35: '#endif' : mismatched statements 
+ERROR: 0:36: '#endif' : mismatched statements 
+ERROR: 0:37: '#endif' : mismatched statements 
+ERROR: 0:38: '#endif' : mismatched statements 
+ERROR: 0:39: '#endif' : mismatched statements 
+ERROR: 0:40: '#endif' : mismatched statements 
+ERROR: 12 compilation errors.  No code generated.
+
+

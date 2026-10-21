@@ -1,0 +1,23 @@
+company:
+  name: string
+  headquarters:
+    state: string
+    city: string
+
+  products:
+    type: array
+    items:
+      name:
+        type: string
+        default: New Product
+      price: float
+      inventory: int
+      international_shipping:
+        type: bool
+        default: true
+      suppliers:
+        type: array
+        items: string
+      category:
+        type: enum
+        values: ['fruit', 'vegetable', 'beverage', 'explosive']

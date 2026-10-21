@@ -1,0 +1,21 @@
+hlsl.params.default.nonident.negative.frag
+ERROR: 0:1: ''' : expected 
+ERROR: 0:1: 'b' : invalid parameter after default value parameters 
+ERROR: 0:1: ')' : Expected 
+ERROR: 0:1: 'function parameter list' : Expected 
+ERROR: 0:1: 'declaration' : Expected 
+(2): error at column 0, HLSL parsing failed.
+ERROR: 6 compilation errors.  No code generated.
+
+
+Shader version: 500
+gl_FragCoord origin is upper left
+
+
+Linked fragment stage:
+
+
+Shader version: 500
+gl_FragCoord origin is upper left
+
+SPIR-V is not generated for failed compile or link

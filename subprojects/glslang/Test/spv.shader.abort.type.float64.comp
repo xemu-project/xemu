@@ -1,0 +1,18 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    float seed;
+} data;
+
+// Double precision, scalar, vector and matrix. Doubles align to 8 bytes and a
+// dmat4 is 128 bytes, the largest single parameter in the suite.
+void main() {
+    double s = double(data.seed);
+    abortEXT("", s,
+             dvec2(s), dvec3(s), dvec4(s),
+             dmat2(s), dmat3(s), dmat4(s));
+}

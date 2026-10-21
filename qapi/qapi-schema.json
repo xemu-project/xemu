@@ -1,0 +1,78 @@
+# -*- Mode: Python -*-
+# vim: filetype=python
+##
+# ************
+# Introduction
+# ************
+#
+# This manual describes the commands and events supported by the QEMU
+# Monitor Protocol (QMP).
+#
+# For locating a particular item, please see the `qapi-qmp-index`.
+#
+# The following notation is used in examples:
+#
+# .. qmp-example::
+#
+#   -> ... text sent by client (commands) ...
+#   <- ... text sent by server (command responses and events) ...
+#
+# Example text is formatted for readability.  However, in real
+# protocol usage, its commonly emitted as a single line.
+#
+# Please refer to the
+# :doc:`QEMU Machine Protocol Specification </interop/qmp-spec>`
+# for the general format of commands, responses, and events.
+##
+
+{ 'include': 'pragma.json' }
+
+# Documentation generated with qapi-gen.py is in source order, with
+# included sub-schemas inserted at the first include directive
+# (subsequent include directives have no effect).  To get a sane and
+# stable order, it's best to include each sub-schema just once, or
+# include it first right here.
+
+{ 'include': 'error.json' }
+{ 'include': 'common.json' }
+{ 'include': 'sockets.json' }
+{ 'include': 'run-state.json' }
+{ 'include': 'crypto.json' }
+{ 'include': 'job.json' }
+{ 'include': 'accelerator.json' }
+{ 'include': 'block.json' }
+{ 'include': 'block-export.json' }
+{ 'include': 'char.json' }
+{ 'include': 'dump.json' }
+{ 'include': 'net.json' }
+{ 'include': 'ebpf.json' }
+{ 'include': 'rocker.json' }
+{ 'include': 'tpm.json' }
+{ 'include': 'ui.json' }
+{ 'include': 'authz.json' }
+{ 'include': 'migration.json' }
+{ 'include': 'transaction.json' }
+{ 'include': 'trace.json' }
+{ 'include': 'compat.json' }
+{ 'include': 'control.json' }
+{ 'include': 'introspect.json' }
+{ 'include': 'qom.json' }
+{ 'include': 'qdev.json' }
+{ 'include': 'machine-common.json' }
+{ 'include': 'machine.json' }
+{ 'include': 'machine-s390x.json' }
+{ 'include': 'replay.json' }
+{ 'include': 'yank.json' }
+{ 'include': 'misc.json' }
+{ 'include': 'misc-arm.json' }
+{ 'include': 'misc-i386.json' }
+{ 'include': 'audio.json' }
+{ 'include': 'acpi.json' }
+{ 'include': 'acpi-hest.json' }
+{ 'include': 'pci.json' }
+{ 'include': 'stats.json' }
+{ 'include': 'virtio.json' }
+{ 'include': 'vfio.json' }
+{ 'include': 'cryptodev.json' }
+{ 'include': 'cxl.json' }
+{ 'include': 'uefi.json' }

@@ -1,0 +1,7 @@
+spv.splitBarrierArriveMemoryScopeSemantics_Error2.comp
+ERROR: 0:14: 'controlBarrierArrive' : Semantics must be gl_SemanticsRelease, gl_SemanticsAcquire, or gl_SemanticsAcquireRelease when used with non-zero storage class semantics 
+ERROR: 0:14: 'controlBarrierArrive' : Semantics must be gl_SemanticsRelease (optionally with gl_SemanticsMakeAvailable) when used with non-zero storage class semantics 
+ERROR: 2 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

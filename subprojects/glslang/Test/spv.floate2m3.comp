@@ -1,0 +1,59 @@
+#version 450 core
+
+#extension GL_EXT_float_e2m3 : require
+#extension GL_KHR_memory_scope_semantics : enable
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+#extension GL_EXT_scalar_block_layout : enable
+#extension GL_EXT_long_vector : enable
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+const floate2m3_t bc10 = floate2m3_t(10);
+const fe2m3vec2 b2c20 = fe2m3vec2(20);
+layout(constant_id = 1) const floate2m3_t bsc10 = floate2m3_t(10);
+
+struct S { floate2m3_t b; };
+const S sc = S(bc10);
+
+const floate2m3_t bca[2] = {bc10, bc10};
+
+floate2m3_t funcfe2m3(floate2m3_t x)
+{
+    return x;
+}
+
+void main()
+{
+    float f = 2.0;
+    floate2m3_t b = floate2m3_t(1.0fe2m3);
+
+    float16_t f16 = float16_t(7);
+    float32_t f32 = 7;
+    float64_t f64 = 7;
+    f16 = float16_t(b);
+    f32 = float32_t(b);
+    f64 = float64_t(b);
+
+    f16 = b;
+    f32 = b;
+    f64 = b;
+
+    b = funcfe2m3(b);
+
+
+    fe2m3vec4 v4;
+    vector<floate2m3_t, 8> v8;
+    vector<floate2m3_t, 16> v16;
+
+    u8vec3 u8   = packFloat4xfe2m3EXT(v4);
+    u16vec3 u16 = packFloat8xfe2m3EXT(v8);
+    u32vec3 u32 = packFloat16xfe2m3EXT(v16);
+
+    v4 = unpackFloat4xfe2m3EXT(u8);
+    v8 = unpackFloat8xfe2m3EXT(u16);
+    v16 = unpackFloat16xfe2m3EXT(u32);
+
+    b = bitcastExtractfe2m3EXT(uint8_t(1), 2);
+    fe2m3vec4 v4_2 = bitcastExtractfe2m3EXT(u8vec4(1), 2);
+    vector<floate2m3_t, 7> v7 = bitcastExtractfe2m3EXT(vector<uint8_t, 7>(1), 3);
+}

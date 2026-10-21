@@ -1,0 +1,16 @@
+#version 460
+#extension GL_EXT_ray_query : enable
+#extension GL_EXT_opacity_micromap : enable
+
+layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+
+void main()
+{
+    rayQueryEXT rq;
+    // Passing gl_RayFlagsForceOpacityMicromap2StateEXT from a ray-query (compute) stage must declare
+    // the RayTracingOpacityMicromap capability + SPV_EXT_opacity_micromap, just like ray-pipeline stages.
+    rayQueryInitializeEXT(rq, topLevelAS,
+                          gl_RayFlagsForceOpacityMicromap2StateEXT, 0xFFu,
+                          vec3(0.0), 0.1, vec3(0.0, 0.0, 1.0), 100.0);
+    rayQueryProceedEXT(rq);
+}

@@ -1,0 +1,18 @@
+#version 450 core
+
+#extension GL_EXT_float_e2m3 : require
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+    floate2m3_t c000_000 = floate2m3_t(0.0f);
+    floate2m3_t c000_001 = floate2m3_t(0.125f);
+    floate2m3_t c001_000 = floate2m3_t(1.f);
+    floate2m3_t c011_111 = floate2m3_t(7.5f);
+    floate2m3_t c100_000 = floate2m3_t(-0.0f);
+    floate2m3_t c100_001 = floate2m3_t(-0.125f);
+    floate2m3_t c101_000 = floate2m3_t(-1.f);
+    floate2m3_t c111_111 = floate2m3_t(-7.5f);
+}

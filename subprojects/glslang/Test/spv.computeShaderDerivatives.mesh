@@ -1,0 +1,31 @@
+#version 450
+#extension GL_EXT_mesh_shader : enable
+#extension GL_NV_compute_shader_derivatives : require
+
+layout(local_size_x = 4) in;
+layout(derivative_group_linearNV) in;
+
+layout(max_vertices = 3) out;
+layout(max_primitives = 1) out;
+layout(triangles) out;
+
+layout(binding = 0) uniform sampler2D tex;
+layout(binding = 1, std430) buffer Output {
+    vec2 lod;
+} outData;
+
+void main()
+{
+    uint iid = gl_LocalInvocationIndex;
+    float localDx = dFdx(float(iid));
+    vec2 localLod = textureQueryLod(tex, vec2(0.5f));
+
+    if (iid == 0u) {
+        SetMeshOutputsEXT(3u, 1u);
+        outData.lod = localLod;
+        gl_PrimitiveTriangleIndicesEXT[0] = uvec3(0u, 1u, 2u);
+    }
+
+    if (iid < 3u)
+        gl_MeshVerticesEXT[iid].gl_Position = vec4(localDx + localLod.x);
+}

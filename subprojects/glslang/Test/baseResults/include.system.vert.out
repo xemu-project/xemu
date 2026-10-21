@@ -1,0 +1,49 @@
+include.system.vert
+Shader version: 450
+Requested GL_GOOGLE_cpp_style_line_directive
+Requested GL_GOOGLE_include_directive
+0:? Sequence
+0:15  Function Definition: main( ( global void)
+0:15    Function Parameters: 
+0:17    Sequence
+0:17      move second child to first child ( temp 4-component vector of float)
+0:17        'color' ( smooth out 4-component vector of float)
+0:17        add ( temp 4-component vector of float)
+0:17          add ( temp 4-component vector of float)
+0:17            'i1' ( global 4-component vector of float)
+0:17            'i5' ( global 4-component vector of float)
+0:17          'i6' ( global 4-component vector of float)
+0:?   Linker Objects
+0:?     'i1' ( global 4-component vector of float)
+0:?     'i6' ( global 4-component vector of float)
+0:?     'i5' ( global 4-component vector of float)
+0:?     'color' ( smooth out 4-component vector of float)
+0:?     'gl_VertexID' ( gl_VertexId int VertexId)
+0:?     'gl_InstanceID' ( gl_InstanceId int InstanceId)
+
+
+Linked vertex stage:
+
+
+Shader version: 450
+Requested GL_GOOGLE_cpp_style_line_directive
+Requested GL_GOOGLE_include_directive
+0:? Sequence
+0:15  Function Definition: main( ( global void)
+0:15    Function Parameters: 
+0:17    Sequence
+0:17      move second child to first child ( temp 4-component vector of float)
+0:17        'color' ( smooth out 4-component vector of float)
+0:17        add ( temp 4-component vector of float)
+0:17          add ( temp 4-component vector of float)
+0:17            'i1' ( global 4-component vector of float)
+0:17            'i5' ( global 4-component vector of float)
+0:17          'i6' ( global 4-component vector of float)
+0:?   Linker Objects
+0:?     'i1' ( global 4-component vector of float)
+0:?     'i6' ( global 4-component vector of float)
+0:?     'i5' ( global 4-component vector of float)
+0:?     'color' ( smooth out 4-component vector of float)
+0:?     'gl_VertexID' ( gl_VertexId int VertexId)
+0:?     'gl_InstanceID' ( gl_InstanceId int InstanceId)
+

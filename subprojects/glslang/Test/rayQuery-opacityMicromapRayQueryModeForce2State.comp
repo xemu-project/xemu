@@ -1,0 +1,20 @@
+#version 460
+#extension GL_EXT_ray_query : enable
+#extension GL_EXT_opacity_micromap : enable
+#extension GL_EXT_opacity_micromap_ray_query_mode : enable
+
+// The KHR path (this extension: OpacityMicromapIdKHR / SPV_KHR_opacity_micromap) and the EXT path
+// (GL_EXT_opacity_micromap's gl_RayFlagsForceOpacityMicromap2StateEXT ray flag:
+// RayTracingOpacityMicromapEXT / SPV_EXT_opacity_micromap) coexist in one shader. Both extension
+// strings and both capabilities must be emitted (Issue 6).
+layout(constant_id = 2) gl_EnableOpacityMicromapEXT;
+
+layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+
+void main()
+{
+    rayQueryEXT rq;
+    rayQueryInitializeEXT(rq, topLevelAS, gl_RayFlagsForceOpacityMicromap2StateEXT, 0xFFu,
+                          vec3(0.0), 0.1, vec3(0.0, 0.0, 1.0), 100.0);
+    rayQueryProceedEXT(rq);
+}

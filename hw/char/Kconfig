@@ -1,0 +1,97 @@
+config ESCC
+    bool
+
+config HTIF
+    bool
+
+config PARALLEL
+    bool
+    default y
+    depends on ISA_BUS
+
+config PL011
+    bool
+    # The PL011 has both a Rust and a C implementation
+    select PL011_C if !HAVE_RUST
+    select X_PL011_RUST if HAVE_RUST
+
+config PL011_C
+    bool
+
+config SERIAL
+    bool
+
+config SERIAL_ISA
+    bool
+    default y
+    depends on ISA_BUS
+    select SERIAL
+
+config SERIAL_MM
+    bool
+    select SERIAL
+
+config SERIAL_PCI
+    bool
+    default y if PCI_DEVICES
+    depends on PCI
+    select SERIAL
+
+config SERIAL_PCI_MULTI
+    bool
+    default y if PCI_DEVICES
+    depends on PCI
+    select SERIAL
+
+config VIRTIO_SERIAL
+    bool
+    default y
+    depends on VIRTIO
+
+config MAX78000_UART
+    bool
+
+config STM32F2XX_USART
+    bool
+
+config STM32L4X5_USART
+    bool
+
+config CMSDK_APB_UART
+    bool
+
+config SCLPCONSOLE
+    bool
+
+config TERMINAL3270
+    bool
+
+config SH_SCI
+    bool
+
+config RENESAS_SCI
+    bool
+
+config AVR_USART
+    bool
+
+config DIVA_GSP
+    bool
+
+config MCHP_PFSOC_MMUART
+    bool
+    select SERIAL
+
+config SIFIVE_UART
+    bool
+
+config GOLDFISH_TTY
+    bool
+
+config SHAKTI_UART
+    bool
+
+config IP_OCTAL_232
+    bool
+    default y
+    depends on IPACK

@@ -1,0 +1,44 @@
+#version 460
+#extension GL_EXT_descriptor_heap : require
+#extension GL_EXT_samplerless_texture_functions : require
+#extension GL_EXT_structured_descriptor_heap : require
+#extension GL_EXT_scalar_block_layout : require
+
+layout(local_size_x = 1) in;
+
+layout(constant_id = 0) const uint materialsOffset = 1024;
+
+layout(push_constant) uniform MyPushData {
+    vec4 cameraPos;
+    uint buffersOffset;
+    uint materialIndex;
+} pushData;
+
+layout(buffer_type, scalar) buffer DataBuffer {
+    uint data0;
+    uint data1;
+};
+
+layout(heap_offset = 2048) resourceheap BufferHeap0 {
+    uint count;
+    DataBuffer dataBuffer;
+} bufferHeap0;
+
+layout(heap_offset = materialsOffset) resourceheap BufferHeap1 {
+    uint count;
+    DataBuffer dataBuffer;
+    layout(rgba32f) image2D images[2];
+    texture2D textures[2];
+} bufferHeap1;
+
+layout(heap_offset = pushData.buffersOffset) samplerheap SamplerHeap {
+    sampler linearSamplers[2];
+} samplerHeap;
+
+void main()
+{
+    bufferHeap0.dataBuffer.data0 = bufferHeap1.dataBuffer.data1;
+    vec4 texel = imageLoad(bufferHeap1.images[1], ivec2(0, 0));
+    vec4 sampled = textureLod(sampler2D(bufferHeap1.textures[1], samplerHeap.linearSamplers[1]), vec2(0.5), 0.0);
+    imageStore(bufferHeap1.images[1], ivec2(0, 0), texel + sampled);
+}

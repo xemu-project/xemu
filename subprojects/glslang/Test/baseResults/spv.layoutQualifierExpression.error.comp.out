@@ -1,0 +1,7 @@
+spv.layoutQualifierExpression.error.comp
+ERROR: 0:7: '' : constant expression required 
+ERROR: 0:7: 'binding' : needs a literal integer 
+ERROR: 2 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

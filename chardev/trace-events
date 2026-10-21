@@ -1,0 +1,29 @@
+# See docs/devel/tracing.rst for syntax documentation.
+
+# wctablet.c
+wct_init(void) ""
+wct_cmd_re(void) ""
+wct_cmd_st(void) ""
+wct_cmd_sp(void) ""
+wct_cmd_ts(int input) "0x%02x"
+wct_cmd_other(const char *cmd) "%s"
+wct_speed(int speed) "%d"
+
+# spice.c
+spice_chr_discard_write(int len) "spice chr write discarded %d"
+spice_vmc_write(ssize_t out, int len) "spice wrote %zd of requested %d"
+spice_vmc_read(int bytes, int len) "spice read %d of requested %d"
+spice_vmc_register_interface(void *scd) "spice vmc registered interface %p"
+spice_vmc_unregister_interface(void *scd) "spice vmc unregistered interface %p"
+spice_vmc_event(int event) "spice vmc event %d"
+
+# char-socket.c
+chr_socket_poll_err(void *chrdev, const char *label) "chardev socket poll error %p (%s)"
+chr_socket_recv_err(void *chrdev, const char *label, const char *err) "chardev socket recv error %p (%s): %s"
+chr_socket_recv_eof(void *chrdev, const char *label) "chardev socket recv end-of-file %p (%s)"
+chr_socket_write_err(void *chrdev, const char *label, const char *err) "chardev socket write error %p (%s): %s"
+chr_socket_disconnect(void *chrdev, const char *label) "chardev socket disconnect %p (%s)"
+chr_socket_hangup(void *chrdev, const char *label) "chardev socket hangup %p (%s)"
+chr_socket_ws_handshake_err(void *chrdev, const char *label, const char *err) "chardev socket websock handshake error %p (%s): %s"
+chr_socket_tls_handshake_err(void *chrdev, const char *label, const char *err) "chardev socket TLS handshake error %p (%s): %s"
+chr_socket_tls_init_err(void *chrdev, const char *label, const char *err) "chardev socket TLS init error %p (%s): %s"

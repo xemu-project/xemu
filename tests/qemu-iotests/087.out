@@ -1,0 +1,69 @@
+QA output created by 087
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=134217728
+
+=== Missing ID and node-name ===
+
+Testing:
+QMP_VERSION
+{"return": {}}
+{"error": {"class": "GenericError", "desc": "'node-name' must be specified for the root node"}}
+{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN", "data": {"guest": false, "reason": "host-qmp-quit"}}
+{"return": {}}
+
+
+=== Duplicate ID ===
+
+Testing: -drive driver=IMGFMT,id=disk,node-name=test-node,file=TEST_DIR/t.IMGFMT
+QMP_VERSION
+{"return": {}}
+{"error": {"class": "GenericError", "desc": "node-name=disk is conflicting with a device id"}}
+{"error": {"class": "GenericError", "desc": "Duplicate nodes with node-name='test-node'"}}
+{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN", "data": {"guest": false, "reason": "host-qmp-quit"}}
+{"return": {}}
+
+
+=== aio=native without O_DIRECT ===
+
+Testing:
+QMP_VERSION
+{"return": {}}
+{"error": {"class": "GenericError", "desc": "aio=native was specified, but it requires cache.direct=on, which was not specified."}}
+{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN", "data": {"guest": false, "reason": "host-qmp-quit"}}
+{"return": {}}
+
+
+=== Encrypted image QCow ===
+
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=134217728 encryption=on
+Testing:
+QMP_VERSION
+{"return": {}}
+{"return": {}}
+{"error": {"class": "GenericError", "desc": "Use of AES-CBC encrypted IMGFMT images is no longer supported in system emulators"}}
+{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN", "data": {"guest": false, "reason": "host-qmp-quit"}}
+{"return": {}}
+
+
+=== Encrypted image LUKS ===
+
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=134217728
+Testing:
+QMP_VERSION
+{"return": {}}
+{"return": {}}
+{"return": {}}
+{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN", "data": {"guest": false, "reason": "host-qmp-quit"}}
+{"return": {}}
+
+
+=== Missing driver ===
+
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=134217728 encryption=on
+Testing: -S
+QMP_VERSION
+{"return": {}}
+{"error": {"class": "GenericError", "desc": "Parameter 'driver' is missing"}}
+{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN", "data": {"guest": false, "reason": "host-qmp-quit"}}
+{"return": {}}
+
+*** done

@@ -1,0 +1,14 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+// Test passing a matrix directly to abortEXT with custom format specifier %m44
+void main() {
+    mat4 matrix = mat4(1.0);
+
+    // Pass matrix as a parameter with custom format specifier %m44
+    // %m44 = mat4 (4 columns, 4 rows)
+    abortEXT("matrix: %m44", matrix);
+}

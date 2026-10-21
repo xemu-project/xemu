@@ -1,0 +1,19 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    float seed;
+} data;
+
+// Every single precision matrix shape. Each needs its own MatrixStride, which
+// depends on the column height rather than on the number of columns.
+void main() {
+    float s = data.seed;
+    abortEXT("",
+             mat2(s),   mat2x3(s), mat2x4(s),
+             mat3x2(s), mat3(s),   mat3x4(s),
+             mat4x2(s), mat4x3(s), mat4(s));
+}

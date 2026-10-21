@@ -1,0 +1,20 @@
+#version 450
+
+#extension GL_EXT_abort : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    int seed;
+} data;
+
+// 64-bit integers, scalar and vector. These have an 8-byte alignment, so the
+// message offsets have to round up past the preceding members.
+void main() {
+    int64_t  s = int64_t(data.seed);
+    uint64_t u = uint64_t(data.seed);
+    abortEXT("", s, u,
+             i64vec2(s), i64vec3(s), i64vec4(s),
+             u64vec2(u), u64vec3(u), u64vec4(u));
+}

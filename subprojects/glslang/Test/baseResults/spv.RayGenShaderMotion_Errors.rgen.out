@@ -1,0 +1,6 @@
+spv.RayGenShaderMotion_Errors.rgen
+ERROR: 0:12: 'no rayPayloadEXT/rayPayloadInEXT declared' : with layout(location = 1)
+ERROR: 1 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

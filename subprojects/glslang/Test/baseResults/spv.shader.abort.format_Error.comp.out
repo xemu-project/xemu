@@ -1,0 +1,9 @@
+spv.shader.abort.format_Error.comp
+ERROR: 0:15: 'abortEXT' : first argument must be a string literal 
+ERROR: 0:18: 'abortEXT' : first argument must be a string literal 
+ERROR: 0:22: 'abortEXT' : first argument must be a string literal 
+ERROR: 0:25: 'abortEXT' : first argument must be a string literal 
+ERROR: 4 compilation errors.  No code generated.
+
+
+SPIR-V is not generated for failed compile or link

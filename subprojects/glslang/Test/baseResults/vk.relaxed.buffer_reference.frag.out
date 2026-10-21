@@ -1,0 +1,260 @@
+vk.relaxed.buffer_reference.frag
+Shader version: 460
+Requested GL_EXT_buffer_reference
+Requested GL_EXT_buffer_reference2
+Requested GL_EXT_nonuniform_qualifier
+Requested GL_EXT_samplerless_texture_functions
+Requested GL_EXT_scalar_block_layout
+Requested GL_EXT_shader_explicit_arithmetic_types_int64
+gl_FragCoord origin is upper left
+0:? Sequence
+0:35  Function Definition: SampleMaterial(u1;u1;vf2; ( global highp 4-component vector of float)
+0:35    Function Parameters: 
+0:35      'material_index' ( in highp uint)
+0:35      'texture_index' ( in highp uint)
+0:35      'uv' ( in highp 2-component vector of float)
+0:37    Sequence
+0:37      Branch: Return with expression
+0:43        texture ( global highp 4-component vector of float)
+0:41          Construct combined texture-sampler ( temp sampler2D)
+0:39            indirect index (layout( set=0 binding=0) temp highp texture2D)
+0:39              'global_textures_2d' (layout( set=0 binding=0) uniform runtime-sized array of highp texture2D)
+0:39              indirect index (layout( std430) temp highp uint)
+0:39                textures: direct index for structure (layout( std430) global 4-element array of highp uint)
+0:39                  indirect index (layout( column_major std430 offset=0 buffer_reference_align=16) temp structure{layout( std430) global 4-element array of highp uint textures})
+0:39                    materials: direct index for structure (layout( column_major std430 offset=0 buffer_reference_align=16) buffer runtime-sized array of structure{layout( std430) global 4-element array of highp uint textures})
+0:39                      Convert uint64_t to pointer ( temp reference)
+0:39                        materials: direct index for structure ( global uint64_t)
+0:39                          global_uniform: direct index for structure (layout( column_major std430 offset=0) uniform structure{ global uint64_t materials})
+0:39                            'anon@0' (layout( set=1 binding=0 column_major std430) uniform block{layout( column_major std430 offset=0) uniform structure{ global uint64_t materials} global_uniform})
+0:39                            Constant:
+0:39                              0 (const uint)
+0:39                          Constant:
+0:39                            0 (const int)
+0:39                      Constant:
+0:39                        0 (const int)
+0:39                    'material_index' ( in highp uint)
+0:39                  Constant:
+0:39                    0 (const int)
+0:39                'texture_index' ( in highp uint)
+0:40            direct index (layout( set=0 binding=2) temp highp sampler)
+0:40              'global_samplers' (layout( set=0 binding=2) uniform unsized 1-element array of highp sampler)
+0:40              Constant:
+0:40                0 (const int)
+0:42          'uv' ( in highp 2-component vector of float)
+0:46  Function Definition: main( ( global void)
+0:46    Function Parameters: 
+0:48    Sequence
+0:48      move second child to first child ( temp highp 4-component vector of float)
+0:48        'out_color' (layout( location=0) out highp 4-component vector of float)
+0:48        Function Call: SampleMaterial(u1;u1;vf2; ( global highp 4-component vector of float)
+0:48          Constant:
+0:48            0 (const uint)
+0:48          Constant:
+0:48            0 (const uint)
+0:48          Constant:
+0:48            0.500000
+0:48            0.500000
+0:?   Linker Objects
+0:?     'anon@0' (layout( set=1 binding=0 column_major std430) uniform block{layout( column_major std430 offset=0) uniform structure{ global uint64_t materials} global_uniform})
+0:?     'global_textures_2d' (layout( set=0 binding=0) uniform runtime-sized array of highp texture2D)
+0:?     'global_samplers' (layout( set=0 binding=2) uniform unsized 1-element array of highp sampler)
+0:?     'out_color' (layout( location=0) out highp 4-component vector of float)
+
+
+Linked fragment stage:
+
+
+Shader version: 460
+Requested GL_EXT_buffer_reference
+Requested GL_EXT_buffer_reference2
+Requested GL_EXT_nonuniform_qualifier
+Requested GL_EXT_samplerless_texture_functions
+Requested GL_EXT_scalar_block_layout
+Requested GL_EXT_shader_explicit_arithmetic_types_int64
+gl_FragCoord origin is upper left
+0:? Sequence
+0:35  Function Definition: SampleMaterial(u1;u1;vf2; ( global highp 4-component vector of float)
+0:35    Function Parameters: 
+0:35      'material_index' ( in highp uint)
+0:35      'texture_index' ( in highp uint)
+0:35      'uv' ( in highp 2-component vector of float)
+0:37    Sequence
+0:37      Branch: Return with expression
+0:43        texture ( global highp 4-component vector of float)
+0:41          Construct combined texture-sampler ( temp sampler2D)
+0:39            indirect index (layout( set=0 binding=0) temp highp texture2D)
+0:39              'global_textures_2d' (layout( set=0 binding=0) uniform runtime-sized array of highp texture2D)
+0:39              indirect index (layout( std430) temp highp uint)
+0:39                textures: direct index for structure (layout( std430) global 4-element array of highp uint)
+0:39                  indirect index (layout( column_major std430 offset=0 buffer_reference_align=16) temp structure{layout( std430) global 4-element array of highp uint textures})
+0:39                    materials: direct index for structure (layout( column_major std430 offset=0 buffer_reference_align=16) buffer runtime-sized array of structure{layout( std430) global 4-element array of highp uint textures})
+0:39                      Convert uint64_t to pointer ( temp reference)
+0:39                        materials: direct index for structure ( global uint64_t)
+0:39                          global_uniform: direct index for structure (layout( column_major std430 offset=0) uniform structure{ global uint64_t materials})
+0:39                            'anon@0' (layout( set=1 binding=0 column_major std430) uniform block{layout( column_major std430 offset=0) uniform structure{ global uint64_t materials} global_uniform})
+0:39                            Constant:
+0:39                              0 (const uint)
+0:39                          Constant:
+0:39                            0 (const int)
+0:39                      Constant:
+0:39                        0 (const int)
+0:39                    'material_index' ( in highp uint)
+0:39                  Constant:
+0:39                    0 (const int)
+0:39                'texture_index' ( in highp uint)
+0:40            direct index (layout( set=0 binding=2) temp highp sampler)
+0:40              'global_samplers' (layout( set=0 binding=2) uniform 1-element array of highp sampler)
+0:40              Constant:
+0:40                0 (const int)
+0:42          'uv' ( in highp 2-component vector of float)
+0:46  Function Definition: main( ( global void)
+0:46    Function Parameters: 
+0:48    Sequence
+0:48      move second child to first child ( temp highp 4-component vector of float)
+0:48        'out_color' (layout( location=0) out highp 4-component vector of float)
+0:48        Function Call: SampleMaterial(u1;u1;vf2; ( global highp 4-component vector of float)
+0:48          Constant:
+0:48            0 (const uint)
+0:48          Constant:
+0:48            0 (const uint)
+0:48          Constant:
+0:48            0.500000
+0:48            0.500000
+0:?   Linker Objects
+0:?     'anon@0' (layout( set=1 binding=0 column_major std430) uniform block{layout( column_major std430 offset=0) uniform structure{ global uint64_t materials} global_uniform})
+0:?     'global_textures_2d' (layout( set=0 binding=0) uniform runtime-sized array of highp texture2D)
+0:?     'global_samplers' (layout( set=0 binding=2) uniform 1-element array of highp sampler)
+0:?     'out_color' (layout( location=0) out highp 4-component vector of float)
+
+// Module Version 10000
+// Generated by (magic number): 8000b
+// Id's are bound by 70
+
+                              Capability Shader
+                              Capability Int64
+                              Capability RuntimeDescriptorArrayEXT
+                              Capability PhysicalStorageBufferAddressesEXT
+                              Extension  "SPV_EXT_descriptor_indexing"
+                              Extension  "SPV_KHR_physical_storage_buffer"
+               1:             ExtInstImport  "GLSL.std.450"
+                              MemoryModel PhysicalStorageBuffer64EXT GLSL450
+                              EntryPoint Fragment 4  "main" 62
+                              ExecutionMode 4 OriginUpperLeft
+                              Source GLSL 460
+                              SourceExtension  "GL_EXT_buffer_reference"
+                              SourceExtension  "GL_EXT_buffer_reference2"
+                              SourceExtension  "GL_EXT_nonuniform_qualifier"
+                              SourceExtension  "GL_EXT_samplerless_texture_functions"
+                              SourceExtension  "GL_EXT_scalar_block_layout"
+                              SourceExtension  "GL_EXT_shader_explicit_arithmetic_types_int64"
+                              Name 4  "main"
+                              Name 16  "SampleMaterial(u1;u1;vf2;"
+                              Name 13  "material_index"
+                              Name 14  "texture_index"
+                              Name 15  "uv"
+                              Name 21  "global_textures_2d"
+                              Name 23  "GlobalUniformBufferData"
+                              MemberName 23(GlobalUniformBufferData) 0  "materials"
+                              Name 24  "GlobalUniformBufferDesc"
+                              MemberName 24(GlobalUniformBufferDesc) 0  "global_uniform"
+                              Name 26  ""
+                              Name 35  "Material"
+                              MemberName 35(Material) 0  "textures"
+                              Name 37  "MaterialBuffer"
+                              MemberName 37(MaterialBuffer) 0  "materials"
+                              Name 51  "global_samplers"
+                              Name 62  "out_color"
+                              Name 66  "param"
+                              Name 67  "param"
+                              Name 68  "param"
+                              Decorate 21(global_textures_2d) Binding 0
+                              Decorate 21(global_textures_2d) DescriptorSet 0
+                              MemberDecorate 23(GlobalUniformBufferData) 0 Offset 0
+                              Decorate 24(GlobalUniformBufferDesc) Block
+                              MemberDecorate 24(GlobalUniformBufferDesc) 0 Offset 0
+                              Decorate 26 Binding 0
+                              Decorate 26 DescriptorSet 1
+                              Decorate 34 ArrayStride 4
+                              MemberDecorate 35(Material) 0 Offset 0
+                              Decorate 36 ArrayStride 16
+                              Decorate 37(MaterialBuffer) Block
+                              MemberDecorate 37(MaterialBuffer) 0 Offset 0
+                              Decorate 51(global_samplers) Binding 2
+                              Decorate 51(global_samplers) DescriptorSet 0
+                              Decorate 62(out_color) Location 0
+               2:             TypeVoid
+               3:             TypeFunction 2
+               6:             TypeInt 32 0
+               7:             TypePointer Function 6(int)
+               8:             TypeFloat 32
+               9:             TypeVector 8(float) 2
+              10:             TypePointer Function 9(fvec2)
+              11:             TypeVector 8(float) 4
+              12:             TypeFunction 11(fvec4) 7(ptr) 7(ptr) 10(ptr)
+              18:             TypeImage 8(float) 2D sampled format:Unknown
+              19:             TypeRuntimeArray 18
+              20:             TypePointer UniformConstant 19
+21(global_textures_2d):     20(ptr) Variable UniformConstant
+              22:             TypeInt 64 0
+23(GlobalUniformBufferData):             TypeStruct 22(int64_t)
+24(GlobalUniformBufferDesc):             TypeStruct 23(GlobalUniformBufferData)
+              25:             TypePointer Uniform 24(GlobalUniformBufferDesc)
+              26:     25(ptr) Variable Uniform
+              27:             TypeInt 32 1
+              28:     27(int) Constant 0
+              29:             TypePointer Uniform 22(int64_t)
+                              TypeForwardPointer 32 PhysicalStorageBufferEXT
+              33:      6(int) Constant 4
+              34:             TypeArray 6(int) 33
+    35(Material):             TypeStruct 34
+              36:             TypeRuntimeArray 35(Material)
+37(MaterialBuffer):             TypeStruct 36
+              32:             TypePointer PhysicalStorageBufferEXT 37(MaterialBuffer)
+              41:             TypePointer PhysicalStorageBufferEXT 6(int)
+              44:             TypePointer UniformConstant 18
+              47:             TypeSampler
+              48:      6(int) Constant 1
+              49:             TypeArray 47 48
+              50:             TypePointer UniformConstant 49
+51(global_samplers):     50(ptr) Variable UniformConstant
+              52:             TypePointer UniformConstant 47
+              55:             TypeSampledImage 18
+              61:             TypePointer Output 11(fvec4)
+   62(out_color):     61(ptr) Variable Output
+              63:      6(int) Constant 0
+              64:    8(float) Constant 1056964608
+              65:    9(fvec2) ConstantComposite 64 64
+         4(main):           2 Function None 3
+               5:             Label
+       66(param):      7(ptr) Variable Function
+       67(param):      7(ptr) Variable Function
+       68(param):     10(ptr) Variable Function
+                              Store 66(param) 63
+                              Store 67(param) 63
+                              Store 68(param) 65
+              69:   11(fvec4) FunctionCall 16(SampleMaterial(u1;u1;vf2;) 66(param) 67(param) 68(param)
+                              Store 62(out_color) 69
+                              Return
+                              FunctionEnd
+16(SampleMaterial(u1;u1;vf2;):   11(fvec4) Function None 12
+13(material_index):      7(ptr) FunctionParameter
+14(texture_index):      7(ptr) FunctionParameter
+          15(uv):     10(ptr) FunctionParameter
+              17:             Label
+              30:     29(ptr) AccessChain 26 28 28
+              31: 22(int64_t) Load 30
+              38:     32(ptr) ConvertUToPtr 31
+              39:      6(int) Load 13(material_index)
+              40:      6(int) Load 14(texture_index)
+              42:     41(ptr) AccessChain 38 28 39 28 40
+              43:      6(int) Load 42 Aligned 4
+              45:     44(ptr) AccessChain 21(global_textures_2d) 43
+              46:          18 Load 45
+              53:     52(ptr) AccessChain 51(global_samplers) 28
+              54:          47 Load 53
+              56:          55 SampledImage 46 54
+              57:    9(fvec2) Load 15(uv)
+              58:   11(fvec4) ImageSampleImplicitLod 56 57
+                              ReturnValue 58
+                              FunctionEnd

@@ -1,0 +1,21 @@
+#version 450
+
+#extension GL_EXT_abort : require
+
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    float seed;
+} data;
+
+// Sized arrays, including an array of vectors, an array of matrices and an
+// array of arrays. Each array type needs an ArrayStride of its own.
+void main() {
+    float s = data.seed;
+    float scalars[4] = float[4](s, s, s, s);
+    vec3  vectors[2] = vec3[2](vec3(s), vec3(s));
+    mat2  matrices[2] = mat2[2](mat2(s), mat2(s));
+    int   nested[2][3] = int[2][3](int[3](1, 2, 3), int[3](4, 5, 6));
+
+    abortEXT("", scalars, vectors, matrices, nested);
+}
