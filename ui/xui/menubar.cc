@@ -155,7 +155,7 @@ void ShowMainMenu()
                     }
                     ImGui::PopID();
 
-                        g_free((void *)filename);
+                    g_free((void *)filename);
                 }
 
                 ImGui::Separator();
