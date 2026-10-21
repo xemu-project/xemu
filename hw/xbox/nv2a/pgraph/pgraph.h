@@ -34,6 +34,8 @@
 #include "util.h"
 #include "vsh_regs.h"
 
+typedef struct Nv2aVshProgram_ Nv2aVshProgram;
+
 typedef struct NV2AState NV2AState;
 typedef struct PGRAPHNullState PGRAPHNullState;
 typedef struct PGRAPHGLState PGRAPHGLState;
@@ -188,6 +190,9 @@ typedef struct PGRAPHState {
     uint32_t vertex_state_shader_v0[4];
     uint32_t program_data[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH][VSH_TOKEN_SIZE];
     bool program_data_dirty;
+    float vsh_carry_fog[4];
+    bool vsh_carry_cache_dirty;
+    Nv2aVshProgram *vsh_carry_cached_programs[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH];
 
     uint32_t vsh_constants[NV2A_VERTEXSHADER_CONSTANTS][4];
     bool vsh_constants_dirty[NV2A_VERTEXSHADER_CONSTANTS];
@@ -397,6 +402,9 @@ void pgraph_update_inline_value(VertexAttribute *attr, const uint8_t *data);
 void pgraph_get_inline_values(PGRAPHState *pg, uint16_t attrs,
                                float values[NV2A_VERTEXSHADER_ATTRIBUTES][4],
                                int *count);
+void pgraph_vsh_carryover_reset(PGRAPHState *pg);
+void pgraph_vsh_carryover_invalidate_cache(PGRAPHState *pg);
+void pgraph_vsh_carryover_update(PGRAPHState *pg);
 
 /* RDI */
 uint32_t pgraph_rdi_read(PGRAPHState *pg, unsigned int select,
