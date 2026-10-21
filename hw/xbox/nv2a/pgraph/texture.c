@@ -385,15 +385,14 @@ uint8_t *pgraph_convert_texture_data(const TextureShape s, const uint8_t *data,
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 uint16_t rgb655 = *(uint16_t *)(data + y * row_pitch + x * 2);
-                int8_t *pixel = (int8_t *)&converted_data[(y * width + x) * 4];
-                /* Maps 5 bit G and B signed value range to 8 bit
-                 * signed values. R is probably unsigned.
-                 */
-                rgb655 ^= (1 << 9) | (1 << 4);
-                pixel[0] = ((rgb655 & 0xFC00) >> 10) * 0x7F / 0x3F;
-                pixel[1] = ((rgb655 & 0x03E0) >> 5) * 0xFF / 0x1F - 0x80;
-                pixel[2] = (rgb655 & 0x001F) * 0xFF / 0x1F - 0x80;
-                pixel[3] = 0x7F;
+                uint8_t *pixel = &converted_data[(y * width + x) * 4];
+                uint8_t r6 = (rgb655 >> 10) & 0x3F;
+                uint8_t g5 = (rgb655 >> 5) & 0x1F;
+                uint8_t b5 = rgb655 & 0x1F;
+                pixel[0] = (r6 << 2) | (r6 >> 4);
+                pixel[1] = (g5 << 3) | (g5 >> 2);
+                pixel[2] = (b5 << 3) | (b5 >> 2);
+                pixel[3] = 0xFF;
             }
         }
     } else {
