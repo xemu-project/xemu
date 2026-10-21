@@ -168,6 +168,7 @@ class PkgConfig:
     def modversion(self):
         pkg_config = {
             linux: "pkg-config",
+            freebsd: "pkg-config",
             windows: "x86_64-w64-mingw32.static-pkg-config",
             macos: "pkg-config",
         }[current_platform]
@@ -571,6 +572,8 @@ def main():
 
     if args.platform == "":
         args.platform = sys.platform.lower()
+    if args.platform.startswith(freebsd):
+        args.platform = "freebsd"
     global current_platform
     current_platform = args.platform
     if args.version_file != "":
