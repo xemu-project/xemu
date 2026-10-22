@@ -250,6 +250,8 @@ void pgraph_gl_image_blit(NV2AState *d)
                                    DIRTY_MEMORY_VGA);
     memory_region_set_client_dirty(d->vram, dest_addr, clipped_dest_size,
                                    DIRTY_MEMORY_NV2A_TEX);
+    memory_region_set_client_dirty(d->vram, dest_addr, clipped_dest_size,
+                                   DIRTY_MEMORY_NV2A);
 
     if (pgraph_gl_mark_surfaces_in_range_for_upload(d, dest_addr,
                                                     clipped_dest_size)) {
