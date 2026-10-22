@@ -441,6 +441,9 @@ static int nv2a_post_load(void *opaque, int version_id)
 {
     NV2AState *d = opaque;
     if (version_id < 5) {
+        memset(&d->pgraph.m2mf, 0, sizeof(d->pgraph.m2mf));
+    }
+    if (version_id < 6) {
         d->pgraph.vsh_carry_fog[0] = 0.0f;
         d->pgraph.vsh_carry_fog[1] = 0.0f;
         d->pgraph.vsh_carry_fog[2] = 0.0f;
@@ -464,7 +467,7 @@ const VMStateDescription vmstate_nv2a_pgraph_vertex_attributes = {
 
 static const VMStateDescription vmstate_nv2a = {
     .name = "nv2a",
-    .version_id = 5,
+    .version_id = 6,
     .minimum_version_id = 1,
     .post_save = nv2a_post_save,
     .post_load = nv2a_post_load,
@@ -589,6 +592,18 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_TIMER_V(ptimer.timer, NV2AState, 4),
         VMSTATE_BUFFER_UNSAFE(pgraph.vsh_carry_fog, NV2AState, 5,
                               sizeof(((PGRAPHState *)0)->vsh_carry_fog)),
+        VMSTATE_UINT64_V(pgraph.m2mf.object_instance, NV2AState, 6),
+        VMSTATE_UINT64_V(pgraph.m2mf.dma_notify, NV2AState, 6),
+        VMSTATE_UINT64_V(pgraph.m2mf.dma_buffer_in, NV2AState, 6),
+        VMSTATE_UINT64_V(pgraph.m2mf.dma_buffer_out, NV2AState, 6),
+        VMSTATE_UINT64_V(pgraph.m2mf.offset_in, NV2AState, 6),
+        VMSTATE_UINT64_V(pgraph.m2mf.offset_out, NV2AState, 6),
+        VMSTATE_UINT32_V(pgraph.m2mf.pitch_in, NV2AState, 6),
+        VMSTATE_UINT32_V(pgraph.m2mf.pitch_out, NV2AState, 6),
+        VMSTATE_UINT32_V(pgraph.m2mf.line_length_in, NV2AState, 6),
+        VMSTATE_UINT32_V(pgraph.m2mf.line_count, NV2AState, 6),
+        VMSTATE_UINT32_V(pgraph.m2mf.format, NV2AState, 6),
+        VMSTATE_UINT32_V(pgraph.m2mf.buf_notify, NV2AState, 6),
         VMSTATE_END_OF_LIST()
     },
 };
