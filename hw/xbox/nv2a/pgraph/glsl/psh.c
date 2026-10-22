@@ -58,6 +58,28 @@ static uint32_t get_color_key_mask_for_texture(PGRAPHState *pg, int i)
     return get_colorkey_mask(color_format);
 }
 
+static inline bool point_sprite_mode_enabled(PGRAPHState *pg)
+{
+    if (pg->primitive_mode == PRIM_TYPE_LINES ||
+        pg->primitive_mode == PRIM_TYPE_LINE_LOOP ||
+        pg->primitive_mode == PRIM_TYPE_LINE_STRIP) {
+        return false;
+    }
+
+    uint32_t setup_raster = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER);
+    if (!(setup_raster & NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE)) {
+        return false;
+    }
+
+    uint32_t polygon_mode_front =
+        GET_MASK(setup_raster, NV_PGRAPH_SETUPRASTER_FRONTFACEMODE);
+    // FIXME: Missing support for 2-sided-poly mode
+    // uint32_t polygon_mode_back =
+    //     GET_MASK(setup_raster, NV_PGRAPH_SETUPRASTER_BACKFACEMODE);
+    return pg->primitive_mode == PRIM_TYPE_POINTS ||
+           polygon_mode_front == NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_POINT;
+}
+
 void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
 {
     state->window_clip_exclusive = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
@@ -73,8 +95,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
     state->alpha_func = (enum PshAlphaFunc)GET_MASK(
         pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0), NV_PGRAPH_CONTROL_0_ALPHAFUNC);
 
-    state->point_sprite = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
-                          NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE;
+    state->point_sprite = point_sprite_mode_enabled(pg);
 
     state->shadow_depth_func =
         (enum PshShadowDepthFunc)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_SHADOWCTL),
@@ -225,9 +246,8 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             z_format ? DEPTH_FORMAT_F24 : DEPTH_FORMAT_D24;
         break;
     default:
-        fprintf(stderr, "Unknown zeta surface format: 0x%x\n",
-                pg->surface_shape.zeta_format);
-        assert(false);
+        fprintf(stderr, "Unknown zeta surface format: 0x%x\n", pg->surface_shape.zeta_format);
+        assert(!"Unknown zeta surface format");
         break;
     }
 }
@@ -361,7 +381,8 @@ static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
                                 mstring_get_str(ps->varE),
                                 mstring_get_str(ps->varF));
     default:
-        assert(false);
+        fprintf(stderr, "Invalid register for get var: %d\n", reg);
+        assert(!"Invalid register for get_var");
         return NULL;
     }
 }
@@ -379,7 +400,8 @@ static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
             mstring_append(reg, ".aaa");
             break;
         default:
-            assert(false);
+            fprintf(stderr, "Invalid PS_CHANNEL format: %d\n", in.chan);
+            assert(!"Invalid PS_CHANNEL format - expected RGB or ALPHA");
             break;
         }
     } else {
@@ -391,7 +413,8 @@ static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
             mstring_append(reg, ".a");
             break;
         default:
-            assert(false);
+            fprintf(stderr, "Invalid PS_CHANNEL format: %d\n", in.chan);
+            assert(!"Invalid PS_CHANNEL format - expected BLUE or ALPHA");
             break;
         }
     }
@@ -424,7 +447,8 @@ static MString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
         res = mstring_from_fmt("-%s", mstring_get_str(reg));
         break;
     default:
-        assert(false);
+        fprintf(stderr, "Invalid PS_INPUTMAPPING mode: %d\n", in.mod);
+        assert(!"Invalid PS_INPUTMAPPING mode");
         break;
     }
 
@@ -456,7 +480,8 @@ static MString* get_output(MString *reg, int mapping)
         res = mstring_from_fmt("(%s / 2.0)", mstring_get_str(reg));
         break;
     default:
-        assert(false);
+        fprintf(stderr, "Invalid PS_COMBINEROUTPUT mode: %d\n", mapping);
+        assert(!"Invalid PS_COMBINEROUTPUT mode");
         break;
     }
     return res;
@@ -638,6 +663,7 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
             return sampler2D;
         }
         if (dim == 3) return sampler3D;
+        fprintf(stderr, "Unhandled texture dimensions in get_sampler_type: mode=%d stage=%d dim=%d\n", mode, i, dim);
         assert(!"Unhandled texture dimensions");
         return NULL;
 
@@ -650,6 +676,7 @@ static const char *get_sampler_type(struct PixelShader *ps, enum PS_TEXTUREMODES
         }
         if (dim == 2) return sampler2D;
         if (dim == 3 && mode != PS_TEXTUREMODES_DOT_ST) return sampler3D;
+        fprintf(stderr, "Unhandled texture dimensions in get_sampler_type: mode=%d stage=%d dim=%d\n", mode, i, dim);
         assert(!"Unhandled texture dimensions");
         return NULL;
 
@@ -1129,6 +1156,8 @@ static MString* psh_convert(struct PixelShader *ps)
                         mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, vec4(pT%d.xy, 0.0, pT%d.w));\n",
                                            i, i, i, i);
                     } else {
+                        fprintf(stderr, "Unhandled texture dimensions in PROJECT2D: stage=%d dim_tex=%d cubemap=%d rect=%d\n",
+                                i, ps->state->dim_tex[i], ps->state->tex_cubemap[i], ps->state->rect_tex[i]);
                         assert(!"Unhandled texture dimensions");
                     }
                 }
@@ -1156,7 +1185,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_PASSTHRU:
             assert(ps->state->border_logical_size[i][0] == 0.0f && "Unexpected border texture on passthru");
-            mstring_append_fmt(vars, "vec4 t%d = pT%d;\n", i, i);
+            mstring_append_fmt(vars, "vec4 t%d = clamp(pT%d, 0.0, 1.0);\n", i, i);
             break;
         case PS_TEXTUREMODES_CLIPPLANE: {
             int j;
@@ -1192,6 +1221,8 @@ static MString* psh_convert(struct PixelShader *ps)
                 mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(pT%d.xy + dsdt%d, pT%d.z));\n",
                     i, i, i, i, i);
             } else {
+                fprintf(stderr,"Unhandled texture dimensions in BUMPENVMAP: stage=%d dim_tex=%d\n",
+                        i, ps->state->dim_tex[i]);
                 assert(!"Unhandled texture dimensions");
             }
             break;
@@ -1219,6 +1250,8 @@ static MString* psh_convert(struct PixelShader *ps)
                 mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(pT%d.xy + dsdtl%d.st, pT%d.z));\n",
                     i, i, i, i, i);
             } else {
+                fprintf(stderr, "Unhandled texture dimensions in BUMPENVMAP_LUM: stage=%d dim_tex=%d\n",
+                        i, ps->state->dim_tex[i]);
                 assert(!"Unhandled texture dimensions");
             }
 
@@ -1352,7 +1385,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         default:
             fprintf(stderr, "Unknown ps tex mode: 0x%x\n", ps->tex_modes[i]);
-            assert(false);
+            assert(!"Unknown ps texture mode.");
             break;
         }
 
@@ -1396,6 +1429,7 @@ static MString* psh_convert(struct PixelShader *ps)
                     break;
 
                 default:
+                    fprintf(stderr, "Unhandled color key mode: stage=%d mode=%d\n", i, color_key_mode);
                     assert(!"Unhandled key mode.");
                 }
 
@@ -1453,7 +1487,8 @@ static MString* psh_convert(struct PixelShader *ps)
             case ALPHA_FUNC_NOTEQUAL: alpha_op = "!="; break;
             case ALPHA_FUNC_GEQUAL: alpha_op = ">="; break;
             default:
-                assert(false);
+                fprintf(stderr, "Invalid ALPHA_FUNC mode: %d\n", ps->state->alpha_func);
+                assert(!"Invalid ALPHA_FUNC mode");
                 break;
             }
             mstring_append_fmt(ps->code,

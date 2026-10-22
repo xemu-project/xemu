@@ -1,1 +1,0 @@
-sources += files('hid.c')

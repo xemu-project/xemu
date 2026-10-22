@@ -232,6 +232,23 @@ void pgraph_init(NV2AState *d)
     pg->draw_time = 0;
 
     pg->material_alpha = 0.0f;
+
+    {
+        const float pf_1_l = 0.0f;
+        const float pf_1_m = -0.494592f;
+        const float pf_1_n = 1.494592f;
+        for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
+            *(float *)&pg->ltctxa[NV_IGRAPH_XF_LTCTXA_L0_K + i * 2][0] = pf_1_l;
+            *(float *)&pg->ltctxa[NV_IGRAPH_XF_LTCTXA_L0_K + i * 2][1] = pf_1_m;
+            *(float *)&pg->ltctxa[NV_IGRAPH_XF_LTCTXA_L0_K + i * 2][2] = pf_1_n;
+        }
+        pg->specular_params[0] = pf_1_l;
+        pg->specular_params[1] = pf_1_m;
+        pg->specular_params[2] = pf_1_n;
+        pg->specular_params_back[0] = pf_1_l;
+        pg->specular_params_back[1] = pf_1_m;
+        pg->specular_params_back[2] = pf_1_n;
+    }
     PG_SET_MASK(NV_PGRAPH_CONTROL_3, NV_PGRAPH_CONTROL_3_SHADEMODE,
          NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH);
     pg->primitive_mode = PRIM_TYPE_INVALID;
@@ -244,6 +261,7 @@ void pgraph_init(NV2AState *d)
     }
 
     pgraph_clear_dirty_reg_map(pg);
+    pgraph_vsh_carryover_reset(pg);
 }
 
 void pgraph_clear_dirty_reg_map(PGRAPHState *pg)
@@ -346,6 +364,8 @@ void pgraph_init_thread(NV2AState *d)
 void pgraph_destroy(PGRAPHState *pg)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
+
+    pgraph_vsh_carryover_invalidate_cache(pg);
 
     if (pg->renderer->ops.finalize) {
        pg->renderer->ops.finalize(d);
@@ -1025,15 +1045,17 @@ DEF_METHOD(NV097, SET_SURFACE_PITCH)
 DEF_METHOD(NV097, SET_SURFACE_COLOR_OFFSET)
 {
     d->pgraph.renderer->ops.surface_update(d, false, true, true);
-    pg->surface_color.buffer_dirty |= (pg->surface_color.offset != parameter);
-    pg->surface_color.offset = parameter;
+    hwaddr offset = parameter & 0x0FFFFFFF;
+    pg->surface_color.buffer_dirty |= (pg->surface_color.offset != offset);
+    pg->surface_color.offset = offset;
 }
 
 DEF_METHOD(NV097, SET_SURFACE_ZETA_OFFSET)
 {
     d->pgraph.renderer->ops.surface_update(d, false, true, true);
-    pg->surface_zeta.buffer_dirty |= (pg->surface_zeta.offset != parameter);
-    pg->surface_zeta.offset = parameter;
+    hwaddr offset = parameter & 0x0FFFFFFF;
+    pg->surface_zeta.buffer_dirty |= (pg->surface_zeta.offset != offset);
+    pg->surface_zeta.offset = offset;
 }
 
 DEF_METHOD_INC(NV097, SET_COMBINER_ALPHA_ICW)
@@ -1121,7 +1143,7 @@ DEF_METHOD(NV097, SET_FOG_MODE)
     case NV097_SET_FOG_MODE_V_LINEAR_ABS:
         mode = NV_PGRAPH_CONTROL_3_FOG_MODE_LINEAR_ABS; break;
     default:
-        assert(false);
+        assert(!"Invalid or unimplemented fog mode");
         break;
     }
     PG_SET_MASK(NV_PGRAPH_CONTROL_3, NV_PGRAPH_CONTROL_3_FOG_MODE,
@@ -1143,7 +1165,7 @@ DEF_METHOD(NV097, SET_FOG_GEN_MODE)
     case NV097_SET_FOG_GEN_MODE_V_FOG_X:
         mode = NV_PGRAPH_CSV0_D_FOGGENMODE_FOG_X; break;
     default:
-        assert(false);
+        assert(!"Invalid fog gen mode");
         break;
     }
     PG_SET_MASK(NV_PGRAPH_CSV0_D, NV_PGRAPH_CSV0_D_FOGGENMODE, mode);
@@ -1490,7 +1512,7 @@ static unsigned int kelvin_map_stencil_op(uint32_t parameter)
     case NV097_SET_STENCIL_OP_V_DECR:
         op = NV_PGRAPH_CONTROL_2_STENCIL_OP_V_DECR; break;
     default:
-        assert(false);
+        assert(!"Invalid kelvin map stencil operation");
         break;
     }
     return op;
@@ -1562,7 +1584,7 @@ static unsigned int kelvin_map_polygon_mode(uint32_t parameter)
     case NV097_SET_FRONT_POLYGON_MODE_V_FILL:
         mode = NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_FILL; break;
     default:
-        assert(false);
+        assert(!"Invalid kelvin map polygon mode");
         break;
     }
     return mode;
@@ -1603,7 +1625,7 @@ DEF_METHOD(NV097, SET_CULL_FACE)
     case NV097_SET_CULL_FACE_V_FRONT_AND_BACK:
         face = NV_PGRAPH_SETUPRASTER_CULLCTRL_FRONT_AND_BACK; break;
     default:
-        assert(false);
+        assert(!"Invalid cull face parameter");
         break;
     }
     PG_SET_MASK(NV_PGRAPH_SETUPRASTER, NV_PGRAPH_SETUPRASTER_CULLCTRL, face);
@@ -1675,7 +1697,7 @@ static unsigned int kelvin_map_texgen(uint32_t parameter, unsigned int channel)
         assert(channel < 3);
         texgen = NV_PGRAPH_CSV1_A_T0_S_NORMAL_MAP; break;
     default:
-        assert(false);
+        assert(!"Invalid kelvin map texgen parameter");
         break;
     }
     return texgen;
@@ -1820,111 +1842,10 @@ DEF_METHOD_INC(NV097, SET_FOG_PLANE)
     pg->vsh_constants_dirty[NV_IGRAPH_XF_XFCTX_FOG] = true;
 }
 
-struct CurveCoefficients {
-  float a;
-  float b;
-  float c;
-};
-
-static const struct CurveCoefficients curve_coefficients[] = {
-  {1.000108475163, -9.838607076280, 54.829089549713},
-  {1.199164441703, -3.292603784852, 7.799987995214},
-  {8.653441252033, 29.189473787191, 43.586027561823},
-  {-531.307758450301, 117.398468683934, 113.155490738338},
-  {-4.662713151292, 1.221108944572, 1.217360986939},
-  {-124.435242105211, 35.401219563514, 35.408114377045},
-  {10672560.259502287954, 21565843.555823743343, 10894794.336297152564},
-  {-51973801.463933646679, -104199997.554352939129, -52225454.356278456748},
-  {972270.324080004124, 2025882.096547174733, 1054898.052467488218},
-};
-
-static const float kCoefficient0StepPoints[] = {
-  -0.022553957999, // power = 1.25
-  -0.421539008617, // power = 4.00
-  -0.678715527058, // power = 9.00
-  -0.838916420937, // power = 20.00
-  -0.961754500866, // power = 90.00
-  -0.990773200989, // power = 375.00
-  -0.994858562946, // power = 650.00
-  -0.996561050415, // power = 1000.00
-  -0.999547004700, // power = 1250.00
-};
-
-static float reconstruct_quadratic(float c0, const struct CurveCoefficients *coefficients) {
-  return coefficients->a + coefficients->b * c0 + coefficients->c * c0 * c0;
-}
-
-static float reconstruct_saturation_growth_rate(float c0, const struct CurveCoefficients *coefficients) {
-  return (coefficients->a * c0) / (coefficients->b + coefficients->c * c0);
-}
-
-static float (* const reconstruct_func_map[])(float, const struct CurveCoefficients *) = {
-  reconstruct_quadratic, // 1.0..1.25 max error 0.01 %
-  reconstruct_quadratic, // 1.25..4.0 max error 2.2 %
-  reconstruct_quadratic, // 4.0..9.0 max error 2.3 %
-  reconstruct_saturation_growth_rate, // 9.0..20.0 max error 1.4 %
-  reconstruct_saturation_growth_rate, // 20.0..90.0 max error 2.1 %
-  reconstruct_saturation_growth_rate, // 90.0..375.0 max error 2.8%
-  reconstruct_quadratic, // 375..650 max error 1.0 %
-  reconstruct_quadratic, // 650..1000 max error 1.7%
-  reconstruct_quadratic, // 1000..1250 max error 1.0%
-};
-
-static float reconstruct_specular_power(const float *params) {
-  // See https://github.com/dracc/xgu/blob/db3172d8c983629f0dc971092981846da22438ae/xgux.h#L279
-
-  // Values < 1.0 will result in a positive c1 and (c2 - c0 * 2) will be very
-  // close to the original value.
-  if (params[1] > 0.0f && params[2] < 1.0f) {
-    return params[2] - (params[0] * 2.0f);
-  }
-
-  float c0 = params[0];
-  float c3 = params[3];
-  // FIXME: This handling is not correct, but is distinct without crashing.
-  // It does not appear possible for a DirectX-generated value to be positive,
-  // so while this differs from hardware behavior, it may be irrelevant in
-  // practice.
-  if (c0 > 0.0f || c3 > 0.0f) {
-    return 0.0001f;
-  }
-
-  float reconstructed_power = 0.f;
-  for (uint32_t i = 0; i < sizeof(kCoefficient0StepPoints) / sizeof(kCoefficient0StepPoints[0]); ++i) {
-    if (c0 > kCoefficient0StepPoints[i]) {
-      reconstructed_power = reconstruct_func_map[i](c0, &curve_coefficients[i]);
-      break;
-    }
-  }
-
-  float reconstructed_half_power = 0.f;
-  for (uint32_t i = 0; i < sizeof(kCoefficient0StepPoints) / sizeof(kCoefficient0StepPoints[0]); ++i) {
-    if (c3 > kCoefficient0StepPoints[i]) {
-      reconstructed_half_power = reconstruct_func_map[i](c3, &curve_coefficients[i]);
-      break;
-    }
-  }
-
-  // The range can be extended beyond 1250 by using the half power params. This
-  // will only work for DirectX generated values, arbitrary params could
-  // erroneously trigger this.
-  //
-  // There are some very low power (~1) values that have inverted powers, but
-  // they are easily identified by comparatively high c0 parameters.
-  if (reconstructed_power == 0.f || (reconstructed_half_power > reconstructed_power && c0 < -0.1f)) {
-    return reconstructed_half_power * 2.f;
-  }
-
-  return reconstructed_power;
-}
-
 DEF_METHOD_INC(NV097, SET_SPECULAR_PARAMS)
 {
     int slot = (method - NV097_SET_SPECULAR_PARAMS) / 4;
     pg->specular_params[slot] = *(float *)&parameter;
-    if (slot == 5) {
-        pg->specular_power = reconstruct_specular_power(pg->specular_params);
-    }
 }
 
 DEF_METHOD_INC(NV097, SET_SCENE_AMBIENT_COLOR)
@@ -2002,6 +1923,7 @@ DEF_METHOD_INC(NV097, SET_TRANSFORM_PROGRAM)
     assert(program_load < NV2A_MAX_TRANSFORM_PROGRAM_LENGTH);
     pg->program_data[program_load][slot%4] = parameter;
     pg->program_data_dirty = true;
+    pg->vsh_carry_cache_dirty = true;
 
     if (slot % 4 == 3) {
         PG_SET_MASK(NV_PGRAPH_CHEOPS_OFFSET,
@@ -2067,7 +1989,7 @@ DEF_METHOD_INC(NV097, SET_BACK_LIGHT_AMBIENT_COLOR)
         pg->ltctxb_dirty[NV_IGRAPH_XF_LTCTXB_L0_BSPC + slot*6] = true;
         break;
     default:
-        assert(false);
+        assert(!"Invalid back light type");
         break;
     }
 }
@@ -2135,7 +2057,7 @@ DEF_METHOD_INC(NV097, SET_LIGHT_AMBIENT_COLOR)
         pg->light_local_attenuation[slot][part] = *(float*)&parameter;
         break;
     default:
-        assert(false);
+        assert(!"Invalid light source prop or unhandled back light prop");
         break;
     }
 }
@@ -2440,7 +2362,7 @@ DEF_METHOD_INC(NV097, SET_VERTEX_DATA_ARRAY_FORMAT)
         break;
     default:
         fprintf(stderr, "Unknown vertex type: 0x%x\n", attr->format);
-        assert(false);
+        assert(!"Unknown vertex type");
         break;
     }
 
@@ -2926,9 +2848,6 @@ DEF_METHOD_INC(NV097, SET_SPECULAR_PARAMS_BACK)
 {
     int slot = (method - NV097_SET_SPECULAR_PARAMS_BACK) / 4;
     pg->specular_params_back[slot] = *(float *)&parameter;
-    if (slot == 5) {
-        pg->specular_power_back = reconstruct_specular_power(pg->specular_params_back);
-    }
 }
 
 DEF_METHOD(NV097, SET_SHADER_CLIP_PLANE_MODE)
@@ -3087,10 +3006,15 @@ void pgraph_get_clear_color(PGRAPHState *pg, float rgba[4])
      *        As GL doesn't own those pixels we'd have to do this on
      *        our own in xbox memory.
      */
+    case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5:
+    case NV097_SET_SURFACE_FORMAT_COLOR_LE_X8R8G8B8_Z8R8G8B8:
+        *a = 0.f;
+        break;
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_Z1A7R8G8B8:
+        *a = ((clear_color >> 24) & 0x7F) / 255.0f;
+        break;
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_O1A7R8G8B8:
-        *a = ((clear_color >> 24) & 0x7F) / 127.0f;
-        assert(!"CLEAR_SURFACE handling for LE_X1A7R8G8B8_Z1A7R8G8B8 and LE_X1A7R8G8B8_O1A7R8G8B8 is untested"); /* Untested */
+        *a = (0x80 | ((clear_color >> 24) & 0x7F)) / 255.0f;
         break;
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8:
         *a = ((clear_color >> 24) & 0xFF) / 255.0f;
@@ -3133,7 +3057,7 @@ void pgraph_get_clear_depth_stencil_value(PGRAPHState *pg, float *depth,
     default:
         fprintf(stderr, "Unknown zeta surface format: 0x%x\n",
                 pg->surface_shape.zeta_format);
-        assert(false);
+        assert(!"Unknown zeta surface format");
         break;
     }
 }
