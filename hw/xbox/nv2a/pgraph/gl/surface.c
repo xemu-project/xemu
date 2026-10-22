@@ -21,6 +21,7 @@
 
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "ui/xemu-settings.h"
+#include "hw/xbox/nv2a/debug_gl.h"
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "debug.h"
@@ -233,8 +234,8 @@ static void render_surface_to(NV2AState *d, SurfaceBinding *surface,
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, gl_target,
                            gl_texture, 0);
     glDrawBuffers(1, draw_buffers);
-    assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
-    assert(glGetError() == GL_NO_ERROR);
+    ASSERT_FRAMEBUFFER_COMPLETE();
+    ASSERT_NO_GL_ERROR();
 
     float color[] = { 0.0f, 0.0f, 0.0f, 0.0f };
     glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
@@ -632,6 +633,42 @@ void pgraph_gl_surface_download_if_dirty(NV2AState *d,
     }
 }
 
+unsigned int pgraph_gl_mark_surfaces_in_range_for_upload(NV2AState *d,
+                                                         hwaddr start,
+                                                         hwaddr size)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
+
+    SurfaceBinding *surface;
+
+    unsigned int num_marked = 0;
+    QTAILQ_FOREACH (surface, &r->surfaces, entry) {
+        if (check_surface_overlaps_range(surface, start, size)) {
+            surface->upload_pending = true;
+            ++num_marked;
+        }
+    }
+
+    return num_marked;
+}
+
+
+void pgraph_gl_download_surfaces_in_range_if_dirty(PGRAPHState *pg,
+                                                   hwaddr start, hwaddr size)
+{
+    PGRAPHGLState *r = pg->gl_renderer_state;
+
+    SurfaceBinding *surface;
+
+    QTAILQ_FOREACH (surface, &r->surfaces, entry) {
+        if (check_surface_overlaps_range(surface, start, size)) {
+            pgraph_gl_surface_download_if_dirty(
+                container_of(pg, NV2AState, pgraph), surface);
+        }
+    }
+}
+
 static void bind_current_surface(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -648,8 +685,7 @@ static void bind_current_surface(NV2AState *d)
     }
 
     if (r->color_binding || r->zeta_binding) {
-        assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) ==
-               GL_FRAMEBUFFER_COMPLETE);
+        ASSERT_FRAMEBUFFER_COMPLETE();
     }
 }
 
@@ -708,7 +744,7 @@ static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
     glFramebufferTexture2D(GL_FRAMEBUFFER, surface->fmt.gl_attachment,
                            GL_TEXTURE_2D, surface->gl_buffer, 0);
 
-    assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+    ASSERT_FRAMEBUFFER_COMPLETE();
 
     /* Read surface into memory */
     uint8_t *gl_read_buf = pixels;
@@ -1025,7 +1061,7 @@ static void populate_surface_binding_entry_sized(NV2AState *d, bool color,
         if (fmt.bytes_per_pixel == 0) {
             fprintf(stderr, "nv2a: unimplemented color surface format 0x%x\n",
                     pg->surface_shape.color_format);
-            abort();
+            assert(!"unimplemented color surface format");
         }
     } else {
         surface = &pg->surface_zeta;
@@ -1268,8 +1304,7 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, entry.fmt.gl_attachment,
                                GL_TEXTURE_2D, found->gl_buffer, 0);
-        assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) ==
-               GL_FRAMEBUFFER_COMPLETE);
+        ASSERT_FRAMEBUFFER_COMPLETE();
 
         surface->buffer_dirty = false;
     }

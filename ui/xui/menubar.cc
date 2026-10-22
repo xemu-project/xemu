@@ -26,6 +26,7 @@
 #include "debug.hh"
 #include "actions.hh"
 #include "compat.hh"
+#include "github-issue.hh"
 #include "update.hh"
 #include "../xemu-os-utils.h"
 
@@ -160,7 +161,7 @@ void ShowMainMenu()
                 ui_scale_idx = 0;
             } else {
                 ui_scale_idx = g_config.display.ui.scale;
-                if (ui_scale_idx < 0) ui_scale_idx = 0;
+                if (ui_scale_idx < 1) ui_scale_idx = 1;
                 else if (ui_scale_idx > 2) ui_scale_idx = 2;
             }
             if (ImGui::Combo("UI Scale", &ui_scale_idx,
@@ -236,6 +237,8 @@ void ShowMainMenu()
 
             ImGui::MenuItem("Report Compatibility...", NULL,
                             &compatibility_reporter_window.is_open);
+
+            ShowReportGitHubIssueMenuItem();
 #if defined(_WIN32)
             ImGui::MenuItem("Check for Updates...", NULL, &update_window.is_open);
 #endif

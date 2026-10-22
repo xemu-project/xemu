@@ -57,11 +57,11 @@ uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
             }
         } else {
             /* ramfc */
-            assert(false);
+            assert(!"Unsupported: channel_id != cur_channel_id");
         }
     } else {
         /* PIO Mode */
-        assert(false);
+        assert(!"Failed to enter DMA mode - entered PIO mode");
     }
 
     qemu_mutex_unlock(&d->pfifo.lock);
@@ -100,7 +100,8 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
                 d->pfifo.regs[NV_PFIFO_CACHE1_REF] = val;
                 break;
             default:
-                assert(false);
+                NV2A_DPRINTF(true, "Unsupported NV_USER write: channel=%u offset=0x%04x\n", channel_id, (unsigned)(addr & 0xFFFF));
+                assert(!"Unsupported NV_USER DMA register write offset");
                 break;
             }
 
@@ -108,11 +109,11 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
         } else {
             /* ramfc */
-            assert(false);
+            assert(!"Invalid channel id");
         }
     } else {
         /* PIO Mode */
-        assert(false);
+        assert(!"Failed to enter DMA mode - entered PIO mode");
     }
 
     qemu_mutex_unlock(&d->pfifo.lock);
