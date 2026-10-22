@@ -1,10 +1,11 @@
-[wrap-file]
-directory = SDL3-3.4.8
-source_url = https://github.com/libsdl-org/SDL/releases/download/release-3.4.8/SDL3-3.4.8.tar.gz
-source_filename = SDL3-3.4.8.tar.gz
-source_hash = e9fff7467fb60f037e6708da18b25560649e4c63edc2a69bb871b960d9cbfbba
-source_fallback_url = https://github.com/libsdl-org/SDL/releases/download/release-3.4.8/SDL3-3.4.8.tar.gz
+[wrap-git]
+url = https://github.com/libsdl-org/SDL
+revision = 829a65d769d935c4852f8159e964312c0957260a
+depth = 1
 method = cmake
 
 [provide]
 dependency_names = sdl3
+
+[update]
+tag_regex = ^release-\d+\.\d+\.\d+$

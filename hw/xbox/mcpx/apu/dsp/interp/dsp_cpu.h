@@ -81,8 +81,11 @@ struct dsp_core_s {
     uint16_t interrupt_counter;        /* count number of pending interrupts */
     uint16_t interrupt_ipl_to_raise;     /* save the IPL level to save in the SR register */
     uint16_t interrupt_pipeline_count; /* used to prefetch correctly the 2 inter instructions */
-    int16_t interrupt_ipl[12];     /* store the current IPL for each interrupt */
-    uint16_t interrupt_is_pending[12];  /* store if interrupt is pending for each interrupt */
+    int16_t interrupt_ipl[4];
+    uint16_t interrupt_is_pending[4];
+
+    /* Back-pointer to owning DSPState (set by dsp_c.c) */
+    void *opaque;
 
     /* callbacks */
     uint32_t (*read_peripheral)(dsp_core_t* core, uint32_t address);

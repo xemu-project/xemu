@@ -18,3 +18,10 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       ref: ${{ github.ref }}
+
+  roswell:
+    name: Roswell tests
+    needs: build
+    uses: xemu-project/xemu-test/.github/workflows/test-roswell.yml@wheel-202610142116
+    with:
+      xemu_build_configuration: release
