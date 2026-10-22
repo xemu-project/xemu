@@ -130,6 +130,25 @@ static bool check_surface_overlaps_range(const SurfaceBinding *surface,
     return !(surface->vram_addr >= range_end || range_start >= surface_end);
 }
 
+unsigned int pgraph_vk_mark_surfaces_in_range_for_upload(NV2AState *d,
+                                                         hwaddr start,
+                                                         hwaddr size)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    SurfaceBinding *surface;
+
+    unsigned int num_marked = 0;
+    QTAILQ_FOREACH (surface, &r->surfaces, entry) {
+        if (check_surface_overlaps_range(surface, start, size)) {
+            surface->upload_pending = true;
+            ++num_marked;
+        }
+    }
+
+    return num_marked;
+}
+
 void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg,
                                                    hwaddr start, hwaddr size)
 {
@@ -252,7 +271,7 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                        surface->image_scratch,
                        surface->image_scratch_current_layout, 1, &blit_region,
-                       surface->color ? VK_FILTER_LINEAR : VK_FILTER_NEAREST);
+                       VK_FILTER_NEAREST);
 
         pgraph_vk_transition_image_layout(pg, cmd, surface->image_scratch,
                                           surface->host_fmt.vk_format,
@@ -1236,7 +1255,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         vkCmdBlitImage(cmd, surface->image_scratch,
                        surface->image_scratch_current_layout, surface->image,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blitRegion,
-                       surface->color ? VK_FILTER_LINEAR : VK_FILTER_NEAREST);
+                       VK_FILTER_NEAREST);
     } else {
         // Note: We should be able to vkCmdCopyBufferToImage directly into
         // surface->image, but there is an apparent AMD Windows driver
@@ -1322,7 +1341,7 @@ static void populate_surface_binding_target_sized(NV2AState *d, bool color,
         if (host_fmt.host_bytes_per_pixel == 0) {
             fprintf(stderr, "nv2a: unimplemented color surface format 0x%x\n",
                     pg->surface_shape.color_format);
-            abort();
+            assert(!"unimplemented color surface format");
         }
     } else {
         surface = &pg->surface_zeta;
@@ -1658,8 +1677,9 @@ void pgraph_vk_surface_update(NV2AState *d, bool upload, bool color_write,
     prune_invalid_surfaces(r, num_invalid_surfaces_to_keep);
 }
 
-static bool check_format_and_usage_supported(PGRAPHVkState *r, VkFormat format,
-                                             VkImageUsageFlags usage)
+bool pgraph_vk_is_image_format_supported(VkPhysicalDevice device,
+                                         VkFormat format,
+                                         VkImageUsageFlags usage)
 {
     VkPhysicalDeviceImageFormatInfo2 pdif2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2,
@@ -1671,8 +1691,8 @@ static bool check_format_and_usage_supported(PGRAPHVkState *r, VkFormat format,
     VkImageFormatProperties2 props = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2,
     };
-    VkResult result = vkGetPhysicalDeviceImageFormatProperties2(
-        r->physical_device, &pdif2, &props);
+    VkResult result =
+        vkGetPhysicalDeviceImageFormatProperties2(device, &pdif2, &props);
     return result == VK_SUCCESS;
 }
 
@@ -1683,8 +1703,8 @@ static bool check_surface_internal_formats_supported(
     for (int i = 0; i < count; i++) {
         const SurfaceFormatInfo *f = &fmts[i];
         if (f->host_bytes_per_pixel) {
-            all_supported &=
-                check_format_and_usage_supported(r, f->vk_format, f->usage);
+            all_supported &= pgraph_vk_is_image_format_supported(
+                r->physical_device, f->vk_format, f->usage);
         }
     }
     return all_supported;
@@ -1693,13 +1713,6 @@ static bool check_surface_internal_formats_supported(
 void pgraph_vk_init_surfaces(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
-
-    // Make sure all surface format types are supported. We don't expect issue
-    // with these, and therefore have no fallback mechanism.
-    bool color_formats_supported = check_surface_internal_formats_supported(
-        r, kelvin_surface_color_format_vk_map,
-        ARRAY_SIZE(kelvin_surface_color_format_vk_map));
-    assert(color_formats_supported);
 
     // Check if the device supports preferred VK_FORMAT_D24_UNORM_S8_UINT
     // format, fall back to D32_SFLOAT_S8_UINT otherwise.

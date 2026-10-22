@@ -24,12 +24,12 @@ jobs:
       LTO_CACHE_DIR: ${{ github.workspace }}/xemu-lto-cache
     steps:
     - name: Download source package
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v4
       with:
         name: src
     - name: Extract source package
       run: tar -xf xemu-${{ inputs.pkg_version }}.tar.zst --strip-components=2
-    - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: '3.12'
     - name: Install dependencies
@@ -41,7 +41,7 @@ jobs:
         pip install pyyaml requests
     - name: Initialize compiler, library cache
       id: cache
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4
       with:
         path: |
           macos-pkgs
@@ -87,7 +87,7 @@ jobs:
         zip -r ../${pkg_filename} *
         popd
     - name: Upload build artifact
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4
       with:
         name: xemu-macos-${{ matrix.arch }}-${{ matrix.configuration }}
         path: ${{ steps.package.outputs.pkg_filename }}
@@ -102,7 +102,7 @@ jobs:
         configuration: [debug, release]
     steps:
     - name: Download architecture-specific builds
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v4
       with:
         pattern: "xemu-macos-*-${{ matrix.configuration }}"
         merge-multiple: true
@@ -128,7 +128,7 @@ jobs:
         zip -r ../${pkg_filename} *
         popd
     - name: Upload build artifact
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4
       with:
         name: xemu-macos-universal-${{ matrix.configuration }}
         path: ${{ steps.package.outputs.pkg_filename }}

@@ -64,6 +64,11 @@ static void set_fixed_function_vsh_state(PGRAPHState *pg,
         }
     }
 
+    state->texgen_infinite_viewer =
+        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
+                 NV_PGRAPH_CSV0_D_TEXGEN_REF) ==
+        NV_PGRAPH_CSV0_D_TEXGEN_REF_INFINITE_VIEWER;
+
     state->lighting =
         GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LIGHTING);
     if (state->lighting) {
@@ -122,8 +127,6 @@ void pgraph_glsl_set_vsh_state(PGRAPHState *pg, VshState *vsh)
     vsh->ignore_specular_alpha =
         !GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C),
                   NV_PGRAPH_CSV0_C_ALPHA_FROM_MATERIAL_SPECULAR);
-    vsh->specular_power = pg->specular_power;
-    vsh->specular_power_back = pg->specular_power_back;
 
     vsh->z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
                          NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
@@ -301,6 +304,7 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
     if (state->is_fixed_function) {
         pgraph_glsl_gen_vsh_ff(state, header, body);
     } else {
+        mstring_append(body, "  oFog = vshCarryFog;\n");
         pgraph_glsl_gen_vsh_prog(
             VSH_VERSION_XVS, (uint32_t *)state->programmable.program_data,
             state->programmable.program_length, header, body);
@@ -523,6 +527,11 @@ void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
         values->surfaceSize[0][1] = height;
     }
 
+    if (locs[VshUniform_vshCarryFog] != -1) {
+        memcpy(values->vshCarryFog, pg->vsh_carry_fog,
+               sizeof(values->vshCarryFog));
+    }
+
     if (state->is_fixed_function) {
         if (locs[VshUniform_ltctxa] != -1) {
             QEMU_BUILD_BUG_MSG(sizeof(values->ltctxa) != sizeof(pg->ltctxa),
@@ -575,8 +584,16 @@ void pgraph_glsl_set_vsh_uniform_values(PGRAPHState *pg, const VshState *state,
                    sizeof(pg->light_local_attenuation));
         }
 
-        if (locs[VshUniform_specularPower] != -1) {
-            values->specularPower[0] = pg->specular_power;
+        if (locs[VshUniform_specularParams] != -1) {
+            values->specularParams[0][0] = pg->specular_params[0];
+            values->specularParams[0][1] = pg->specular_params[1];
+            values->specularParams[0][2] = pg->specular_params[2];
+        }
+
+        if (locs[VshUniform_specularParamsBack] != -1) {
+            values->specularParamsBack[0][0] = pg->specular_params_back[0];
+            values->specularParamsBack[0][1] = pg->specular_params_back[1];
+            values->specularParamsBack[0][2] = pg->specular_params_back[2];
         }
     }
 }

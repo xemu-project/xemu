@@ -50,7 +50,7 @@ static uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size)
     uint64_t r = 0;
     switch (addr) {
     case NV_PAPU_XGSCNT:
-        r = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) / 100; //???
+        r = (uint64_t)d->ep_frame_div * NUM_SAMPLES_PER_FRAME;
         break;
     default:
         if (addr < 0x20000) {

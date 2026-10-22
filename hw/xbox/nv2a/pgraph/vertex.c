@@ -20,6 +20,8 @@
  */
 
 #include "hw/xbox/nv2a/nv2a_int.h"
+#include "nv2a_vsh_emulator.h"
+#include "nv2a_vsh_disassembler.h"
 
 void pgraph_update_inline_value(VertexAttribute *attr, const uint8_t *data)
 {
@@ -148,4 +150,94 @@ void pgraph_reset_draw_arrays(PGRAPHState *pg)
     pg->draw_arrays_min_start = -1;
     pg->draw_arrays_max_count = 0;
     pg->draw_arrays_prevent_connect = false;
+}
+
+void pgraph_vsh_carryover_invalidate_cache(PGRAPHState *pg)
+{
+    for (int i = 0; i < ARRAY_SIZE(pg->vsh_carry_cached_programs); ++i) {
+        if (pg->vsh_carry_cached_programs[i]) {
+            nv2a_vsh_program_destroy(pg->vsh_carry_cached_programs[i]);
+            g_free(pg->vsh_carry_cached_programs[i]);
+            pg->vsh_carry_cached_programs[i] = NULL;
+        }
+    }
+}
+
+void pgraph_vsh_carryover_reset(PGRAPHState *pg)
+{
+    pg->vsh_carry_fog[0] = 0.0f;
+    pg->vsh_carry_fog[1] = 0.0f;
+    pg->vsh_carry_fog[2] = 0.0f;
+    pg->vsh_carry_fog[3] = 1.0f;
+    pgraph_vsh_carryover_invalidate_cache(pg);
+    pg->vsh_carry_cache_dirty = false;
+}
+
+void pgraph_vsh_carryover_update(PGRAPHState *pg)
+{
+    if (!pg->draw_arrays_length && !pg->inline_elements_length &&
+        !pg->inline_buffer_length && !pg->inline_array_length) {
+        return;
+    }
+
+    if (pg->vsh_carry_cache_dirty) {
+        pgraph_vsh_carryover_invalidate_cache(pg);
+        pg->vsh_carry_cache_dirty = false;
+    }
+
+    bool is_vertex_program = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
+                                      NV_PGRAPH_CSV0_D_MODE) == 2;
+    if (!is_vertex_program) {
+        return;
+    }
+
+    uint32_t program_start = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C),
+                                      NV_PGRAPH_CSV0_C_CHEOPS_PROGRAM_START);
+    if (program_start >= NV2A_MAX_TRANSFORM_PROGRAM_LENGTH) {
+        return;
+    }
+
+    if (!pg->vsh_carry_cached_programs[program_start]) {
+        Nv2aVshProgram *program = g_new0(Nv2aVshProgram, 1);
+        Nv2aVshParseResult result = nv2a_vsh_parse_program(
+            program, pg->program_data[program_start],
+            NV2A_MAX_TRANSFORM_PROGRAM_LENGTH - program_start);
+        if (result != NV2AVPR_SUCCESS) {
+            g_free(program);
+            return;
+        }
+        pg->vsh_carry_cached_programs[program_start] = program;
+    }
+
+    Nv2aVshProgram *program = pg->vsh_carry_cached_programs[program_start];
+
+    Nv2aVshCPUFullExecutionState execution_state;
+    Nv2aVshExecutionState state =
+        nv2a_vsh_emu_initialize_full_execution_state(&execution_state);
+
+    for (int i = 0; i < ARRAY_SIZE(pg->vertex_attributes); ++i) {
+        memcpy(&execution_state.input_regs[i * 4],
+               pg->vertex_attributes[i].inline_value, sizeof(float) * 4);
+    }
+
+    for (int i = 0; i < ARRAY_SIZE(execution_state.output_regs) / 4; ++i) {
+        execution_state.output_regs[i * 4 + 0] = 0.0f;
+        execution_state.output_regs[i * 4 + 1] = 0.0f;
+        execution_state.output_regs[i * 4 + 2] = 0.0f;
+        execution_state.output_regs[i * 4 + 3] = 1.0f;
+    }
+    memcpy(&execution_state.output_regs[NV2AOR_FOG_COORD * 4],
+           pg->vsh_carry_fog, sizeof(pg->vsh_carry_fog));
+
+    QEMU_BUILD_BUG_MSG(sizeof(execution_state.context_regs) !=
+                           sizeof(pg->vsh_constants),
+                       "context_regs and vsh_constants size mismatch");
+    memcpy(execution_state.context_regs, pg->vsh_constants,
+           sizeof(execution_state.context_regs));
+
+    nv2a_vsh_emu_execute(&state, program);
+
+    memcpy(pg->vsh_carry_fog,
+           &execution_state.output_regs[NV2AOR_FOG_COORD * 4],
+           sizeof(pg->vsh_carry_fog));
 }
