@@ -16,6 +16,7 @@ specific_ss.add(files(
 	'xid.c',
 	'xblc.c',
 	'xid-gamepad.c',
+	'xid-steel-battalion.c',
 	))
 subdir('nv2a')
 subdir('mcpx')
