@@ -26,6 +26,7 @@ protected:
 
 public:
     float m_scale;
+    float m_pixel_density;
     ViewportManager();
     ImVec4 GetExtents();
     void DrawExtents();

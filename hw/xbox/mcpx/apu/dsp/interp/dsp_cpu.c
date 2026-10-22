@@ -31,6 +31,10 @@
 
 #define BITMASK(x)  ((1<<(x))-1)
 
+#define TRACE_DSP_DISASM 0
+#define TRACE_DSP_DISASM_REG 0
+#define TRACE_DSP_DISASM_MEM 0
+
 // #define DSP_COUNT_IPS     /* Count instruction per seconds */
 
 
@@ -70,19 +74,12 @@ static void dsp_mul56(uint32_t source1, uint32_t source2, uint32_t *dest, uint8_
 static void dsp_rnd56(dsp_core_t* dsp, uint32_t *dest);
 static uint32_t dsp_signextend(int bits, uint32_t v);
 
-static const dsp_interrupt_t dsp_interrupt[12] = {
+/* Vector addresses per DSP56300FM Table 2-2, indexed by DSP_INTER_* */
+static const dsp_interrupt_t dsp_interrupt[4] = {
     { DSP_INTER_RESET, 0x00, 0, "Reset" },
-    { DSP_INTER_ILLEGAL, 0x3e, 0, "Illegal" },
+    { DSP_INTER_ILLEGAL, 0x04, 0, "Illegal" },
     { DSP_INTER_STACK_ERROR, 0x02, 0, "Stack Error" },
-    { DSP_INTER_TRACE, 0x04, 0, "Trace" },
-    { DSP_INTER_SWI, 0x06, 0, "Swi" },
-    { DSP_INTER_HOST_COMMAND, 0xff, 1, "Host Command" },
-    { DSP_INTER_HOST_RCV_DATA, 0x20, 1, "Host receive" },
-    { DSP_INTER_HOST_TRX_DATA, 0x22, 1, "Host transmit" },
-    { DSP_INTER_SSI_RCV_DATA_E, 0x0e, 2, "SSI receive with exception" },
-    { DSP_INTER_SSI_RCV_DATA, 0x0c, 2, "SSI receive" },
-    { DSP_INTER_SSI_TRX_DATA_E, 0x12, 2, "SSI transmit with exception" },
-    { DSP_INTER_SSI_TRX_DATA, 0x10, 2, "SSI transmit" }
+    { DSP_INTER_TRAP, 0x08, 0, "Trap" },
 };
 
 static const int registers_tcc[16][2] = {
@@ -392,11 +389,8 @@ void dsp56k_reset_cpu(dsp_core_t* dsp)
     dsp->interrupt_save_pc = -1;
     dsp->interrupt_counter = 0;
     dsp->interrupt_pipeline_count = 0;
-    for (i=0;i<5;i++) {
+    for (i=0;i<4;i++) {
         dsp->interrupt_ipl[i] = 3;
-    }
-    for (i=5;i<12;i++) {
-        dsp->interrupt_ipl[i] = -1;
     }
 
     /* Misc */
@@ -422,7 +416,7 @@ static const OpcodeEntry *lookup_opcode_slow(uint32_t op) {
     }
 
     fprintf(stderr, "op = %08x\n", op);
-    assert(false);
+    assert(!"Invalid op code in dsp_cpu");
     return NULL;
 }
 
@@ -783,7 +777,7 @@ static void dsp_postexecute_interrupts(dsp_core_t* dsp)
                 if ( ((instr & 0xfff000) == 0x0d0000) || ((instr & 0xffc0ff) == 0x0bc080) ) {
                     dsp->interrupt_state = DSP_INTERRUPT_LONG;
                     dsp_stack_push(dsp, dsp->interrupt_save_pc, dsp->registers[DSP_REG_SR], 0);
-                    dsp->registers[DSP_REG_SR] &= BITMASK(16)-((1<<DSP_SR_LF)|(1<<DSP_SR_T)  |
+                    dsp->registers[DSP_REG_SR] &= BITMASK(16)-((1<<DSP_SR_LF)|(1<<DSP_SR_FV)  |
                                             (1<<DSP_SR_S1)|(1<<DSP_SR_S0) |
                                             (1<<DSP_SR_I0)|(1<<DSP_SR_I1));
                     dsp->registers[DSP_REG_SR] |= dsp->interrupt_ipl_to_raise<<DSP_SR_I0;
@@ -797,7 +791,7 @@ static void dsp_postexecute_interrupts(dsp_core_t* dsp)
                     if ( ((instr & 0xfff000) == 0x0d0000) || ((instr & 0xffc0ff) == 0x0bc080) ) {
                         dsp->interrupt_state = DSP_INTERRUPT_LONG;
                         dsp_stack_push(dsp, dsp->interrupt_save_pc, dsp->registers[DSP_REG_SR], 0);
-                        dsp->registers[DSP_REG_SR] &= BITMASK(16)-((1<<DSP_SR_LF)|(1<<DSP_SR_T)  |
+                        dsp->registers[DSP_REG_SR] &= BITMASK(16)-((1<<DSP_SR_LF)|(1<<DSP_SR_FV)  |
                                                 (1<<DSP_SR_S1)|(1<<DSP_SR_S0) |
                                                 (1<<DSP_SR_I0)|(1<<DSP_SR_I1));
                         dsp->registers[DSP_REG_SR] |= dsp->interrupt_ipl_to_raise<<DSP_SR_I0;
@@ -829,11 +823,6 @@ static void dsp_postexecute_interrupts(dsp_core_t* dsp)
         }
     }
 
-    /* Trace Interrupt ? */
-    if (dsp->registers[DSP_REG_SR] & (1<<DSP_SR_T)) {
-        dsp56k_add_interrupt(dsp, DSP_INTER_TRACE);
-    }
-
     /* No interrupt to execute */
     if (dsp->interrupt_counter == 0) {
         return;
@@ -845,7 +834,7 @@ static void dsp_postexecute_interrupts(dsp_core_t* dsp)
     ipl_to_raise = -1;
 
     /* Arbitrate between all pending interrupts */
-    for (i=0; i<12; i++) {
+    for (i=0; i<4; i++) {
         if (dsp->interrupt_is_pending[i] == 1) {
 
             /* level 3 interrupt ? */
@@ -890,29 +879,6 @@ static void dsp_postexecute_interrupts(dsp_core_t* dsp)
     dsp->interrupt_ipl_to_raise = ipl_to_raise;
 
     DPRINTF("Dsp interrupt: %s\n", dsp_interrupt[index].name);
-
-    /* SSI receive data with exception ? */
-    if (dsp->interrupt_instr_fetch == 0xe) {
-        // dsp->periph[DSP_SPACE_X][DSP_SSI_SR] &= 0xff-(1<<DSP_SSI_SR_ROE);
-        assert(false);
-    }
-
-    /* SSI transmit data with exception ? */
-    else if (dsp->interrupt_instr_fetch == 0x12) {
-        // dsp->periph[DSP_SPACE_X][DSP_SSI_SR] &= 0xff-(1<<DSP_SSI_SR_TUE);
-        assert(false);
-    }
-
-    /* host command ? */
-    else if (dsp->interrupt_instr_fetch == 0xff) {
-        /* Clear HC and HCP interrupt */
-        // dsp->periph[DSP_SPACE_X][DSP_HOST_HSR] &= 0xff - (1<<DSP_HOST_HSR_HCP);
-        // dsp->hostport[CPU_HOST_CVR] &= 0xff - (1<<CPU_HOST_CVR_HC);
-
-        // dsp->interrupt_instr_fetch = dsp->hostport[CPU_HOST_CVR] & BITMASK(5);
-        // dsp->interrupt_instr_fetch *= 2;
-        assert(false);
-    }
 }
 
 /**********************************
@@ -954,7 +920,7 @@ uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address)
     } else if (space == DSP_SPACE_P) {
         return read_memory_p(dsp, address);
     } else {
-        assert(false);
+        assert(!"Invalid dsp space in read memory");
         return 0;
     }
 }
@@ -993,7 +959,7 @@ static void write_memory_raw(dsp_core_t* dsp, int space, uint32_t address, uint3
         stl_le_p(&dsp->pram[address], value);
         dsp->pram_opcache[address] = NULL;
     } else {
-        assert(false);
+        assert(!"Invalid dsp space in write raw memory");
     }
 }
 
@@ -1022,7 +988,7 @@ static void write_memory_disasm(dsp_core_t* dsp, int space, uint32_t address, ui
             space_c = 'p';
             break;
         default:
-            assert(false);
+            assert(!"Invalid dsp space in write memory disasm");
     }
 
     curvalue = read_memory_disasm(dsp, space, address);
@@ -1061,7 +1027,7 @@ static void dsp_write_reg(dsp_core_t* dsp, uint32_t numreg, uint32_t value)
                 dsp->registers[DSP_REG_SP] = value & (3<<DSP_SP_SE);
                 DPRINTF("Dsp: Stack Overflow or Underflow\n");
                 if (dsp->exception_debugging) {
-                    assert(false);
+                    assert(!"Dsp stack overflow or underflow detected");
                 }
             } else {
                 dsp->registers[DSP_REG_SP] = value & BITMASK(6);
@@ -1104,7 +1070,7 @@ static void dsp_stack_push(dsp_core_t* dsp, uint32_t curpc, uint32_t cursr, uint
         dsp56k_add_interrupt(dsp, DSP_INTER_STACK_ERROR);
         DPRINTF("Dsp: Stack Overflow\n");
         if (dsp->exception_debugging)
-            assert(false);
+            assert(!"dsp stack overflow");
     }
 
     dsp->registers[DSP_REG_SP] = (underflow | stack_error | stack) & BITMASK(6);
@@ -1140,7 +1106,7 @@ static void dsp_stack_pop(dsp_core_t* dsp, uint32_t *newpc, uint32_t *newsr)
         dsp56k_add_interrupt(dsp, DSP_INTER_STACK_ERROR);
         DPRINTF("Dsp: Stack underflow\n");
         if (dsp->exception_debugging)
-            assert(false);
+            assert(!"Dsp stack underflow");
     }
 
     dsp->registers[DSP_REG_SP] = (underflow | stack_error | stack) & BITMASK(6);

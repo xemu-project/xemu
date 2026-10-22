@@ -53,12 +53,17 @@
 
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
+#include "hw/xbox/nv2a/debug_gl.h"
 #include "ui/xemu-notifications.h"
 
 #include <stb_image.h>
 #include <locale.h>
 #include <math.h>
 #include <SDL3/SDL.h>
+
+#ifdef _WIN32
+#include "xui/win32-dxgi-present.h"
+#endif
 
 #ifndef DEBUG_XEMU_C
 #define DEBUG_XEMU_C 0
@@ -528,8 +533,30 @@ static void handle_windowevent(SDL_Event *ev)
                 g_config.display.window.last_width = ev->window.data1;
                 g_config.display.window.last_height = ev->window.data2;
             }
+
+#ifdef _WIN32
+            if (win32_dxgi_present_is_active()) {
+                int width;
+                int height;
+                if (!SDL_GetWindowSizeInPixels(scon->real_window, &width,
+                                               &height)) {
+                    fprintf(stderr, "SDL_GetWindowSizeInPixels failed "
+                                    "responding to resize event.\n");
+                } else {
+                    win32_dxgi_present_resize(width, height);
+                }
+            }
+#endif
         }
         break;
+#ifdef _WIN32
+    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+        if (win32_dxgi_present_is_active()) {
+            win32_dxgi_present_resize(ev->window.data1, ev->window.data2);
+        }
+        break;
+#endif
+
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
     case SDL_EVENT_WINDOW_MOUSE_ENTER:
         if (!gui_grab && (qemu_input_is_absolute(scon->dcl.con) || absolute_enabled)) {
@@ -667,15 +694,6 @@ static void xb_surface_gl_create_texture(DisplaySurface *surface)
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-}
-
-static void xb_surface_gl_destroy_texture(DisplaySurface *surface)
-{
-    if (!surface || !surface->texture) {
-        return;
-    }
-    glDeleteTextures(1, &surface->texture);
-    surface->texture = 0;
 }
 
 static bool xb_console_gl_check_format(DisplayChangeListener *dcl,
@@ -824,17 +842,24 @@ static void gl_render_frame(struct xemu_console *scon)
      */
     GLuint tex = nv2a_get_framebuffer_surface();
 
-    assert(glGetError() == GL_NO_ERROR);
+    ASSERT_NO_GL_ERROR();
 
     if (tex == 0) {
         xemu_main_loop_lock();
         // FIXME: Don't upload if notdirty
         xb_surface_gl_create_texture(scon->surface);
         tex = scon->surface->texture;
+        scon->surface->texture = 0;
         flip_required = true;
         release_surface_texture = true;
         xemu_main_loop_unlock();
     }
+
+#ifdef _WIN32
+    if (win32_dxgi_present_is_active()) {
+        win32_dxgi_present_begin_frame();
+    }
+#endif
 
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -854,14 +879,28 @@ static void gl_render_frame(struct xemu_console *scon)
     glFinish();
 
     if (release_surface_texture) {
-        xemu_main_loop_lock();
-        xb_surface_gl_destroy_texture(scon->surface);
-        xemu_main_loop_unlock();
+        glDeleteTextures(1, &tex);
     }
 
     nv2a_release_framebuffer_surface();
+
+#ifdef _WIN32
+    if (win32_dxgi_present_is_active()) {
+        win32_dxgi_present_end_frame(g_config.display.window.vsync);
+    } else {
+        static bool warned = false;
+        if (!warned) {
+            fprintf(stderr,
+                    "win32_dxgi present failed or unavailable, falling back to "
+                    "SDL_GL_SwapWindow\n");
+            warned = true;
+        }
+        SDL_GL_SwapWindow(scon->real_window);
+    }
+#else
     SDL_GL_SwapWindow(scon->real_window);
-    assert(glGetError() == GL_NO_ERROR);
+#endif
+    ASSERT_NO_GL_ERROR();
 
     qatomic_set(&rendering, false);
 
@@ -874,8 +913,22 @@ static bool event_watch_callback(void *userdata, SDL_Event *event)
 {
     struct xemu_console *scon = (struct xemu_console *)userdata;
 
-    if (event->type == SDL_EVENT_WINDOW_EXPOSED ||
-        event->type == SDL_EVENT_WINDOW_RESIZED) {
+    if (event->type == SDL_EVENT_WINDOW_RESIZED) {
+#ifdef _WIN32
+        if (win32_dxgi_present_is_active()) {
+            int width;
+            int height;
+            if (!SDL_GetWindowSizeInPixels(scon->real_window, &width,
+                                           &height)) {
+                fprintf(stderr, "SDL_GetWindowSizeInPixels failed "
+                                "responding to resize event.\n");
+            } else {
+                win32_dxgi_present_resize(width, height);
+            }
+        }
+#endif
+        gl_render_frame(scon);
+    } else if (event->type == SDL_EVENT_WINDOW_EXPOSED) {
         gl_render_frame(scon);
     }
 
@@ -947,16 +1000,13 @@ static void poll_events(struct xemu_console *scon)
 static void display_very_early_init(DisplayOptions *o)
 {
 #ifdef __linux__
-    /* on Linux, SDL may use fbcon|directfb|svgalib when run without
-     * accessible $DISPLAY to open X11 window.  This is often the case
-     * when qemu is run using sudo.  But in this case, and when actually
-     * run in X11 environment, SDL fights with X11 for the video card,
-     * making current display unavailable, often until reboot.
-     * So make x11 the default SDL video driver if this variable is unset.
-     * This is a bit hackish but saves us from bigger problem.
-     * Maybe it's a good idea to fix this in SDL instead.
+    /* SDL3 falls back to XWayland on compositors without fifo-v1 [1],
+     * breaking HiDPI. Swap may block when occluded, but the BQL is released
+     * before swap so emulation is unaffected.
+     *
+     * [1] https://github.com/libsdl-org/SDL/pull/9383
      */
-    setenv("SDL_VIDEODRIVER", "x11", 0);
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "wayland,x11");
 #endif
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -1096,6 +1146,9 @@ static void display_early_init(DisplayOptions *o)
 
     SDL_GL_MakeCurrent(m_window, m_context);
     SDL_GL_SetSwapInterval(g_config.display.window.vsync ? 1 : 0);
+#ifdef _WIN32
+    win32_dxgi_present_init(m_window);
+#endif
     xemu_hud_init(m_window, m_context);
 }
 
@@ -1180,6 +1233,9 @@ static void display_finalize(void)
     }
 
     SDL_RemoveEventWatch(event_watch_callback, &scon_list[0]);
+#ifdef _WIN32
+    win32_dxgi_present_cleanup();
+#endif
     SDL_GL_MakeCurrent(NULL, NULL);
     SDL_GL_DestroyContext(m_context);
     SDL_DestroyWindow(m_window);
