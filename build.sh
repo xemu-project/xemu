@@ -11,12 +11,13 @@ target_arch=$(uname -m)
 install_translation_catalogs() {
     local destination="$1"
     local locale_dir
+    test -r build/config-host.h || return 0
     locale_dir=$(sed -n 's/^#define CONFIG_QEMU_LOCALEDIR "\(.*\)"$/\1/p' build/config-host.h)
     test -n "${locale_dir}"
     case "${platform}" in
         CYGWIN*|MINGW*|MSYS*|win64-cross) locale_dir="${locale_dir#?:}" ;;
     esac
-    find build/po -path '*/LC_MESSAGES/qemu.mo' -type f -print -quit | grep -q .
+    find build/po -path '*/LC_MESSAGES/qemu.mo' -type f -print -quit | grep -q . || return 0
 
     while IFS= read -r catalog; do
         local language
@@ -28,7 +29,9 @@ install_translation_catalogs() {
 }
 
 build_translation_catalogs() {
-    ninja -C build qemu-gmo
+    if make -n qemu-gmo >/dev/null 2>&1; then
+        make qemu-gmo
+    fi
 }
 
 package_windows() {
