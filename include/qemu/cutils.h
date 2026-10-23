@@ -102,6 +102,18 @@ int strstart(const char *str, const char *val, const char **ptr);
  */
 int stristart(const char *str, const char *val, const char **ptr);
 /**
+ * strisend:
+ * @str: string to test
+ * @val: suffix string to look for
+ *
+ * Test whether @str ends with the case-insensitive suffix @val.
+ * The comparison uses qemu_toupper() on each byte pair, like stristart().
+ *
+ * Returns: true if @str ends with case-insensitive suffix @val,
+ *          false otherwise.
+ */
+int strisend(const char *str, const char *val);
+/**
  * qemu_strnlen:
  * @s: string
  * @max_len: maximum number of bytes in @s to scan
