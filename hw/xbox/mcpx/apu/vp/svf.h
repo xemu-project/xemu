@@ -14,6 +14,13 @@
 
 #define flush_to_zero(x) x
 
+/* Hardware keeps filter values to 1/16 of a 24-bit sample, rounding halves
+ * up (measured). */
+static inline float svf_round(float x)
+{
+    return floorf(x * 524288.0f + 0.5f) / 524288.0f;
+}
+
 // Constants to match filter types
 #define F_LP 1
 #define F_HP 2
@@ -29,7 +36,6 @@
 typedef struct {
     float f;     // 2.0*sin(PI*fs/(fc*r));
     float q;     // 2.0*cos(pow(q, 0.1)*PI*0.5);
-    float qnrm;  // sqrt(m/2.0f+0.01f);
     float h;     // high pass output
     float b;     // band pass output
     float l;     // low pass output
@@ -48,7 +54,6 @@ static inline void setup_svf(sv_filter *sv, float fs, float fc, float q, int t) 
 static inline void setup_svf(sv_filter *sv, float fc, float q, int t) {
     sv->f = fc;
     sv->q = q;
-    sv->qnrm = sqrt(sv->q/2.0+0.01);
     switch(t) {
     case F_LP:
         sv->op = &(sv->l);
@@ -68,18 +73,17 @@ static inline void setup_svf(sv_filter *sv, float fc, float q, int t) {
 }
 
 /* Run one sample through the SV filter. Filter is by andy@vellocet */
+/* No input scaling or waveshaping: on hardware the filter is linear with unity
+ * passband gain at any resonance. */
 static inline float run_svf(sv_filter *sv, float in) {
     float out;
     int i;
-    in = sv->qnrm * in ;
     for (i=0; i < F_R; i++) {
-        // very slight waveshape for extra stability
-        sv->b = flush_to_zero(sv->b - sv->b * sv->b * sv->b * 0.001f);
         // regular state variable code here
         // the notch and peaking outputs are optional
-        sv->h = flush_to_zero(in - sv->l - sv->q * sv->b);
-        sv->b = sv->b + sv->f * sv->h;
-        sv->l = flush_to_zero(sv->l + sv->f * sv->b);
+        sv->h = svf_round(in - sv->l - sv->q * sv->b);
+        sv->b = svf_round(sv->b + sv->f * sv->h);
+        sv->l = svf_round(sv->l + sv->f * sv->b);
         sv->n = sv->l + sv->h;
         sv->p = sv->l - sv->h;
         out = *(sv->op);
