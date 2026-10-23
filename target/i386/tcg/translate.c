@@ -35,12 +35,14 @@
 
 #include "exec/log.h"
 
-static int g_use_hard_fpu;
+static int g_use_hard_fpu_inline;
+static int g_use_hard_fpu_helpers;
 
-#if defined(XBOX) && defined(__x86_64__)
+#if defined(XBOX) && (defined(__x86_64__) || defined(__aarch64__))
 #include "ui/xemu-settings.h"
 #define MAP_GEN_HELPER_SOFT_HARD(name) \
-    (g_use_hard_fpu ? gen_helper_##name##__hard : gen_helper_##name##__soft)
+    (g_use_hard_fpu_helpers ? gen_helper_##name##__hard \
+                            : gen_helper_##name##__soft)
 #define gen_helper_flds_FT0       MAP_GEN_HELPER_SOFT_HARD(flds_FT0)
 #define gen_helper_fldl_FT0       MAP_GEN_HELPER_SOFT_HARD(fldl_FT0)
 #define gen_helper_fildl_FT0      MAP_GEN_HELPER_SOFT_HARD(fildl_FT0)
@@ -121,7 +123,7 @@ static int g_use_hard_fpu;
 #define gen_helper_fldenv         MAP_GEN_HELPER_SOFT_HARD(fldenv)
 #define gen_helper_fsave          MAP_GEN_HELPER_SOFT_HARD(fsave)
 #define gen_helper_frstor         MAP_GEN_HELPER_SOFT_HARD(frstor)
-#endif /* defined(XBOX) && defined(__x86_64__) */
+#endif /* defined(XBOX) && (defined(__x86_64__) || defined(__aarch64__)) */
 
 #define HELPER_H "helper.h"
 #include "exec/helper-info.c.inc"
@@ -1732,25 +1734,25 @@ static void gen_flush_fp(DisasContext *s)
  * Ugly macros to handle soft FPU helper generation
  */
 #define GEN_HELPER_FALLBACK_v_v(func) do { \
-        if (!g_use_hard_fpu) { \
+        if (!g_use_hard_fpu_inline) { \
             gen_helper_ ## func(tcg_env); \
             return; \
         }} while(0)
 
 #define GEN_HELPER_FALLBACK_v_i(func, arg) do { \
-        if (!g_use_hard_fpu) { \
+        if (!g_use_hard_fpu_inline) { \
             gen_helper_ ## func(tcg_env, tcg_constant_i32(arg)); \
             return; \
         }} while(0)
 
 #define GEN_HELPER_FALLBACK_v_T(func, arg) do { \
-        if (!g_use_hard_fpu) { \
+        if (!g_use_hard_fpu_inline) { \
             gen_helper_ ## func(tcg_env, arg); \
             return; \
         }} while(0)
 
 #define GEN_HELPER_FALLBACK_T_v(func, arg) do { \
-        if (!g_use_hard_fpu) { \
+        if (!g_use_hard_fpu_inline) { \
             gen_helper_ ## func(arg, tcg_env); \
             return; \
         }} while(0)
@@ -1940,7 +1942,7 @@ static void gen_fcos(DisasContext *s)
 
 static void gen_helper_fp_arith_ST0_FT0(DisasContext *s, int op)
 {
-    if (g_use_hard_fpu) {
+    if (g_use_hard_fpu_inline) {
         fp_pc_wrapper(gen_helper_fp_arith_ST0_FT0)(s, op);
     } else {
         switch (op) {
@@ -1980,7 +1982,7 @@ static void gen_fcom_ST0_FT0(DisasContext *s)
 /* NOTE the exception in "r" op ordering */
 static void gen_helper_fp_arith_STN_ST0(DisasContext *s, int op, int opreg)
 {
-    if (g_use_hard_fpu) {
+    if (g_use_hard_fpu_inline) {
         fp_pc_wrapper(gen_helper_fp_arith_STN_ST0)(s, op, opreg);
     } else {
         TCGv_i32 tmp = tcg_constant_i32(opreg);
@@ -4227,8 +4229,13 @@ void tcg_x86_init(void)
     fpstt = tcg_global_mem_new_i32(tcg_env,
                                    offsetof(CPUX86State, fpstt), "fpstt");
 
-#if defined(XBOX) && defined(__x86_64__)
-    g_use_hard_fpu = g_config.perf.hard_fpu;
+#if defined(XBOX) && (defined(__x86_64__) || defined(__aarch64__))
+#if defined(__aarch64__)
+    g_use_hard_fpu_inline = 0;
+#else
+    g_use_hard_fpu_inline = g_config.perf.hard_fpu;
+#endif
+    g_use_hard_fpu_helpers = g_config.perf.hard_fpu;
 #endif
 }
 
