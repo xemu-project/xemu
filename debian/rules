@@ -33,6 +33,7 @@ sysdatadir = debian/xemu/usr/share/xemu
 
 # we add another set of configure options from debian/control
 common_configure_opts = \
+	--prefix=/usr \
 	--with-pkgversion="Debian $(DEB_VERSION)" \
 	--extra-cflags="$(CFLAGS) $(CPPFLAGS)" --extra-ldflags="$(LDFLAGS) -Wl,--as-needed" \
 	--localstatedir=/var
@@ -74,6 +75,10 @@ override_dh_auto_install:
 	# cp -r dist/data $(sysdatadir)
 	install -DT debian/qemu.deb.copyright debian/xemu/usr/share/doc/xemu/qemu.deb.copyright
 	install -DTm 0755 dist/xemu debian/xemu/usr/bin/xemu
+	for mo in build/po/*/LC_MESSAGES/qemu.mo; do \
+		language=$$(basename $$(dirname $$(dirname $$mo))); \
+		install -Dm 0644 $$mo debian/xemu/usr/share/locale/$$language/LC_MESSAGES/qemu.mo; \
+	done
 	install -DT ui/xemu.desktop debian/xemu/usr/share/applications/xemu.desktop
 	install -DT ui/icons/xemu_16x16.png debian/xemu/usr/share/icons/hicolor/16x16/apps/xemu.png
 	install -DT ui/icons/xemu_24x24.png debian/xemu/usr/share/icons/hicolor/24x24/apps/xemu.png

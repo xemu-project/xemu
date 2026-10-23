@@ -59,7 +59,7 @@ void AutoUpdateWindow::Draw()
 {
     if (!is_open) return;
     ImGui::SetNextWindowContentSize(ImVec2(550.0f*g_viewport_mgr.m_scale, 0.0f));
-    if (!ImGui::Begin("Update", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (!ImGui::Begin(_("Update"), &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         return;
     }
@@ -90,8 +90,8 @@ void AutoUpdateWindow::Draw()
     if (updater.is_update_available()) {
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
-        ImGui::Text("Current version: %s", xemu_version);
-        ImGui::Text("Latest version: %s", updater.get_release_version().c_str());
+        ImGui::Text(_("Current version: %s"), xemu_version);
+        ImGui::Text(_("Latest version: %s"), updater.get_release_version().c_str());
 
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y));
 
@@ -110,25 +110,34 @@ void AutoUpdateWindow::Draw()
     ImGui::Separator();
     ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
-    float w = (130)*g_viewport_mgr.m_scale;
-    float bw = w + (10)*g_viewport_mgr.m_scale;
+    const char *cancel_label = _("Cancel");
+    const char *restart_label = _("Restart");
+    const char *update_label = _("Update");
+    const char *check_label = _("Check for Update");
+    float label_width = fmaxf(ImGui::CalcTextSize(cancel_label).x,
+                              ImGui::CalcTextSize(restart_label).x);
+    label_width = fmaxf(label_width, ImGui::CalcTextSize(update_label).x);
+    label_width = fmaxf(label_width, ImGui::CalcTextSize(check_label).x);
+    float w = fmaxf(130.0f * g_viewport_mgr.m_scale,
+                    label_width + ImGui::GetStyle().FramePadding.x * 2.0f);
+    float bw = w + 10.0f * g_viewport_mgr.m_scale;
     ImGui::SetCursorPosX(ImGui::GetWindowWidth()-bw);
 
     if (updater.is_checking_for_update() || updater.is_updating()) {
-        if (ImGui::Button("Cancel", ImVec2(w, 0))) {
+        if (ImGui::Button(cancel_label, ImVec2(w, 0))) {
             updater.cancel();
         }
     } else {
         if (updater.is_pending_restart()) {
-            if (ImGui::Button("Restart", ImVec2(w, 0))) {
+            if (ImGui::Button(restart_label, ImVec2(w, 0))) {
                 updater.restart_to_updated();
             }
         } else if (updater.is_update_available()) {
-            if (ImGui::Button("Update", ImVec2(w, 0))) {
+            if (ImGui::Button(update_label, ImVec2(w, 0))) {
                 updater.update();
             }
         } else {
-            if (ImGui::Button("Check for Update", ImVec2(w, 0))) {
+            if (ImGui::Button(check_label, ImVec2(w, 0))) {
                 updater.check_for_update();
             }
         }
