@@ -1223,19 +1223,35 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
                                  zeta_entry.vram_addr >= color_end;
             }
 
+            /* A linear zeta surface larger than the color target can stay
+             * bound: with the same offset and pitch, the draw only covers its
+             * top-left region. Evicting it would download and re-upload the
+             * whole surface.
+             */
+            bool zeta_larger_than_color = false;
             if (is_compatible && !color && r->color_binding) {
-                is_compatible &= (found->width == r->color_binding->width) &&
-                                 (found->height == r->color_binding->height);
+                bool same_size =
+                    (found->width == r->color_binding->width) &&
+                    (found->height == r->color_binding->height);
+                zeta_larger_than_color =
+                    !same_size && !found->swizzle && !entry.swizzle &&
+                    (found->shape.anti_aliasing ==
+                     r->color_binding->shape.anti_aliasing);
+                is_compatible &= same_size || zeta_larger_than_color;
             }
 
             if (is_compatible) {
                 /* FIXME: Refactor */
-                pg->surface_binding_dim.width = found->width;
-                pg->surface_binding_dim.clip_x = found->shape.clip_x;
-                pg->surface_binding_dim.clip_width = found->shape.clip_width;
-                pg->surface_binding_dim.height = found->height;
-                pg->surface_binding_dim.clip_y = found->shape.clip_y;
-                pg->surface_binding_dim.clip_height = found->shape.clip_height;
+                if (!zeta_larger_than_color) {
+                    pg->surface_binding_dim.width = found->width;
+                    pg->surface_binding_dim.clip_x = found->shape.clip_x;
+                    pg->surface_binding_dim.clip_width =
+                        found->shape.clip_width;
+                    pg->surface_binding_dim.height = found->height;
+                    pg->surface_binding_dim.clip_y = found->shape.clip_y;
+                    pg->surface_binding_dim.clip_height =
+                        found->shape.clip_height;
+                }
                 found->upload_pending |= mem_dirty;
                 pg->surface_zeta.buffer_dirty |= color;
                 should_create = false;
@@ -1424,10 +1440,10 @@ void pgraph_gl_surface_update(NV2AState *d, bool upload, bool color_write,
         }
     }
 
-    // Sanity check color and zeta dimensions match
+    // Sanity check the zeta surface covers the color surface
     if (r->color_binding && r->zeta_binding) {
-        assert((r->color_binding->width == r->zeta_binding->width)
-               && (r->color_binding->height == r->zeta_binding->height));
+        assert((r->color_binding->width <= r->zeta_binding->width)
+               && (r->color_binding->height <= r->zeta_binding->height));
     }
 
     surface_evict_old(d);
