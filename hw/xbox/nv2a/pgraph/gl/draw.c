@@ -297,7 +297,18 @@ void pgraph_gl_draw_begin(NV2AState *d)
     unsigned int vp_width = pg->surface_binding_dim.width,
                  vp_height = pg->surface_binding_dim.height;
     pgraph_apply_scaling_factor(pg, &vp_width, &vp_height);
-    glViewport(0, 0, vp_width, vp_height);
+    
+    float vp_offset = pg->surface_scale_factor > 1
+                      ? 0.5f * (pg->surface_scale_factor - 1) + 0.25f
+                      : 0.0f;
+
+    float vp_bounds[4] = {
+        -vp_offset,
+        -vp_offset,
+        (float)vp_width + vp_offset,
+        (float)vp_height + vp_offset,
+    };
+    glViewportIndexedfv(0, vp_bounds);
 
     /* Surface clip */
     /* FIXME: Consider moving to PSH w/ window clip */
