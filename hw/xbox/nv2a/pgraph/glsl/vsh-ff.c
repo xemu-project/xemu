@@ -125,11 +125,11 @@ GLSL_DEFINE(invModelViewMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_IMMAT3))
 GLSL_DEFINE(eyePosition, GLSL_C(NV_IGRAPH_XF_XFCTX_EYEP))
 "\n"
 "#define lightAmbientColor(i) "
-    "ltctxb[" stringify(NV_IGRAPH_XF_LTCTXB_L0_AMB) " + (i)*6].xyz\n"
+    "ltctxb[" stringify(NV_IGRAPH_XF_LTCTXB_L0_AMB) " + (i)*6].rgb\n"
 "#define lightDiffuseColor(i) "
-    "ltctxb[" stringify(NV_IGRAPH_XF_LTCTXB_L0_DIF) " + (i)*6].xyz\n"
+    "ltctxb[" stringify(NV_IGRAPH_XF_LTCTXB_L0_DIF) " + (i)*6].rgb\n"
 "#define lightSpecularColor(i) "
-    "ltctxb[" stringify(NV_IGRAPH_XF_LTCTXB_L0_SPC) " + (i)*6].xyz\n"
+    "ltctxb[" stringify(NV_IGRAPH_XF_LTCTXB_L0_SPC) " + (i)*6].rgb\n"
 "\n"
 "#define lightSpotFalloff(i) "
     "ltctxa[" stringify(NV_IGRAPH_XF_LTCTXA_L0_K) " + (i)*2].xyz\n"
@@ -139,8 +139,8 @@ GLSL_DEFINE(eyePosition, GLSL_C(NV_IGRAPH_XF_XFCTX_EYEP))
 "#define lightLocalRange(i) "
     "ltc1[" stringify(NV_IGRAPH_XF_LTC1_r0) " + (i)].x\n"
 "\n"
-GLSL_DEFINE(sceneAmbientColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_FR_AMB) ".xyz")
-GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz")
+GLSL_DEFINE(sceneAmbientColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_FR_AMB) ".rgb")
+GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".rgb")
 "\n"
 );
 
@@ -448,30 +448,30 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             switch (state->fixed_function.diffuse_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
                 mstring_append(body,
-                               "    oD0.xyz += lightDiffuse;\n");
+                               "    oD0.rgb += lightDiffuse;\n");
                 break;
             case MATERIAL_COLOR_SRC_DIFFUSE:
                 mstring_append(body,
-                               "    oD0.xyz += diffuse.xyz * lightDiffuse;\n");
+                               "    oD0.rgb += diffuse.rgb * lightDiffuse;\n");
                 break;
             case MATERIAL_COLOR_SRC_SPECULAR:
                 mstring_append(body,
-                               "    oD0.xyz += specular.xyz * lightDiffuse;\n");
+                               "    oD0.rgb += specular.rgb * lightDiffuse;\n");
                 break;
             }
 
             switch (state->fixed_function.specular_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
                 mstring_append(body,
-                               "    oD1.xyz += lightSpecular;\n");
+                               "    oD1.rgb += lightSpecular;\n");
                 break;
             case MATERIAL_COLOR_SRC_DIFFUSE:
                 mstring_append(body,
-                               "    oD1.xyz += diffuse.xyz * lightSpecular;\n");
+                               "    oD1.rgb += diffuse.rgb * lightSpecular;\n");
                 break;
             case MATERIAL_COLOR_SRC_SPECULAR:
                 mstring_append(body,
-                               "    oD1.xyz += specular.xyz * lightSpecular;\n");
+                               "    oD1.rgb += specular.rgb * lightSpecular;\n");
                 break;
             }
 
@@ -491,8 +491,8 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         if (!state->separate_specular) {
             if (state->fixed_function.lighting) {
 				mstring_append(body,
-				               "  oD0.xyz += oD1.xyz;\n"
-				               "  oB0.xyz += oB1.xyz;\n"
+				               "  oD0.rgb += oD1.rgb;\n"
+				               "  oB0.rgb += oB1.rgb;\n"
 				);
             }
 			mstring_append(body,

@@ -424,8 +424,8 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
 
         if (state->ignore_specular_alpha) {
             mstring_append(body,
-                           "  vtxD1.w = 1.0;\n"
-                           "  vtxB1.w = 1.0;\n"
+                           "  vtxD1.a = 1.0;\n"
+                           "  vtxB1.a = 1.0;\n"
             );
         }
     } else {
