@@ -407,21 +407,8 @@ const void *HELPER(lookup_tb_ptr)(CPUArchState *env)
      */
     cpu->neg.can_do_io = true;
 
-#ifdef XBOX
-    /*
-     * This runs for every indirect branch.  xemu only builds i386, so call
-     * the x86 hook directly, and skip curr_cflags() in the common case.
-     */
-    TCGTBCPUState s = x86_get_tb_cpu_state_direct(cpu);
-    s.cflags = cpu->tcg_cflags;
-    if (unlikely(cpu->singlestep_enabled || qatomic_read(&one_insn_per_tb) ||
-                 qemu_loglevel_mask(CPU_LOG_TB_NOCHAIN))) {
-        s.cflags = curr_cflags(cpu);
-    }
-#else
     TCGTBCPUState s = cpu->cc->tcg_ops->get_tb_cpu_state(cpu);
     s.cflags = curr_cflags(cpu);
-#endif
 
     if (check_for_breakpoints(cpu, s.pc, &s.cflags)) {
         cpu_loop_exit(cpu);
