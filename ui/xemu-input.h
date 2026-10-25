@@ -34,9 +34,15 @@
 
 #define DRIVER_DUKE "usb-xbox-gamepad"
 #define DRIVER_S "usb-xbox-gamepad-s"
+#define DRIVER_KBD "usb-kbd"
+#define DRIVER_MOUSE "usb-mouse"
+#define DRIVER_TABLET "usb-tablet"
 
 #define DRIVER_DUKE_DISPLAY_NAME "Xbox Controller"
 #define DRIVER_S_DISPLAY_NAME "Xbox Controller S"
+#define DRIVER_KBD_DISPLAY_NAME "Xbox Keyboard"
+#define DRIVER_MOUSE_DISPLAY_NAME "Xbox Mouse (Relative)"
+#define DRIVER_TABLET_DISPLAY_NAME "Xbox Mouse (Absolute)"
 
 enum controller_state_buttons_mask {
     CONTROLLER_BUTTON_A          = (1 << 0),
@@ -133,6 +139,33 @@ void xemu_input_update_sdl_controller_state(ControllerState *state);
 void xemu_input_update_rumble(ControllerState *state);
 ControllerState *xemu_input_get_bound(int index);
 void xemu_input_bind(int index, ControllerState *state, int save);
+// Attach a simple USB HID device (usb-kbd / usb-mouse) directly to a player
+// port, in place of a controller. driver is DRIVER_KBD or DRIVER_MOUSE.
+void xemu_input_attach_hid(int index, const char *driver, int save);
+void xemu_input_detach_hid(int index, int save);
+bool xemu_input_port_has_hid(int index);
+// True if driver names a non-controller HID device that occupies a whole port.
+bool xemu_input_driver_is_hid(const char *driver);
+// True if any port currently emulates a relative USB mouse (usb-mouse). Used to
+// decide whether the display should capture the host cursor on click.
+bool xemu_input_relative_mouse_present(void);
+
+// Host-keyboard selection for the keyboard-as-controller. When a specific
+// keyboard is chosen, only that device drives the emulated controller and its
+// keys are withheld from the guest usb-kbd and the xemu UI hotkeys.
+// id == 0 means "all keyboards" (the default).
+SDL_KeyboardID xemu_input_get_controller_kbd_id(void);
+void xemu_input_set_controller_kbd_id(SDL_KeyboardID id, int save);
+// True if this key event belongs to a keyboard dedicated to the controller and
+// should therefore not be delivered to the guest / UI.
+bool xemu_input_key_is_controller_only(SDL_KeyboardID which);
+
+// Host-keyboard selection for the emulated guest usb-kbd. id == 0 means all
+// keyboards (except any dedicated to a controller).
+SDL_KeyboardID xemu_input_get_guest_kbd_id(void);
+void xemu_input_set_guest_kbd_id(SDL_KeyboardID id, int save);
+// True if this key event should be delivered to the guest usb-kbd.
+bool xemu_input_key_is_for_guest(SDL_KeyboardID which);
 bool xemu_input_bind_xmu(int player_index, int peripheral_port_index,
                          const char *filename, bool is_rebind);
 void xemu_input_rebind_xmu(int port);
