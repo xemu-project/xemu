@@ -38,7 +38,9 @@ package_windows() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386w.exe dist/xemu.exe
-    install_translation_catalogs dist
+    # The in-application updater in released Windows builds cannot yet unpack
+    # directory trees. Keep its ZIP payload flat for this transition release;
+    # the updater support lands here so catalogs can be enabled next release.
     python3 "${project_source_dir}/get_deps.py" dist/xemu.exe dist
 }
 
@@ -46,7 +48,7 @@ package_wincross() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386w.exe dist/xemu.exe
-    install_translation_catalogs dist
+    # See package_windows(): old updaters reject directory entries.
     python3 ./scripts/gen-license.py --platform windows > dist/LICENSE.txt
 }
 
