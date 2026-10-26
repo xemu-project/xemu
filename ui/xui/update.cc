@@ -291,13 +291,23 @@ void Updater::update_internal()
             goto errored;
         }
 
+        char *dst_path = g_strdup_printf("%s%s", SDL_GetBasePath(), fstat.m_filename);
         if (fstat.m_filename[strlen(fstat.m_filename)-1] == '/') {
-            /* FIXME: mkdirs */
-            DPRINTF("FIXME: subdirs not handled yet\n");
-            goto errored;
+            if (g_mkdir_with_parents(dst_path, 0755) != 0) {
+                DPRINTF("failed to create directory %s\n", dst_path);
+                g_free(dst_path);
+                goto errored;
+            }
+            g_free(dst_path);
+            continue;
         }
 
-        char *dst_path = g_strdup_printf("%s%s", SDL_GetBasePath(), fstat.m_filename);
+        g_autofree char *dst_dir = g_path_get_dirname(dst_path);
+        if (g_mkdir_with_parents(dst_dir, 0755) != 0) {
+            DPRINTF("failed to create directory %s\n", dst_dir);
+            g_free(dst_path);
+            goto errored;
+        }
         DPRINTF("extracting %s to %s\n", fstat.m_filename, dst_path);
 
         if (!strcmp(fstat.m_filename, "xemu.exe")) {
