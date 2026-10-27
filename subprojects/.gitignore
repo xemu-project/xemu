@@ -39,5 +39,6 @@ genconfig
 curl-*
 nlohmann_json
 sdl3
+/a52dec
 /dsp56300/*
 !/dsp56300/meson.build
