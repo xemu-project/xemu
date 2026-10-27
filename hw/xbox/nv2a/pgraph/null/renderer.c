@@ -142,6 +142,23 @@ static void pgraph_null_surface_update(NV2AState *d, bool upload,
 {
 }
 
+static bool pgraph_null_have_overlapping_dirty_surfaces(NV2AState *d,
+                                                        hwaddr start,
+                                                        hwaddr size)
+{
+    return false;
+}
+
+static void pgraph_null_download_overlapping_surfaces_trigger(NV2AState *d,
+                                                              hwaddr start,
+                                                              hwaddr size)
+{
+}
+
+static void pgraph_null_download_overlapping_surfaces_wait(NV2AState *d)
+{
+}
+
 static int pgraph_null_get_framebuffer_surface(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -186,6 +203,12 @@ static PGRAPHRenderer pgraph_null_renderer = {
         .process_pending_reports = pgraph_null_process_pending_reports,
         .surface_update = pgraph_null_surface_update,
         .get_framebuffer_surface = pgraph_null_get_framebuffer_surface,
+        .have_overlapping_dirty_surfaces =
+            pgraph_null_have_overlapping_dirty_surfaces,
+        .download_overlapping_surfaces_trigger =
+            pgraph_null_download_overlapping_surfaces_trigger,
+        .download_overlapping_surfaces_wait =
+            pgraph_null_download_overlapping_surfaces_wait,
     },
 };
 
