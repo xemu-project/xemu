@@ -141,6 +141,7 @@ Generative AI tools (such as GitHub Copilot, ChatGPT, Claude, Gemini, and simila
 1. **You must understand the code**: You are personally responsible for every line of code you propose. You must thoroughly read, understand, verify, and test all AI-generated code before submitting it.
 2. **No unreviewed AI output**: Submitting blindly copied, unverified, or hallucinated AI output ("AI slop") is strictly forbidden - please don't waste maintainers' limited review time or your token budget.
 3. **Active ownership and review participation**: You must be willing and technically capable of guiding your pull request through the entire review process. This includes answering technical questions, explaining architectural decisions, and making necessary adjustments based on reviewer feedback. If you cannot explain or defend the code you submitted, the PR will not be accepted. Note that this does not mean simply acting as a proxy for your chatbot.
+4. **Good First Issue**: We occasionally mark issues on GitHub with the *good first issue* label, indicating that the issue may be fit for a newcomer who wants to learn more about the project and contribute. Though today's LLMs may be fully capable of fixing the issues, we intend to keep them as learning opportunities for newcomers. Please don't use LLMs to fix them blindly.
 
 Please also note which model or models were used in the creation of your PR. This is useful for review purposes and to guide other contributors towards models that have been shown to be successful.
 
