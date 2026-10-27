@@ -1,5 +1,5 @@
 /*
- * Geforce NV2A PGRAPH OpenGL Renderer debug routines
+ * Geforce NV2A PGRAPH general debug routines
  *
  * Copyright (c) 2025 Matt Borgerson
  *
@@ -19,9 +19,31 @@
 
 #include "qemu/osdep.h"
 
+#include "hw/xbox/nv2a/debug.h"
 #include "hw/xbox/nv2a/debug_gl.h"
 
-#include <stdio.h>
+#include "qemu/osdep.h"
+
+
+void nv2a_log_timestamped_message(const char *msg, ...)
+{
+    time_t now = time(NULL);
+    struct tm *local_time = localtime(&now);
+
+    char timestamp[32] = {
+        0,
+    };
+    strftime(timestamp, sizeof(timestamp), "%Y%m%d at %T", local_time);
+
+    va_list args;
+    va_start(args, msg);
+    gchar *formatted = g_strdup_vprintf(msg, args);
+    va_end(args);
+
+    fprintf(stderr, "%s\n%s\n\n", timestamp, formatted);
+
+    g_free(formatted);
+}
 
 #ifdef XEMU_DEBUG_BUILD
 
