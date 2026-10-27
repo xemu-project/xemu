@@ -330,4 +330,8 @@ vaddr cpu_pointer_wrap_uint32(CPUState *, int, vaddr, vaddr);
 
 #endif
 
+#ifdef XBOX
+TCGTBCPUState x86_get_tb_cpu_state_direct(CPUState *cs);
+#endif
+
 #endif /* TCG_CPU_OPS_H */
