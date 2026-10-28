@@ -29,6 +29,7 @@
 #include "hw/i2c/smbus_slave.h"
 #include "smbus.h"
 #include "qapi/error.h"
+#include "migration/vmstate.h"
 
 #define TYPE_SMBUS_CX25871 "smbus-cx25871"
 #define SMBUS_CX25871(obj) OBJECT_CHECK(SMBusCX25871Device, (obj), TYPE_SMBUS_CX25871)
@@ -45,6 +46,8 @@ typedef struct SMBusCX25871Device {
     uint8_t registers[256];
     uint8_t cmd;
 } SMBusCX25871Device;
+
+static SMBusCX25871Device *conexant_device = NULL;
 
 static void smbus_cx25871_quick_cmd(SMBusDevice *dev, uint8_t read)
 {
@@ -85,11 +88,24 @@ static void smbus_cx25871_realize(DeviceState *dev, Error **errp)
     cx->cmd = 0;
 }
 
+static const VMStateDescription vmstate_smbus_cx25871 = {
+    .name = TYPE_SMBUS_CX25871,
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]){
+        VMSTATE_SMBUS_DEVICE(smbusdev, SMBusCX25871Device),
+        VMSTATE_UINT8_ARRAY(registers, SMBusCX25871Device, 256),
+        VMSTATE_UINT8(cmd, SMBusCX25871Device),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void smbus_cx25871_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     SMBusDeviceClass *sc = SMBUS_DEVICE_CLASS(klass);
 
+    dc->vmsd = &vmstate_smbus_cx25871;
     dc->realize = smbus_cx25871_realize;
     sc->quick_cmd = smbus_cx25871_quick_cmd;
     sc->receive_byte = smbus_cx25871_receive_byte;
@@ -116,4 +132,22 @@ void smbus_cx25871_init(I2CBus *smbus, int address)
     dev = qdev_new(TYPE_SMBUS_CX25871);
     qdev_prop_set_uint8(dev, "address", address);
     qdev_realize_and_unref(dev, (BusState *)smbus, &error_fatal);
+
+    Object *obj = object_resolve_path_type("", TYPE_SMBUS_CX25871, NULL);
+    if (obj) {
+        conexant_device = SMBUS_CX25871(obj);
+    }
+}
+
+void smbus_cx25871_notify_vblank(void)
+{
+    if (unlikely(!conexant_device)) {
+        return;
+    }
+
+#define FIELD_CNT_MASK 0x0F
+    conexant_device->registers[0x06] =
+        (conexant_device->registers[0x06] & (~FIELD_CNT_MASK)) |
+        ((conexant_device->registers[0x06] + 1) & FIELD_CNT_MASK);
+#undef FIELD_CNT_MASK
 }
