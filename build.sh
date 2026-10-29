@@ -29,18 +29,16 @@ install_translation_catalogs() {
 }
 
 build_translation_catalogs() {
-    if make -n qemu-gmo >/dev/null 2>&1; then
-        make qemu-gmo
-    fi
+    make qemu-gmo
 }
 
 package_windows() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386w.exe dist/xemu.exe
-    # The in-application updater in released Windows builds cannot yet unpack
-    # directory trees. Keep its ZIP payload flat for this transition release;
-    # the updater support lands here so catalogs can be enabled next release.
+    # update_internal() creates directory entries and parent directories before
+    # extracting files, so release archives may include gettext catalogs.
+    install_translation_catalogs dist
     python3 "${project_source_dir}/get_deps.py" dist/xemu.exe dist
 }
 
@@ -48,7 +46,7 @@ package_wincross() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386w.exe dist/xemu.exe
-    # See package_windows(): old updaters reject directory entries.
+    install_translation_catalogs dist
     python3 ./scripts/gen-license.py --platform windows > dist/LICENSE.txt
 }
 
@@ -295,6 +293,7 @@ configure="${project_source_dir}/configure"
 set -x # Print commands from now on
 
 "${configure}" \
+    --enable-gettext \
     --extra-cflags="-DXBOX=1 ${build_cflags} ${sys_cflags} ${CFLAGS}" \
     --extra-ldflags="${sys_ldflags}" \
     --target-list=i386-softmmu \
