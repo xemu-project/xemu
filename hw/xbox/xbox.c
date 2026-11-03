@@ -56,6 +56,7 @@
 #include "hw/xbox/mcpx/apu/apu.h"
 
 #include "hw/xbox/xbox.h"
+#include "hw/xbox/xemu_guest_info.h"
 #include "smbus.h"
 
 #define MAX_IDE_BUS 2
@@ -338,6 +339,8 @@ void xbox_init_common(MachineState *machine,
 
     /* FIXME: Stub the memory controller */
     pci_create_simple(pci_bus, PCI_DEVFN(0, 3), "pci-testdev");
+
+    xemu_guest_info_init(get_system_io());
 
     if (pci_bus_out) {
         *pci_bus_out = pci_bus;
