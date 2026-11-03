@@ -434,7 +434,44 @@ static bool is_device_compatible(VkPhysicalDevice device)
     // FIXME: Check vram
 }
 
-static bool select_physical_device(PGRAPHState *pg, Error **errp)
+static bool get_display_device_uuid(uint8_t *uuid)
+{
+    GLint num_uuids = 0;
+
+    if (epoxy_has_gl_extension("GL_EXT_memory_object")) {
+        glGetIntegerv(GL_NUM_DEVICE_UUIDS_EXT, &num_uuids);
+    }
+    if (num_uuids < 1) {
+        return false;
+    }
+    glGetUnsignedBytei_vEXT(GL_DEVICE_UUID_EXT, 0, uuid);
+
+    return true;
+}
+
+static bool is_display_device(VkPhysicalDevice device,
+                              const uint8_t *display_uuid)
+{
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(device, &props);
+    if (!display_uuid || props.apiVersion < VK_API_VERSION_1_1) {
+        return false;
+    }
+
+    VkPhysicalDeviceIDProperties id_props = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES,
+    };
+    VkPhysicalDeviceProperties2 props2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+        .pNext = &id_props,
+    };
+    vkGetPhysicalDeviceProperties2(device, &props2);
+
+    return !memcmp(id_props.deviceUUID, display_uuid, VK_UUID_SIZE);
+}
+
+static bool select_physical_device(PGRAPHState *pg, const uint8_t *display_uuid,
+                                   Error **errp)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     VkResult result;
@@ -452,43 +489,39 @@ static bool select_physical_device(PGRAPHState *pg, Error **errp)
         g_malloc_n(num_physical_devices, sizeof(VkPhysicalDevice));
     vkEnumeratePhysicalDevices(r->instance, &num_physical_devices, devices);
 
-    const char *preferred_device = g_config.display.vulkan.preferred_physical_device;
-    int preferred_device_index = -1;
+    const char *forced_device = g_config.display.vulkan.force_physical_device;
+    bool force = forced_device && *forced_device;
+
+    r->physical_device = VK_NULL_HANDLE;
 
     fprintf(stderr, "Available physical devices:\n");
     for (int i = 0; i < num_physical_devices; i++) {
         vkGetPhysicalDeviceProperties(devices[i], &r->device_props);
-        bool is_preferred =
-            preferred_device &&
-            !strcmp(r->device_props.deviceName, preferred_device);
-        if (is_preferred) {
-            preferred_device_index = i;
-        }
+        bool is_wanted =
+            force ? !strcmp(r->device_props.deviceName, forced_device) :
+                    is_display_device(devices[i], display_uuid);
         fprintf(stderr, "- %s%s\n", r->device_props.deviceName,
-                is_preferred ? " *" : "");
-    }
-
-    r->physical_device = VK_NULL_HANDLE;
-
-    if (preferred_device_index >= 0 &&
-        is_device_compatible(devices[preferred_device_index])) {
-        r->physical_device = devices[preferred_device_index];
-    } else {
-        for (int i = 0; i < num_physical_devices; i++) {
-            if (is_device_compatible(devices[i])) {
-                r->physical_device = devices[i];
-                break;
-            }
+                is_wanted ? " *" : "");
+        if (is_wanted && r->physical_device == VK_NULL_HANDLE &&
+            is_device_compatible(devices[i])) {
+            r->physical_device = devices[i];
         }
     }
+
     if (r->physical_device == VK_NULL_HANDLE) {
-        error_setg(errp, "Failed to find a suitable GPU");
+        if (force) {
+            error_setg(errp, "Forced device \"%s\" not found or unsupported",
+                       forced_device);
+        } else {
+            error_setg(errp,
+                       "No supported Vulkan device found for the GPU driving "
+                       "the display. To override, set "
+                       "display.vulkan.force_physical_device.");
+        }
         return false;
     }
 
     vkGetPhysicalDeviceProperties(r->physical_device, &r->device_props);
-    xemu_settings_set_string(&g_config.display.vulkan.preferred_physical_device,
-                             r->device_props.deviceName);
     r->vk_api_version = MIN(r->vk_api_version, r->device_props.apiVersion);
 
     fprintf(stderr,
@@ -674,8 +707,12 @@ static bool init_allocator(PGRAPHState *pg, Error **errp)
 
 void pgraph_vk_init_instance(PGRAPHState *pg, Error **errp)
 {
+    uint8_t display_uuid[VK_UUID_SIZE];
+    bool have_display_uuid = get_display_device_uuid(display_uuid);
+
     if (create_instance(pg, errp) &&
-        select_physical_device(pg, errp) &&
+        select_physical_device(pg, have_display_uuid ? display_uuid : NULL,
+                               errp) &&
         create_logical_device(pg, errp) &&
         init_allocator(pg, errp)) {
         return;
