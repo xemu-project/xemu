@@ -435,3 +435,19 @@ void hmp_dumpdtb(Monitor *mon, const QDict *qdict)
     monitor_printf(mon, "DTB dumped to '%s'\n", filename);
 }
 #endif
+
+// <xemu>
+void hmp_plugin_cmd(Monitor *mon, const QDict *qdict)
+{
+#ifdef CONFIG_PLUGIN
+    const char *name = qdict_get_str(qdict, "name");
+    const char *line = qdict_get_try_str(qdict, "line");
+
+    if (!qemu_plugin_dispatch_cmd(name, line)) {
+        monitor_printf(mon, "Error: No plugin command registered with name '%s'\n", name);
+    }
+#else
+    monitor_printf(mon, "Error: Plugins are not enabled in this build.\n");
+#endif
+}
+// </xemu>
