@@ -223,6 +223,210 @@ input:
           type: bool
           default: false
 
+  system_actions:
+    toggle_pause:
+      scancode:
+        type: integer
+        default: 19 # P
+      ctrl:
+        type: bool
+        default: true
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    reset:
+      scancode:
+        type: integer
+        default: 21 # R
+      ctrl:
+        type: bool
+        default: true
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    power_off:
+      scancode:
+        type: integer
+        default: 20 # Q
+      ctrl:
+        type: bool
+        default: true
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    eject_disc:
+      scancode:
+        type: integer
+        default: 8 # E
+      ctrl:
+        type: bool
+        default: true
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    load_disc:
+      scancode:
+        type: integer
+        default: 18 # O
+      ctrl:
+        type: bool
+        default: true
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    screenshot:
+      scancode:
+        type: integer
+        default: 69 # F12
+      ctrl: bool
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    toggle_fullscreen:
+      scancode:
+        type: integer
+        default: 68 # F11
+      ctrl: bool
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    toggle_monitor:
+      scancode:
+        type: integer
+        default: 53 # GraveAccent/Tilde
+      ctrl: bool
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    toggle_main_menu:
+      scancode:
+        type: integer
+        default: 58 # F1
+      ctrl: bool
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    toggle_popup_menu:
+      scancode:
+        type: integer
+        default: 59 # F2
+      ctrl: bool
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1:
+        type: integer
+        default: 16384 # CONTROLLER_BUTTON_GUIDE (1<<14)
+      controller_chord_2:
+        type: integer
+        default: 768 # CONTROLLER_BUTTON_BACK (1<<8) | CONTROLLER_BUTTON_START (1<<9)
+    snapshot_load_1:
+      scancode:
+        type: integer
+        default: 62 # F5
+      ctrl: bool
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    snapshot_load_2:
+      scancode:
+        type: integer
+        default: 63 # F6
+      ctrl: bool
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    snapshot_load_3:
+      scancode:
+        type: integer
+        default: 64 # F7
+      ctrl: bool
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    snapshot_load_4:
+      scancode:
+        type: integer
+        default: 65 # F8
+      ctrl: bool
+      shift: bool
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    snapshot_save_1:
+      scancode:
+        type: integer
+        default: 62 # F5
+      ctrl: bool
+      shift:
+        type: bool
+        default: true
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    snapshot_save_2:
+      scancode:
+        type: integer
+        default: 63 # F6
+      ctrl: bool
+      shift:
+        type: bool
+        default: true
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    snapshot_save_3:
+      scancode:
+        type: integer
+        default: 64 # F7
+      ctrl: bool
+      shift:
+        type: bool
+        default: true
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+    snapshot_save_4:
+      scancode:
+        type: integer
+        default: 65 # F8
+      ctrl: bool
+      shift:
+        type: bool
+        default: true
+      alt: bool
+      super: bool
+      controller_chord_1: integer
+      controller_chord_2: integer
+
 display:
   renderer:
     type: enum
