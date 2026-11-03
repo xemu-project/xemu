@@ -18,8 +18,8 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
-
 #include "hw/xbox/mcpx/apu/apu_int.h"
+#include "qemu/log.h"
 #include "adpcm.h"
 
 static const struct {
@@ -965,7 +965,14 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
         seg_s = (segment_length >> 23) & 1;
         assert(seg_cs == container_size_index);
         assert((seg_spb + 1) == samples_per_block);
-        assert(seg_s == stereo);
+                if (seg_s != stereo) {
+            qemu_log_mask(LOG_UNIMP,
+                "APU: voice %d segment format mismatch (possibly "
+                "surround audio, which is not yet supported) - "
+                "forcing to %s\n",
+                v, stereo ? "stereo" : "mono");
+            seg_s = stereo;
+        }
         container_size_index = seg_cs;
         if (seg_cs == NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE_ADPCM) {
             sample_size = NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S24;
