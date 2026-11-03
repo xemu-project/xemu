@@ -125,7 +125,10 @@ void pgraph_gl_clear_surface(NV2AState *d, uint32_t parameter)
         r->color_binding->cleared = full_clear && write_color;
     }
     if (r->zeta_binding) {
-        r->zeta_binding->cleared = full_clear && write_zeta;
+        r->zeta_binding->cleared =
+            full_clear && write_zeta &&
+            r->zeta_binding->width == pg->surface_binding_dim.width &&
+            r->zeta_binding->height == pg->surface_binding_dim.height;
     }
 
     pg->clearing = false;
