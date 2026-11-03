@@ -176,7 +176,9 @@
 #define NV1BA0_PIO_SET_VOICE_TAR_VOLA                    0x00000360
 #define NV1BA0_PIO_SET_VOICE_TAR_VOLB                    0x00000364
 #define NV1BA0_PIO_SET_VOICE_TAR_VOLC                    0x00000368
+#define NV1BA0_PIO_SET_VOICE_LFO_DELAY                   0x00000350
 #define NV1BA0_PIO_SET_VOICE_LFO_ENV                     0x0000036C
+#define NV1BA0_PIO_SET_VOICE_LFO_MOD                     0x00000370
 #define NV1BA0_PIO_SET_VOICE_TAR_FCA                     0x00000374
 #define NV1BA0_PIO_SET_VOICE_TAR_FCB                     0x00000378
 #define NV1BA0_PIO_SET_VOICE_TAR_PITCH                   0x0000037C
@@ -261,7 +263,10 @@
 #define NV_PAVS_VOICE_CFG_ENVF                           0x00000014
 #define NV_PAVS_VOICE_CFG_MISC                           0x00000018
 #   define NV_PAVS_VOICE_CFG_MISC_EF_RELEASERATE            (0xFFF << 0)
+#   define NV_PAVS_VOICE_CFG_MISC_LFOA_DELAY_ENABLE         (1 << 14)
+#   define NV_PAVS_VOICE_CFG_MISC_LFOF_DELAY_ENABLE         (1 << 15)
 #   define NV_PAVS_VOICE_CFG_MISC_FMODE                     (3 << 16)
+#   define NV_PAVS_VOICE_CFG_MISC_PARAEQ_Q                  (7 << 18)
 #define NV_PAVS_VOICE_CFG_HRTF_TARGET                    0x0000001C
 #   define NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE             0x0000FFFF
 #define NV_PAVS_VOICE_CUR_PSL_START                      0x00000020
@@ -272,6 +277,10 @@
 #define NV_PAVS_VOICE_CUR_ECNT                           0x00000034
 #   define NV_PAVS_VOICE_CUR_ECNT_EACOUNT                   0x0000FFFF
 #   define NV_PAVS_VOICE_CUR_ECNT_EFCOUNT                   0xFFFF0000
+
+#define NV_PAVS_VOICE_PAR_LFO_DELAY                      0x00000050
+#   define NV_PAVS_VOICE_PAR_LFO_DELAY_LFOA                 0x00007FFF
+#   define NV_PAVS_VOICE_PAR_LFO_DELAY_LFOF                 0x7FFF0000
 
 #define NV_PAVS_VOICE_PAR_STATE                          0x00000054
 #   define NV_PAVS_VOICE_PAR_STATE_PAUSED                   (1 << 18)
@@ -310,6 +319,13 @@
 #   define NV_PAVS_VOICE_TAR_VOLC_VOLUME5                   0xFFF00000
 #define NV_PAVS_VOICE_TAR_LFO_ENV                        0x0000006C
 #   define NV_PAVS_VOICE_TAR_LFO_ENV_EA_RELEASERATE         (0xFFF << 0)
+#   define NV_PAVS_VOICE_TAR_LFO_ENV_LFOA_DELTA             (0x3FF << 12)
+#   define NV_PAVS_VOICE_TAR_LFO_ENV_LFOF_DELTA             (0x3FF << 22)
+#define NV_PAVS_VOICE_TAR_LFO_MOD                        0x00000070
+#   define NV_PAVS_VOICE_TAR_LFO_MOD_LFOA_AMPLITUDE         (0xFF << 0)
+#   define NV_PAVS_VOICE_TAR_LFO_MOD_LFOA_PITCH             (0xFF << 8)
+#   define NV_PAVS_VOICE_TAR_LFO_MOD_LFOA_CUTOFF            (0xFF << 16)
+#   define NV_PAVS_VOICE_TAR_LFO_MOD_LFOF_PITCH             (0xFF << 24)
 #define NV_PAVS_VOICE_TAR_FCA                            0x00000074
 #   define NV_PAVS_VOICE_TAR_FCA_FC0                        0x0000FFFF
 #   define NV_PAVS_VOICE_TAR_FCA_FC1                        0xFFFF0000
