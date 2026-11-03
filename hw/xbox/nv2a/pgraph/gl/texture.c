@@ -299,16 +299,8 @@ void pgraph_gl_bind_textures(NV2AState *d)
             // FIXME: Restructure to support rendering surfaces to cubemap faces
 
             // Writeback any surfaces which this texture may index
-            hwaddr tex_vram_end = texture_vram_offset + length - 1;
-            SurfaceBinding *surf_it;
-            QTAILQ_FOREACH(surf_it, &r->surfaces, entry) {
-                hwaddr surf_vram_end = surf_it->vram_addr + surf_it->size - 1;
-                bool overlapping = !(surf_it->vram_addr >= tex_vram_end
-                                     || texture_vram_offset >= surf_vram_end);
-                if (overlapping) {
-                    pgraph_gl_surface_download_if_dirty(d, surf_it);
-                }
-            }
+            pgraph_gl_sync_region_for_transfer(d, texture_vram_offset, length,
+                                               false);
         }
 
         TextureKey key;
