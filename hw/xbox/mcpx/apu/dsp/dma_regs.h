@@ -2,7 +2,7 @@
  * MCPX DSP DMA
  *
  * Copyright (c) 2015 espes
- * Copyright (c) 2020-2025 Matt Borgerson
+ * Copyright (c) 2020-2026 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,8 +18,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef HW_XBOX_MCPX_DSP_DSP_DMA_REGS_H
-#define HW_XBOX_MCPX_DSP_DSP_DMA_REGS_H
+#ifndef HW_XBOX_MCPX_DSP_DMA_REGS_H
+#define HW_XBOX_MCPX_DSP_DMA_REGS_H
 
 #define DMA_CONFIGURATION_AUTOSTART (1 << 0)
 #define DMA_CONFIGURATION_AUTOREADY (1 << 1)
@@ -38,6 +38,14 @@
 #define DMA_CONTROL_RUNNING (1 << 4)
 #define DMA_CONTROL_STOPPED (1 << 5)
 
+/* Interrupt-status ($FFFFC5) bits raised by the DMA engine. Bit 7 is EOL;
+ * bit 10 is the error flag a rejected node raises (silicon-probed: the node
+ * transfers nothing, sets this bit, and still latches EOL). */
+#define DMA_INTERRUPT_EOL (1 << 7)
+#define DMA_INTERRUPT_ERROR (1 << 10)
+
+/* Only the EOL bit ends a chain; a pointer of $0000 fetches the descriptor
+ * at X:$0000 like any other address (silicon-probed, see dsp_dma_run). */
 #define NODE_POINTER_VAL 0x3fff
 #define NODE_POINTER_EOL (1 << 14)
 

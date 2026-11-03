@@ -1211,6 +1211,60 @@ void physical_memory_set_dirty_range(ram_addr_t start, ram_addr_t length,
     }
 }
 
+/* Set dirty bits like physical_memory_set_dirty_range, but scan first and
+ * pay the locked RMWs only for a client whose range holds a clean page: a
+ * device streaming into the same pages re-marks bits no consumer clears.
+ * One RCU section covers the scan and the set, unlike a
+ * range_includes_clean + set_dirty_range pair, which opens one per client
+ * per call and costs more than it saves. */
+void physical_memory_set_dirty_range_lazy(ram_addr_t start, ram_addr_t length,
+                                          uint8_t mask)
+{
+    unsigned long end, page;
+    unsigned long idx, offset, base;
+    int i;
+
+    if (!mask && !xen_enabled()) {
+        return;
+    }
+
+    end = TARGET_PAGE_ALIGN(start + length) >> TARGET_PAGE_BITS;
+
+    WITH_RCU_READ_LOCK_GUARD() {
+        for (i = 0; i < DIRTY_MEMORY_NUM; i++) {
+            if (!(mask & (1 << i))) {
+                continue;
+            }
+            DirtyMemoryBlocks *blocks =
+                qatomic_rcu_read(&ram_list.dirty_memory[i]);
+
+            page = start >> TARGET_PAGE_BITS;
+            idx = page / DIRTY_MEMORY_BLOCK_SIZE;
+            offset = page % DIRTY_MEMORY_BLOCK_SIZE;
+            base = page - offset;
+            while (page < end) {
+                unsigned long next = MIN(end, base + DIRTY_MEMORY_BLOCK_SIZE);
+                unsigned long bound = offset + (next - page);
+                unsigned long found = find_next_zero_bit(blocks->blocks[idx],
+                                                         bound, offset);
+                if (found < bound) {
+                    bitmap_set_atomic(blocks->blocks[idx], found,
+                                      bound - found);
+                }
+
+                page = next;
+                idx++;
+                offset = 0;
+                base += DIRTY_MEMORY_BLOCK_SIZE;
+            }
+        }
+    }
+
+    if (xen_enabled()) {
+        xen_hvm_modified_memory(start, length);
+    }
+}
+
 /* Note: start and end must be within the same ram block.  */
 bool physical_memory_test_and_clear_dirty(ram_addr_t start,
                                               ram_addr_t length,
