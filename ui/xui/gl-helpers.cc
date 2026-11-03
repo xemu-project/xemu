@@ -24,6 +24,7 @@
 #include "data/logo_sdf.png.h"
 #include "data/xemu_64x64.png.h"
 #include "data/xmu_mask.png.h"
+#include "data/xblc_mask.png.h"
 #include "notifications.hh"
 #include "stb_image.h"
 #include <fpng.h>
@@ -32,9 +33,11 @@
 #include <vector>
 
 #include "ui/shader/xemu-logo-frag.h"
+#include "../../hw/xbox/xblc.h"
 
-Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
-GLuint g_controller_duke_tex, g_controller_s_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
+Fbo *controller_fbo, *xmu_fbo, *xblc_fbo, *logo_fbo;
+GLuint g_controller_duke_tex, g_controller_s_tex, 
+       g_logo_tex, g_icon_tex, g_xmu_tex, g_xblc_tex;
 
 enum class ShaderType {
     Blit,
@@ -422,7 +425,8 @@ static const struct rect tex_items[] = {
     { 67, 48, 28, 28 }, // obj_port_lbl_2
     { 67, 20, 28, 28 }, // obj_port_lbl_3
     { 95, 76, 28, 28 }, // obj_port_lbl_4
-    { 0, 0, 512, 512 } // obj_xmu
+    { 0, 0, 512, 512 }, // obj_xmu
+    { 0, 0, 512, 512 }, // obj_xblc
 };
 
 enum tex_item_names {
@@ -434,7 +438,8 @@ enum tex_item_names {
     obj_port_lbl_2,
     obj_port_lbl_3,
     obj_port_lbl_4,
-    obj_xmu
+    obj_xmu,
+    obj_xblc
 };
 
 void InitCustomRendering(void)
@@ -449,6 +454,9 @@ void InitCustomRendering(void)
 
     g_xmu_tex = LoadTextureFromMemory(xmu_mask_data, xmu_mask_size);
     xmu_fbo = new Fbo(512, 256);
+
+    g_xblc_tex = LoadTextureFromMemory(xblc_mask_data, xblc_mask_size);
+    xblc_fbo = new Fbo(256, 256);
 
     g_logo_tex = LoadTextureFromMemory(logo_sdf_data, logo_sdf_size);
     g_logo_shader = NewDecalShader(ShaderType::Logo);
@@ -848,6 +856,31 @@ void RenderXmu(float frame_x, float frame_y, uint32_t primary_color,
                 tex_items[obj_xmu].x, tex_items[obj_xmu].y,
                 tex_items[obj_xmu].w, tex_items[obj_xmu].h, primary_color,
                 secondary_color, 0);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
+void RenderXblc(XblcState *xblc, float frame_x, float frame_y, 
+                uint32_t primary_color, uint32_t secondary_color)
+{
+    glUseProgram(g_decal_shader->prog);
+    glBindVertexArray(g_decal_shader->vao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_xblc_tex);
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_ONE, GL_ZERO);
+
+    // Render xblc
+    RenderDecal(g_decal_shader, frame_x, frame_y, 256, 256,
+                tex_items[obj_xblc].x, tex_items[obj_xblc].y,
+                tex_items[obj_xblc].w, tex_items[obj_xblc].h, primary_color,
+                secondary_color, 0);
+
+    if(xblc->dev != NULL) {
+        float volume = xblc_audio_stream_get_current_input_volume(xblc->dev);
+        RenderMeter(g_decal_shader, 4, 4, 252, 5, volume, primary_color + 0x40, primary_color + 0xFF);
+    }
 
     glBindVertexArray(0);
     glUseProgram(0);
