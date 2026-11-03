@@ -3,6 +3,7 @@ specific_ss.add(files(
 	'profile.c',
 	'rdi.c',
 	's3tc.c',
+	'surface.c',
 	'swizzle.c',
 	'texture.c',
 	'vertex.c',
