@@ -29,16 +29,20 @@ install_translation_catalogs() {
 }
 
 build_translation_catalogs() {
-    make qemu-gmo
+    # Go through Make so the configured build backend is respected.  gettext is
+    # optional, so qemu-gmo is absent when it was disabled or unavailable.
+    if make -n qemu-gmo >/dev/null 2>&1; then
+        make qemu-gmo
+    fi
 }
 
 package_windows() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386w.exe dist/xemu.exe
-    # update_internal() creates directory entries and parent directories before
-    # extracting files, so release archives may include gettext catalogs.
-    install_translation_catalogs dist
+    # Keep update archives flat until the directory-capable updater has reached
+    # existing Windows installations.  The updater support remains in place for
+    # a later release that can safely ship gettext catalogs.
     python3 "${project_source_dir}/get_deps.py" dist/xemu.exe dist
 }
 
@@ -46,7 +50,8 @@ package_wincross() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386w.exe dist/xemu.exe
-    install_translation_catalogs dist
+    # See package_windows(): existing updater clients cannot consume nested
+    # catalog paths yet.
     python3 ./scripts/gen-license.py --platform windows > dist/LICENSE.txt
 }
 
