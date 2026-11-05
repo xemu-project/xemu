@@ -4810,9 +4810,7 @@ subdir('docs')
 if host_os != 'emscripten'
   subdir('tests')
 endif
-if gtk.found()
-  subdir('po')
-endif
+subdir('po')
 
 if host_machine.system() == 'windows'
   nsis_cmd = [

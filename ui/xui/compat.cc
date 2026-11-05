@@ -68,7 +68,7 @@ void CompatibilityReporter::Draw()
     };
 
     ImGui::SetNextWindowContentSize(ImVec2(550.0f*g_viewport_mgr.m_scale, 0.0f));
-    if (!ImGui::Begin("Report Compatibility", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (!ImGui::Begin(_("Report Compatibility"), &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         return;
     }
@@ -120,7 +120,7 @@ void CompatibilityReporter::Draw()
     ImGui::Columns(2, "", false);
     ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.25);
 
-    ImGui::Text("User Token");
+    ImGui::Text("%s", _("User Token"));
     ImGui::SameLine();
     HelpMarker("This is a unique access token used to authorize submission of the report. To request a token, click 'Get Token'.");
     ImGui::NextColumn();
@@ -134,12 +134,12 @@ void CompatibilityReporter::Draw()
     }
     ImGui::PopFont();
     ImGui::SameLine();
-    if (ImGui::Button("Get Token")) {
+    if (ImGui::Button(_("Get Token"))) {
         SDL_OpenURL("https://reports.xemu.app");
     }
     ImGui::NextColumn();
 
-    ImGui::Text("Playability");
+    ImGui::Text("%s", _("Playability"));
     ImGui::NextColumn();
     ImGui::SetNextItemWidth(item_width);
     if (ImGui::Combo("###PlayabilityRating", &playability,
@@ -153,7 +153,7 @@ void CompatibilityReporter::Draw()
 
     ImGui::Columns(1);
 
-    ImGui::Text("Description");
+    ImGui::Text("%s", _("Description"));
     if (ImGui::InputTextMultiline("###desc", description, sizeof(description), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 6), 0)) {
         report.compat_comments = description;
         dirty = true;
@@ -195,9 +195,9 @@ void CompatibilityReporter::Draw()
 
     if (did_send) {
         if (send_result) {
-            ImGui::Text("Sent! Thanks.");
+            ImGui::Text("%s", _("Sent! Thanks."));
         } else {
-            ImGui::Text("Error: %s (%d)", report.GetResultMessage().c_str(), report.GetResultCode());
+            ImGui::Text(_("Error: %s (%d)"), report.GetResultMessage().c_str(), report.GetResultCode());
         }
         ImGui::SameLine();
     }
@@ -205,7 +205,7 @@ void CompatibilityReporter::Draw()
     ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_viewport_mgr.m_scale);
 
     ImGui::SetItemDefaultFocus();
-    if (ImGui::Button("Send", ImVec2(120*g_viewport_mgr.m_scale, 0))) {
+    if (ImGui::Button(_("Send"), ImVec2(120*g_viewport_mgr.m_scale, 0))) {
         did_send = true;
         send_result = report.Send();
         if (send_result) {

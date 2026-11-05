@@ -5,6 +5,7 @@ Maintainer: Matt Borgerson <contact@mborgerson.com>
 Build-Depends: debhelper (>= 11),
  cmake,
  git,
+ gettext,
  python3:any,
  python3-pip,
  python3-tomli,

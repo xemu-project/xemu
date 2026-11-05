@@ -8,10 +8,41 @@ project_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd
 
 target_arch=$(uname -m)
 
+install_translation_catalogs() {
+    local destination="$1"
+    local locale_dir
+    test -r build/config-host.h || return 0
+    locale_dir=$(sed -n 's/^#define CONFIG_QEMU_LOCALEDIR "\(.*\)"$/\1/p' build/config-host.h)
+    test -n "${locale_dir}"
+    case "${platform}" in
+        CYGWIN*|MINGW*|MSYS*|win64-cross) locale_dir="${locale_dir#?:}" ;;
+    esac
+    find build/po -path '*/LC_MESSAGES/qemu.mo' -type f -print -quit | grep -q . || return 0
+
+    while IFS= read -r catalog; do
+        local language
+        language=$(basename "$(dirname "$(dirname "${catalog}")")")
+        local target="${destination}/qemu-bundle${locale_dir}/${language}/LC_MESSAGES/qemu.mo"
+        mkdir -p "$(dirname "${target}")"
+        install -m 0644 "${catalog}" "${target}"
+    done < <(find build/po -path '*/LC_MESSAGES/qemu.mo' -type f)
+}
+
+build_translation_catalogs() {
+    # Go through Make so the configured build backend is respected.  gettext is
+    # optional, so qemu-gmo is absent when it was disabled or unavailable.
+    if make -n qemu-gmo >/dev/null 2>&1; then
+        make qemu-gmo
+    fi
+}
+
 package_windows() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386w.exe dist/xemu.exe
+    # Keep update archives flat until the directory-capable updater has reached
+    # existing Windows installations.  The updater support remains in place for
+    # a later release that can safely ship gettext catalogs.
     python3 "${project_source_dir}/get_deps.py" dist/xemu.exe dist
 }
 
@@ -19,6 +50,8 @@ package_wincross() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386w.exe dist/xemu.exe
+    # See package_windows(): existing updater clients cannot consume nested
+    # catalog paths yet.
     python3 ./scripts/gen-license.py --platform windows > dist/LICENSE.txt
 }
 
@@ -65,6 +98,7 @@ package_macos() {
     iconutil --convert icns --output dist/xemu.app/Contents/Resources/xemu.icns xemu.iconset
 
     cp Info.plist dist/xemu.app/Contents/
+    install_translation_catalogs dist/xemu.app/Contents/MacOS
 
     if [[ -e "${project_source_dir}/XEMU_VERSION" ]]; then
       xemu_version="$(cat ${project_source_dir}/XEMU_VERSION | cut -f1 -d-)"
@@ -83,6 +117,7 @@ package_linux() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386 dist/xemu
+    install_translation_catalogs dist
     if test -e "${project_source_dir}/XEMU_LICENSE"; then
       cp "${project_source_dir}/XEMU_LICENSE" dist/LICENSE.txt
     else
@@ -260,6 +295,7 @@ configure="${project_source_dir}/configure"
 set -x # Print commands from now on
 
 "${configure}" \
+    --enable-gettext \
     --extra-cflags="-DXBOX=1 ${build_cflags} ${sys_cflags} ${CFLAGS}" \
     --extra-ldflags="${sys_ldflags}" \
     --target-list=i386-softmmu \
@@ -267,5 +303,6 @@ set -x # Print commands from now on
     "$@"
 
 time make -j"${job_count}" ${target} 2>&1 | tee build.log
+build_translation_catalogs
 
 "${postbuild}" # call post build functions
