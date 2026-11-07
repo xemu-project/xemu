@@ -20,11 +20,12 @@
 #ifndef XEMU_SNAPSHOTS_H
 #define XEMU_SNAPSHOTS_H
 
+#include "qemu/osdep.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "qemu/osdep.h"
 #include "block/snapshot.h"
 #include <epoxy/gl.h>
 

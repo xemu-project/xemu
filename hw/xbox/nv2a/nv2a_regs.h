@@ -63,6 +63,7 @@
 #define NV_PMC_INTR_0                                    0x00000100
 #   define NV_PMC_INTR_0_PFIFO                                 (1 << 8)
 #   define NV_PMC_INTR_0_PGRAPH                               (1 << 12)
+#   define NV_PMC_INTR_0_PTIMER                               (1 << 20)
 #   define NV_PMC_INTR_0_PCRTC                                (1 << 24)
 #   define NV_PMC_INTR_0_PBUS                                 (1 << 28)
 #   define NV_PMC_INTR_0_SOFTWARE                             (1 << 31)
@@ -162,6 +163,8 @@
 #       define NV_PFIFO_CACHE1_DMA_STATE_ERROR_PROTECTION         6
 #define NV_PFIFO_CACHE1_DMA_INSTANCE                     0x0000122C
 #   define NV_PFIFO_CACHE1_DMA_INSTANCE_ADDRESS               0x0000FFFF
+#define NV_PFIFO_CACHE1_DMA_CTL                          0x00001230
+#   define NV_PFIFO_CACHE1_DMA_CTL_VALID                       (1 << 31)
 #define NV_PFIFO_CACHE1_DMA_PUT                          0x00001240
 #define NV_PFIFO_CACHE1_DMA_GET                          0x00001244
 #define NV_PFIFO_CACHE1_REF                              0x00001248
@@ -1224,6 +1227,7 @@
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FLOAT 0x2F
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FIXED 0x30
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT 0x31
+#           define NV097_SET_TEXTURE_FORMAT_COLOR_SZ_Y16            0x32
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_Y16      0x35
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8B8G8R8       0x3A
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_SZ_B8G8R8A8       0x3B

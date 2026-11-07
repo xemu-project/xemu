@@ -135,7 +135,7 @@ void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
             }
         } else {
             p->status = USB_RET_STALL;
-            assert(false);
+            assert(!"USB XID failed to GET_REPORT");
         }
         break;
     case ClassInterfaceOutRequest | HID_SET_REPORT:
@@ -155,7 +155,7 @@ void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
             update_output(s);
         } else {
             p->status = USB_RET_STALL;
-            assert(false);
+            assert(!"USB XID failed to SET_REPORT");
         }
         break;
     /* XID requests */
@@ -167,7 +167,7 @@ void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
             p->actual_length = s->xid_desc->bLength;
         } else {
             p->status = USB_RET_STALL;
-            assert(false);
+            assert(!"USB XID failed to GET_DESCRIPTOR");
         }
         break;
     case VendorInterfaceRequest | XID_GET_CAPABILITIES:
@@ -186,7 +186,7 @@ void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
             p->actual_length = length;
         } else {
             p->status = USB_RET_STALL;
-            assert(false);
+            assert(!"USB XID failed to GET_CAPABILITIES");
         }
         break;
     case ((USB_DIR_IN|USB_TYPE_CLASS|USB_RECIP_DEVICE)<<8)
@@ -210,7 +210,7 @@ void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
     default:
         DPRINTF("xid USB stalled on request 0x%x value 0x%x\n", request, value);
         p->status = USB_RET_STALL;
-        assert(false);
+        assert(!"USB XID stalled on request");
         break;
     }
 }

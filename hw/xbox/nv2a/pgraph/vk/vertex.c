@@ -188,7 +188,7 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
             break;
         default:
             fprintf(stderr, "Unknown vertex type: 0x%x\n", attr->format);
-            assert(false);
+            assert(!"Unknown vertex type");
             break;
         }
 

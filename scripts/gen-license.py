@@ -369,7 +369,7 @@ LIBS = [
         pkg_win="sdl3",
         pkg_mac="sdl3",
         pkg_ubuntu="libsdl3-dev",
-        version="3.4.2",
+        version="3.4.8",
     ),
     Lib(
         "glib-2.0",
@@ -509,6 +509,17 @@ LIBS = [
         ships_static={windows},
         platform={windows},
         submodule=Submodule("subprojects/curl.wrap"),
+    ),
+    Lib(
+        "dsp56300",
+        "https://github.com/mborgerson/dsp56300",
+        mit,
+        # Note: This URL points to the dsp56300 license, but the distributed library includes
+        # additional dependencies. The license file at licenses/dsp56300.license.txt contains
+        # the dsp56300 license as well as its dependencies.
+        "https://raw.githubusercontent.com/mborgerson/dsp56300/refs/heads/main/LICENSE",
+        ships_static=all_platforms,
+        version="0.1.3",
     ),
 ]
 

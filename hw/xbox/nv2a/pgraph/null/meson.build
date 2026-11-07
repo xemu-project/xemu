@@ -1,3 +1,3 @@
-specific_ss.add([sdl, files(
+specific_ss.add([sdl, gloffscreen, files(
 	'renderer.c',
 	)])

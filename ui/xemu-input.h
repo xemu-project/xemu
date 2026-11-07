@@ -125,7 +125,7 @@ extern "C" {
 extern int *g_keyboard_scancode_map[25];
 
 void xemu_input_init(void);
-void xemu_input_process_sdl_events(const SDL_Event *event); // SDL_EVENT_GAMEPAD_ADDED, SDL_EVENT_GAMEPAD_REMOVED
+void xemu_input_process_sdl_events(const SDL_Event *event);
 void xemu_input_update_controllers(void);
 void xemu_input_update_controller(ControllerState *state);
 void xemu_input_update_sdl_kbd_controller_state(ControllerState *state);

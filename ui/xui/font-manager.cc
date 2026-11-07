@@ -29,90 +29,86 @@ FontManager g_font_mgr;
 FontManager::FontManager()
 {
     m_last_viewport_scale = 1;
-    m_font_scale = 1;
+    m_last_pixel_density = 1;
 }
 
 void FontManager::Rebuild()
 {
     ImGuiIO &io = ImGui::GetIO();
 
-    // FIXME: Trim FA to only glyphs in use
-
     io.Fonts->Clear();
+
+    float scale = g_viewport_mgr.m_scale;
+    float pixel_density = g_viewport_mgr.m_pixel_density;
 
     {
         ImFontConfig config;
         config.FontDataOwnedByAtlas = false;
+        config.RasterizerDensity = pixel_density;
         m_default_font = io.Fonts->AddFontFromMemoryTTF(
             (void *)Roboto_Medium_data, Roboto_Medium_size,
-            16.0f * g_viewport_mgr.m_scale * m_font_scale, &config);
+            16.0f * scale, &config);
         m_menu_font_small = io.Fonts->AddFontFromMemoryTTF(
             (void *)RobotoCondensed_Regular_data, RobotoCondensed_Regular_size,
-            22.0f * g_viewport_mgr.m_scale * m_font_scale, &config);
+            22.0f * scale, &config);
     }
     {
         ImFontConfig config;
         config.FontDataOwnedByAtlas = false;
+        config.RasterizerDensity = pixel_density;
         config.MergeMode = true;
         config.GlyphOffset =
-            ImVec2(0, 13 * g_viewport_mgr.m_scale * m_font_scale);
-        config.GlyphMaxAdvanceX = 24.0f * g_viewport_mgr.m_scale * m_font_scale;
+            ImVec2(0, 13 * scale);
+        config.GlyphMaxAdvanceX = 24.0f * scale;
         static const ImWchar icon_ranges[] = { 0xf900, 0xf903, 0 };
         io.Fonts->AddFontFromMemoryTTF((void *)abxy_data, abxy_size,
-                                       40.0f * g_viewport_mgr.m_scale *
-                                           m_font_scale,
+                                       40.0f * scale,
                                        &config, icon_ranges);
     }
     {
         ImFontConfig config;
         config.FontDataOwnedByAtlas = false;
+        config.RasterizerDensity = pixel_density;
         m_menu_font_medium = io.Fonts->AddFontFromMemoryTTF(
             (void *)RobotoCondensed_Regular_data, RobotoCondensed_Regular_size,
-            26.0f * g_viewport_mgr.m_scale * m_font_scale, &config);
+            26.0f * scale, &config);
         m_menu_font = io.Fonts->AddFontFromMemoryTTF(
             (void *)RobotoCondensed_Regular_data, RobotoCondensed_Regular_size,
-            34.0f * g_viewport_mgr.m_scale * m_font_scale, &config);
+            34.0f * scale, &config);
     }
     {
         ImFontConfig config;
         config.FontDataOwnedByAtlas = false;
+        config.RasterizerDensity = pixel_density;
         config.MergeMode = true;
         config.GlyphOffset =
-            ImVec2(0, -3 * g_viewport_mgr.m_scale * m_font_scale);
-        config.GlyphMinAdvanceX = 32.0f * g_viewport_mgr.m_scale * m_font_scale;
+            ImVec2(0, -3 * scale);
+        config.GlyphMinAdvanceX = 32.0f * scale;
         static const ImWchar icon_ranges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
         io.Fonts->AddFontFromMemoryTTF((void *)font_awesome_6_1_1_solid_min_data,
                                        font_awesome_6_1_1_solid_min_size,
-                                       18.0f * g_viewport_mgr.m_scale *
-                                           m_font_scale,
+                                       18.0f * scale,
                                        &config, icon_ranges);
     }
-
-    // {
-    //     ImFontConfig config;
-    //     config.FontDataOwnedByAtlas = false;
-    //     static const ImWchar icon_ranges[] = { 0xf04c, 0xf04c, 0 };
-    //     m_big_state_icon_font = io.Fonts->AddFontFromMemoryTTF(
-    //         (void *)font_awesome_6_1_1_solid_data,
-    //         font_awesome_6_1_1_solid_size,
-    //         64.0f * g_viewport_mgr.m_scale * m_font_scale, &config,
-    //         icon_ranges);
-    // }
     {
         ImFontConfig config = ImFontConfig();
         config.OversampleH = config.OversampleV = 1;
         config.PixelSnapH = true;
-        config.SizePixels = 13.0f*g_viewport_mgr.m_scale;
+        config.RasterizerDensity = pixel_density;
+        config.SizePixels = 13.0f * scale;
         m_fixed_width_font = io.Fonts->AddFontDefault(&config);
     }
 
+    ImGui_ImplOpenGL3_DestroyFontsTexture();
     ImGui_ImplOpenGL3_CreateFontsTexture();
 }
 
 void FontManager::Update()
 {
-    if (g_viewport_mgr.m_scale != m_last_viewport_scale) {
+    if (g_viewport_mgr.m_scale != m_last_viewport_scale ||
+        g_viewport_mgr.m_pixel_density != m_last_pixel_density) {
         Rebuild();
         m_last_viewport_scale = g_viewport_mgr.m_scale;
+        m_last_pixel_density = g_viewport_mgr.m_pixel_density;
     }
 }

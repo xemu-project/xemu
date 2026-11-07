@@ -27,9 +27,6 @@
 #include "hw/xbox/mcpx/apu/apu_regs.h"
 
 #include "dsp.h"
-#include "dsp_dma.h"
-#include "dsp_cpu.h"
-#include "dsp_state.h"
 
 typedef struct MCPXAPUState MCPXAPUState;
 

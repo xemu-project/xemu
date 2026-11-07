@@ -35,7 +35,9 @@ xemu_ss.add(files(
 ))
 
 if host_os == 'windows'
-  xemu_ss.add(nvapi)
+  d3d11 = cc.find_library('d3d11', required: true)
+  dxgi = cc.find_library('dxgi', required: true)
+  xemu_ss.add(nvapi, d3d11, dxgi)
 endif
 
 subdir('xui')

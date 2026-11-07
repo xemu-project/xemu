@@ -109,7 +109,7 @@ static GLuint compile_shader(GLenum type, const char *source)
         log[sizeof(log) - 1] = '\0';
         fprintf(stderr, "GL shader type %d compilation failed: %s\n", type,
                 log);
-        assert(false);
+        assert(!"GL shader compilation failed");
     }
 
     return shader;
@@ -135,7 +135,7 @@ static GLuint create_program(const char *vert_source, const char *geom_source,
         glGetProgramInfoLog(shader_prog, sizeof(log), NULL, log);
         log[sizeof(log) - 1] = '\0';
         fprintf(stderr, "GL shader linking failed: %s\n", log);
-        assert(false);
+        assert(!"GL shader linking failed");
     }
 
     glDeleteShader(vert_shader);

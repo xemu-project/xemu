@@ -22,9 +22,12 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
-#include "dsp.h"
-#include "dsp_cpu.h"
+typedef void (*dsp_scratch_rw_func)(
+    void *opaque, uint8_t *ptr, uint32_t addr, size_t len, bool dir);
+typedef void (*dsp_fifo_rw_func)(
+    void *opaque, uint8_t *ptr, unsigned int index, size_t len, bool dir);
 
 #define DMA_CONTROL_RUNNING (1 << 4)
 #define DMA_CONTROL_STOPPED (1 << 5)
@@ -36,9 +39,17 @@ typedef enum DSPDMARegister {
     DMA_NEXT_BLOCK,
 } DSPDMARegister;
 
-typedef struct DSPDMAState {
-    dsp_core_t* core;
+/* Memory access callbacks for backend-agnostic DMA */
+typedef uint32_t (*dsp_dma_mem_read_func)(void *opaque, int space, uint32_t addr);
+typedef void (*dsp_dma_mem_write_func)(void *opaque, int space, uint32_t addr, uint32_t value);
 
+typedef struct DSPDMAState {
+    /* DSP memory access (backend-agnostic) */
+    void *mem_opaque;
+    dsp_dma_mem_read_func mem_read;
+    dsp_dma_mem_write_func mem_write;
+
+    /* System memory access */
     void *rw_opaque;
     dsp_scratch_rw_func scratch_rw;
     dsp_fifo_rw_func fifo_rw;
@@ -50,6 +61,10 @@ typedef struct DSPDMAState {
 
     bool error;
     bool eol;
+
+    /* DMA completion timer: counts reads of DMA_CONTROL while RUNNING.
+     * After 3 reads, transitions RUNNING -> STOPPED. */
+    uint32_t dma_read_count;
 } DSPDMAState;
 
 uint32_t dsp_dma_read(DSPDMAState *s, DSPDMARegister reg);

@@ -80,7 +80,7 @@ static enum S3TC_DECOMPRESS_FORMAT kelvin_format_to_s3tc_format(int color_format
     case NV097_SET_TEXTURE_FORMAT_COLOR_L_DXT45_A8R8G8B8:
         return S3TC_DECOMPRESS_FORMAT_DXT5;
     default:
-        assert(false);
+        assert(!"Invalid texture color format");
     }
 }
 
@@ -876,9 +876,8 @@ static unsigned int vk_format_texel_size(VkFormat format)
     case VK_FORMAT_R8G8_UNORM:              return 2;
     case VK_FORMAT_A1R5G5B5_UNORM_PACK16:   return 2;
     case VK_FORMAT_R5G6B5_UNORM_PACK16:     return 2;
-    case VK_FORMAT_A4R4G4B4_UNORM_PACK16:   return 2;
+    case VK_FORMAT_B4G4R4A4_UNORM_PACK16:   return 2;
     case VK_FORMAT_R16_UNORM:               return 2;
-    case VK_FORMAT_R8G8B8_SNORM:            return 3;
     case VK_FORMAT_B8G8R8A8_UNORM:          return 4;
     case VK_FORMAT_R8G8B8A8_UNORM:          return 4;
     case VK_FORMAT_R32_UINT:                return 4;
@@ -899,6 +898,10 @@ static bool check_surface_to_texture_compatiblity(const SurfaceBinding *surface,
 
     if (!surface->color) {
         return true;
+    }
+
+    if (shape->color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5) {
+        return false;
     }
 
     VkColorFormatInfo tex_vkf = kelvin_color_format_vk_map[shape->color_format];
@@ -1172,7 +1175,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     void *palette_data = (char*)d->vram_ptr + texture_palette_vram_offset;
 
     uint64_t content_hash = 0;
-    if (!surface_to_texture && possibly_dirty) {
+    if (!surface_to_texture && (snode->draw_time || possibly_dirty)) {
         content_hash = fast_hash(texture_data, texture_length);
         if (is_indexed) {
             content_hash ^= fast_hash(palette_data, texture_palette_data_size);
@@ -1181,17 +1184,18 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
 
     if (binding_found) {
         if (surface_to_texture) {
-            // FIXME: Add draw time tracking
             if (surface->draw_time != snode->draw_time) {
                 copy_surface_to_texture(pg, surface, snode);
             }
         } else {
-            if (possibly_dirty && content_hash != snode->hash) {
+            if (snode->draw_time || (possibly_dirty && content_hash != snode->hash)) {
                 upload_texture_image(pg, texture_idx, snode);
                 snode->hash = content_hash;
+                snode->draw_time = 0;
             }
         }
 
+        snode->possibly_dirty = false;
         NV2A_VK_DGROUP_END();
         return;
     }
@@ -1452,6 +1456,9 @@ static void texture_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     snode->allocation = VK_NULL_HANDLE;
     snode->image_view = VK_NULL_HANDLE;
     snode->sampler = VK_NULL_HANDLE;
+    snode->draw_time = 0;
+    snode->hash = 0;
+    snode->possibly_dirty = false;
 }
 
 static void texture_cache_release_node_resources(PGRAPHVkState *r, TextureBinding *snode)
