@@ -339,7 +339,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "000000000000000010000110", "wait", NULL, emu_wait },
 };
 
-static bool matches_initialised;
+static gsize matches_initialized;
 static uint32_t nonparallel_matches[ARRAY_SIZE(nonparallel_opcodes)][2];
 
 /**********************************
@@ -349,8 +349,7 @@ static uint32_t nonparallel_matches[ARRAY_SIZE(nonparallel_opcodes)][2];
 void dsp56k_reset_cpu(dsp_core_t* dsp)
 {
     int i;
-    if (!matches_initialised) {
-        matches_initialised = true;
+    if (g_once_init_enter(&matches_initialized)) {
         for (i=0; i<ARRAY_SIZE(nonparallel_opcodes); i++) {
             const OpcodeEntry t = nonparallel_opcodes[i];
             assert(strlen(t.template) == 24);
@@ -368,12 +367,14 @@ void dsp56k_reset_cpu(dsp_core_t* dsp)
             nonparallel_matches[i][0] = mask;
             nonparallel_matches[i][1] = match;
         }
+        g_once_init_leave(&matches_initialized, 1);
     }
 
     /* Memory */
     memset(dsp->periph, 0, sizeof(dsp->periph));
     memset(dsp->stack, 0, sizeof(dsp->stack));
     memset(dsp->registers, 0, sizeof(dsp->registers));
+    memset(dsp->opcode_cache, 0, sizeof(dsp->opcode_cache));
 
     /* Registers */
     dsp->pc = 0x0000;
@@ -420,23 +421,19 @@ static const OpcodeEntry *lookup_opcode_slow(uint32_t op) {
     return NULL;
 }
 
-static const OpcodeEntry *lookup_opcode(uint32_t op) {
-    static struct opcache_entry {
-        uint32_t op;
-        const OpcodeEntry *entry;
-    } opcache[256];
-
+static const OpcodeEntry *lookup_opcode(dsp_core_t *dsp, uint32_t op) {
     uint8_t tag =
         ((op >> 24) & 0xff) ^
         ((op >> 16) & 0xff) ^
         ((op >>  8) & 0xff) ^
         ((op >>  0) & 0xff);
-    if (opcache[tag].op != op || opcache[tag].entry == NULL) {
-        opcache[tag].op = op;
-        opcache[tag].entry = lookup_opcode_slow(op);
+    if (dsp->opcode_cache[tag].op != op
+        || dsp->opcode_cache[tag].entry == NULL) {
+        dsp->opcode_cache[tag].op = op;
+        dsp->opcode_cache[tag].entry = lookup_opcode_slow(op);
     }
 
-    return opcache[tag].entry;
+    return dsp->opcode_cache[tag].entry;
 }
 
 static uint16_t disasm_instruction(dsp_core_t* dsp, dsp_trace_disasm_t mode)
@@ -461,7 +458,7 @@ static uint16_t disasm_instruction(dsp_core_t* dsp, dsp_trace_disasm_t mode)
     dsp->disasm_parallelmove_name[0] = 0;
 
     if (dsp->disasm_cur_inst < 0x100000) {
-        const OpcodeEntry *op = lookup_opcode(dsp->disasm_cur_inst);
+        const OpcodeEntry *op = lookup_opcode(dsp, dsp->disasm_cur_inst);
         if (op->template) {
             if (op->dis_func) {
                 op->dis_func(dsp);
@@ -622,7 +619,7 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
     if (dsp->cur_inst < 0x100000) {
         const OpcodeEntry *op = dsp->pram_opcache[dsp->pc];
         if (op == NULL) {
-            op = lookup_opcode(dsp->cur_inst);
+            op = lookup_opcode(dsp, dsp->cur_inst);
             dsp->pram_opcache[dsp->pc] = op;
         }
         if (op->emu_func) {

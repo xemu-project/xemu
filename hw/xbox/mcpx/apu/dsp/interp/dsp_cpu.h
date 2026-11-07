@@ -45,6 +45,11 @@ typedef struct dsp_interrupt_s {
 
 typedef struct dsp_core_s dsp_core_t;
 
+typedef struct dsp_opcode_cache_entry_s {
+    uint32_t op;
+    const void *entry;
+} dsp_opcode_cache_entry_t;
+
 struct dsp_core_s {
     bool is_gp;
     bool is_idle;
@@ -64,6 +69,7 @@ struct dsp_core_s {
     uint32_t yram[DSP_YRAM_SIZE];
     uint32_t pram[DSP_PRAM_SIZE];
     const void *pram_opcache[DSP_PRAM_SIZE];
+    dsp_opcode_cache_entry_t opcode_cache[256];
 
     uint32_t mixbuffer[DSP_MIXBUFFER_SIZE];
 
