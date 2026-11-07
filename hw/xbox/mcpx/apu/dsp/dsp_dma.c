@@ -207,21 +207,17 @@ static void dsp_dma_run(DSPDMAState *s)
         }
 
         size_t transfer_size = count * item_size;
-
-        // FIXME: Remove this intermediate buffer
-        static uint8_t *scratch_buf = NULL;
-        static ssize_t scratch_buf_size = -1;
-        if (count * item_size > scratch_buf_size) {
-            scratch_buf_size = count * item_size;
-            scratch_buf = malloc(scratch_buf_size);
+        if (direction && dsp_interleave) {
+            transfer_size = block_count * item_size * channel_count;
         }
+        if (transfer_size > s->scratch_buf_size) {
+            s->scratch_buf = g_realloc(s->scratch_buf, transfer_size);
+            s->scratch_buf_size = transfer_size;
+        }
+        uint8_t *scratch_buf = s->scratch_buf;
 
         if (direction) {
             if (dsp_interleave) {
-                // FIXME: Above xfer size calculation instead of
-                // overwriting here
-                transfer_size = block_count * item_size * channel_count;
-
                 // Interleave samples
                 for (int i = 0; i < block_count; i++) {
                     for (int ch = 0; ch < channel_count; ch++) {
@@ -383,3 +379,8 @@ void dsp_dma_write(DSPDMAState *s, DSPDMARegister reg, uint32_t v)
     }
 }
 
+void dsp_dma_cleanup(DSPDMAState *s)
+{
+    g_clear_pointer(&s->scratch_buf, g_free);
+    s->scratch_buf_size = 0;
+}
