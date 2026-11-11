@@ -36,6 +36,7 @@
 #define MMIO_SIZE 0x400
 #define PHY_ADDR 1
 #define AUTONEG_DURATION_MS 250
+#define RX_POLL_INTERVAL_MS 1
 
 #define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
 
@@ -71,6 +72,7 @@ typedef struct NvNetState {
     uint8_t rx_dma_buf[RX_ALLOC_BUFSIZE];
 
     QEMUTimer *autoneg_timer;
+    QEMUTimer *rx_poll_timer;
 
     /* Deprecated */
     uint8_t tx_ring_index;
@@ -392,7 +394,36 @@ static bool nvnet_can_receive(NetClientState *nc)
         trace_nvnet_cant_rx(rx_en, dma_en, link_en, buf_avail);
     }
 
+    /*
+     * The ring is full. The guest may hand buffers back without writing any
+     * register, so look at the ring again shortly.
+     */
+    if (rx_en && dma_en && link_en && !buf_avail &&
+        !timer_pending(s->rx_poll_timer)) {
+        timer_mod(s->rx_poll_timer,
+                  qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + RX_POLL_INTERVAL_MS);
+    }
+
     return can_rx;
+}
+
+/*
+ * Deliver the packets the net layer queued while the NIC could not receive.
+ * Once can_receive has returned false, nothing reaches the NIC again until
+ * it flushes its queue (the socket backend stops reading altogether).
+ */
+static void nvnet_flush_rx(NvNetState *s)
+{
+    NetClientState *nc = qemu_get_queue(s->nic);
+
+    if (nvnet_can_receive(nc)) {
+        qemu_flush_queued_packets(nc);
+    }
+}
+
+static void rx_poll_timer(void *opaque)
+{
+    nvnet_flush_rx(opaque);
 }
 
 static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
@@ -661,6 +692,7 @@ static void set_link_up(NvNetState *s)
 {
     update_regs_on_link_up(s);
     set_mii_intr_status(s, NVNET_MII_STATUS_LINKCHANGE);
+    nvnet_flush_rx(s);
 }
 
 static void restart_autoneg(NvNetState *s)
@@ -872,6 +904,9 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr, uint64_t val,
         set_reg_ext(s, addr, val, size);
         break;
     }
+
+    /* The write may have enabled RX or handed buffers back */
+    nvnet_flush_rx(s);
 }
 
 static const MemoryRegionOps nvnet_mmio_ops = {
@@ -921,6 +956,7 @@ static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
                           &dev->mem_reentrancy_guard, s);
 
     s->autoneg_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, autoneg_timer, s);
+    s->rx_poll_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, rx_poll_timer, s);
 }
 
 static void nvnet_uninit(PCIDevice *dev)
@@ -928,6 +964,7 @@ static void nvnet_uninit(PCIDevice *dev)
     NvNetState *s = NVNET(dev);
     qemu_del_nic(s->nic);
     timer_free(s->autoneg_timer);
+    timer_free(s->rx_poll_timer);
 }
 
 // clang-format off
@@ -976,6 +1013,7 @@ static void nvnet_reset(void *opaque)
     s->tx_dma_buf_offset = 0;
 
     timer_del(s->autoneg_timer);
+    timer_del(s->rx_poll_timer);
 
     if (qemu_get_queue(s->nic)->link_down) {
         update_regs_on_link_down(s);
