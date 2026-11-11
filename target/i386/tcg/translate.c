@@ -1627,18 +1627,9 @@ static void gen_set_fptag(int offs, int value)
     tcg_gen_st8_i32(tmp, p, offsetof(CPUX86State, fptags[0]) + offs);
 }
 
-static bool fpu_using_double_precision(DisasContext *s)
+static bool fpu_rounding_to_single(DisasContext *s)
 {
-    /*
-     * XXX: Currently emulating double extended precision with double precision
-     * when using hard floats.
-     */
-    return s->flags & HF_FPU_PC_MASK;
-}
-
-static void gen_movi_f32(DisasContext *s, TCGv_f32 ret, float arg)
-{
-    tcg_gen_mov32i_f32(ret, tcg_constant_i32(*(uint32_t *)&arg));
+    return !(s->flags & HF_FPU_PC_MASK);
 }
 
 static void gen_movi_f64(DisasContext *s, TCGv_f64 ret, double arg)
@@ -1662,28 +1653,11 @@ static void gen_flcr(DisasContext *s)
     s->flcr_set = true;
 }
 
-static void gen_mov32f_i64(TCGv_i64 ret, TCGv_f32 arg)
-{
-    TCGv_f64 t = tcg_temp_new_f64();
-    tcg_gen_cvt32f_f64(t, arg);
-    tcg_gen_mov64f_i64(ret, t);
-}
-
-static void gen_mov32f_i32(TCGv_i32 ret, TCGv_f32 arg)
-{
-    tcg_gen_mov32f_i32(ret, arg);
-}
-
 static void gen_mov32i_f64(TCGv_f64 ret, TCGv_i32 arg)
 {
     TCGv_f32 t = tcg_temp_new_f32();
     tcg_gen_mov32i_f32(t, arg);
     tcg_gen_cvt32f_f64(ret, t);
-}
-
-static void gen_mov32i_f32(TCGv_f32 ret, TCGv_i32 arg)
-{
-    tcg_gen_mov32i_f32(ret, arg);
 }
 
 static void gen_mov64f_i32(TCGv_i32 ret, TCGv_f64 arg)
@@ -1698,32 +1672,33 @@ static void gen_mov64f_i64(TCGv_i64 ret, TCGv_f64 arg)
     tcg_gen_mov64f_i64(ret, arg);
 }
 
-static void gen_mov64i_f32(TCGv_f32 ret, TCGv_i64 arg)
-{
-    TCGv_f64 t = tcg_temp_new_f64();
-    tcg_gen_mov64i_f64(t, arg);
-    tcg_gen_cvt64f_f32(ret, t);
-}
-
 static void gen_mov64i_f64(TCGv_f64 ret, TCGv_i64 arg)
 {
     tcg_gen_mov64i_f64(ret, arg);
 }
 
-#define PREC 32
-#include "ops_fpu.h"
-#undef PREC
-
 #define PREC 64
 #include "ops_fpu.h"
 #undef PREC
 
-#define fp_pc_wrapper(f) \
-    (fpu_using_double_precision(s) ? glue(f, _f64) : glue(f, _f32))
+/*
+ * The precision-control field rounds arithmetic results, not register loads
+ * or moves. Keep the hard-float register cache at the maximum available
+ * precision and explicitly round affected results below.
+ */
+#define fp_wrapper(f) glue(f, _f64)
+
+static void gen_round_to_single(TCGv_f64 value)
+{
+    TCGv_f32 tmp = tcg_temp_new_f32();
+
+    tcg_gen_cvt64f_f32(tmp, value);
+    tcg_gen_cvt32f_f64(value, tmp);
+}
 
 static void gen_flush_fp(DisasContext *s)
 {
-    fp_pc_wrapper(flush_fp_regs)(s);
+    fp_wrapper(flush_fp_regs)(s);
     s->fpstt_delta = 0;
     s->flcr_set = false;
 }
@@ -1774,26 +1749,26 @@ static void gen_fpop(DisasContext *s)
     tcg_gen_addi_i32(fpstt, fpstt, 1);
     tcg_gen_andi_i32(fpstt, fpstt, 7);
 
-    fp_pc_wrapper(gen_fpop)(s);
+    fp_wrapper(gen_fpop)(s);
     s->fpstt_delta += 1;
 }
 
 static void gen_fmov_FT0_STN(DisasContext *s, int st_index)
 {
     GEN_HELPER_FALLBACK_v_i(fmov_FT0_STN, st_index);
-    fp_pc_wrapper(gen_fmov_FT0_STN)(s, st_index);
+    fp_wrapper(gen_fmov_FT0_STN)(s, st_index);
 }
 
 static void gen_fmov_ST0_STN(DisasContext *s, int st_index)
 {
     GEN_HELPER_FALLBACK_v_i(fmov_ST0_STN, st_index);
-    fp_pc_wrapper(gen_fmov_ST0_STN)(s, st_index);
+    fp_wrapper(gen_fmov_ST0_STN)(s, st_index);
 }
 
 static void gen_fmov_STN_ST0(DisasContext *s, int st_index)
 {
     GEN_HELPER_FALLBACK_v_i(fmov_STN_ST0, st_index);
-    fp_pc_wrapper(gen_fmov_STN_ST0)(s, st_index);
+    fp_wrapper(gen_fmov_STN_ST0)(s, st_index);
 }
 
 static void gen_fxchg_ST0_STN(DisasContext *s, int st_index)
@@ -1801,13 +1776,8 @@ static void gen_fxchg_ST0_STN(DisasContext *s, int st_index)
     GEN_HELPER_FALLBACK_v_i(fxchg_ST0_STN, st_index);
 
     /* Ensure ST0, STN are loaded */
-    if (fpu_using_double_precision(s)) {
-        get_stn_f64(s, 0);
-        get_stn_f64(s, st_index);
-    } else {
-        get_stn_f32(s, 0);
-        get_stn_f32(s, st_index);
-    }
+    get_stn_f64(s, 0);
+    get_stn_f64(s, st_index);
     TCGv_fp i = s->fpregs[(s->fpstt_delta + 0) & 7];
     s->fpregs[(s->fpstt_delta + 0) & 7] =
         s->fpregs[(s->fpstt_delta + st_index) & 7];
@@ -1831,89 +1801,92 @@ static void gen_enter_mmx(DisasContext *s)
 static void gen_flds_FT0(DisasContext *s, TCGv_i32 arg)
 {
     GEN_HELPER_FALLBACK_v_T(flds_FT0, arg);
-    fp_pc_wrapper(gen_flds_FT0)(s, arg);
+    fp_wrapper(gen_flds_FT0)(s, arg);
 }
 
 static void gen_flds_ST0(DisasContext *s, TCGv_i32 arg)
 {
     GEN_HELPER_FALLBACK_v_T(flds_ST0, arg);
     gen_fpush(s);
-    fp_pc_wrapper(gen_flds_ST0)(s, arg);
+    fp_wrapper(gen_flds_ST0)(s, arg);
 }
 
 static void gen_fldl_FT0(DisasContext *s, TCGv_i64 arg)
 {
     GEN_HELPER_FALLBACK_v_T(fldl_FT0, arg);
-    fp_pc_wrapper(gen_fldl_FT0)(s, arg);
+    fp_wrapper(gen_fldl_FT0)(s, arg);
 }
 
 static void gen_fldl_ST0(DisasContext *s, TCGv_i64 arg)
 {
     GEN_HELPER_FALLBACK_v_T(fldl_ST0, arg);
     gen_fpush(s);
-    fp_pc_wrapper(gen_fldl_ST0)(s, arg);
+    fp_wrapper(gen_fldl_ST0)(s, arg);
 }
 
 static void gen_fildl_FT0(DisasContext *s, TCGv_i32 arg)
 {
     GEN_HELPER_FALLBACK_v_T(fildl_FT0, arg);
-    fp_pc_wrapper(gen_fildl_FT0)(s, arg);
+    fp_wrapper(gen_fildl_FT0)(s, arg);
 }
 
 static void gen_fildl_ST0(DisasContext *s, TCGv_i32 arg)
 {
     GEN_HELPER_FALLBACK_v_T(fildl_ST0, arg);
     gen_fpush(s);
-    fp_pc_wrapper(gen_fildl_ST0)(s, arg);
+    fp_wrapper(gen_fildl_ST0)(s, arg);
 }
 
 static void gen_fildll_ST0(DisasContext *s, TCGv_i64 arg)
 {
     GEN_HELPER_FALLBACK_v_T(fildll_ST0, arg);
     gen_fpush(s);
-    fp_pc_wrapper(gen_fildll_ST0)(s, arg);
+    fp_wrapper(gen_fildll_ST0)(s, arg);
 }
 
 static void gen_fsts_ST0(DisasContext *s, TCGv_i32 arg)
 {
     GEN_HELPER_FALLBACK_T_v(fsts_ST0, arg);
-    fp_pc_wrapper(gen_fsts_ST0)(s, arg);
+    fp_wrapper(gen_fsts_ST0)(s, arg);
 }
 
 static void gen_fstl_ST0(DisasContext *s, TCGv_i64 arg)
 {
     GEN_HELPER_FALLBACK_T_v(fstl_ST0, arg);
-    fp_pc_wrapper(gen_fstl_ST0)(s, arg);
+    fp_wrapper(gen_fstl_ST0)(s, arg);
 }
 
 static void gen_fistl_ST0(DisasContext *s, TCGv_i32 arg)
 {
     GEN_HELPER_FALLBACK_T_v(fistl_ST0, arg);
-    fp_pc_wrapper(gen_fistl_ST0)(s, arg);
+    fp_wrapper(gen_fistl_ST0)(s, arg);
 }
 
 static void gen_fistll_ST0(DisasContext *s, TCGv_i64 arg)
 {
     GEN_HELPER_FALLBACK_T_v(fistll_ST0, arg);
-    fp_pc_wrapper(gen_fistll_ST0)(s, arg);
+    fp_wrapper(gen_fistll_ST0)(s, arg);
 }
 
 static void gen_fchs_ST0(DisasContext *s)
 {
     GEN_HELPER_FALLBACK_v_v(fchs_ST0);
-    fp_pc_wrapper(gen_fchs_ST0)(s);
+    fp_wrapper(gen_fchs_ST0)(s);
 }
 
 static void gen_fabs_ST0(DisasContext *s)
 {
     GEN_HELPER_FALLBACK_v_v(fabs_ST0);
-    fp_pc_wrapper(gen_fabs_ST0)(s);
+    fp_wrapper(gen_fabs_ST0)(s);
 }
 
 static void gen_fsqrt(DisasContext *s)
 {
     GEN_HELPER_FALLBACK_v_v(fsqrt);
-    fp_pc_wrapper(gen_fsqrt)(s);
+    gen_fsqrt_f64(s);
+    if (fpu_rounding_to_single(s)) {
+        gen_round_to_single(get_st0_f64(s));
+    }
 }
 
 static void gen_clear_fpus_c2(DisasContext *s)
@@ -1927,21 +1900,24 @@ static void gen_clear_fpus_c2(DisasContext *s)
 static void gen_fsin(DisasContext *s)
 {
     GEN_HELPER_FALLBACK_v_v(fsin);
-    fp_pc_wrapper(gen_fsin)(s);
+    fp_wrapper(gen_fsin)(s);
     gen_clear_fpus_c2(s); /* FIXME: Does not check range correctly */
 }
 
 static void gen_fcos(DisasContext *s)
 {
     GEN_HELPER_FALLBACK_v_v(fcos);
-    fp_pc_wrapper(gen_fcos)(s);
+    fp_wrapper(gen_fcos)(s);
     gen_clear_fpus_c2(s); /* FIXME: Does not check range correctly */
 }
 
 static void gen_helper_fp_arith_ST0_FT0(DisasContext *s, int op)
 {
     if (g_use_hard_fpu) {
-        fp_pc_wrapper(gen_helper_fp_arith_ST0_FT0)(s, op);
+        gen_helper_fp_arith_ST0_FT0_f64(s, op);
+        if (op != 2 && op != 3 && fpu_rounding_to_single(s)) {
+            gen_round_to_single(get_st0_f64(s));
+        }
     } else {
         switch (op) {
         case 0:
@@ -1981,7 +1957,10 @@ static void gen_fcom_ST0_FT0(DisasContext *s)
 static void gen_helper_fp_arith_STN_ST0(DisasContext *s, int op, int opreg)
 {
     if (g_use_hard_fpu) {
-        fp_pc_wrapper(gen_helper_fp_arith_STN_ST0)(s, op, opreg);
+        gen_helper_fp_arith_STN_ST0_f64(s, op, opreg);
+        if (fpu_rounding_to_single(s)) {
+            gen_round_to_single(get_stn_f64(s, opreg));
+        }
     } else {
         TCGv_i32 tmp = tcg_constant_i32(opreg);
 
@@ -2011,20 +1990,20 @@ static void gen_helper_fp_arith_STN_ST0(DisasContext *s, int op, int opreg)
 static void gen_fld1_ST0(DisasContext *s)
 {
     GEN_HELPER_FALLBACK_v_v(fld1_ST0);
-    fp_pc_wrapper(gen_fld1_ST0)(s);
+    fp_wrapper(gen_fld1_ST0)(s);
 }
 
 static void gen_fldz_ST0(DisasContext *s)
 {
     GEN_HELPER_FALLBACK_v_v(fldz_ST0);
-    fp_pc_wrapper(gen_fldz_ST0)(s);
+    fp_wrapper(gen_fldz_ST0)(s);
     /* FIXME: Set tag word */
 }
 
 static void gen_fldz_FT0(DisasContext *s)
 {
     GEN_HELPER_FALLBACK_v_v(fldz_FT0);
-    fp_pc_wrapper(gen_fldz_FT0)(s);
+    fp_wrapper(gen_fldz_FT0)(s);
 }
 
 static void gen_exception(DisasContext *s, int trapno)
