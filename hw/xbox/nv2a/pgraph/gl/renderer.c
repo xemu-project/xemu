@@ -204,6 +204,7 @@ static PGRAPHRenderer pgraph_gl_renderer = {
         .process_pending = pgraph_gl_process_pending,
         .process_pending_reports = pgraph_gl_process_pending_reports,
         .surface_update = pgraph_gl_surface_update,
+        .sync_region_for_transfer = pgraph_gl_sync_region_for_transfer,
         .set_surface_scale_factor = pgraph_gl_set_surface_scale_factor,
         .get_surface_scale_factor = pgraph_gl_get_surface_scale_factor,
         .get_framebuffer_surface = pgraph_gl_get_framebuffer_surface,
