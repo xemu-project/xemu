@@ -19,7 +19,7 @@ rust_target = host_cpu + '-' + os_suffix
 ver = meson.project_version()
 prefix = 'dsp56300-@0@-@1@'.format(ver, rust_target)
 archive = '@0@.tar.gz'.format(prefix)
-url = 'https://github.com/mborgerson/dsp56300/releases/download/v@0@/@1@'.format(ver, archive)
+url = 'https://github.com/xemu-project/dsp56300/releases/download/v@0@/@1@'.format(ver, archive)
 lib = meson.current_build_dir() / prefix / 'lib' / 'libdsp56300_emu_ffi.a'
 
 if not fs.exists(lib)

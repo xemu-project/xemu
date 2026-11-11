@@ -127,7 +127,7 @@ done
 dsp56300_version=$(sed -n "s/^project.*version: *'\([^']*\)'.*/\1/p" subprojects/dsp56300/meson.build)
 for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
     archive="dsp56300-${dsp56300_version}-${target}.tar.gz"
-    curl -fsSL "https://github.com/mborgerson/dsp56300/releases/download/v${dsp56300_version}/${archive}" \
+    curl -fsSL "https://github.com/xemu-project/dsp56300/releases/download/v${dsp56300_version}/${archive}" \
         -o "subprojects/dsp56300/${archive}"
     tar --append --file "$tar_file" --transform "s,^./,$tar_prefix," "./subprojects/dsp56300/${archive}"
     rm "subprojects/dsp56300/${archive}"
