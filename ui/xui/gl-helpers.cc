@@ -799,7 +799,8 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
     if (strcmp(bound_drivers[state->bound], DRIVER_S) == 0)
         RenderControllerS(frame_x, frame_y, primary_color, secondary_color,
                           state);
-    else if (strcmp(bound_drivers[state->bound], DRIVER_DUKE) == 0)
+    else
+        // Duke graphic is also used as a stand-in for the lightgun driver
         RenderDukeController(frame_x, frame_y, primary_color, secondary_color,
                              state);
 }
@@ -971,6 +972,12 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
             scale[1] = w_ratio/t_ratio;
         }
     }
+
+    // Publish where the game image lands in the window, for lightgun aiming
+    int game_w = (int)(scale[0] * width);
+    int game_h = (int)(scale[1] * height);
+    xemu_input_set_game_display_rect((width - game_w) / 2,
+                                     (height - game_h) / 2, game_w, game_h);
 
     RenderFramebuffer(tex, width, height, flip, scale);
 }
