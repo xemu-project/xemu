@@ -48,6 +48,111 @@
 #include "disas/disas.h"
 #include "plugin.h"
 
+// <xemu>
+extern struct qemu_plugin_state plugin;
+
+struct qemu_plugin_command {
+    qemu_plugin_id_t id;
+    qemu_plugin_command_cb_t callback;
+};
+
+static GHashTable *plugin_cmd_table = NULL;
+
+void qemu_plugin_register_command(qemu_plugin_id_t id, const char *name,
+                                  qemu_plugin_command_cb_t cb)
+{
+    QEMU_LOCK_GUARD(&plugin.lock);
+
+    if (!plugin_cmd_table) {
+        plugin_cmd_table =
+            g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    }
+
+    if (g_hash_table_contains(plugin_cmd_table, name)) {
+        fprintf(stderr,
+                "[Plugin API] Warning: Overwriting existing command '%s'\n",
+                name);
+    }
+
+    struct qemu_plugin_command *cmd = g_new(struct qemu_plugin_command, 1);
+    cmd->id = id;
+    cmd->callback = cb;
+    g_hash_table_insert(plugin_cmd_table, g_strdup(name), cmd);
+}
+
+struct qemu_plugin_command_work {
+    char *name;
+    char *args;
+};
+
+QEMU_DISABLE_CFI
+static void plugin_dispatch_cmd_work(CPUState *cpu, run_on_cpu_data data)
+{
+    struct qemu_plugin_command_work *work = data.host_ptr;
+    qemu_plugin_command_cb_t cb = NULL;
+
+    WITH_QEMU_LOCK_GUARD(&plugin.lock) {
+        struct qemu_plugin_command *cmd =
+            plugin_cmd_table ? g_hash_table_lookup(plugin_cmd_table, work->name)
+                             : NULL;
+        if (cmd) {
+            cb = cmd->callback;
+        }
+    }
+
+    if (cb) {
+        qemu_plugin_set_cb_flags(cpu, QEMU_PLUGIN_CB_RW_REGS);
+        cb(work->args);
+        qemu_plugin_set_cb_flags(cpu, QEMU_PLUGIN_CB_NO_REGS);
+    }
+
+    g_free(work->name);
+    g_free(work->args);
+    g_free(work);
+}
+
+bool qemu_plugin_dispatch_cmd(const char *name, const char *args)
+{
+    WITH_QEMU_LOCK_GUARD(&plugin.lock) {
+        if (!plugin_cmd_table ||
+            !g_hash_table_contains(plugin_cmd_table, name)) {
+            return false;
+        }
+    }
+
+    struct qemu_plugin_command_work *work =
+        g_new(struct qemu_plugin_command_work, 1);
+    work->name = g_strdup(name);
+    work->args = g_strdup(args ? args : "");
+    async_safe_run_on_cpu(first_cpu, plugin_dispatch_cmd_work,
+                          RUN_ON_CPU_HOST_PTR(work));
+    return true;
+}
+
+void qemu_plugin_unregister_command(const char *name)
+{
+    QEMU_LOCK_GUARD(&plugin.lock);
+
+    if (plugin_cmd_table) {
+        g_hash_table_remove(plugin_cmd_table, name);
+    }
+}
+
+static gboolean plugin_cmd_owned_by(gpointer key, gpointer value,
+                                    gpointer user_data)
+{
+    struct qemu_plugin_command *cmd = value;
+    return cmd->id == *(qemu_plugin_id_t *)user_data;
+}
+
+void qemu_plugin_unregister_commands__locked(qemu_plugin_id_t id)
+{
+    if (plugin_cmd_table) {
+        g_hash_table_foreach_remove(plugin_cmd_table, plugin_cmd_owned_by, &id);
+    }
+}
+// </xemu>
+
 /* Uninstall and Reset handlers */
 
 void qemu_plugin_uninstall(qemu_plugin_id_t id, qemu_plugin_simple_cb_t cb)
