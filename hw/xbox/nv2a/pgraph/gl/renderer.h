@@ -81,7 +81,22 @@ typedef struct TextureBinding {
     bool border_color_set;
     GLenum gl_target;
     GLuint gl_texture;
+    uint64_t storage_sig; /* recycle pool key: gl_target/format/dims/levels */
 } TextureBinding;
+
+/*
+ * Recycled GL texture objects. When a title streams new content it destroys
+ * and re-creates hundreds of same-sized textures per frame; freeing and
+ * re-allocating the GL object each time is a large per-frame cost. Keep a
+ * bounded pool of destroyed objects keyed by their storage signature and
+ * reuse a matching one, so the driver can respecify it in place rather than
+ * reallocate. Accessed only from the single pfifo/pgraph thread; no lock.
+ */
+#define NV2A_GL_TEX_POOL_SIZE 256
+typedef struct TexPoolEntry {
+    uint64_t sig;
+    GLuint gl_texture;
+} TexPoolEntry;
 
 typedef struct ShaderModuleCacheKey {
     GLenum kind;
@@ -193,6 +208,9 @@ typedef struct PGRAPHGLState {
     TextureBinding *texture_binding[NV2A_MAX_TEXTURES];
     Lru texture_cache;
     TextureLruNode *texture_cache_entries;
+
+    TexPoolEntry tex_pool[NV2A_GL_TEX_POOL_SIZE];
+    unsigned int tex_pool_count;
 
     Lru shader_cache;
     ShaderBinding *shader_cache_entries;
