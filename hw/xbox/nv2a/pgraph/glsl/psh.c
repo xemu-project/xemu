@@ -799,6 +799,25 @@ static void apply_border_adjustment(const struct PixelShader *ps, MString *vars,
         var_name, var_name, i, ps->state->border_inv_real_size[i][0], ps->state->border_inv_real_size[i][1], ps->state->border_inv_real_size[i][2]);
 }
 
+static void append_cube_sample(const struct PixelShader *ps, MString *vars,
+                               int i, const char *dir_var_template)
+{
+    char dir_var[32] = { 0 };
+    snprintf(dir_var, sizeof(dir_var), dir_var_template, i);
+
+    if (ps->state->tex_cubemap[i]) {
+        mstring_append_fmt(vars,
+                           "vec4 t%d = texture(texSamp%d, "
+                           "fixZeroCubeDir(texSamp%d, %s));\n",
+                           i, i, i, dir_var);
+    } else {
+        mstring_append_fmt(vars,
+                           "vec4 t%d = texture(texSamp%d, "
+                           "cubeDirTo2D(texSamp%d, %s));\n",
+                           i, i, i, dir_var);
+    }
+}
+
 static void apply_convolution_filter(const struct PixelShader *ps, MString *vars, int tex)
 {
     assert(ps->state->dim_tex[tex] == 2);
@@ -990,6 +1009,21 @@ static MString* psh_convert(struct PixelShader *ps)
         "    return uv;\n"
         "}\n"
         "\n"
+        "vec3 fixZeroCubeDir(samplerCube samp, vec3 dir) {\n"
+        "    if (all(equal(dir, vec3(0.0)))) {\n"
+        "        float c = 1.0 - 1.0 / float(textureSize(samp, 0).x);\n"
+        "        return vec3(1.0, c, c);\n"
+        "    }\n"
+        "    return dir;\n"
+        "}\n"
+        "\n"
+        "vec2 cubeDirTo2D(sampler2D samp, vec3 dir) {\n"
+        "    if (all(equal(dir, vec3(0.0)))) {\n"
+        "        return 0.5 / vec2(textureSize(samp, 0));\n"
+        "    }\n"
+        "    return remapCubeTo2D(dir);\n"
+        "}\n"
+        "\n"
         "vec3 remap2DToCube(vec3 texCoord2DProjective) {\n"
         "    vec2 st = (texCoord2DProjective.xy / texCoord2DProjective.z);"
         "    return normalize(vec3(1.0, st.y, -st.x));"
@@ -1173,14 +1207,7 @@ static MString* psh_convert(struct PixelShader *ps)
             }
             break;
         case PS_TEXTUREMODES_CUBEMAP:
-            if (!ps->state->tex_cubemap[i]) {
-                mstring_append_fmt(vars,
-                    "pT%d.xy = remapCubeTo2D(pT%d.xyz);\n",
-                    i, i);
-            }
-            mstring_append_fmt(vars,
-                "vec4 t%d = texture(texSamp%d, pT%d.xy%s);\n",
-                i, i, i, ps->state->tex_cubemap[i] ? "z" : "");
+            append_cube_sample(ps, vars, i, "pT%d.xyz");
             break;
         case PS_TEXTUREMODES_PASSTHRU:
             assert(ps->state->border_logical_size[i][0] == 0.0f && "Unexpected border texture on passthru");
@@ -1294,13 +1321,7 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "vec3 n_%d = vec3(dot%d, dot%d, dot%d_n);\n",
                 i, i-1, i, i);
             apply_border_adjustment(ps, vars, i, "n_%d");
-            if (!ps->state->tex_cubemap[i]) {
-                mstring_append_fmt(vars,
-                    "n_%d.xy = remapCubeTo2D(n_%d);\n", i, i);
-            }
-            mstring_append_fmt(vars,
-                "vec4 t%d = texture(texSamp%d, n_%d%s);\n",
-                i, i, i, ps->state->tex_cubemap[i] ? "" : ".xy");
+            append_cube_sample(ps, vars, i, "n_%d");
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_SPEC:
             assert(i == 3);
@@ -1311,16 +1332,14 @@ static MString* psh_convert(struct PixelShader *ps)
                 i, i-2, i-1, i);
             mstring_append_fmt(vars, "vec3 e_%d = vec3(pT%d.w, pT%d.w, pT%d.w);\n",
                 i, i-2, i-1, i);
-            mstring_append_fmt(vars, "vec3 rv_%d = 2*n_%d*dot(n_%d,e_%d)/dot(n_%d,n_%d) - e_%d;\n",
+            mstring_append_fmt(vars, "float nDotN_%d = dot(n_%d, n_%d);\n",
+                i, i, i);
+            mstring_append_fmt(vars,
+                "vec3 rv_%d = nDotN_%d == 0.0 ? vec3(0.0) : "
+                "2 * n_%d * dot(n_%d, e_%d) / nDotN_%d - e_%d;\n",
                 i, i, i, i, i, i, i);
             apply_border_adjustment(ps, vars, i, "rv_%d");
-            if (!ps->state->tex_cubemap[i]) {
-                mstring_append_fmt(vars,
-                    "rv_%d.xy = remapCubeTo2D(rv_%d);\n", i, i);
-            }
-            mstring_append_fmt(vars,
-                "vec4 t%d = texture(texSamp%d, rv_%d%s);\n",
-                i, i, i, ps->state->tex_cubemap[i] ? "" : ".xy");
+            append_cube_sample(ps, vars, i, "rv_%d");
             break;
         case PS_TEXTUREMODES_DOT_STR_3D:
             assert(i == 3);
@@ -1344,14 +1363,7 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "vec3 dotSTR%dCube = vec3(dot%d, dot%d, dot%d);\n",
                                i, i-2, i-1, i);
             apply_border_adjustment(ps, vars, i, "dotSTR%dCube");
-            if (!ps->state->tex_cubemap[i]) {
-                mstring_append_fmt(vars,
-                    "dotSTR%dCube.xy = remapCubeTo2D(dotSTR%dCube);\n",
-                    i, i);
-            }
-            mstring_append_fmt(vars,
-                "vec4 t%d = texture(texSamp%d, dotSTR%dCube%s);\n",
-                i, i, i, ps->state->tex_cubemap[i] ? "" : ".xy");
+            append_cube_sample(ps, vars, i, "dotSTR%dCube");
             break;
         case PS_TEXTUREMODES_DPNDNT_AR:
             assert(i >= 1);
