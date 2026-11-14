@@ -58,6 +58,52 @@ static uint32_t get_color_key_mask_for_texture(PGRAPHState *pg, int i)
     return get_colorkey_mask(color_format);
 }
 
+/*
+ * Sets the parameters used by sampleCube when the direction is zero:
+ * value[0]: width of the mip level that is sampled.
+ * value[1]: weight blending texel column 0 with the last column.
+ * value[2]: weight blending texel row 0 with the last row.
+ */
+static void set_cube_zero_params_uniform(PGRAPHState *pg, int i, float *value)
+{
+    value[0] = 1.0f;
+    value[1] = 0.0f;
+    value[2] = 0.0f;
+
+    if (!pgraph_is_texture_stage_active(pg, i) ||
+        !pgraph_is_texture_enabled(pg, i)) {
+        return;
+    }
+
+    uint32_t fmt = pgraph_reg_r(pg, NV_PGRAPH_TEXFMT0 + i * 4);
+    if (!GET_MASK(fmt, NV_PGRAPH_TEXFMT0_CUBEMAPENABLE)) {
+        return;
+    }
+
+    uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i * 4);
+    uint32_t address = pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + i * 4);
+    unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
+    bool mipmapped = min_filter != NV_PGRAPH_TEXFILTER0_MIN_BOX_LOD0 &&
+                     min_filter != NV_PGRAPH_TEXFILTER0_MIN_TENT_LOD0 &&
+                     min_filter != NV_PGRAPH_TEXFILTER0_MIN_CONVOLUTION_2D_LOD0;
+    bool linear = min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_LOD0 ||
+                  min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_NEARESTLOD ||
+                  min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD;
+
+    TextureShape shape = pgraph_get_texture_shape(pg, i);
+    // TODO: The GL renderer sets GL_TEXTURE_BASE_LEVEL to the min LOD clamp,
+    // so *_LOD0 filters sample that level rather than level 0 when the clamp
+    // is above 0.
+    unsigned int level = mipmapped ? shape.levels - 1 : 0;
+    value[0] = MAX(1, shape.width >> level);
+    if (linear) {
+        unsigned int addru = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU);
+        unsigned int addrv = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV);
+        value[1] = addru == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP ? 0.5f : 0.0f;
+        value[2] = addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP ? 0.5f : 0.0f;
+    }
+}
+
 static inline bool point_sprite_mode_enabled(PGRAPHState *pg)
 {
     if (pg->primitive_mode == PRIM_TYPE_LINES ||
@@ -807,14 +853,15 @@ static void append_cube_sample(const struct PixelShader *ps, MString *vars,
 
     if (ps->state->tex_cubemap[i]) {
         mstring_append_fmt(vars,
-                           "vec4 t%d = texture(texSamp%d, "
-                           "fixZeroCubeDir(texSamp%d, %s));\n",
-                           i, i, i, dir_var);
+                           "vec4 t%d = sampleCube(texSamp%d, %s, "
+                           "cubeZeroParams[%d]);\n",
+                           i, i, dir_var, i);
     } else {
+        // TODO: Determine which mip level HW samples for zero length
+        // directions with 2D textures.
         mstring_append_fmt(vars,
-                           "vec4 t%d = texture(texSamp%d, "
-                           "cubeDirTo2D(texSamp%d, %s));\n",
-                           i, i, i, dir_var);
+                           "vec4 t%d = sampleCube2D(texSamp%d, %s);\n",
+                           i, i, dir_var);
     }
 }
 
@@ -1009,19 +1056,26 @@ static MString* psh_convert(struct PixelShader *ps)
         "    return uv;\n"
         "}\n"
         "\n"
-        "vec3 fixZeroCubeDir(samplerCube samp, vec3 dir) {\n"
+        "const float coarsestLod = 1000.0;\n"
+        "\n"
+        "vec4 sampleCube(samplerCube samp, vec3 dir, vec3 zeroParams) {\n"
         "    if (all(equal(dir, vec3(0.0)))) {\n"
-        "        float c = 1.0 - 1.0 / float(textureSize(samp, 0).x);\n"
-        "        return vec3(1.0, c, c);\n"
+        "        float c = 1.0 - 1.0 / zeroParams.x;\n"
+        "        vec4 t00 = textureLod(samp, vec3(1.0, c, c), coarsestLod);\n"
+        "        vec4 t10 = textureLod(samp, vec3(1.0, c, -c), coarsestLod);\n"
+        "        vec4 t01 = textureLod(samp, vec3(1.0, -c, c), coarsestLod);\n"
+        "        vec4 t11 = textureLod(samp, vec3(1.0, -c, -c), coarsestLod);\n"
+        "        return mix(mix(t00, t10, zeroParams.y),\n"
+        "                   mix(t01, t11, zeroParams.y), zeroParams.z);\n"
         "    }\n"
-        "    return dir;\n"
+        "    return texture(samp, dir);\n"
         "}\n"
         "\n"
-        "vec2 cubeDirTo2D(sampler2D samp, vec3 dir) {\n"
+        "vec4 sampleCube2D(sampler2D samp, vec3 dir) {\n"
         "    if (all(equal(dir, vec3(0.0)))) {\n"
-        "        return 0.5 / vec2(textureSize(samp, 0));\n"
+        "        return textureLod(samp, vec2(0.0), coarsestLod);\n"
         "    }\n"
-        "    return remapCubeTo2D(dir);\n"
+        "    return texture(samp, remapCubeTo2D(dir));\n"
         "}\n"
         "\n"
         "vec3 remap2DToCube(vec3 texCoord2DProjective) {\n"
@@ -1721,6 +1775,9 @@ void pgraph_glsl_set_psh_uniform_values(PGRAPHState *pg,
         }
         if (locs[PshUniform_texScale] != -1) {
             values->texScale[0] = 1.0; /* Renderer will override this */
+        }
+        if (locs[PshUniform_cubeZeroParams] != -1) {
+            set_cube_zero_params_uniform(pg, i, values->cubeZeroParams[i]);
         }
     }
 

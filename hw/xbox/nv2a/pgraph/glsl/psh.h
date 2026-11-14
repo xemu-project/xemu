@@ -86,6 +86,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state);
     DECL(S, colorKey, uint, 4)      \
     DECL(S, colorKeyMask, uint, 4)  \
     DECL(S, consts, vec4, 18)       \
+    DECL(S, cubeZeroParams, vec3, 4) \
     DECL(S, depthFactor, float, 1)  \
     DECL(S, depthOffset, float, 1)  \
     DECL(S, fogColor, vec4, 1)      \
