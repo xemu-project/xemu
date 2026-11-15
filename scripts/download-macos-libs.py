@@ -4,7 +4,8 @@ Downloads required libraries for xemu builds on macOS from MacPorts repositories
 """
 # Based on https://github.com/tpoechtrager/osxcross/blob/master/tools/osxcross-macports
 # which is based on https://github.com/maci0/pmmacports
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
+import gzip
 import re
 import os.path
 from tarfile import TarFile
@@ -41,7 +42,12 @@ class LibInstaller:
 
 	def get_latest_pkg_filename_url(self, pkg_name):
 		pkg_base_url = f'{MIRROR}/{pkg_name}'
-		pkg_list = urlopen(pkg_base_url).read().decode('utf-8')
+		req = Request(f'{pkg_base_url}/', headers={'Accept-Encoding': 'gzip'})
+		with urlopen(req) as response:
+			pkg_list = response.read()
+			if response.headers.get('Content-Encoding', '').strip().lower() in ('gzip', 'x-gzip'):
+				pkg_list = gzip.decompress(pkg_list)
+		pkg_list = pkg_list.decode('utf-8')
 		pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.(?:any_any|darwin_any|' + self._darwin_target + r')\.(?:noarch|' + self._arch + r')\.tbz2', pkg_list)
 		if len(pkgs) < 1:
 			print(f'    [*] [ERROR] Unable to find version of {pkg_name} compatible with {self._darwin_target}.{self._arch}')
