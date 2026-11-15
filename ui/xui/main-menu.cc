@@ -791,6 +791,10 @@ void MainMenuDisplayView::Draw()
     }
     Toggle("Vertical refresh sync", &g_config.display.window.vsync,
            "Sync to screen vertical refresh to reduce tearing artifacts");
+    Toggle("Present only new frames",
+           &g_config.display.window.present_only_new_frames,
+           "Present a frame only when the guest flips, so frame rate "
+           "overlays show the guest frame rate");
 
     SectionTitle("Interface");
     Toggle("Show main menu bar", &g_config.display.ui.show_menubar,

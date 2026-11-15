@@ -147,6 +147,10 @@ typedef struct PGRAPHState {
     int frame_time;
     int draw_time;
 
+    QemuMutex flip_lock;
+    QemuCond flip_cond;
+    unsigned int flip_count;
+
     /* subchannels state we're not sure the location of... */
     ContextSurfaces2DState context_surfaces_2d;
     ImageBlitState image_blit;

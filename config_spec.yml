@@ -257,6 +257,9 @@ display:
     vsync:
       type: bool
       default: true
+    present_only_new_frames:
+      type: bool
+      default: true
   ui:
     show_menubar:
       type: bool
