@@ -39,83 +39,86 @@ void SystemActionsManager::InitInstance()
     auto add_binding =
         [this](const char *name, const int &scancode, const bool &ctrl,
                const bool &shift, const bool &alt, const bool &super,
+               const bool &ignore_input_capture,
                std::vector<std::reference_wrapper<const int>> chords,
                std::function<void()> cb) {
             m_bindings.push_back({ name, std::cref(scancode), std::cref(ctrl),
                                    std::cref(shift), std::cref(alt),
-                                   std::cref(super), std::move(chords), cb });
+                                   std::cref(super), ignore_input_capture,
+                                   std::move(chords), cb });
         };
 
-#define ADD_ACTION(NAME, CALLBACK)                                            \
+#define ADD_ACTION(NAME, IGNORE_INPUT_CAPTURE, CALLBACK)                      \
     add_binding(                                                              \
         #NAME, g_config.input.system_actions.NAME.scancode,                   \
         g_config.input.system_actions.NAME.ctrl,                              \
         g_config.input.system_actions.NAME.shift,                             \
         g_config.input.system_actions.NAME.alt,                               \
-        g_config.input.system_actions.NAME.super,                             \
+        g_config.input.system_actions.NAME.super, IGNORE_INPUT_CAPTURE,       \
         { std::cref(g_config.input.system_actions.NAME.controller_chord_1),   \
           std::cref(g_config.input.system_actions.NAME.controller_chord_2) }, \
         CALLBACK)
 
-    ADD_ACTION(toggle_pause, ActionTogglePause);
-    ADD_ACTION(reset, ActionReset);
-    ADD_ACTION(power_off, ActionShutdown);
-    ADD_ACTION(eject_disc, ActionEjectDisc);
-    ADD_ACTION(load_disc, ActionLoadDisc);
-    ADD_ACTION(screenshot, ActionScreenshot);
-    ADD_ACTION(toggle_fullscreen, xemu_toggle_fullscreen);
-    ADD_ACTION(toggle_monitor, [] { monitor_window.ToggleOpen(); });
+    ADD_ACTION(toggle_pause, false, ActionTogglePause);
+    ADD_ACTION(reset, false, ActionReset);
+    ADD_ACTION(power_off, false, ActionShutdown);
+    ADD_ACTION(eject_disc, false, ActionEjectDisc);
+    ADD_ACTION(load_disc, false, ActionLoadDisc);
+    ADD_ACTION(screenshot, false, ActionScreenshot);
+    ADD_ACTION(toggle_fullscreen, false, xemu_toggle_fullscreen);
+    ADD_ACTION(toggle_monitor, true, [] { monitor_window.ToggleOpen(); });
+
     auto is_ui_busy = [] {
         return ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow) ||
                g_scene_mgr.IsDisplayingScene();
     };
 
-    ADD_ACTION(toggle_main_menu, [is_ui_busy] {
+    ADD_ACTION(toggle_main_menu, true, [is_ui_busy] {
         if (!is_ui_busy()) {
             g_scene_mgr.PushScene(g_main_menu);
         }
     });
-    ADD_ACTION(toggle_popup_menu, [is_ui_busy] {
+    ADD_ACTION(toggle_popup_menu, false, [is_ui_busy] {
         if (!is_ui_busy()) {
             g_scene_mgr.PushScene(g_popup_menu);
         }
     });
-    ADD_ACTION(snapshot_load_1, [is_ui_busy] {
+    ADD_ACTION(snapshot_load_1, false, [is_ui_busy] {
         if (!is_ui_busy()) {
             ActionActivateBoundSnapshot(0, false);
         }
     });
-    ADD_ACTION(snapshot_load_2, [is_ui_busy] {
+    ADD_ACTION(snapshot_load_2, false, [is_ui_busy] {
         if (!is_ui_busy()) {
             ActionActivateBoundSnapshot(1, false);
         }
     });
-    ADD_ACTION(snapshot_load_3, [is_ui_busy] {
+    ADD_ACTION(snapshot_load_3, false, [is_ui_busy] {
         if (!is_ui_busy()) {
             ActionActivateBoundSnapshot(2, false);
         }
     });
-    ADD_ACTION(snapshot_load_4, [is_ui_busy] {
+    ADD_ACTION(snapshot_load_4, false, [is_ui_busy] {
         if (!is_ui_busy()) {
             ActionActivateBoundSnapshot(3, false);
         }
     });
-    ADD_ACTION(snapshot_save_1, [is_ui_busy] {
+    ADD_ACTION(snapshot_save_1, false, [is_ui_busy] {
         if (!is_ui_busy()) {
             ActionActivateBoundSnapshot(0, true);
         }
     });
-    ADD_ACTION(snapshot_save_2, [is_ui_busy] {
+    ADD_ACTION(snapshot_save_2, false, [is_ui_busy] {
         if (!is_ui_busy()) {
             ActionActivateBoundSnapshot(1, true);
         }
     });
-    ADD_ACTION(snapshot_save_3, [is_ui_busy] {
+    ADD_ACTION(snapshot_save_3, false, [is_ui_busy] {
         if (!is_ui_busy()) {
             ActionActivateBoundSnapshot(2, true);
         }
     });
-    ADD_ACTION(snapshot_save_4, [is_ui_busy] {
+    ADD_ACTION(snapshot_save_4, false, [is_ui_busy] {
         if (!is_ui_busy()) {
             ActionActivateBoundSnapshot(3, true);
         }
@@ -135,14 +138,15 @@ bool SystemActionsManager::HandleKeyboardShortcuts()
     }
 
     ImGuiIO &io = ImGui::GetIO();
-    if (io.WantCaptureKeyboard) {
-        return false;
-    }
 
     bool action_invoked = false;
 
     for (const auto &b : m_bindings) {
         if (b.scancode.get() == 0) {
+            continue;
+        }
+
+        if (io.WantCaptureKeyboard && !b.ignore_input_capture) {
             continue;
         }
 

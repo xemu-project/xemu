@@ -31,6 +31,7 @@ struct SystemActionBinding {
     std::reference_wrapper<const bool> shift;
     std::reference_wrapper<const bool> alt;
     std::reference_wrapper<const bool> super;
+    bool ignore_input_capture;
     std::vector<std::reference_wrapper<const int>> controller_chords;
     std::function<void()> callback;
 };
