@@ -207,6 +207,7 @@ static PGRAPHRenderer pgraph_gl_renderer = {
         .set_surface_scale_factor = pgraph_gl_set_surface_scale_factor,
         .get_surface_scale_factor = pgraph_gl_get_surface_scale_factor,
         .get_framebuffer_surface = pgraph_gl_get_framebuffer_surface,
+        .get_scanout_writes = pgraph_gl_get_scanout_writes,
         .get_gpu_properties = pgraph_gl_get_gpu_properties,
     }
 };

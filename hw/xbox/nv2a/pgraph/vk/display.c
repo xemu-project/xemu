@@ -1076,6 +1076,8 @@ void pgraph_vk_render_display(PGRAPHState *pg)
         return;
     }
 
+    pg->scanout_writes = qatomic_read(&surface->writes);
+
     unsigned int width = 0, height = 0;
     d->vga.get_resolution(&d->vga, (int *)&width, (int *)&height);
 

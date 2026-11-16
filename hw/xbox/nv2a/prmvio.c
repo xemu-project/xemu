@@ -34,7 +34,11 @@ uint64_t prmvio_read(void *opaque, hwaddr addr, unsigned int size)
 void prmvio_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = opaque;
+    uint8_t screen_off = d->vga.sr[VGA_SEQ_CLOCK_MODE] & VGA_SR01_SCREEN_OFF;
 
     nv2a_reg_log_write(NV_PRMVIO, addr, size, val);
     vga_ioport_write(&d->vga, addr, val);
+    if ((d->vga.sr[VGA_SEQ_CLOCK_MODE] & VGA_SR01_SCREEN_OFF) != screen_off) {
+        pgraph_count_flip(d);
+    }
 }

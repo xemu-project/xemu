@@ -23,8 +23,12 @@
 
 void nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram);
 void nv2a_context_init(void);
-int nv2a_get_framebuffer_surface(void);
+int nv2a_get_framebuffer_surface(bool sync);
 void nv2a_release_framebuffer_surface(void);
+unsigned int nv2a_wait_for_flip(unsigned int count, int timeout_ms);
+void nv2a_wake_flip_waiters(void);
+unsigned int nv2a_get_scanout_writes(void);
+bool nv2a_peek_scanout_writes(unsigned int *writes);
 void nv2a_set_surface_scale_factor(unsigned int scale);
 unsigned int nv2a_get_surface_scale_factor(void);
 const uint8_t *nv2a_get_dac_palette(void);

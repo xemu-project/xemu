@@ -132,7 +132,8 @@ typedef struct PGRAPHRenderer {
         void (*surface_update)(NV2AState *d, bool upload, bool color_write, bool zeta_write);
         void (*set_surface_scale_factor)(NV2AState *d, unsigned int scale);
         unsigned int (*get_surface_scale_factor)(NV2AState *d);
-        int (*get_framebuffer_surface)(NV2AState *d);
+        int (*get_framebuffer_surface)(NV2AState *d, bool sync);
+        bool (*get_scanout_writes)(NV2AState *d, unsigned int *writes);
         GPUProperties *(*get_gpu_properties)(void);
     } ops;
 } PGRAPHRenderer;
@@ -146,6 +147,12 @@ typedef struct PGRAPHState {
 
     int frame_time;
     int draw_time;
+
+    QemuMutex flip_lock;
+    QemuCond flip_cond;
+    unsigned int flip_count;
+    unsigned int scanout_writes;
+    unsigned int write_seq;
 
     /* subchannels state we're not sure the location of... */
     ContextSurfaces2DState context_surfaces_2d;
@@ -278,6 +285,7 @@ typedef struct PGRAPHState {
 void pgraph_init(NV2AState *d);
 void pgraph_init_thread(NV2AState *d);
 void pgraph_destroy(PGRAPHState *pg);
+void pgraph_count_flip(NV2AState *d);
 void pgraph_context_switch(NV2AState *d, unsigned int channel_id);
 void pgraph_process_pending(NV2AState *d);
 void pgraph_process_pending_reports(NV2AState *d);

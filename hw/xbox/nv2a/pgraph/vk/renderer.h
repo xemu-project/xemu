@@ -127,6 +127,7 @@ typedef struct SurfaceBinding {
     int frame_time;
     int draw_time;
     bool draw_dirty;
+    unsigned int writes;
     bool download_pending;
     bool upload_pending;
 

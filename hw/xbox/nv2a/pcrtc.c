@@ -65,7 +65,10 @@ void pcrtc_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     case NV_PCRTC_START:
         val &= 0x07FFFFFF;
         // assert(val < memory_region_size(d->vram));
-        d->pcrtc.start = val;
+        if (val != d->pcrtc.start) {
+            d->pcrtc.start = val;
+            pgraph_count_flip(d);
+        }
 
         NV2A_DPRINTF("PCRTC_START - %x %x %x %x\n",
                 d->vram_ptr[val+64], d->vram_ptr[val+64+1],

@@ -386,6 +386,8 @@ void pgraph_gl_sync(NV2AState *d)
 
     /* FIXME: Sanity check surface dimensions */
 
+    d->pgraph.scanout_writes = qatomic_read(&surface->writes);
+
     /* Wait for queued commands to complete */
     pgraph_gl_upload_surface_data(d, surface, !tcg_enabled());
     gl_fence();
@@ -404,7 +406,7 @@ void pgraph_gl_sync(NV2AState *d)
     qemu_event_set(&d->pgraph.sync_complete);
 }
 
-int pgraph_gl_get_framebuffer_surface(NV2AState *d)
+int pgraph_gl_get_framebuffer_surface(NV2AState *d, bool sync)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
@@ -431,6 +433,10 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
         );
 
     surface->frame_time = pg->frame_time;
+    if (!sync) {
+        qemu_mutex_unlock(&d->pfifo.lock);
+        return r->gl_display_buffer;
+    }
     qemu_event_reset(&d->pgraph.sync_complete);
     qatomic_set(&pg->sync_pending, true);
     pfifo_kick(d);
@@ -438,4 +444,21 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
     qemu_event_wait(&d->pgraph.sync_complete);
 
     return r->gl_display_buffer;
+}
+
+bool pgraph_gl_get_scanout_writes(NV2AState *d, unsigned int *writes)
+{
+    VGADisplayParams vga_display_params;
+    d->vga.get_params(&d->vga, &vga_display_params);
+
+    qemu_mutex_lock(&d->pgraph.lock);
+    SurfaceBinding *surface = pgraph_gl_surface_get_within(
+        d, d->pcrtc.start + vga_display_params.line_offset);
+    bool found = surface && surface->color;
+    if (found) {
+        *writes = qatomic_read(&surface->writes);
+    }
+    qemu_mutex_unlock(&d->pgraph.lock);
+
+    return found;
 }

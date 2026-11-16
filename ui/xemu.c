@@ -840,7 +840,7 @@ static void gl_render_frame(struct xemu_console *scon)
      * the guest code isn't using HW accelerated rendering, but just blitting
      * to the framebuffer, fall back to the VGA path.
      */
-    GLuint tex = nv2a_get_framebuffer_surface();
+    GLuint tex = nv2a_get_framebuffer_surface(true);
 
     ASSERT_NO_GL_ERROR();
 

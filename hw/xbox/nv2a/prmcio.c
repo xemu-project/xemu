@@ -34,6 +34,8 @@ uint64_t prmcio_read(void *opaque, hwaddr addr, unsigned int size)
 void prmcio_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = opaque;
+    uint8_t cr_index = d->vga.cr_index;
+    uint8_t cr = d->vga.cr[cr_index];
 
     nv2a_reg_log_write(NV_PRMCIO, addr, size, val);
 
@@ -53,4 +55,7 @@ void prmcio_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     }
 
     vga_ioport_write(&d->vga, addr, val);
+    if (d->vga.cr[cr_index] != cr) {
+        pgraph_count_flip(d);
+    }
 }

@@ -142,7 +142,7 @@ static void pgraph_null_surface_update(NV2AState *d, bool upload,
 {
 }
 
-static int pgraph_null_get_framebuffer_surface(NV2AState *d)
+static int pgraph_null_get_framebuffer_surface(NV2AState *d, bool sync)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHNullState *r = pg->null_renderer_state;

@@ -169,7 +169,7 @@ static void pgraph_vk_pre_shutdown_wait(NV2AState *d)
     // qemu_event_wait(&d->pgraph.vk_renderer_state->shader_cache_writeback_complete);   
 }
 
-static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
+static int pgraph_vk_get_framebuffer_surface(NV2AState *d, bool sync)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -191,6 +191,10 @@ static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
     surface->frame_time = pg->frame_time;
 
 #if HAVE_EXTERNAL_MEMORY
+    if (!sync) {
+        qemu_mutex_unlock(&d->pfifo.lock);
+        return r->display.gl_texture_id;
+    }
     qemu_event_reset(&d->pgraph.sync_complete);
     qatomic_set(&pg->sync_pending, true);
     pfifo_kick(d);
@@ -202,6 +206,23 @@ static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
     pgraph_vk_wait_for_surface_download(surface);
     return 0;
 #endif
+}
+
+static bool pgraph_vk_get_scanout_writes(NV2AState *d, unsigned int *writes)
+{
+    VGADisplayParams vga_display_params;
+    d->vga.get_params(&d->vga, &vga_display_params);
+
+    qemu_mutex_lock(&d->pgraph.lock);
+    SurfaceBinding *surface = pgraph_vk_surface_get_within(
+        d, d->pcrtc.start + vga_display_params.line_offset);
+    bool found = surface && surface->color;
+    if (found) {
+        *writes = qatomic_read(&surface->writes);
+    }
+    qemu_mutex_unlock(&d->pgraph.lock);
+
+    return found;
 }
 
 static PGRAPHRenderer pgraph_vk_renderer = {
@@ -229,6 +250,7 @@ static PGRAPHRenderer pgraph_vk_renderer = {
         .set_surface_scale_factor = pgraph_vk_set_surface_scale_factor,
         .get_surface_scale_factor = pgraph_vk_get_surface_scale_factor,
         .get_framebuffer_surface = pgraph_vk_get_framebuffer_surface,
+        .get_scanout_writes = pgraph_vk_get_scanout_writes,
         .get_gpu_properties = pgraph_vk_get_gpu_properties,
     }
 };
