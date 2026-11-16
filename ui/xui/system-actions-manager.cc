@@ -193,6 +193,7 @@ bool SystemActionsManager::HandleControllerShortcuts(unsigned int buttons)
                 if (b.callback) {
                     b.callback();
                     action_invoked = true;
+                    break;
                 }
             }
         }
