@@ -104,7 +104,7 @@ jobs:
         path: dist
     - name: Generate PDB
       run: |
-        Invoke-WebRequest -Uri "https://github.com/rainers/cv2pdb/releases/download/v0.52/cv2pdb-0.52.zip" -OutFile "cv2pdb.zip"
+        Invoke-WebRequest -Uri "https://github.com/rainers/cv2pdb/releases/download/v0.54/cv2pdb-0.54.zip" -OutFile "cv2pdb.zip"
         7z x -ocv2pdb -y cv2pdb.zip
         cd dist
         ../cv2pdb/cv2pdb64.exe xemu.exe
