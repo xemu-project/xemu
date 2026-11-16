@@ -39,6 +39,9 @@ uint64_t pfifo_read(void *opaque, hwaddr addr, unsigned int size)
     NV2AState *d = (NV2AState *)opaque;
 
     qemu_mutex_lock(&d->pfifo.lock);
+    if (addr == NV_PFIFO_CACHE1_DMA_GET || addr == NV_PFIFO_CACHE1_DMA_PUT) {
+        pfifo_wait_for_trap(d);
+    }
 
     uint64_t r = 0;
     switch (addr) {
@@ -73,6 +76,9 @@ void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     nv2a_reg_log_write(NV_PFIFO, addr, size, val);
 
     qemu_mutex_lock(&d->pfifo.lock);
+    if (addr == NV_PFIFO_CACHE1_DMA_GET || addr == NV_PFIFO_CACHE1_DMA_PUT) {
+        pfifo_wait_for_trap(d);
+    }
 
     switch (addr) {
     case NV_PFIFO_INTR_0:
@@ -97,6 +103,55 @@ void pfifo_kick(NV2AState *d)
 {
     d->pfifo.fifo_kick = true;
     qemu_cond_broadcast(&d->pfifo.fifo_cond);
+}
+
+/*
+ * A NO_OPERATION with a non-zero parameter traps to the guest. Xbox Direct3D
+ * uses one to wake a thread that waits for the GPU to reach some point in the
+ * pushbuffer: it patches the NOP into commands it has already submitted, and
+ * takes it out again if the GPU turns out to be too close. A NOP that is
+ * consumed just before it is taken out still interrupts. On hardware that
+ * happens at once. Here the pusher thread needs the BQL to raise the
+ * interrupt, and the guest keeps running until it gets it. If the guest starts
+ * its next wait in that gap, the late interrupt ends that wait immediately and
+ * D3D goes on to overwrite commands that have not been executed yet.
+ *
+ * D3D reads DMA_GET before it starts a wait. So while a trap is on its way,
+ * hold the guest at the pushbuffer pointers until the interrupt is raised.
+ * The timeout is only a safety net.
+ *
+ * Called with pfifo.lock held.
+ */
+#define PFIFO_TRAP_WAIT_MAX_MS 100
+
+void pfifo_wait_for_trap(NV2AState *d)
+{
+    if (!d->pfifo.trap_pending) {
+        return;
+    }
+
+    /* The pusher needs the BQL to raise the interrupt */
+    bool had_bql = bql_locked();
+    if (had_bql) {
+        bql_unlock();
+    }
+
+    int64_t deadline =
+        qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + PFIFO_TRAP_WAIT_MAX_MS;
+    while (d->pfifo.trap_pending && !d->exiting) {
+        int64_t left = deadline - qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
+        if (left <= 0) {
+            break;
+        }
+        qemu_cond_timedwait(&d->pfifo.trap_cond, &d->pfifo.lock, left);
+    }
+
+    if (had_bql) {
+        /* Lock order is BQL, then pfifo.lock */
+        qemu_mutex_unlock(&d->pfifo.lock);
+        bql_lock();
+        qemu_mutex_lock(&d->pfifo.lock);
+    }
 }
 
 static bool can_fifo_access(NV2AState *d) {
@@ -223,6 +278,16 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         assert(engine == ENGINE_GRAPHICS);
         SET_MASK(*pull1, NV_PFIFO_CACHE1_PULL1_ENGINE, engine);
 
+        /*
+         * Set while pfifo.lock is still held from reading the method, so
+         * that a guest which takes the NOP out after this point finds the
+         * flag set when it next looks at the pushbuffer pointers.
+         */
+        bool trap = method == NV097_NO_OPERATION && parameter != 0;
+        if (trap) {
+            d->pfifo.trap_pending = true;
+        }
+
         // TODO: this is fucked
         qemu_mutex_unlock(&d->pfifo.lock);
         qemu_mutex_lock(&d->pgraph.lock);
@@ -235,6 +300,11 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
 
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock(&d->pfifo.lock);
+
+        if (trap) {
+            d->pfifo.trap_pending = false;
+            qemu_cond_broadcast(&d->pfifo.trap_cond);
+        }
     } else {
         assert(!"Unrecognized pfifo puller method");
     }

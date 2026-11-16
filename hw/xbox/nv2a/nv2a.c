@@ -369,6 +369,7 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
     qemu_mutex_init(&d->pfifo.lock);
     qemu_cond_init(&d->pfifo.fifo_cond);
     qemu_cond_init(&d->pfifo.fifo_idle_cond);
+    qemu_cond_init(&d->pfifo.trap_cond);
 }
 
 static void nv2a_exitfn(PCIDevice *dev)
