@@ -416,6 +416,7 @@ public:
 
         if (refocus_first_item || (m_focus && !m_pop_focus)) {
             ImGui::SetKeyboardFocusHere();
+            ImGui::SetNavCursorVisibleAfterMove();
             refocus_first_item = false;
         }
 
