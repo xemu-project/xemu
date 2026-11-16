@@ -1670,11 +1670,9 @@ static void vga_draw_graphic(VGACommonState *s, int full_update)
     linesize = surface_stride(surface);
     y1 = 0;
 
-    if (!full_update) {
-        snap = memory_region_snapshot_and_clear_dirty(&s->vram, region_start,
-                                                      region_end - region_start,
-                                                      DIRTY_MEMORY_VGA);
-    }
+    snap = memory_region_snapshot_and_clear_dirty(&s->vram, region_start,
+                                                  region_end - region_start,
+                                                  DIRTY_MEMORY_VGA);
 
     for(y = 0; y < height; y++) {
         addr = addr1;
