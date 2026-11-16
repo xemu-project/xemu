@@ -1,7 +1,7 @@
 i18n = import('i18n')
 
 if find_program('xgettext', required: get_option('gettext')).found()
-  i18n.gettext(meson.project_name(),
+  i18n.gettext('xemu',
                args: [
                  '--msgid-bugs-address=qemu-devel@nongnu.org',
                  '--keyword=SectionTitle:1',

@@ -35,7 +35,6 @@
 
 extern "C" {
 // Include necessary QEMU headers
-#include "qemu/cutils.h"
 #include "qapi/error.h"
 #include "system/runstate.h"
 #include "hw/xbox/mcpx/apu/apu_debug.h"

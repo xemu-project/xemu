@@ -17,22 +17,22 @@ install_translation_catalogs() {
     case "${platform}" in
         CYGWIN*|MINGW*|MSYS*|win64-cross) locale_dir="${locale_dir#?:}" ;;
     esac
-    find build/po -path '*/LC_MESSAGES/qemu.mo' -type f -print -quit | grep -q . || return 0
+    find build/po -path '*/LC_MESSAGES/xemu.mo' -type f -print -quit | grep -q . || return 0
 
     while IFS= read -r catalog; do
         local language
         language=$(basename "$(dirname "$(dirname "${catalog}")")")
-        local target="${destination}/qemu-bundle${locale_dir}/${language}/LC_MESSAGES/qemu.mo"
+        local target="${destination}/qemu-bundle${locale_dir}/${language}/LC_MESSAGES/xemu.mo"
         mkdir -p "$(dirname "${target}")"
         install -m 0644 "${catalog}" "${target}"
-    done < <(find build/po -path '*/LC_MESSAGES/qemu.mo' -type f)
+    done < <(find build/po -path '*/LC_MESSAGES/xemu.mo' -type f)
 }
 
 build_translation_catalogs() {
     # Go through Make so the configured build backend is respected.  gettext is
-    # optional, so qemu-gmo is absent when it was disabled or unavailable.
-    if make -n qemu-gmo >/dev/null 2>&1; then
-        make qemu-gmo
+    # optional, so xemu-gmo is absent when it was disabled or unavailable.
+    if make -n xemu-gmo >/dev/null 2>&1; then
+        make xemu-gmo
     fi
 }
 

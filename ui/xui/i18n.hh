@@ -11,7 +11,7 @@
 #pragma once
 
 #ifndef GETTEXT_PACKAGE
-#define GETTEXT_PACKAGE "qemu"
+#define GETTEXT_PACKAGE "xemu"
 #endif
 
 #include <glib/gi18n.h>
