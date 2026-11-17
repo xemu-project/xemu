@@ -203,12 +203,6 @@ void xemu_hud_update(void)
         g_last_scale = g_viewport_mgr.m_scale;
     }
 
-    if (!first_boot_window.is_open) {
-        int ww, wh;
-        SDL_GetWindowSizeInPixels(xemu_get_window(), &ww, &wh);
-        RenderFramebuffer(g_tex, ww, wh, g_flip_req);
-    }
-
     ImGui_ImplOpenGL3_NewFrame();
     io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
     ImGui_ImplSDL3_NewFrame();
@@ -322,10 +316,9 @@ void xemu_hud_update(void)
     // if (show_demo) ImGui::ShowDemoWindow(&show_demo);
 }
 
-void xemu_hud_render()
+bool xemu_hud_end_frame(void)
 {
     ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
     if (g_vsync != g_config.display.window.vsync) {
         g_vsync = g_config.display.window.vsync;
@@ -336,4 +329,19 @@ void xemu_hud_render()
         SaveScreenshot(g_tex, g_flip_req);
         g_screenshot_pending = false;
     }
+
+    return ImGui::GetDrawData()->TotalVtxCount > 0;
+}
+
+void xemu_hud_render(void)
+{
+    if (!first_boot_window.is_open) {
+        int ww, wh;
+        SDL_GetWindowSizeInPixels(xemu_get_window(), &ww, &wh);
+        xemu_main_loop_lock();
+        RenderFramebuffer(g_tex, ww, wh, g_flip_req);
+        xemu_main_loop_unlock();
+    }
+
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
