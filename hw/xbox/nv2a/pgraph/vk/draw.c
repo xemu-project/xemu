@@ -1208,6 +1208,7 @@ const enum NV2A_PROF_COUNTERS_ENUM finish_reason_to_counter_enum[] = {
     [VK_FINISH_REASON_FLIP_STALL] = NV2A_PROF_FINISH_FLIP_STALL,
     [VK_FINISH_REASON_FLUSH] = NV2A_PROF_FINISH_FLUSH,
     [VK_FINISH_REASON_STALLED] = NV2A_PROF_FINISH_STALLED,
+    [VK_FINISH_REASON_TEXTURE_DIRTY] = NV2A_PROF_FINISH_TEXTURE_DIRTY,
 };
 
 void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
@@ -1386,6 +1387,10 @@ static void begin_pre_draw(PGRAPHState *pg)
     }
 
     pgraph_vk_ensure_command_buffer(pg);
+
+    if (!pg->clearing) {
+        pgraph_vk_update_texture_timestamps(pg);
+    }
 }
 
 static float clamp_line_width_to_device_limits(PGRAPHState *pg, float width)
