@@ -1282,6 +1282,8 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
 
         r->descriptor_set_index = 0;
         r->in_command_buffer = false;
+
+        pg->draw_time++;
         destroy_framebuffers(pg);
 
         if (check_budget) {
