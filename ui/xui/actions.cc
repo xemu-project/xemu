@@ -25,6 +25,65 @@
 #include "snapshot-manager.hh"
 #include <filesystem>
 
+static const unsigned MAX_RECENT_DISCS = 10;
+
+static void config_stringlist_init(const char ***list_ptr, unsigned *list_count)
+{
+    *list_count = 0;
+    *list_ptr = g_new0(const char *, 1);
+}
+
+static void config_stringlist_free(const char **list, unsigned list_count)
+{
+    for (unsigned i = 0; i < list_count; i++) {
+        g_free((void *)list[i]);
+    }
+    g_free(list);
+}
+
+static void config_stringlist_push(const char ***list_ptr, unsigned *list_count,
+                                   const char *new_entry)
+{
+    const char **list = *list_ptr;
+    const unsigned cur_count = *list_count;
+
+    // If target file is already in history, move to top
+    for (unsigned i = 0; i < cur_count; i++) {
+        if (g_strcmp0(list[i], new_entry) == 0) {
+            const char *current_path = list[i];
+            for (unsigned int j = i; j > 0; j--) {
+                list[j] = list[j - 1];
+            }
+            list[0] = current_path;
+            return;
+        }
+    }
+
+    // Free a slot for our entry
+    unsigned new_count;
+    if (cur_count >= MAX_RECENT_DISCS) {
+        for (unsigned i = MAX_RECENT_DISCS; i < cur_count; i++) {
+            g_free((void *)list[i]);
+        }
+
+        g_free((void *)list[MAX_RECENT_DISCS - 1]);
+        new_count = MAX_RECENT_DISCS;
+    } else {
+        // Allocate new space
+        new_count = cur_count + 1;
+        const char **new_discs = g_renew(const char *, list, new_count);
+        list = new_discs;
+        *list_ptr = new_discs;
+    }
+
+    *list_count = new_count;
+
+    for (unsigned i = new_count - 1; i > 0; i--) {
+        list[i] = list[i - 1];
+    }
+    list[0] = g_strdup(new_entry);
+}
+
 void ActionEjectDisc(void)
 {
     Error *err = NULL;
@@ -38,16 +97,14 @@ void ActionEjectDisc(void)
 void ActionLoadDisc(void)
 {
     static const SDL_DialogFileFilter filters[] = {
-        { "Disc Image Files (*.iso, *.xiso)", "iso;xiso" },
-        { "All Files", "*" }
+        { "Disc Image Files (*.iso, *.xiso)", "iso;xiso" }, { "All Files", "*" }
     };
     const char *default_path = g_config.sys.files.dvd_path;
     if (!default_path || !default_path[0]) {
         default_path = g_config.general.games_dir;
     }
-    ShowOpenFileDialog(filters, 2, default_path, [](const char *path) {
-        ActionLoadDiscFile(path);
-    });
+    ShowOpenFileDialog(filters, 2, default_path,
+                       [](const char *path) { ActionLoadDiscFile(path); });
 }
 
 void ActionLoadDiscFile(const char *file_path)
@@ -61,10 +118,19 @@ void ActionLoadDiscFile(const char *file_path)
     } else {
         const char *games_dir = g_config.general.games_dir;
         if (!games_dir || !games_dir[0]) {
-            std::string dir = std::filesystem::path(file_path).parent_path().string();
+            std::string dir =
+                std::filesystem::path(file_path).parent_path().string();
             xemu_settings_set_string(&g_config.general.games_dir, dir.c_str());
         }
     }
+
+    if (!g_config.general.recent.discs) {
+        config_stringlist_init(&g_config.general.recent.discs,
+                               &g_config.general.recent.discs_count);
+    }
+
+    config_stringlist_push(&g_config.general.recent.discs,
+                           &g_config.general.recent.discs_count, file_path);
 }
 
 void ActionTogglePause(void)
@@ -88,7 +154,7 @@ void ActionShutdown(void)
 
 void ActionScreenshot(void)
 {
-	g_screenshot_pending = true;
+    g_screenshot_pending = true;
 }
 
 void ActionActivateBoundSnapshot(int slot, bool save)
@@ -118,4 +184,12 @@ void ActionActivateBoundSnapshot(int slot, bool save)
 void ActionLoadSnapshotChecked(const char *name)
 {
     g_snapshot_mgr.LoadSnapshotChecked(name);
+}
+
+void ActionClearDiscRecent(void)
+{
+    config_stringlist_free(g_config.general.recent.discs,
+                           g_config.general.recent.discs_count);
+    g_config.general.recent.discs = NULL;
+    g_config.general.recent.discs_count = 0;
 }
