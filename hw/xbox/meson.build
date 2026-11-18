@@ -16,6 +16,7 @@ specific_ss.add(files(
 	'xid.c',
 	'xblc.c',
 	'xid-gamepad.c',
+	'xid-arcade-stick.c',
 	))
 subdir('nv2a')
 subdir('mcpx')
