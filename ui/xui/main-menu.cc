@@ -102,6 +102,75 @@ bool MainMenuInputView::IsInputRebinding()
     return m_rebinding != nullptr;
 }
 
+// Composite USB devices (e.g. gaming mice with macro keys) expose a keyboard
+// HID interface, so SDL_GetKeyboards() lists them too. Hide any "keyboard"
+// whose name also appears in SDL's mouse list so the picker shows real
+// keyboards only.
+static bool host_keyboard_is_really_a_mouse(const char *kbd_name)
+{
+    if (!kbd_name) {
+        return false;
+    }
+
+    int count = 0;
+    SDL_MouseID *mice = SDL_GetMice(&count);
+    bool match = false;
+    for (int i = 0; mice && i < count; i++) {
+        const char *mn = SDL_GetMouseNameForID(mice[i]);
+        if (mn && strcmp(mn, kbd_name) == 0) {
+            match = true;
+            break;
+        }
+    }
+    SDL_free(mice);
+    return match;
+}
+
+// Renders a combo listing the host keyboards reported by SDL (plus an
+// "All keyboards" entry). `current` is the selected keyboard id (0 == all) and
+// `on_select(id, save)` is invoked when the user picks one.
+static void DrawHostKeyboardCombo(const char *combo_id, SDL_KeyboardID current,
+                                  void (*on_select)(SDL_KeyboardID, int))
+{
+    const char *cur_name = "All keyboards";
+    if (current != 0) {
+        const char *n = SDL_GetKeyboardNameForID(current);
+        cur_name = n ? n : "Unknown keyboard";
+    }
+
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (ImGui::BeginCombo(combo_id, cur_name, ImGuiComboFlags_NoArrowButton)) {
+        if (ImGui::Selectable("All keyboards", current == 0)) {
+            on_select(0, 1);
+        }
+
+        int n_ids = 0;
+        SDL_KeyboardID *ids = SDL_GetKeyboards(&n_ids);
+        for (int i = 0; ids && i < n_ids; i++) {
+            const char *n = SDL_GetKeyboardNameForID(ids[i]);
+            // Skip devices that are really mice exposing a keyboard interface,
+            // unless it happens to be the currently-selected one.
+            if (ids[i] != current && host_keyboard_is_really_a_mouse(n)) {
+                continue;
+            }
+            char buf[128];
+            if (!n) {
+                snprintf(buf, sizeof(buf), "Keyboard %u", (unsigned)ids[i]);
+                n = buf;
+            }
+            ImGui::PushID((int)ids[i]);
+            if (ImGui::Selectable(n, current == ids[i])) {
+                on_select(ids[i], 1);
+            }
+            ImGui::PopID();
+        }
+        SDL_free(ids);
+
+        ImGui::EndCombo();
+    }
+    DrawComboChevron();
+}
+
 void MainMenuInputView::Draw()
 {
     SectionTitle("Controllers");
@@ -141,7 +210,8 @@ void MainMenuInputView::Draw()
     const int port_padding = 8;
     for (int i = 0; i < 4; i++) {
         bool is_selected = (i == active);
-        bool port_is_bound = (xemu_input_get_bound(i) != NULL);
+        bool port_is_bound = (xemu_input_get_bound(i) != NULL) ||
+                             xemu_input_port_has_hid(i);
 
         // Set an X offset to center the image button within the column
         ImGui::SetCursorPosX(
@@ -200,6 +270,12 @@ void MainMenuInputView::Draw()
         driver = DRIVER_DUKE_DISPLAY_NAME;
     else if (strcmp(driver, DRIVER_S) == 0)
         driver = DRIVER_S_DISPLAY_NAME;
+    else if (strcmp(driver, DRIVER_KBD) == 0)
+        driver = DRIVER_KBD_DISPLAY_NAME;
+    else if (strcmp(driver, DRIVER_MOUSE) == 0)
+        driver = DRIVER_MOUSE_DISPLAY_NAME;
+    else if (strcmp(driver, DRIVER_TABLET) == 0)
+        driver = DRIVER_TABLET_DISPLAY_NAME;
 
     ImGui::Columns(2, "", false);
     ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.25);
@@ -211,9 +287,14 @@ void MainMenuInputView::Draw()
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("###InputDrivers", driver,
                           ImGuiComboFlags_NoArrowButton)) {
-        const char *available_drivers[] = { DRIVER_DUKE, DRIVER_S };
+        const char *available_drivers[] = { DRIVER_DUKE, DRIVER_S,
+                                             DRIVER_KBD, DRIVER_MOUSE,
+                                             DRIVER_TABLET };
         const char *driver_display_names[] = { DRIVER_DUKE_DISPLAY_NAME,
-                                               DRIVER_S_DISPLAY_NAME };
+                                               DRIVER_S_DISPLAY_NAME,
+                                               DRIVER_KBD_DISPLAY_NAME,
+                                               DRIVER_MOUSE_DISPLAY_NAME,
+                                               DRIVER_TABLET_DISPLAY_NAME };
         bool is_selected = false;
         int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);
         for (int i = 0; i < num_drivers; i++) {
@@ -221,11 +302,26 @@ void MainMenuInputView::Draw()
             is_selected = strcmp(driver, iter) == 0;
             ImGui::PushID(iter);
             if (ImGui::Selectable(iter, is_selected)) {
+                const char *selected_driver = bound_drivers[active];
                 for (int j = 0; j < num_drivers; j++) {
                     if (iter == driver_display_names[j])
-                        bound_drivers[active] = available_drivers[j];
+                        selected_driver = available_drivers[j];
                 }
-                xemu_input_bind(active, bound_controllers[active], 1);
+
+                if (xemu_input_driver_is_hid(selected_driver)) {
+                    // Emulate a USB keyboard or mouse on this port instead of a
+                    // controller.
+                    xemu_input_attach_hid(active, selected_driver, 1);
+                } else if (xemu_input_driver_is_hid(bound_drivers[active])) {
+                    // Switching away from a keyboard/mouse: remove it and record
+                    // the controller driver. User can then pick an input device.
+                    bound_drivers[active] = selected_driver;
+                    xemu_input_detach_hid(active, 1);
+                } else {
+                    // Switching between controller variants.
+                    bound_drivers[active] = selected_driver;
+                    xemu_input_bind(active, bound_controllers[active], 1);
+                }
             }
             if (is_selected) {
                 ImGui::SetItemDefaultFocus();
@@ -250,6 +346,11 @@ void MainMenuInputView::Draw()
     // List available input devices
     const char *not_connected = "Not Connected";
     ControllerState *bound_state = xemu_input_get_bound(active);
+    bool port_is_hid = xemu_input_port_has_hid(active);
+    bool hid_is_mouse = port_is_hid &&
+                        (strcmp(bound_drivers[active], DRIVER_MOUSE) == 0 ||
+                         strcmp(bound_drivers[active], DRIVER_TABLET) == 0);
+    bool hid_is_keyboard = port_is_hid && !hid_is_mouse;
 
     // Get current controller name
     const char *name;
@@ -259,6 +360,11 @@ void MainMenuInputView::Draw()
         name = bound_state->name;
     }
 
+    // A port emulating a USB keyboard/mouse has no separate host input device;
+    // the host keyboard/mouse drives it directly while the window is focused.
+    if (port_is_hid) {
+        ImGui::Text("%s", hid_is_mouse ? "Host mouse" : "Host keyboard");
+    } else {
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("###InputDevices", name, ImGuiComboFlags_NoArrowButton))
     {
@@ -306,6 +412,35 @@ void MainMenuInputView::Draw()
         ImGui::EndCombo();
     }
     DrawComboChevron();
+    }
+
+    // When the input device is the emulated keyboard-controller, let the user
+    // pick which physical keyboard drives it. A dedicated keyboard is excluded
+    // from the guest usb-kbd, so a second keyboard can type into the guest.
+    if (bound_state && bound_state->type == INPUT_DEVICE_SDL_KEYBOARD) {
+        ImGui::NextColumn();
+        ImGui::Text("Host Keyboard");
+        ImGui::SameLine(0, 0);
+        ImGui::NextColumn();
+        DrawHostKeyboardCombo(
+            "###ControllerHostKeyboard",
+            xemu_input_get_controller_kbd_id(),
+            [](SDL_KeyboardID id, int save) {
+                xemu_input_set_controller_kbd_id(id, save);
+            });
+    } else if (hid_is_keyboard) {
+        // Same selector for the emulated guest keyboard, rendered here so it
+        // shares the column layout and menu font of the combos above.
+        ImGui::NextColumn();
+        ImGui::Text("Host Keyboard");
+        ImGui::SameLine(0, 0);
+        ImGui::NextColumn();
+        DrawHostKeyboardCombo(
+            "###GuestHostKeyboard", xemu_input_get_guest_kbd_id(),
+            [](SDL_KeyboardID id, int save) {
+                xemu_input_set_guest_kbd_id(id, save);
+            });
+    }
 
     ImGui::Columns(1);
 
@@ -313,6 +448,47 @@ void MainMenuInputView::Draw()
     // Add a separator between input selection and controller graphic
     //
     ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y / 2));
+
+    //
+    // In keyboard/mouse mode there is no controller to render; show a short
+    // note explaining how the emulated device is driven, then stop.
+    //
+    if (port_is_hid) {
+        bool is_rel_mouse = strcmp(bound_drivers[active], DRIVER_MOUSE) == 0;
+        bool is_abs_mouse = strcmp(bound_drivers[active], DRIVER_TABLET) == 0;
+
+        controller_fbo->Restore();
+        ImGui::PopFont();
+
+        if (is_rel_mouse) {
+            ImGui::TextWrapped(
+                "A relative USB mouse is emulated on this port. Click inside the "
+                "emulator window (or press Ctrl+Alt+G) to capture your host "
+                "mouse; move and click while captured. Press Ctrl+Alt+G again to "
+                "release. Select a controller under \"Emulated Device\" to use a "
+                "gamepad on this port instead.");
+        } else if (is_abs_mouse) {
+            ImGui::TextWrapped(
+                "An absolute USB mouse (tablet) is emulated on this port. The "
+                "guest pointer tracks your host cursor while the emulator window "
+                "is focused - no capture needed. Select a controller under "
+                "\"Emulated Device\" to use a gamepad on this port instead.");
+        } else {
+            ImGui::TextWrapped(
+                "A USB keyboard is emulated on this port. Type using your host "
+                "keyboard while the emulator window is focused. Select a "
+                "controller under \"Emulated Device\" to use a gamepad on this "
+                "port instead.");
+        }
+
+        SectionTitle("Options");
+        Toggle("Auto-bind controllers", &g_config.input.auto_bind,
+               "Bind newly connected controllers to any open port");
+        Toggle("Background controller input capture",
+               &g_config.input.background_input_capture,
+               "Capture even if window is unfocused (requires restart)");
+        return;
+    }
 
     //
     // Render controller image
