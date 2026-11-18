@@ -17,10 +17,41 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "qemu/osdep.h"
+#include "renderer.h"
+
 #include "qemu/thread.h"
-#include "hw/hw.h"
 #include "hw/xbox/nv2a/nv2a_int.h"
+
+#include "gloffscreen.h"
+
+static GloContext *g_null_gl_context;
+
+static void early_context_init(void)
+{
+    g_null_gl_context = glo_context_create();
+}
+
+static void pgraph_null_init(NV2AState *d, Error **errp)
+{
+    PGRAPHState *pg = &d->pgraph;
+
+    pg->null_renderer_state = g_malloc0(sizeof(*pg->null_renderer_state));
+}
+
+static void pgraph_null_finalize(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHNullState *r = pg->null_renderer_state;
+    if (r) {
+        if (r->blank_texture) {
+            glo_set_current(g_null_gl_context);
+            glDeleteTextures(1, &r->blank_texture);
+            glo_set_current(NULL);
+        }
+        g_free(r);
+        pg->null_renderer_state = NULL;
+    }
+}
 
 static void pgraph_null_sync(NV2AState *d)
 {
@@ -111,17 +142,34 @@ static void pgraph_null_surface_update(NV2AState *d, bool upload,
 {
 }
 
-static void pgraph_null_init(NV2AState *d, Error **errp)
+static int pgraph_null_get_framebuffer_surface(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
-    pg->null_renderer_state = NULL;
+    PGRAPHNullState *r = pg->null_renderer_state;
+    if (r) {
+        if (!r->blank_texture) {
+            static const uint8_t black_pixel[4] = { 0, 0, 0, 255 };
+            glGenTextures(1, &r->blank_texture);
+            glBindTexture(GL_TEXTURE_2D, r->blank_texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA,
+                         GL_UNSIGNED_BYTE, black_pixel);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        }
+
+        return r->blank_texture;
+    }
+
+    return 0;
 }
 
 static PGRAPHRenderer pgraph_null_renderer = {
     .type = CONFIG_DISPLAY_RENDERER_NULL,
     .name = "Null",
     .ops = {
+        .early_context_init = early_context_init,
         .init = pgraph_null_init,
+        .finalize = pgraph_null_finalize,
         .clear_report_value = pgraph_null_clear_report_value,
         .clear_surface = pgraph_null_clear_surface,
         .draw_begin = pgraph_null_draw_begin,
@@ -137,7 +185,8 @@ static PGRAPHRenderer pgraph_null_renderer = {
         .process_pending = pgraph_null_process_pending,
         .process_pending_reports = pgraph_null_process_pending_reports,
         .surface_update = pgraph_null_surface_update,
-    }
+        .get_framebuffer_surface = pgraph_null_get_framebuffer_surface,
+    },
 };
 
 static void __attribute__((constructor)) register_renderer(void)

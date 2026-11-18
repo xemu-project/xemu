@@ -1533,6 +1533,7 @@ void pgraph_vk_draw_end(NV2AState *d)
     }
 
     pgraph_vk_flush_draw(d);
+    pgraph_vsh_carryover_update(pg);
 
     pg->draw_time++;
     if (r->color_binding && pgraph_color_write_enabled(pg)) {
