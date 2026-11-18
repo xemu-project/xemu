@@ -1037,8 +1037,8 @@ DEALINGS IN THE SOFTWARE.
 
 -------------------------------------------------------------------------------
 MIT License
-  - dsp56300-core 0.1.1 (https://github.com/mborgerson/dsp56300)
-  - dsp56300-emu 0.1.1 (https://github.com/mborgerson/dsp56300)
+  - dsp56300-core 0.1.1 (https://github.com/xemu-project/dsp56300)
+  - dsp56300-emu 0.1.1 (https://github.com/xemu-project/dsp56300)
   - libm 0.2.16 (https://github.com/rust-lang/compiler-builtins)
 
 MIT License

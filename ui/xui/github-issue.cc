@@ -77,19 +77,18 @@ static std::string BuildSystemInformation()
     ret += "\n";
 
     ret += "GPU Info:";
-    if (g_config.display.renderer == CONFIG_DISPLAY_RENDERER_VULKAN) {
-        const char *device = g_config.display.vulkan.preferred_physical_device;
-        ret += "\n* Vulkan device: ";
-        ret += (device && *device) ? device : "<<Unknown>>";
-    } else {
-        ret += "\n* GL Vendor: ";
-        ret += safe_gl_str(GL_VENDOR);
-        ret += "\n* GL Renderer: ";
-        ret += safe_gl_str(GL_RENDERER);
-        ret += "\n* GL Version: ";
-        ret += safe_gl_str(GL_VERSION);
-        ret += "\n* GLSL Version: ";
-        ret += safe_gl_str(GL_SHADING_LANGUAGE_VERSION);
+    ret += "\n* GL Vendor: ";
+    ret += safe_gl_str(GL_VENDOR);
+    ret += "\n* GL Renderer: ";
+    ret += safe_gl_str(GL_RENDERER);
+    ret += "\n* GL Version: ";
+    ret += safe_gl_str(GL_VERSION);
+    ret += "\n* GLSL Version: ";
+    ret += safe_gl_str(GL_SHADING_LANGUAGE_VERSION);
+    const char *forced_device = g_config.display.vulkan.force_physical_device;
+    if (forced_device && *forced_device) {
+        ret += "\n* Forced Vulkan device: ";
+        ret += forced_device;
     }
     ret += "\n";
 
