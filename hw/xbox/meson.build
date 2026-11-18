@@ -13,6 +13,7 @@ specific_ss.add(files(
 	'smbus_xbox_smc.c',
 	'xbox.c',
 	'xbox_pci.c',
+	'xemu_guest_info.c',
 	'xid.c',
 	'xblc.c',
 	'xid-gamepad.c',
