@@ -64,18 +64,11 @@ void FirstBootWindow::Draw()
 
     ImGui::Dummy(ImVec2(0,50*g_viewport_mgr.m_scale));
 
-    const char *visit = _("Visit");
     const char *url = "https://xemu.app";
-    const char *more = _("for more information");
-    float line_width = ImGui::CalcTextSize(visit).x + ImGui::CalcTextSize(" ").x +
-                       ImGui::CalcTextSize(url).x + ImGui::CalcTextSize(" ").x +
-                       ImGui::CalcTextSize(more).x;
-    ImGui::SetCursorPosX((ImGui::GetWindowWidth()-line_width)/2);
-    ImGui::Text("%s", visit);
-    ImGui::SameLine();
-    Hyperlink(url, url);
-    ImGui::SameLine();
-    ImGui::Text("%s", more);
+    auto link = string_format(_("Visit %s for more information"), url);
+    float line_width = ImGui::CalcTextSize(link.c_str()).x;
+    ImGui::SetCursorPosX((ImGui::GetWindowWidth() - line_width) / 2);
+    Hyperlink(link.c_str(), url);
 
     ImGui::Dummy(ImVec2(400*g_viewport_mgr.m_scale,20*g_viewport_mgr.m_scale));
 

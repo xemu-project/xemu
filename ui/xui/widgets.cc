@@ -431,7 +431,7 @@ bool ChevronCombo(const char *label, int *current_item,
             const bool item_selected = (i == *current_item);
             const char* item_text;
             if (!items_getter(data, i, &item_text))
-                item_text = "*Unknown item*";
+                item_text = N_("*Unknown item*");
             if (ImGui::Selectable(_(item_text), item_selected))
             {
                 value_changed = true;
@@ -452,24 +452,6 @@ bool ChevronCombo(const char *label, int *current_item,
     DrawComboChevron();
     ImGui::PopStyleVar();
     return value_changed;
-}
-
-static bool Items_ArrayGetter(void *data, int idx, const char **out_text)
-{
-    const char *const *items = static_cast<const char *const *>(data);
-    if (out_text) {
-        *out_text = items[idx];
-    }
-    return true;
-}
-
-bool ChevronCombo(const char *label, int *current_item,
-                  const char *const *items, int items_count,
-                  const char *description)
-{
-    return ChevronCombo(label, current_item, Items_ArrayGetter,
-                        const_cast<const char **>(items), items_count,
-                        description);
 }
 
 // Getter for the old Combo() API: "item1\0item2\0item3\0"

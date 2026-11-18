@@ -40,9 +40,6 @@ package_windows() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386w.exe dist/xemu.exe
-    # Keep update archives flat until the directory-capable updater has reached
-    # existing Windows installations.  The updater support remains in place for
-    # a later release that can safely ship gettext catalogs.
     python3 "${project_source_dir}/get_deps.py" dist/xemu.exe dist
 }
 
@@ -50,8 +47,6 @@ package_wincross() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386w.exe dist/xemu.exe
-    # See package_windows(): existing updater clients cannot consume nested
-    # catalog paths yet.
     python3 ./scripts/gen-license.py --platform windows > dist/LICENSE.txt
 }
 
@@ -295,7 +290,6 @@ configure="${project_source_dir}/configure"
 set -x # Print commands from now on
 
 "${configure}" \
-    --enable-gettext \
     --extra-cflags="-DXBOX=1 ${build_cflags} ${sys_cflags} ${CFLAGS}" \
     --extra-ldflags="${sys_ldflags}" \
     --target-list=i386-softmmu \
