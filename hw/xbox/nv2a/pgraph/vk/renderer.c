@@ -166,7 +166,7 @@ static void pgraph_vk_pre_shutdown_trigger(NV2AState *d)
 
 static void pgraph_vk_pre_shutdown_wait(NV2AState *d)
 {
-    // qemu_event_wait(&d->pgraph.vk_renderer_state->shader_cache_writeback_complete);   
+    // qemu_event_wait(&d->pgraph.vk_renderer_state->shader_cache_writeback_complete);
 }
 
 static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
@@ -226,6 +226,7 @@ static PGRAPHRenderer pgraph_vk_renderer = {
         .process_pending = pgraph_vk_process_pending,
         .process_pending_reports = pgraph_vk_process_pending_reports,
         .surface_update = pgraph_vk_surface_update,
+        .sync_region_for_transfer = pgraph_vk_sync_region_for_transfer,
         .set_surface_scale_factor = pgraph_vk_set_surface_scale_factor,
         .get_surface_scale_factor = pgraph_vk_get_surface_scale_factor,
         .get_framebuffer_surface = pgraph_vk_get_framebuffer_surface,
