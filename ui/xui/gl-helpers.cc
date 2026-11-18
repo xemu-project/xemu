@@ -884,7 +884,8 @@ void ScaleDimensions(int src_width, int src_height, int max_width, int max_heigh
     }
 }
 
-void RenderFramebuffer(GLint tex, int width, int height, bool flip, float scale[2])
+void RenderFramebuffer(GLint tex, int offset_x, int offset_y, int width,
+                       int height, bool flip, float scale[2])
 {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -902,7 +903,7 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip, float scale[
 
     DecalShader *s = g_framebuffer_shader;
     s->flip = flip;
-    glViewport(0, 0, width, height);
+    glViewport(offset_x, offset_y, width, height);
     glUseProgram(s->prog);
     glBindVertexArray(s->vao);
     glUniform1i(s->flipy_loc, s->flip);
@@ -943,7 +944,8 @@ static float GetDisplayAspectRatio(int width, int height)
 void RenderFramebuffer(GLint tex, int width, int height, bool flip)
 {
     int tw, th;
-    float scale[2];
+    float scale[2] = {1.f, 1.f};
+    int offset_x = 0, offset_y = 0;
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -953,14 +955,42 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
     // Calculate scaling factors
     if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_STRETCH) {
         // Stretch to fit
-        scale[0] = 1.0;
-        scale[1] = 1.0;
     } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_CENTER) {
         // Centered
         float t_ratio = GetDisplayAspectRatio(tw, th);
-        scale[0] = t_ratio*(float)th/(float)width;
-        scale[1] = (float)th/(float)height;
-    } else {
+        int fb_height = th;
+        int fb_width = (int)(fb_height * t_ratio);
+        offset_x = (width - fb_width) / 2;
+        offset_y = (height - fb_height) / 2;
+        width = fb_width;
+        height = fb_height;
+    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_INTEGER) {
+        // Integer scale
+        float t_ratio = GetDisplayAspectRatio(tw, th);
+
+        float fb_width_with_ratio = th * t_ratio;
+        float factor_width = (float)width / fb_width_with_ratio;
+        float factor_height = (float)height / (float)th;
+        float factor_value = std::min(factor_width, factor_height);
+
+        float final_factor;
+        if (factor_value >= 1.0) {
+          // Upscale. Floor value down to integer, truncating decimals
+          final_factor = std::floor(factor_value); // 1, 2...
+        } else {
+          // Downscale. Invert the value, round it up to an integer, invert it again
+          final_factor = 1.0 / std::ceil(1.0 / factor_value); // 0.5, 0.333...
+        }
+
+        float final_height = (float)th * final_factor; // For downscaling precision
+        int fb_height = (int)final_height;
+        int fb_width = (int)(final_height * t_ratio);
+        // Center the image, update the dimensions
+        offset_x = (width - fb_width) / 2;
+        offset_y = (height - fb_height) / 2;
+        width = fb_width;
+        height = fb_height;
+      } else {
         float t_ratio = GetDisplayAspectRatio(tw, th);
         float w_ratio = (float)width/(float)height;
         if (w_ratio >= t_ratio) {
@@ -972,7 +1002,7 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
         }
     }
 
-    RenderFramebuffer(tex, width, height, flip, scale);
+    RenderFramebuffer(tex, offset_x, offset_y, width, height, flip, scale);
 }
 
 bool RenderFramebufferToPng(GLuint tex, bool flip, std::vector<uint8_t> &png, int max_width, int max_height)
@@ -998,7 +1028,7 @@ bool RenderFramebufferToPng(GLuint tex, bool flip, std::vector<uint8_t> &png, in
     bool blend = glIsEnabled(GL_BLEND);
     if (blend) glDisable(GL_BLEND);
     float scale[2] = {1.0, 1.0};
-    RenderFramebuffer(tex, width, height, !flip, scale);
+    RenderFramebuffer(tex, 0, 0, width, height, !flip, scale);
     if (blend) glEnable(GL_BLEND);
     glPixelStorei(GL_PACK_ROW_LENGTH, width);
     glPixelStorei(GL_PACK_IMAGE_HEIGHT, height);
