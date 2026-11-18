@@ -4,6 +4,13 @@ set -e # exit if a command fails
 set -o pipefail # Will return the exit status of make if it fails
 set -o physical # Resolve symlinks when changing directory
 
+MAKE_CMD=""
+if command -v make >/dev/null 2>&1 && make --version 2>/dev/null | grep -q "GNU Make"; then
+    MAKE_CMD="make"
+elif command -v gmake >/dev/null 2>&1; then
+    MAKE_CMD="gmake"
+fi
+
 project_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 target_arch=$(uname -m)
@@ -272,10 +279,6 @@ set -x # Print commands from now on
     ${opts} \
     "$@"
 
-if [[ "$OSTYPE" == "freebsd"* ]]; then
-    time gmake -j"${job_count}" ${target} 2>&1 | tee build.log
-else
-    time make -j"${job_count}" ${target} 2>&1 | tee build.log
-fi
+time "${MAKE_CMD}" -j"${job_count}" ${target} 2>&1 | tee build.log
 
 "${postbuild}" # call post build functions

@@ -113,7 +113,6 @@ if have_block
   util_ss.add(files('timed-average.c'))
   if config_host_data.get('CONFIG_INOTIFY1')
     freebsd_dep = []
-    # FreeBSD 1500000 and higher has Linux-compatible inotify
     if host_os == 'freebsd'
       if freebsd_version_int < 1500000
         freebsd_dep = inotify

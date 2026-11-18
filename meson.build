@@ -279,7 +279,6 @@ enable_modules = get_option('modules') \
            error_message: 'Modules are incompatible with static linking') \
   .allowed()
 
-# Check version if FreeBSD host
 freebsd_version_int = 0
 if host_os == 'freebsd'
   freebsd_version_str = cc.get_define('__FreeBSD_version',
@@ -1719,13 +1718,8 @@ if sdl.found()
     sdl = declare_dependency(compile_args: '-Wno-undef',
                              dependencies: sdl.partial_dependency(compile_args: true, link_args: true, links: true, includes: true))
   endif
-  if host_os == 'freebsd'
-    sdl_image = dependency('sdl3-image', required: get_option('sdl_image'),
-			 method: 'pkg-config')
-  else
-    sdl_image = dependency('SDL3_image', required: get_option('sdl_image'),
+  sdl_image = dependency('SDL3_image', 'sdl3-image', required: get_option('sdl_image'),
                          method: 'pkg-config')
-  endif
 else
   if get_option('sdl_image').enabled()
     error('sdl-image required, but SDL was @0@'.format(
@@ -2905,17 +2899,14 @@ config_host_data.set('CONFIG_ASAN_IFACE_FIBER', have_asan_fiber)
 have_inotify_init = cc.has_header_symbol('sys/inotify.h', 'inotify_init')
 have_inotify_init1 = cc.has_header_symbol('sys/inotify.h', 'inotify_init1')
 inotify = not_found
-# FreeBSD 1500000 and higher has Linux-compatible inotify
-if (have_inotify_init or have_inotify_init1) and host_os == 'freebsd'
-  if freebsd_version_int < 1500000
-    # libinotify-kqueue
-    inotify = cc.find_library('inotify')
-    if have_inotify_init
-      have_inotify_init = inotify.found()
-    endif
-    if have_inotify_init1
-      have_inotify_init1 = inotify.found()
-    endif
+if (have_inotify_init or have_inotify_init1) and host_os == 'freebsd' and freebsd_version_int < 1500000
+  # libinotify-kqueue
+  inotify = cc.find_library('inotify')
+  if have_inotify_init
+    have_inotify_init = inotify.found()
+  endif
+  if have_inotify_init1
+    have_inotify_init1 = inotify.found()
   endif
 endif
 config_host_data.set('CONFIG_INOTIFY', have_inotify_init)
