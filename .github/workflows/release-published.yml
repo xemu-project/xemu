@@ -22,3 +22,11 @@ jobs:
     uses: ./.github/workflows/update-ppa.yml
     with:
       release: ${{ github.event.release.name }}
+
+  update_pgraph_results:
+    name: Update PGRAPH test results
+    if: ${{ github.repository_owner == 'xemu-project' && !github.event.release.prerelease }}
+    uses: ./.github/workflows/update-pgraph-results.yml
+    with:
+      tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
