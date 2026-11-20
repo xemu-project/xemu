@@ -6,9 +6,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: QEMU 2.12.91\n"
 "Report-Msgid-Bugs-To: qemu-devel@nongnu.org\n"
-"POT-Creation-Date: 2018-07-18 07:56+0200\n"
-"PO-Revision-Date: 2019-08-16 21:19+0200\n"
-"Last-Translator: Sebastian Rasmussen <sebras@gmail.com>\n"
+"POT-Creation-Date: 2026-11-18 08:45+0000\n"
+"PO-Revision-Date: 2026-04-25 20:00+0200\n"
+"Last-Translator: Daniel Nylander <daniel@danielnylander.se>\n"
 "Language-Team: Swedish <tp-sv@listor.tp-sv.se>\n"
 "Language: sv\n"
 "MIME-Version: 1.0\n"
@@ -17,59 +17,781 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Generator: Poedit 2.2.3\n"
 
+#: ui/gtk.c
 msgid " - Press Ctrl+Alt+G to release grab"
 msgstr " - Tryck Ctrl+Alt+G för att sluta fånga"
 
+#: ui/gtk.c
 msgid " [Paused]"
 msgstr " [Pausad]"
 
+#: ui/gtk.c
 msgid "_Pause"
 msgstr "_Paus"
 
+#: ui/gtk.c
 msgid "_Reset"
 msgstr "_Starta om"
 
+#: ui/gtk.c
 msgid "Power _Down"
 msgstr "Stäng _ner"
 
+#: ui/gtk.c
 msgid "_Quit"
 msgstr "_Avsluta"
 
+#: ui/gtk.c
 msgid "_Fullscreen"
 msgstr "_Helskärm"
 
+#: ui/gtk.c
 msgid "_Copy"
 msgstr "_Kopiera"
 
+#: ui/gtk.c
 msgid "Zoom _In"
 msgstr "Zooma _in"
 
+#: ui/gtk.c
 msgid "Zoom _Out"
 msgstr "Zooma _ut"
 
+#: ui/gtk.c
 msgid "Best _Fit"
 msgstr "Anpassad _storlek"
 
+#: ui/gtk.c
 msgid "Zoom To _Fit"
 msgstr "Zooma ti_ll anpassad storlek"
 
+#: ui/gtk.c
 msgid "Grab On _Hover"
 msgstr "Fånga vi_d hovring"
 
+#: ui/gtk.c
 msgid "_Grab Input"
 msgstr "Fån_ga inmatning"
 
+#: ui/gtk.c
 msgid "Show _Tabs"
-msgstr "Visa _flika"
+msgstr "Visa _flikar"
 
+#: ui/gtk.c
 msgid "Detach Tab"
 msgstr "Frigör flik"
 
+#: ui/gtk.c
 msgid "Show Menubar"
 msgstr "Visa menyrad"
 
+#: ui/gtk.c
 msgid "_Machine"
 msgstr "_Maskin"
 
+#: ui/gtk.c
 msgid "_View"
 msgstr "_Visa"
+
+#: ui/xui/compat.cc
+msgid "Report Compatibility"
+msgstr "Rapportera kompatibilitet"
+
+#: ui/xui/compat.cc
+msgid "User Token"
+msgstr "Användartoken"
+
+#: ui/xui/compat.cc
+msgid "Get Token"
+msgstr "Hämta token"
+
+#: ui/xui/compat.cc
+msgid "Playability"
+msgstr "Spelbarhet"
+
+#: ui/xui/compat.cc
+msgid "Description"
+msgstr "Beskrivning"
+
+#: ui/xui/compat.cc
+msgid "Sent! Thanks."
+msgstr "Skickat! Tack."
+
+#: ui/xui/compat.cc
+#, c-format
+msgid "Error: %s (%d)"
+msgstr "Fel: %s (%d)"
+
+#: ui/xui/compat.cc
+msgid "Send"
+msgstr "Skicka"
+
+#: ui/xui/main-menu.cc
+msgid "Updates"
+msgstr "Uppdateringar"
+
+#: ui/xui/main-menu.cc
+msgid "Check for updates"
+msgstr "Sök efter uppdateringar"
+
+#: ui/xui/main-menu.cc
+msgid "Check for updates whenever xemu is opened"
+msgstr "Sök efter uppdateringar när xemu öppnas"
+
+#: ui/xui/main-menu.cc
+msgid "Performance"
+msgstr "Prestanda"
+
+#: ui/xui/main-menu.cc
+msgid "Hard FPU emulation"
+msgstr "Hård FPU-emulering"
+
+#: ui/xui/main-menu.cc
+msgid "Use hardware-accelerated floating point emulation (requires restart)"
+msgstr "Använd hårdvaruaccelererad flyttalsemulering (kräver omstart)"
+
+#: ui/xui/main-menu.cc
+msgid "Cache shaders to disk"
+msgstr "Cachelagra shaders på disk"
+
+#: ui/xui/main-menu.cc
+msgid "Reduce stutter in games by caching previously generated shaders"
+msgstr "Minska hack i spel genom att cachelagra tidigare genererade shaders"
+
+#: ui/xui/main-menu.cc
+msgid "Miscellaneous"
+msgstr "Diverse"
+
+#: ui/xui/main-menu.cc
+msgid "Skip startup animation"
+msgstr "Hoppa över startanimation"
+
+#: ui/xui/main-menu.cc
+msgid "Skip the full Xbox boot animation sequence"
+msgstr "Hoppa över hela Xbox-startanimationen"
+
+#: ui/xui/main-menu.cc
+msgid "Screenshot output directory"
+msgstr "Utdatamapp för skärmbilder"
+
+#: ui/xui/main-menu.cc
+msgid "Games directory"
+msgstr "Spelmapp"
+
+#: ui/xui/main-menu.cc
+msgid "Controllers"
+msgstr "Handkontroller"
+
+#: ui/xui/main-menu.cc
+msgid "Xbox Controller"
+msgstr "Xbox-handkontroll"
+
+#: ui/xui/main-menu.cc
+msgid "Xbox Controller S"
+msgstr "Xbox-handkontroll S"
+
+#: ui/xui/main-menu.cc
+msgid "Emulated Device"
+msgstr "Emulerad enhet"
+
+#: ui/xui/main-menu.cc
+msgid "Input Device"
+msgstr "Inmatningsenhet"
+
+#: ui/xui/main-menu.cc
+msgid "Not Connected"
+msgstr "Inte ansluten"
+
+#: ui/xui/main-menu.cc
+msgid "Please select an available input device"
+msgstr "Välj en tillgänglig inmatningsenhet"
+
+#: ui/xui/main-menu.cc
+msgid "Expansion Slots"
+msgstr "Expansionsplatser"
+
+#: ui/xui/main-menu.cc
+msgid "New Image"
+msgstr "Ny avbild"
+
+#: ui/xui/main-menu.cc
+msgid "Image"
+msgstr "Avbild"
+
+#: ui/xui/main-menu.cc
+msgid "Mapping"
+msgstr "Mappning"
+
+#: ui/xui/main-menu.cc
+msgid "Enable Rumble"
+msgstr "Aktivera vibration"
+
+#: ui/xui/main-menu.cc
+msgid "Invert Left X Axis"
+msgstr "Invertera vänster X-axel"
+
+#: ui/xui/main-menu.cc
+msgid "Invert Left Y Axis"
+msgstr "Invertera vänster Y-axel"
+
+#: ui/xui/main-menu.cc
+msgid "Invert Right X Axis"
+msgstr "Invertera höger X-axel"
+
+#: ui/xui/main-menu.cc
+msgid "Invert Right Y Axis"
+msgstr "Invertera höger Y-axel"
+
+#: ui/xui/main-menu.cc
+msgid "Reset to Default"
+msgstr "Återställ till standard"
+
+#: ui/xui/main-menu.cc
+msgid "Options"
+msgstr "Alternativ"
+
+#: ui/xui/main-menu.cc
+msgid "Auto-bind controllers"
+msgstr "Bind handkontroller automatiskt"
+
+#: ui/xui/main-menu.cc
+msgid "Bind newly connected controllers to any open port"
+msgstr "Koppla nyanslutna handkontroller till en ledig port"
+
+#: ui/xui/main-menu.cc
+msgid "Background controller input capture"
+msgstr "Fånga handkontrollsinmatning i bakgrunden"
+
+#: ui/xui/main-menu.cc
+msgid "Capture even if window is unfocused (requires restart)"
+msgstr "Läs indata även när fönstret saknar fokus (kräver omstart)"
+
+#: ui/xui/main-menu.cc
+msgid "Renderer"
+msgstr "Renderare"
+
+#: ui/xui/main-menu.cc
+msgid "Backend"
+msgstr "Återgivningsmotor"
+
+#: ui/xui/main-menu.cc
+msgid "Select desired renderer implementation"
+msgstr "Välj renderare"
+
+#: ui/xui/main-menu.cc
+msgid "Internal resolution scale"
+msgstr "Intern upplösningsskala"
+
+#: ui/xui/main-menu.cc
+msgid "Increase surface scaling factor for higher quality"
+msgstr "Öka skalningen för renderingsytan för bättre bildkvalitet"
+
+#: ui/xui/main-menu.cc
+msgid "Window"
+msgstr "Fönster"
+
+#: ui/xui/main-menu.cc ui/xui/popup-menu.cc
+msgid "Fullscreen"
+msgstr "Helskärm"
+
+#: ui/xui/main-menu.cc
+msgid "Enable fullscreen now"
+msgstr "Aktivera helskärm nu"
+
+#: ui/xui/main-menu.cc
+msgid "Fullscreen on startup"
+msgstr "Helskärm vid start"
+
+#: ui/xui/main-menu.cc
+msgid "Start xemu in fullscreen when opened"
+msgstr "Starta xemu i helskärmsläge"
+
+#: ui/xui/main-menu.cc
+msgid "Exclusive fullscreen"
+msgstr "Exklusiv helskärm"
+
+#: ui/xui/main-menu.cc
+msgid "May improve responsiveness, but slows window switching"
+msgstr "Kan ge snabbare respons men gör fönsterbyten långsammare"
+
+#: ui/xui/main-menu.cc
+msgid "Last Used"
+msgstr "Senast använd"
+
+#: ui/xui/main-menu.cc
+msgid "Window size"
+msgstr "Fönsterstorlek"
+
+#: ui/xui/main-menu.cc
+msgid "Select preferred startup window size"
+msgstr "Välj fönsterstorlek vid start"
+
+#: ui/xui/main-menu.cc
+msgid "Vertical refresh sync"
+msgstr "Vertikal synkronisering"
+
+#: ui/xui/main-menu.cc
+msgid "Sync to screen vertical refresh to reduce tearing artifacts"
+msgstr "Synkronisera med skärmens uppdatering för att minska bildrivning"
+
+#: ui/xui/main-menu.cc
+msgid "Interface"
+msgstr "Gränssnitt"
+
+#: ui/xui/main-menu.cc
+msgid "Show main menu bar"
+msgstr "Visa huvudmenyrad"
+
+#: ui/xui/main-menu.cc
+msgid "Show main menu bar when mouse is activated"
+msgstr "Visa huvudmenyraden när musen används"
+
+#: ui/xui/main-menu.cc
+msgid "Show notifications"
+msgstr "Visa aviseringar"
+
+#: ui/xui/main-menu.cc
+msgid "Display notifications in upper-right corner"
+msgstr "Visa aviseringar i övre högra hörnet"
+
+#: ui/xui/main-menu.cc
+msgid "Hide mouse cursor"
+msgstr "Dölj muspekare"
+
+#: ui/xui/main-menu.cc
+msgid "Hide the mouse cursor when it is not moving"
+msgstr "Dölj muspekaren när den står stilla"
+
+#: ui/xui/main-menu.cc
+msgid "Auto"
+msgstr "Automatiskt"
+
+#: ui/xui/main-menu.cc
+msgid "UI scale"
+msgstr "Gränssnittsskala"
+
+#: ui/xui/main-menu.cc
+msgid "Interface element scale"
+msgstr "Skala för gränssnittet"
+
+#: ui/xui/main-menu.cc
+msgid "Animations"
+msgstr "Animationer"
+
+#: ui/xui/main-menu.cc
+msgid "Enable xemu user interface animations"
+msgstr "Aktivera animationer i xemus gränssnitt"
+
+#: ui/xui/main-menu.cc ui/xui/popup-menu.cc
+msgid "Center"
+msgstr "Centrera"
+
+#: ui/xui/main-menu.cc ui/xui/popup-menu.cc
+msgid "Scale"
+msgstr "Skala"
+
+#: ui/xui/main-menu.cc ui/xui/popup-menu.cc
+msgid "Stretch"
+msgstr "Sträck ut"
+
+#: ui/xui/main-menu.cc
+msgid "Display mode"
+msgstr "Visningsläge"
+
+#: ui/xui/main-menu.cc
+msgid "Select how the framebuffer should fit or scale into the window"
+msgstr "Välj hur bilden ska anpassas till fönstret"
+
+#: ui/xui/main-menu.cc ui/xui/popup-menu.cc
+msgid "Native"
+msgstr "Ursprungligt"
+
+#: ui/xui/main-menu.cc ui/xui/popup-menu.cc
+msgid "Auto (Default)"
+msgstr "Automatiskt (standard)"
+
+#: ui/xui/main-menu.cc
+msgid "Aspect ratio"
+msgstr "Bildförhållande"
+
+#: ui/xui/main-menu.cc
+msgid "Select the displayed aspect ratio"
+msgstr "Välj bildförhållande"
+
+#: ui/xui/main-menu.cc ui/xui/popup-menu.cc
+msgid "Volume"
+msgstr "Volym"
+
+#: ui/xui/main-menu.cc
+#, c-format
+msgid "Limit output volume (%d%%)"
+msgstr "Begränsa utgångsvolymen (%d %%)"
+
+#: ui/xui/main-menu.cc
+msgid "Output volume limit"
+msgstr "Gräns för utvolym"
+
+#: ui/xui/main-menu.cc
+msgid "Quality"
+msgstr "Kvalitet"
+
+#: ui/xui/main-menu.cc
+msgid "Real-time DSP processing"
+msgstr "DSP-bearbetning i realtid"
+
+#: ui/xui/main-menu.cc
+msgid "Enable improved audio accuracy (experimental)"
+msgstr "Aktivera mer exakt ljudemulering (experimentellt)"
+
+#: ui/xui/main-menu.cc
+msgid "DSP JIT engine"
+msgstr "JIT-motor för DSP"
+
+#: ui/xui/main-menu.cc
+msgid "Use DSP JIT engine"
+msgstr "Använd JIT-motorn för DSP"
+
+#: ui/xui/main-menu.cc
+msgid "Adapter"
+msgstr "Nätverkskort"
+
+#: ui/xui/main-menu.cc
+msgid "Enable"
+msgstr "Aktivera"
+
+#: ui/xui/main-menu.cc
+msgid "Virtual network connected (disable to change network settings)"
+msgstr ""
+"Virtuellt nätverk anslutet (koppla från för att ändra "
+"nätverksinställningarna)"
+
+#: ui/xui/main-menu.cc
+msgid "Connect virtual network cable to machine"
+msgstr "Anslut den virtuella nätverkskabeln till maskinen"
+
+#: ui/xui/main-menu.cc
+msgid "NAT"
+msgstr "NAT"
+
+#: ui/xui/main-menu.cc
+msgid "UDP Tunnel"
+msgstr "UDP-tunnel"
+
+#: ui/xui/main-menu.cc
+msgid "Bridged Adapter"
+msgstr "Bryggad nätverksadapter"
+
+#: ui/xui/main-menu.cc
+msgid "Attached to"
+msgstr "Ansluten till"
+
+#: ui/xui/main-menu.cc
+msgid "Controls what the virtual network controller interfaces with"
+msgstr "Välj vad den virtuella nätverksadaptern ska anslutas till"
+
+#: ui/xui/main-menu.cc
+msgid "Install Npcap"
+msgstr "Installera Npcap"
+
+#: ui/xui/main-menu.cc
+msgid "Remove"
+msgstr "Ta bort"
+
+#: ui/xui/main-menu.cc
+msgid "Add"
+msgstr "Lägg till"
+
+#: ui/xui/main-menu.cc
+msgid "Snapshots"
+msgstr "Ögonblicksbilder"
+
+#: ui/xui/main-menu.cc
+msgid "Filter by current title"
+msgstr "Filtrera efter aktuell titel"
+
+#: ui/xui/main-menu.cc
+msgid "Only display snapshots created while running the currently running XBE"
+msgstr "Visa endast ögonblicksbilder från den XBE-fil som körs nu"
+
+#: ui/xui/main-menu.cc
+msgid "Application restart required to apply settings"
+msgstr "Programmet måste startas om för att tillämpa inställningarna"
+
+#: ui/xui/main-menu.cc
+msgid "Setting AV Pack to NONE disables video output."
+msgstr "Om AV-paketet anges till Inget inaktiveras videoutmatningen."
+
+#: ui/xui/main-menu.cc
+msgid "System Configuration"
+msgstr "Systemkonfiguration"
+
+#: ui/xui/main-menu.cc
+msgid "64 MiB (Default)"
+msgstr "64 MiB (standard)"
+
+#: ui/xui/main-menu.cc
+msgid "128 MiB"
+msgstr "128 MiB"
+
+#: ui/xui/main-menu.cc
+msgid "System Memory"
+msgstr "Systemminne"
+
+#: ui/xui/main-menu.cc
+msgid "Increase to 128 MiB for debug or homebrew applications"
+msgstr "Öka till 128 MiB för felsökning eller egenutvecklade program"
+
+#: ui/xui/main-menu.cc
+msgid "SCART"
+msgstr "SCART"
+
+#: ui/xui/main-menu.cc
+msgid "HDTV (Default)"
+msgstr "HDTV (standard)"
+
+#: ui/xui/main-menu.cc
+msgid "VGA"
+msgstr "VGA"
+
+#: ui/xui/main-menu.cc
+msgid "RFU"
+msgstr "RFU"
+
+#: ui/xui/main-menu.cc
+msgid "S-Video"
+msgstr "S-video"
+
+#: ui/xui/main-menu.cc
+msgid "Composite"
+msgstr "Komposit"
+
+#: ui/xui/main-menu.cc
+msgid "None"
+msgstr "Inget"
+
+#: ui/xui/main-menu.cc
+msgid "AV Pack"
+msgstr "AV-paket"
+
+#: ui/xui/main-menu.cc
+msgid "Select the attached AV pack"
+msgstr "Välj anslutet AV-paket"
+
+#: ui/xui/main-menu.cc
+msgid "Files"
+msgstr "Filer"
+
+#: ui/xui/main-menu.cc
+msgid "MCPX Boot ROM"
+msgstr "MCPX-start-ROM"
+
+#: ui/xui/main-menu.cc
+msgid "Flash ROM (BIOS)"
+msgstr "Flash-ROM (BIOS)"
+
+#: ui/xui/main-menu.cc
+msgid "Hard Disk"
+msgstr "Hårddisk"
+
+#: ui/xui/main-menu.cc
+msgid "EEPROM"
+msgstr "EEPROM"
+
+#: ui/xui/main-menu.cc
+msgid "Build Information"
+msgstr "Bygginformation"
+
+#: ui/xui/main-menu.cc
+msgid "System Information"
+msgstr "Systeminformation"
+
+#: ui/xui/main-menu.cc
+msgid "Config Information"
+msgstr "Konfigurationsinformation"
+
+#: ui/xui/main-menu.cc
+msgid "Community"
+msgstr "Gemenskap"
+
+#: ui/xui/main-menu.cc ui/xui/welcome.cc
+#, c-format
+msgid "Visit %s for more information"
+msgstr "Besök %s för mer information"
+
+#: ui/xui/main-menu.cc
+msgid "General"
+msgstr "Allmänt"
+
+#: ui/xui/main-menu.cc
+msgid "Input"
+msgstr "Inmatning"
+
+#: ui/xui/main-menu.cc
+msgid "Display"
+msgstr "Bild"
+
+#: ui/xui/main-menu.cc
+msgid "Audio"
+msgstr "Ljud"
+
+#: ui/xui/main-menu.cc
+msgid "Network"
+msgstr "Nätverk"
+
+#: ui/xui/main-menu.cc
+msgid "System"
+msgstr "System"
+
+#: ui/xui/main-menu.cc
+msgid "About"
+msgstr "Om"
+
+#: ui/xui/monitor.cc
+msgid "Monitor"
+msgstr "Monitor"
+
+#: ui/xui/notifications.cc
+msgid "OK"
+msgstr "OK"
+
+#: ui/xui/notifications.cc
+msgid "Notification"
+msgstr "Avisering"
+
+#: ui/xui/popup-menu.cc
+msgid "Display Mode"
+msgstr "Visningsläge"
+
+#: ui/xui/popup-menu.cc
+msgid "Aspect Ratio"
+msgstr "Bildförhållande"
+
+#: ui/xui/popup-menu.cc
+msgid "Snapshots..."
+msgstr "Ögonblicksbilder…"
+
+#: ui/xui/popup-menu.cc
+msgid "All settings..."
+msgstr "Alla inställningar…"
+
+#: ui/xui/popup-menu.cc
+msgid "No games found"
+msgstr "Inga spel hittades"
+
+#: ui/xui/popup-menu.cc
+msgid "Pause"
+msgstr "Pausa"
+
+#: ui/xui/popup-menu.cc
+msgid "Resume"
+msgstr "Fortsätt"
+
+#: ui/xui/popup-menu.cc
+msgid "Screenshot"
+msgstr "Skärmbild"
+
+#: ui/xui/popup-menu.cc
+msgid "Save Snapshot"
+msgstr "Spara ögonblicksbild"
+
+#: ui/xui/popup-menu.cc
+msgid "Games"
+msgstr "Spel"
+
+#: ui/xui/popup-menu.cc
+msgid "Eject Disc"
+msgstr "Mata ut skiva"
+
+#: ui/xui/popup-menu.cc
+msgid "Load Disc..."
+msgstr "Läs in skiva…"
+
+#: ui/xui/popup-menu.cc ui/xui/welcome.cc
+msgid "Settings"
+msgstr "Inställningar"
+
+#: ui/xui/popup-menu.cc ui/xui/update.cc
+msgid "Restart"
+msgstr "Starta om"
+
+#: ui/xui/popup-menu.cc
+msgid "Exit"
+msgstr "Avsluta"
+
+#: ui/xui/snapshot-manager.cc
+msgid ""
+"The DVD drive disc image mounted when the snapshot was created does not "
+"appear to be loaded:"
+msgstr ""
+"DVD-enhetens skivavbild som var monterad när ögonblicksbilden skapades "
+"verkar inte vara inläst:"
+
+#: ui/xui/snapshot-manager.cc
+#, c-format
+msgid "Current Image: %s"
+msgstr "Aktuell avbild: %s"
+
+#: ui/xui/snapshot-manager.cc
+msgid "(None)"
+msgstr "(Ingen)"
+
+#: ui/xui/snapshot-manager.cc
+#, c-format
+msgid "Expected Image: %s"
+msgstr "Förväntad avbild: %s"
+
+#: ui/xui/snapshot-manager.cc
+msgid "Would you like to load it now?"
+msgstr "Vill du läsa in den nu?"
+
+#: ui/xui/snapshot-manager.cc
+msgid "Yes"
+msgstr "Ja"
+
+#: ui/xui/snapshot-manager.cc
+msgid "No"
+msgstr "Nej"
+
+#: ui/xui/snapshot-manager.cc ui/xui/update.cc
+msgid "Cancel"
+msgstr "Avbryt"
+
+#: ui/xui/update.cc
+msgid "Update"
+msgstr "Uppdatera"
+
+#: ui/xui/update.cc
+#, c-format
+msgid "Current version: %s"
+msgstr "Aktuell version: %s"
+
+#: ui/xui/update.cc
+#, c-format
+msgid "Latest version: %s"
+msgstr "Senaste version: %s"
+
+#: ui/xui/update.cc
+msgid "Check for Update"
+msgstr "Sök efter uppdatering"
+
+#: ui/xui/welcome.cc
+msgid "First Boot"
+msgstr "Första start"
+
+#: ui/xui/welcome.cc
+msgid "Configure machine settings to get started"
+msgstr "Konfigurera maskininställningarna för att komma igång"
+
+#: ui/xui/widgets.cc
+msgid "(None Selected)"
+msgstr "(Inget valt)"
+
+#: ui/xui/widgets.cc
+msgid "*Unknown item*"
+msgstr "*Okänt alternativ*"
+
+#~ msgid "Visit"
+#~ msgstr "Besök"
+
+#~ msgid "for more information"
+#~ msgstr "för mer information"

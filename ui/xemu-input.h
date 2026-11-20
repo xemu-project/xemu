@@ -35,8 +35,6 @@
 #define DRIVER_DUKE "usb-xbox-gamepad"
 #define DRIVER_S "usb-xbox-gamepad-s"
 
-#define DRIVER_DUKE_DISPLAY_NAME "Xbox Controller"
-#define DRIVER_S_DISPLAY_NAME "Xbox Controller S"
 
 enum controller_state_buttons_mask {
     CONTROLLER_BUTTON_A          = (1 << 0),

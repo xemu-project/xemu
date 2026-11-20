@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+#include "i18n.hh"
 #include "ui/xemu-notifications.h"
 #include <string>
 #include <vector>
@@ -42,10 +43,12 @@ void PopupMenuItemDelegate::PushFocus() {}
 void PopupMenuItemDelegate::PopFocus() {}
 bool PopupMenuItemDelegate::DidPop() { return false; }
 
-static bool PopupMenuButton(std::string text, std::string icon = "")
+static bool PopupMenuButton(std::string text, std::string icon = "",
+                            bool translate = true)
 {
     ImGui::PushFont(g_font_mgr.m_menu_font);
-    auto button_text = string_format("%s %s", icon.c_str(), text.c_str());
+    const char *label = translate ? _(text.c_str()) : text.c_str();
+    auto button_text = string_format("%s %s", icon.c_str(), label);
     bool status = ImGui::Button(button_text.c_str(), ImVec2(-FLT_MIN, 0));
     ImGui::PopFont();
     return status;
@@ -260,7 +263,7 @@ public:
     bool DrawItems(PopupMenuItemDelegate &nav) override
     {
         const char *values[] = {
-            "Center", "Scale", "Stretch"
+            N_("Center"), N_("Scale"), N_("Stretch")
         };
 
         for (int i = 0; i < CONFIG_DISPLAY_UI_FIT__COUNT; i++) {
@@ -279,8 +282,8 @@ public:
     bool DrawItems(PopupMenuItemDelegate &nav) override
     {
         const char *values[] = {
-            "Native",
-            "Auto (Default)",
+            N_("Native"),
+            N_("Auto (Default)"),
             "4:3",
             "16:9"
         };
@@ -311,25 +314,25 @@ public:
         if (m_focus && !m_pop_focus) {
             ImGui::SetKeyboardFocusHere();
         }
-        PopupMenuSlider("Volume", ICON_FA_VOLUME_HIGH, &g_config.audio.volume_limit);
+        PopupMenuSlider(N_("Volume"), ICON_FA_VOLUME_HIGH, &g_config.audio.volume_limit);
         bool fs = xemu_is_fullscreen();
-        if (PopupMenuToggle("Fullscreen", ICON_FA_WINDOW_MAXIMIZE, &fs)) {
+        if (PopupMenuToggle(N_("Fullscreen"), ICON_FA_WINDOW_MAXIMIZE, &fs)) {
             xemu_toggle_fullscreen();
         }
-        if (PopupMenuSubmenuButton("Display Mode", ICON_FA_EXPAND)) {
+        if (PopupMenuSubmenuButton(N_("Display Mode"), ICON_FA_EXPAND)) {
             nav.PushFocus();
             nav.PushMenu(display_mode);
         }
-        if (PopupMenuSubmenuButton("Aspect Ratio", ICON_FA_EXPAND)) {
+        if (PopupMenuSubmenuButton(N_("Aspect Ratio"), ICON_FA_EXPAND)) {
             nav.PushFocus();
             nav.PushMenu(aspect_ratio);
         }
-        if (PopupMenuButton("Snapshots...", ICON_FA_CLOCK_ROTATE_LEFT)) {
+        if (PopupMenuButton(N_("Snapshots..."), ICON_FA_CLOCK_ROTATE_LEFT)) {
             nav.ClearMenuStack();
             g_scene_mgr.PushScene(g_main_menu);
             g_main_menu.ShowSnapshots();
         }
-        if (PopupMenuButton("All settings...", ICON_FA_SLIDERS)) {
+        if (PopupMenuButton(N_("All settings..."), ICON_FA_SLIDERS)) {
             nav.ClearMenuStack();
             g_scene_mgr.PushScene(g_main_menu);
         }
@@ -360,7 +363,7 @@ public:
         }
 
         for (const auto &[label, file_path] : sorted_file_names) {
-            if (PopupMenuButton(label, ICON_FA_COMPACT_DISC)) {
+            if (PopupMenuButton(label, ICON_FA_COMPACT_DISC, false)) {
                 ActionLoadDiscFile(file_path.c_str());
                 nav.ClearMenuStack();
                 pop = true;
@@ -368,7 +371,7 @@ public:
         }
 
         if (sorted_file_names.size() == 0) {
-            if (PopupMenuButton("No games found", ICON_FA_SLIDERS)) {
+            if (PopupMenuButton(N_("No games found"), ICON_FA_SLIDERS)) {
                 nav.ClearMenuStack();
                 g_scene_mgr.PushScene(g_main_menu);
             }
@@ -422,46 +425,46 @@ public:
 
         bool running = runstate_is_running();
         if (running) {
-            if (PopupMenuButton("Pause", ICON_FA_CIRCLE_PAUSE)) {
+            if (PopupMenuButton(N_("Pause"), ICON_FA_CIRCLE_PAUSE)) {
                 ActionTogglePause();
                 refocus_first_item = true;
             }
         } else {
-            if (PopupMenuButton("Resume", ICON_FA_CIRCLE_PLAY)) {
+            if (PopupMenuButton(N_("Resume"), ICON_FA_CIRCLE_PLAY)) {
                 ActionTogglePause();
                 refocus_first_item = true;
             }
         }
-        if (PopupMenuButton("Screenshot", ICON_FA_CAMERA)) {
+        if (PopupMenuButton(N_("Screenshot"), ICON_FA_CAMERA)) {
             ActionScreenshot();
             pop = true;
         }
-        if (PopupMenuButton("Save Snapshot", ICON_FA_DOWNLOAD)) {
+        if (PopupMenuButton(N_("Save Snapshot"), ICON_FA_DOWNLOAD)) {
             xemu_snapshots_save(NULL, NULL);
             xemu_queue_notification("Created new snapshot");
             pop = true;
         }
-        if (PopupMenuSubmenuButton("Games", ICON_FA_GAMEPAD)) {
+        if (PopupMenuSubmenuButton(N_("Games"), ICON_FA_GAMEPAD)) {
             nav.PushFocus();
             nav.PushMenu(games);
         }
-        if (PopupMenuButton("Eject Disc", ICON_FA_EJECT)) {
+        if (PopupMenuButton(N_("Eject Disc"), ICON_FA_EJECT)) {
             ActionEjectDisc();
             pop = true;
         }
-        if (PopupMenuButton("Load Disc...", ICON_FA_COMPACT_DISC)) {
+        if (PopupMenuButton(N_("Load Disc..."), ICON_FA_COMPACT_DISC)) {
             ActionLoadDisc();
             pop = true;
         }
-        if (PopupMenuSubmenuButton("Settings", ICON_FA_GEARS)) {
+        if (PopupMenuSubmenuButton(N_("Settings"), ICON_FA_GEARS)) {
             nav.PushFocus();
             nav.PushMenu(settings);
         }
-        if (PopupMenuButton("Restart", ICON_FA_ARROWS_ROTATE)) {
+        if (PopupMenuButton(N_("Restart"), ICON_FA_ARROWS_ROTATE)) {
             ActionReset();
             pop = true;
         }
-        if (PopupMenuButton("Exit", ICON_FA_POWER_OFF)) {
+        if (PopupMenuButton(N_("Exit"), ICON_FA_POWER_OFF)) {
             ActionShutdown();
             pop = true;
         }
