@@ -13,14 +13,10 @@ elif host_os == 'linux'
   os_suffix = 'unknown-linux-gnu'
 elif host_os == 'freebsd'
   os_suffix = ''
+else
+  error('Unsupported host OS: ' + host_os)
 endif
 rust_target = host_cpu + '-' + os_suffix
-
-ver = meson.project_version()
-prefix = 'dsp56300-@0@-@1@'.format(ver, rust_target)
-archive = '@0@.tar.gz'.format(prefix)
-url = 'https://github.com/xemu-project/dsp56300/releases/download/v@0@/@1@'.format(ver, archive)
-lib = meson.current_build_dir() / prefix / 'lib' / 'libdsp56300_emu_ffi.a'
 
 ver = meson.project_version()
 if os_suffix != ''
@@ -55,14 +51,12 @@ else
 endif
 
 link_args = []
-if host_os == 'linux'
+if host_os in ['linux', 'freebsd']
   link_args = ['-lpthread', '-ldl', '-lm']
 elif host_os == 'windows'
   link_args = ['-lbcrypt', '-lntdll', '-luserenv', '-lws2_32']
 elif host_os == 'darwin'
   link_args = ['-lpthread', '-lm', '-framework', 'Security']
-else
-  link_args = ['-lpthread', '-ldl', '-lm']
 endif
 
 dsp56300_dep = declare_dependency(
