@@ -15,3 +15,10 @@
 #endif
 
 #include <glib/gi18n.h>
+
+#if defined(_WIN32)
+const char *xemu_i18n_gettext(const char *message);
+
+#undef _
+#define _(String) xemu_i18n_gettext(String)
+#endif
