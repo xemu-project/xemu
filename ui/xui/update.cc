@@ -20,8 +20,10 @@
 #include "qemu/http.h"
 #include "update.hh"
 #include "viewport-manager.hh"
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <SDL3/SDL_filesystem.h>
 #include "util/miniz/miniz.h"
 #include "xemu-version.h"
@@ -307,7 +309,8 @@ void Updater::update_internal()
         }
 
         if (!mz_zip_reader_extract_to_file(&zip, file_idx, dst_path, 0)) {
-            DPRINTF("mz_zip_reader_extract_to_file failed to create %s\n", dst_path);
+            DPRINTF("mz_zip_reader_extract_to_file failed to create %s: %s\n",
+                    dst_path, strerror(errno));
             g_free(dst_path);
             goto errored;
         }
