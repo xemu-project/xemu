@@ -246,6 +246,23 @@ static void test_vsh_carryover_empty_draw(void)
     g_free(pg);
 }
 
+static void test_inline_d3d_color(void)
+{
+    VertexAttribute attr = {
+        .format = NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_UB_D3D,
+        .count = 4,
+        .size = 1,
+    };
+    const uint8_t bgra[] = { 0x20, 0x80, 0xE0, 0x7F };
+
+    pgraph_update_inline_value(&attr, bgra);
+
+    assert_float_near(attr.inline_value[0], 0xE0 / 255.0f);
+    assert_float_near(attr.inline_value[1], 0x80 / 255.0f);
+    assert_float_near(attr.inline_value[2], 0x20 / 255.0f);
+    assert_float_near(attr.inline_value[3], 0x7F / 255.0f);
+}
+
 int main(int argc, char **argv)
 {
     g_test_init(&argc, &argv, NULL);
@@ -263,6 +280,8 @@ int main(int argc, char **argv)
 
     g_test_add_func("/xbox/vsh_carryover/empty_draw",
                     test_vsh_carryover_empty_draw);
+    g_test_add_func("/xbox/vsh_carryover/inline_d3d_color",
+                    test_inline_d3d_color);
 
     return g_test_run();
 }
