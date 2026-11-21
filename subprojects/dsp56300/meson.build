@@ -45,7 +45,7 @@ else
   endif
   run_command('tar', 'xzf', src_archive, '-C', meson.current_build_dir(), check: true)
   extracted_src_dir = meson.current_build_dir() / prefix
-  cargo_build = run_command(cargo, 'build', '--release', '--manifest-path', extracted_src_dir / 'Cargo.toml', '-p', 'dsp56300-emu-ffi', '--no-default-features', check: true)
+  run_command(cargo, 'build', '--release', '--manifest-path', extracted_src_dir / 'Cargo.toml', '-p', 'dsp56300-emu-ffi', '--no-default-features', check: true)
   lib = extracted_src_dir / 'target' / 'release' / 'libdsp56300_emu_ffi.a'
   include_dir = include_directories(prefix / 'crates' / 'emu-ffi' / 'include')
 endif
