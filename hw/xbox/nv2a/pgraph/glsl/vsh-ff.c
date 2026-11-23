@@ -516,11 +516,11 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".rgb
             mstring_append(body, "  float fogDistance = clamp(specular.a, 0.0, 1.0);\n");
             break;
         case FOGGEN_RADIAL:
-            mstring_append(body, "  float fogDistance = length(tPosition.xyz);\n");
+            mstring_append(body, "  float fogDistance = length(tPosition.xyz / tPosition.w);\n");
             break;
         case FOGGEN_PLANAR:
         case FOGGEN_ABS_PLANAR:
-            mstring_append(body, "  float fogDistance = dot(fogPlane.xyz, tPosition.xyz) + fogPlane.w;\n");
+            mstring_append(body, "  float fogDistance = dot(fogPlane.xyz, tPosition.xyz / tPosition.w) + fogPlane.w;\n");
             if (state->fixed_function.foggen == FOGGEN_ABS_PLANAR) {
                 mstring_append(body, "  fogDistance = abs(fogDistance);\n");
             }
