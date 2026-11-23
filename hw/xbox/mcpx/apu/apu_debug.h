@@ -1,7 +1,7 @@
 /*
  * QEMU MCPX Audio Processing Unit implementation
  *
- * Copyright (c) 2020-2021 Matt Borgerson
+ * Copyright (c) 2020-2026 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -25,12 +25,32 @@
 
 #define MAX_VOICE_WORKERS 16
 
+/* Where the monitor listens. The ACI is the output: what its PCM-out bus
+ * master fetches from the guest's ring is the analog pair, whether a
+ * program wrote the ring itself or the EP's DMA did. The other points
+ * mirror a stage of the pipeline for the debug view; selecting one changes
+ * what is heard, never what the guest's rings receive. */
 typedef enum McpxApuDebugMonitorPoint {
     MCPX_APU_DEBUG_MON_AC97,
     MCPX_APU_DEBUG_MON_VP,
     MCPX_APU_DEBUG_MON_GP,
+    /* The GP's whole output slice: the six 32-word blocks it hands the EP
+     * each frame, before the EP downmixes or encodes them, played as
+     * discrete 5.1 (FL FR FC LFE BL BR) through a 6-channel stream. What
+     * the blocks carry is the title's routing per the console's speaker
+     * configuration (gp_ep.c). */
+    MCPX_APU_DEBUG_MON_GP_SURROUND,
+    /* The EP's writes to its output FIFO #0. */
     MCPX_APU_DEBUG_MON_EP,
-    MCPX_APU_DEBUG_MON_GP_OR_EP
+    /* The S/PDIF output as a receiver takes it: the stereo PCM the ACI's
+     * S/PDIF bus master fetches, or, while the stream carries IEC 61937
+     * AC-3, the bursts decoded to discrete 5.1 and played through a
+     * 6-channel stream (spdif.c, monitor.c). */
+    MCPX_APU_DEBUG_MON_SPDIF,
+    /* What a listener would take: the ACI's analog output until the
+     * S/PDIF stream carries valid AC-3, the decoded stream while it does
+     * (monitor.c). */
+    MCPX_APU_DEBUG_MON_AUTO,
 } McpxApuDebugMonitorPoint;
 
 struct McpxApuDebugVoice
@@ -88,7 +108,6 @@ struct McpxApuDebug
             float low_ms, high_ms;
         } latency;
     } throttle;
-    bool gp_realtime, ep_realtime;
 };
 
 #ifdef __cplusplus
@@ -98,12 +117,18 @@ extern "C" {
 const struct McpxApuDebug *mcpx_apu_get_debug_info(void);
 McpxApuDebugMonitorPoint mcpx_apu_debug_get_monitor(void);
 void mcpx_apu_debug_set_monitor(McpxApuDebugMonitorPoint monitor);
+/* Channels the monitor is currently playing (2 or 6) and the mute mask over
+ * them; mask bit c enables channel c. */
+int mcpx_apu_debug_get_monitor_channels(void);
+uint32_t mcpx_apu_debug_get_monitor_channel_mask(void);
+void mcpx_apu_debug_set_monitor_channel_mask(uint32_t mask);
+/* Held peak of monitor channel c over its last pushes, 0..1 of full scale,
+ * measured before the mask. */
+float mcpx_apu_debug_get_monitor_channel_level(int channel);
 void mcpx_apu_debug_isolate_voice(uint16_t v);
 void mcpx_apu_debug_clear_isolations(void);
 void mcpx_apu_debug_toggle_mute(uint16_t v);
 bool mcpx_apu_debug_is_muted(uint16_t v);
-void mcpx_apu_debug_set_gp_realtime_enabled(bool enable);
-void mcpx_apu_debug_set_ep_realtime_enabled(bool enable);
 
 #ifdef __cplusplus
 }

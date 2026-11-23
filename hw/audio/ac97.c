@@ -18,6 +18,7 @@
  */
 
 #include "qemu/osdep.h"
+#include <math.h>
 #include "hw/audio/model.h"
 #include "qemu/audio.h"
 #include "hw/pci/pci_device.h"
@@ -149,11 +150,32 @@ typedef struct AC97DeviceState {
 #define AC97_DEVICE(obj) \
     OBJECT_CHECK(AC97DeviceState, (obj), "AC97")
 
+#ifndef XBOX
 static void po_callback(void *opaque, int free);
+#endif
 
 #ifndef XBOX
 static void pi_callback(void *opaque, int avail);
 static void mc_callback(void *opaque, int avail);
+#endif
+
+#ifdef XBOX
+/* The MCPX walks its list as a ring closed by LVI: after the last valid
+ * descriptor the next one is descriptor 0, and the engine never halts
+ * there (the kernel's boot sound is one 8 KB descriptor with LVI = 0 and
+ * an interrupt handler that never touches LVI). PIV reads as CIV. Measured
+ * with xbtest's aci/pcm-out suite. */
+static void advance_bd(AC97BusMasterRegs *r)
+{
+    r->civ = r->civ == r->lvi ? 0 : (r->civ + 1) % 32;
+    r->piv = r->civ;
+}
+#else
+static void advance_bd(AC97BusMasterRegs *r)
+{
+    r->civ = r->piv;
+    r->piv = (r->piv + 1) % 32;
+}
 #endif
 
 static void fetch_bd(AC97LinkState *s, AC97BusMasterRegs *r)
@@ -179,7 +201,10 @@ static void update_sr(AC97LinkState *s, AC97BusMasterRegs *r, uint32_t new_sr)
     int level = 0;
     uint32_t new_mask = new_sr & SR_INT_MASK;
     uint32_t old_mask = r->sr & SR_INT_MASK;
-    uint32_t masks[] = {GS_PIINT, GS_POINT, GS_MINT};
+    uint32_t masks[LAST_INDEX] = {
+        [PI_INDEX] = GS_PIINT, [PO_INDEX] = GS_POINT, [MC_INDEX] = GS_MINT,
+        [SO_INDEX] = GS_SOINT,
+    };
 
     if (new_mask ^ old_mask) {
         /** @todo is IRQ deasserted when only one of status bits is cleared? */
@@ -209,13 +234,23 @@ static void update_sr(AC97LinkState *s, AC97BusMasterRegs *r, uint32_t new_sr)
 
     if (level) {
         s->glob_sta |= masks[r - s->bm_regs];
+    } else {
+        s->glob_sta &= ~masks[r - s->bm_regs];
+    }
+#ifdef XBOX
+    /* One line for all the bus masters, set by the owner. */
+    level = !!(s->glob_sta & (GS_PIINT | GS_POINT | GS_MINT | GS_SOINT));
+    dolog("set irq level=%d", level);
+    s->irq_update(s->irq_opaque, level);
+#else
+    if (level) {
         dolog("set irq level=1");
         pci_irq_assert(s->pci_dev);
     } else {
-        s->glob_sta &= ~masks[r - s->bm_regs];
         dolog("set irq level=0");
         pci_irq_deassert(s->pci_dev);
     }
+#endif
 }
 
 static void voice_set_active(AC97LinkState *s, int bm_index, int on)
@@ -228,7 +263,12 @@ static void voice_set_active(AC97LinkState *s, int bm_index, int on)
         break;
 
     case PO_INDEX:
+#ifdef XBOX
+    case SO_INDEX:
+        /* No voice: the owner clocks the bus masters (ac97_xbox_run). */
+#else
         AUD_set_active_out(s->voice_po, on);
+#endif
         break;
 
     case MC_INDEX:
@@ -237,8 +277,10 @@ static void voice_set_active(AC97LinkState *s, int bm_index, int on)
 #endif
         break;
 
+#ifndef XBOX
     case SO_INDEX:
         break;
+#endif
 
     default:
         error_report("ac97: invalid bm_index(%d) in voice_set_active", bm_index);
@@ -291,12 +333,14 @@ static uint16_t mixer_load(AC97LinkState *s, uint32_t i)
 
 static void open_voice(AC97LinkState *s, int index, int freq)
 {
+#ifndef XBOX
     struct audsettings as;
 
     as.freq = freq;
     as.nchannels = 2;
     as.fmt = AUDIO_FORMAT_S16;
     as.endianness = 0;
+#endif
 
     if (freq > 0) {
         s->invalid_freq[index] = 0;
@@ -315,6 +359,7 @@ static void open_voice(AC97LinkState *s, int index, int freq)
             break;
 
         case PO_INDEX:
+#ifndef XBOX
             s->voice_po = AUD_open_out(
                 s->audio_be,
                 s->voice_po,
@@ -323,6 +368,7 @@ static void open_voice(AC97LinkState *s, int index, int freq)
                 po_callback,
                 &as
                 );
+#endif
             break;
 
         case MC_INDEX:
@@ -352,7 +398,9 @@ static void open_voice(AC97LinkState *s, int index, int freq)
             break;
 
         case PO_INDEX:
+#ifndef XBOX
             AUD_close_out(s->audio_be, s->voice_po);
+#endif
             s->voice_po = NULL;
             break;
 
@@ -381,7 +429,9 @@ static void reset_voices(AC97LinkState *s, uint8_t active[LAST_INDEX])
 
     freq = mixer_load(s, AC97_PCM_Front_DAC_Rate);
     open_voice(s, PO_INDEX, freq);
+#ifndef XBOX
     AUD_set_active_out(s->voice_po, active[PO_INDEX]);
+#endif
 
 #ifndef XBOX
     freq = mixer_load(s, AC97_MIC_ADC_Rate);
@@ -417,7 +467,19 @@ static void update_combined_volume_out(AC97LinkState *s)
     lvol = (lvol * plvol) / 255;
     rvol = (rvol * prvol) / 255;
 
+#ifdef XBOX
+    /* The codec's DAC path in its own units: master volume attenuates
+     * 1.5 dB per step from 0 dB, PCM out volume steps 1.5 dB around 8
+     * (0 = +12 dB, 8 = 0 dB); a mute bit on either silences the pair. */
+    uint16_t mv = mixer_load(s, AC97_Master_Volume_Mute);
+    uint16_t pv = mixer_load(s, AC97_PCM_Out_Volume_Mute);
+    float l_db = -1.5f * ((mv >> 8) & 0x3f) + 1.5f * (8 - ((pv >> 8) & 0x1f));
+    float r_db = -1.5f * (mv & 0x3f) + 1.5f * (8 - (pv & 0x1f));
+    s->out_gain_l = mute ? 0.0f : powf(10.0f, l_db / 20.0f);
+    s->out_gain_r = mute ? 0.0f : powf(10.0f, r_db / 20.0f);
+#else
     AUD_set_volume_out_lr(s->voice_po, mute, lvol, rvol);
+#endif
 }
 
 static void update_volume_in(AC97LinkState *s)
@@ -635,9 +697,10 @@ static void nam_writew(void *opaque, uint32_t addr, uint32_t val)
         /* None of the features in these regs are emulated, so they are RO */
         break;
     default:
+        /* A codec register the model has no behaviour for: keep the value
+         * for a read back, as the codec would. */
         dolog("U nam writew 0x%x <- 0x%x", addr, val);
         mixer_store(s, addr, val);
-        assert(0);
         break;
     }
 }
@@ -706,8 +769,9 @@ static uint32_t nabm_readb(void *opaque, uint32_t addr)
         dolog("SRb[%d] -> 0x%x", GET_BM(addr), val);
         break;
     default:
+        /* A byte the block does not define (a wide read of a packed bus
+         * master block lands here): all ones, not a stop. */
         dolog("U nabm readb 0x%x -> 0x%x", addr, val);
-        assert(0);
         break;
     }
     return val;
@@ -810,13 +874,26 @@ static void nabm_writeb(void *opaque, uint32_t addr, uint32_t val)
         r = &s->bm_regs[GET_BM(addr)];
         if ((r->cr & CR_RPBM) && (r->sr & SR_DCH)) {
             r->sr &= ~(SR_DCH | SR_CELV);
-            r->civ = r->piv;
-            r->piv = (r->piv + 1) % 32;
+            advance_bd(r);
             fetch_bd(s, r);
         }
         r->lvi = val % 32;
         dolog("LVI[%d] <- 0x%x", GET_BM(addr), val);
         break;
+#ifdef XBOX
+    /* CIV takes a write, stopped or running: the engine goes on from the
+     * descriptor written. */
+    case PI_CIV:
+    case PO_CIV:
+    case MC_CIV:
+    case SO_CIV:
+        r = &s->bm_regs[GET_BM(addr)];
+        r->civ = val % 32;
+        r->piv = r->civ;
+        r->bd_valid = 0;
+        dolog("CIV[%d] <- 0x%x", GET_BM(addr), val);
+        break;
+#endif
     case PI_CR:
     case PO_CR:
     case MC_CR:
@@ -830,8 +907,9 @@ static void nabm_writeb(void *opaque, uint32_t addr, uint32_t val)
                 voice_set_active(s, r - s->bm_regs, 0);
                 r->sr |= SR_DCH;
             } else {
-                r->civ = r->piv;
-                r->piv = (r->piv + 1) % 32;
+#ifndef XBOX
+                advance_bd(r);
+#endif
                 fetch_bd(s, r);
                 r->sr &= ~SR_DCH;
                 voice_set_active(s, r - s->bm_regs, 1);
@@ -844,7 +922,7 @@ static void nabm_writeb(void *opaque, uint32_t addr, uint32_t val)
     case MC_SR:
     case SO_SR:
         r = &s->bm_regs[GET_BM(addr)];
-        r->sr |= val & ~(SR_RO_MASK | SR_WCLEAR_MASK);
+        r->sr |= val & SR_VALID_MASK & ~(SR_RO_MASK | SR_WCLEAR_MASK);
         update_sr(s, r, r->sr & ~(val & SR_WCLEAR_MASK));
         dolog("SR[%d] <- 0x%x (sr 0x%x)", GET_BM(addr), val, r->sr);
         break;
@@ -865,7 +943,7 @@ static void nabm_writew(void *opaque, uint32_t addr, uint32_t val)
     case MC_SR:
     case SO_SR:
         r = &s->bm_regs[GET_BM(addr)];
-        r->sr |= val & ~(SR_RO_MASK | SR_WCLEAR_MASK);
+        r->sr |= val & SR_VALID_MASK & ~(SR_RO_MASK | SR_WCLEAR_MASK);
         update_sr(s, r, r->sr & ~(val & SR_WCLEAR_MASK));
         dolog("SR[%d] <- 0x%x (sr 0x%x)", GET_BM(addr), val, r->sr);
         break;
@@ -888,7 +966,7 @@ static void nabm_writel(void *opaque, uint32_t addr, uint32_t val)
     case MC_BDBAR:
     case SO_BDBAR:
         r = &s->bm_regs[GET_BM(addr)];
-        r->bdbar = val & ~3;
+        r->bdbar = val & ~7;
         dolog("BDBAR[%d] <- 0x%x (bdbar 0x%x)", GET_BM(addr), val, r->bdbar);
         break;
     case GLOB_CNT:
@@ -930,7 +1008,13 @@ static int write_audio(AC97LinkState *s, AC97BusMasterRegs *r,
         int copied;
         to_copy = MIN(temp, sizeof(tmpbuf));
         dma_memory_read(s->as, addr, tmpbuf, to_copy, MEMTXATTRS_UNSPECIFIED);
+#ifdef XBOX
+        copied = MIN(to_copy, s->sink_len - s->sink_pos);
+        memcpy(s->sink + s->sink_pos, tmpbuf, copied);
+        s->sink_pos += copied;
+#else
         copied = AUD_write(s->voice_po, tmpbuf, to_copy);
+#endif
         dolog("write_audio max=%x to_copy=%x copied=%x",
               max, to_copy, copied);
         if (!copied) {
@@ -957,6 +1041,10 @@ static int write_audio(AC97LinkState *s, AC97BusMasterRegs *r,
 
 static void write_bup(AC97LinkState *s, int elapsed)
 {
+#ifdef XBOX
+    /* The sink holds silence already. */
+    return;
+#endif
     dolog("write_bup");
     if (!(s->bup_flag & BUP_SET)) {
         if (s->bup_flag & BUP_LAST) {
@@ -1056,16 +1144,32 @@ static void transfer_audio(AC97LinkState *s, int index, int elapsed)
         if (!r->picb) {
             dolog("fresh bd %d is empty 0x%x 0x%x",
                   r->civ, r->bd.addr, r->bd.ctl_len);
+#ifdef XBOX
+            /* Skipped without a stall; a whole ring of empties yields
+             * nothing this tick. */
+            int skipped = 0;
+            while (!r->picb && skipped++ < 32) {
+                if (r->civ == r->lvi) {
+                    r->sr |= SR_LVBCI;
+                }
+                advance_bd(r);
+                fetch_bd(s, r);
+            }
+            if (!r->picb) {
+                return;
+            }
+            continue;
+#else
             if (r->civ == r->lvi) {
                 r->sr |= SR_DCH; /* CELV? */
                 s->bup_flag = 0;
                 break;
             }
             r->sr &= ~SR_CELV;
-            r->civ = r->piv;
-            r->piv = (r->piv + 1) % 32;
+            advance_bd(r);
             fetch_bd(s, r);
             return;
+#endif
         }
 
         switch (index) {
@@ -1081,6 +1185,15 @@ static void transfer_audio(AC97LinkState *s, int index, int elapsed)
             elapsed -= temp;
             r->picb -= (temp >> 1);
             break;
+
+#ifdef XBOX
+        case SO_INDEX:
+            /* The S/PDIF transmitter's ring, fetched like PCM out. */
+            temp = write_audio(s, r, elapsed, &stop);
+            elapsed -= temp;
+            r->picb -= (temp >> 1);
+            break;
+#endif
         }
 
         if (!r->picb) {
@@ -1091,14 +1204,19 @@ static void transfer_audio(AC97LinkState *s, int index, int elapsed)
             }
 
             if (r->civ == r->lvi) {
+#ifdef XBOX
+                new_sr |= SR_LVBCI;
+                advance_bd(r);
+                fetch_bd(s, r);
+#else
                 dolog("Underrun civ (%d) == lvi (%d)", r->civ, r->lvi);
 
                 new_sr |= SR_LVBCI | SR_DCH | SR_CELV;
                 stop = 1;
                 s->bup_flag = (r->bd.ctl_len & BD_BUP) ? BUP_LAST : 0;
+#endif
             } else {
-                r->civ = r->piv;
-                r->piv = (r->piv + 1) % 32;
+                advance_bd(r);
                 fetch_bd(s, r);
             }
 
@@ -1119,10 +1237,39 @@ static void mc_callback(void *opaque, int avail)
 }
 #endif
 
+#ifdef XBOX
+/* The codec's output volume on the PCM-out words: what its DACs put on
+ * the analog pins. The S/PDIF transmitter carries the words themselves. */
+static void apply_codec_gain(AC97LinkState *s, int16_t *pcm, int frames)
+{
+    float g[2] = { s->out_gain_l, s->out_gain_r };
+    if (g[0] == 1.0f && g[1] == 1.0f) {
+        return;
+    }
+    for (int i = 0; i < frames * 2; i++) {
+        float v = pcm[i] * g[i & 1];
+        pcm[i] = v > 32767.0f ? 32767 : v < -32768.0f ? -32768 : (int16_t)v;
+    }
+}
+
+void ac97_xbox_run(AC97LinkState *s, int index, uint8_t *out, int bytes)
+{
+    memset(out, 0, bytes);
+    s->sink = out;
+    s->sink_len = bytes;
+    s->sink_pos = 0;
+    transfer_audio(s, index, bytes);
+    s->sink = NULL;
+    if (index == PO_INDEX) {
+        apply_codec_gain(s, (int16_t *)out, bytes / 4);
+    }
+}
+#else
 static void po_callback(void *opaque, int free)
 {
     transfer_audio(opaque, PO_INDEX, free);
 }
+#endif
 
 static const VMStateDescription vmstate_ac97_bm_regs = {
     .name = "ac97_bm_regs",
@@ -1299,6 +1446,9 @@ static void ac97_on_reset(AC97LinkState *s)
     reset_bm_regs(s, &s->bm_regs[0]);
     reset_bm_regs(s, &s->bm_regs[1]);
     reset_bm_regs(s, &s->bm_regs[2]);
+#ifdef XBOX
+    reset_bm_regs(s, &s->bm_regs[SO_INDEX]);
+#endif
 
     /*
      * Reset the mixer too. The Windows XP driver seems to rely on
@@ -1313,7 +1463,9 @@ void ac97_common_init(AC97LinkState *s, PCIDevice *pci_dev, AddressSpace *as)
   s->pci_dev = pci_dev;
   s->as = as;
 
+#ifndef XBOX
   AUD_backend_check (&s->audio_be, &error_fatal);
+#endif
   ac97_on_reset(s);
 }
 
