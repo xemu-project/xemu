@@ -344,6 +344,24 @@ TranslationBlock *tb_gen_code(CPUState *cpu, TCGTBCPUState s)
     tcg_ctx->addr_type = target_long_bits() == 32 ? TCG_TYPE_I32 : TCG_TYPE_I64;
     tcg_ctx->guest_mo = cpu->cc->tcg_ops->guest_default_memory_order;
 
+#ifdef __aarch64__
+    {
+        static int tso = -1;
+        if (tso < 0) {
+            tso = getenv("XEMU_TSO") != NULL;
+            if (tso) {
+                fprintf(stderr,
+                        "tcg: guest TSO via acquire/release accesses "
+                        "(XEMU_TSO)\n");
+            }
+        }
+        if (tso) {
+            tcg_qemu_tso_lowering = true;
+            tcg_ctx->guest_mo = 0;
+        }
+    }
+#endif
+
  restart_translate:
     trace_translate_block(tb, s.pc, tb->tc.ptr);
 
