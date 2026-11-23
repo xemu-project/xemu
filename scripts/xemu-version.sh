@@ -3,7 +3,11 @@
 set -eu
 
 dir="$1"
-XEMU_DATE=$(date -u)
+if [[ -n "${SOURCE_DATE_EPOCH:-}" ]]; then
+  XEMU_DATE=$(date -u -d "@${SOURCE_DATE_EPOCH}" 2>/dev/null || date -u -r "${SOURCE_DATE_EPOCH}" || date -u)
+else
+  XEMU_DATE=$(date -u)
+fi
 XEMU_COMMIT=$( \
   cd "$dir"; \
   if test -e .git; then \
