@@ -356,6 +356,7 @@ typedef union IcountDecr {
 typedef void (*MemAccessCallbackFunc)(void *opaque, MemoryRegion *mr, hwaddr addr, hwaddr len, bool write);
 
 typedef struct MemAccessCallback {
+    struct rcu_head rcu;
     MemoryRegion *mr;
     hwaddr addr;
     hwaddr len;
