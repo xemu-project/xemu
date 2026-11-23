@@ -51,9 +51,15 @@
 
 #define XID_DEVICESUBTYPE_GAMEPAD 0x01
 #define XID_DEVICESUBTYPE_GAMEPAD_S 0x02
+#define XID_DEVICESUBTYPE_LIGHTGUN 0x50
+
+// Set in wButtons of the input report while the lightgun points at the
+// screen (XINPUT_LIGHTGUN_ONSCREEN in the XDK)
+#define XID_LIGHTGUN_ONSCREEN 0x2000
 
 #define TYPE_USB_XID_GAMEPAD "usb-xbox-gamepad"
 #define TYPE_USB_XID_GAMEPAD_S "usb-xbox-gamepad-s"
+#define TYPE_USB_XID_LIGHTGUN "usb-xbox-lightgun"
 
 #define GAMEPAD_A 0
 #define GAMEPAD_B 1
