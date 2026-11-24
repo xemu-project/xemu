@@ -3016,9 +3016,10 @@ void qemu_init(int argc, char **argv)
         "none",
     }[g_config.sys.avpack];
 
-    fake_argv[fake_argc++] = g_strdup_printf("xbox%s%s%s,avpack=%s",
+    fake_argv[fake_argc++] = g_strdup_printf("xbox%s%s%s%s,avpack=%s",
         (bootrom_arg != NULL) ? bootrom_arg : "",
         g_config.general.skip_boot_anim ? ",short-animation=on" : "",
+        g_config.sys.clear_hdd_cache ? ",clear-hdd-cache=on" : "",
         ",kernel-irqchip=off",
         avpack_str
         );

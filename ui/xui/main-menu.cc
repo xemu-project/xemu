@@ -1550,6 +1550,12 @@ void MainMenuSystemView::Draw()
         m_dirty = true;
     }
 
+    if (Toggle("Clear hard disk cache at boot", &g_config.sys.clear_hdd_cache,
+               "Format the cache partitions (X, Y, Z) on every start. Saves "
+               "are not affected")) {
+        m_dirty = true;
+    }
+
     SectionTitle("Files");
     FilePicker("MCPX Boot ROM", g_config.sys.files.bootrom_path,
                rom_file_filters, 3, false, [this](const char *path) {

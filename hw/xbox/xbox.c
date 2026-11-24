@@ -31,6 +31,8 @@
 #include "net/net.h"
 #include "hw/boards.h"
 #include "hw/ide/pci.h"
+#include "system/blockdev.h"
+#include "system/block-backend.h"
 #include "system/system.h"
 #include "system/kvm.h"
 #include "kvm/kvm_i386.h"
@@ -201,10 +203,63 @@ static void xbox_memory_init(PCMachineState *pcms,
     pc_system_flash_cleanup_unused(pcms);
 }
 
+#define XBOX_CACHE_PARTITION_SIZE 0x2EE00000
+#define FATX_SIGNATURE 0x58544146
+#define FATX_CLUSTER_SIZE 0x4000
+
+/*
+ * Format the hard disk's cache partitions (X, Y, Z) as empty FATX volumes: a
+ * fresh superblock, an empty FAT16 and an empty root directory cluster, as on
+ * a blank hard disk. Titles that cannot recover from an interrupted cache
+ * write then start with a clean cache (see #2100).
+ */
+static void xbox_clear_hdd_cache(void)
+{
+    static const int64_t partitions[] = { 0x00080000, 0x2EE80000, 0x5DC80000 };
+
+    DriveInfo *dinfo = drive_get(IF_IDE, 0, 0);
+    BlockBackend *blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
+    if (!blk || !blk_is_inserted(blk) || !blk_is_writable(blk)) {
+        return;
+    }
+    if (blk_getlength(blk) < partitions[2] + XBOX_CACHE_PARTITION_SIZE) {
+        warn_report("Hard disk image too small, cache partitions not cleared");
+        return;
+    }
+
+    /* FAT16, one entry per cluster plus the reserved first entry */
+    const size_t clusters = XBOX_CACHE_PARTITION_SIZE / FATX_CLUSTER_SIZE;
+    const size_t fat_size = ROUND_UP((clusters + 1) * sizeof(uint16_t), 4096);
+    const size_t len = 4096 + fat_size + FATX_CLUSTER_SIZE;
+    g_autofree uint8_t *buf = g_malloc0(len);
+
+    memset(buf, 0xff, 4096);
+    stl_le_p(buf + 0, FATX_SIGNATURE);
+    stl_le_p(buf + 8, FATX_CLUSTER_SIZE / 512); /* Sectors per cluster */
+    stl_le_p(buf + 12, 1); /* Root directory cluster */
+    stw_le_p(buf + 16, 0);
+    stw_le_p(buf + 4096, 0xfff8); /* Media descriptor */
+    stw_le_p(buf + 4096 + 2, 0xffff); /* Root directory: end of chain */
+    memset(buf + 4096 + fat_size, 0xff, FATX_CLUSTER_SIZE);
+
+    for (int i = 0; i < ARRAY_SIZE(partitions); i++) {
+        stl_le_p(buf + 4, g_random_int()); /* Volume ID */
+        if (blk_pwrite(blk, partitions[i], len, buf, 0) < 0) {
+            error_report("Failed to clear hard disk cache partition");
+            return;
+        }
+    }
+    blk_flush(blk);
+}
+
 /* PC hardware initialisation */
 static void xbox_init(MachineState *machine)
 {
     xbox_init_common(machine, NULL, NULL);
+
+    if (XBOX_MACHINE(machine)->clear_hdd_cache) {
+        xbox_clear_hdd_cache();
+    }
 }
 
 void xbox_init_common(MachineState *machine,
@@ -396,6 +451,19 @@ static bool machine_get_short_animation(Object *obj, Error **errp)
     return ms->short_animation;
 }
 
+static void machine_set_clear_hdd_cache(Object *obj, bool value, Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+
+    ms->clear_hdd_cache = value;
+}
+
+static bool machine_get_clear_hdd_cache(Object *obj, Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+    return ms->clear_hdd_cache;
+}
+
 static char *machine_get_smc_version(Object *obj, Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
@@ -482,6 +550,13 @@ static void xbox_machine_options(MachineClass *m)
     object_class_property_set_description(oc, "short-animation",
                                           "Skip Xbox boot animation");
 
+    object_class_property_add_bool(oc, "clear-hdd-cache",
+                                   machine_get_clear_hdd_cache,
+                                   machine_set_clear_hdd_cache);
+    object_class_property_set_description(
+        oc, "clear-hdd-cache",
+        "Format the hard disk cache partitions (X, Y, Z) at boot");
+
     object_class_property_add_str(oc, "smc-version", machine_get_smc_version,
                                   machine_set_smc_version);
     object_class_property_set_description(
@@ -500,6 +575,7 @@ static inline void xbox_machine_initfn(Object *obj)
 {
     object_property_set_str(obj, "avpack", "hdtv", &error_fatal);
     object_property_set_bool(obj, "short-animation", false, &error_fatal);
+    object_property_set_bool(obj, "clear-hdd-cache", false, &error_fatal);
     object_property_set_str(obj, "smc-version", "P01", &error_fatal);
     object_property_set_str(obj, "video-encoder", "conexant", &error_fatal);
 }
