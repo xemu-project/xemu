@@ -1210,4 +1210,33 @@ void qemu_plugin_u64_set(qemu_plugin_u64 entry, unsigned int vcpu_index,
 QEMU_PLUGIN_API
 uint64_t qemu_plugin_u64_sum(qemu_plugin_u64 entry);
 
+// <xemu>
+typedef void (*qemu_plugin_command_cb_t)(const char *args);
+
+/**
+ * qemu_plugin_register_command() - registers a debug monitor command
+ * @id: plugin ID
+ * @name: String prefix used to route arguments to the callback.
+ * @cb: The callback to be invoked when "plugin <name>" is entered in the debug
+ *      monitor.
+ *
+ * The callback runs asynchronously on a vCPU thread while all vCPUs are
+ * stopped, so it may safely call qemu_plugin_reset() or
+ * qemu_plugin_uninstall().
+ *
+ * Commands are automatically unregistered when the plugin is reset or
+ * uninstalled.
+ */
+QEMU_PLUGIN_API
+void qemu_plugin_register_command(qemu_plugin_id_t id, const char *name,
+                                  qemu_plugin_command_cb_t cb);
+
+/**
+ * qemu_plugin_unregister_command() - unregisters a debug monitor command.
+ * @name: String previously passed to qemu_plugin_register_command.
+ */
+QEMU_PLUGIN_API
+void qemu_plugin_unregister_command(const char *name);
+// </xemu>
+
 #endif /* QEMU_QEMU_PLUGIN_H */
