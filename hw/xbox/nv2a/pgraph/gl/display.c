@@ -380,6 +380,7 @@ void pgraph_gl_sync(NV2AState *d)
 
     SurfaceBinding *surface = pgraph_gl_surface_get_within(d, d->pcrtc.start + vga_display_params.line_offset);
     if (surface == NULL || !surface->color || !surface->width || !surface->height) {
+        qatomic_set(&d->pgraph.sync_pending, false);
         qemu_event_set(&d->pgraph.sync_complete);
         return;
     }
