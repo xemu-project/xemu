@@ -883,21 +883,6 @@ static void create_pipeline(PGRAPHState *pg)
     if (pgraph_reg_r(pg, NV_PGRAPH_BLEND) & NV_PGRAPH_BLEND_EN) {
         color_blend_attachment.blendEnable = VK_TRUE;
 
-        uint32_t sfactor =
-            GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND), NV_PGRAPH_BLEND_SFACTOR);
-        uint32_t dfactor =
-            GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND), NV_PGRAPH_BLEND_DFACTOR);
-        assert(sfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
-        assert(dfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
-        color_blend_attachment.srcColorBlendFactor =
-            pgraph_blend_factor_vk_map[sfactor];
-        color_blend_attachment.dstColorBlendFactor =
-            pgraph_blend_factor_vk_map[dfactor];
-        color_blend_attachment.srcAlphaBlendFactor =
-            pgraph_blend_factor_vk_map[sfactor];
-        color_blend_attachment.dstAlphaBlendFactor =
-            pgraph_blend_factor_vk_map[dfactor];
-
         uint32_t equation =
             GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND), NV_PGRAPH_BLEND_EQN);
         assert(equation < ARRAY_SIZE(pgraph_blend_equation_vk_map));
@@ -909,6 +894,33 @@ static void create_pipeline(PGRAPHState *pg)
 
         uint32_t blend_color = pgraph_reg_r(pg, NV_PGRAPH_BLENDCOLOR);
         pgraph_argb_pack32_to_rgba_float(blend_color, blend_constant);
+
+        uint32_t sfactor = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
+                                    NV_PGRAPH_BLEND_SFACTOR);
+        uint32_t dfactor = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
+                                    NV_PGRAPH_BLEND_DFACTOR);
+        assert(sfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
+        assert(dfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
+
+        if (equation < 5) {           
+            color_blend_attachment.srcColorBlendFactor =
+                pgraph_blend_factor_vk_map[sfactor];
+            color_blend_attachment.dstColorBlendFactor =
+                pgraph_blend_factor_vk_map[dfactor];
+            color_blend_attachment.srcAlphaBlendFactor =
+                pgraph_blend_factor_vk_map[sfactor];
+            color_blend_attachment.dstAlphaBlendFactor =
+                pgraph_blend_factor_vk_map[dfactor];
+        } else {
+            color_blend_attachment.srcColorBlendFactor =
+                pgraph_blend_factor_vk_map[3];
+            color_blend_attachment.dstColorBlendFactor =
+                pgraph_blend_factor_vk_map[1];
+            color_blend_attachment.srcAlphaBlendFactor =
+                pgraph_blend_factor_vk_map[sfactor];
+            color_blend_attachment.dstAlphaBlendFactor =
+                pgraph_blend_factor_vk_map[dfactor];
+        }
     }
 
     VkPipelineColorBlendStateCreateInfo color_blending = {
