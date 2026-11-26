@@ -2880,7 +2880,17 @@ DEF_METHOD(NV097, SET_SHADOW_DEPTH_FUNC)
 
 DEF_METHOD(NV097, SET_SHADER_STAGE_PROGRAM)
 {
+    bool was_active[NV2A_MAX_TEXTURES];
+
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        was_active[i] = pgraph_is_texture_stage_active(pg, i);
+    }
     pgraph_reg_w(pg, NV_PGRAPH_SHADERPROG, parameter);
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        if (pgraph_is_texture_stage_active(pg, i) != was_active[i]) {
+            pg->texture_dirty[i] = true;
+        }
+    }
 }
 
 DEF_METHOD(NV097, SET_DOT_RGBMAPPING)
