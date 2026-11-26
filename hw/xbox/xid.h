@@ -48,12 +48,14 @@
 #define XID_GET_CAPABILITIES 0x01
 
 #define XID_DEVICETYPE_GAMEPAD 0x01
+#define XID_DEVICETYPE_STEEL_BATTALION 0x80
 
 #define XID_DEVICESUBTYPE_GAMEPAD 0x01
 #define XID_DEVICESUBTYPE_GAMEPAD_S 0x02
 
 #define TYPE_USB_XID_GAMEPAD "usb-xbox-gamepad"
 #define TYPE_USB_XID_GAMEPAD_S "usb-xbox-gamepad-s"
+#define TYPE_USB_XID_STEEL_BATTALION "usb-steel-battalion"
 
 #define GAMEPAD_A 0
 #define GAMEPAD_B 1
