@@ -75,6 +75,7 @@ void pgraph_vk_init_buffers(NV2AState *d)
     r->storage_buffers[BUFFER_COMPUTE_DST] = (StorageBuffer){
         .alloc_info = device_alloc_create_info,
         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         .buffer_size = (1024 * 10) * (1024 * 10) * 8,
     };
