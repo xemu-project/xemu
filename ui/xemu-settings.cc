@@ -67,7 +67,6 @@ void xemu_settings_set_path(const char *path)
     assert(path != NULL);
     assert(settings_path == NULL);
     settings_path = path;
-    fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
 }
 
 const char *xemu_settings_get_base_path(void)
@@ -87,7 +86,6 @@ const char *xemu_settings_get_base_path(void)
         base_path = g_strdup(base);
         SDL_free(base);
     }
-    fprintf(stderr, "%s: base path: %s\n", __func__, base_path);
     return base_path;
 }
 
@@ -100,7 +98,6 @@ const char *xemu_settings_get_path(void)
     const char *base = xemu_settings_get_base_path();
     assert(base != NULL);
     settings_path = g_strdup_printf("%s%s", base, filename);
-    fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
     return settings_path;
 }
 

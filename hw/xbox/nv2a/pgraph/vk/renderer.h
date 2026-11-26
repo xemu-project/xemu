@@ -442,6 +442,7 @@ void pgraph_vk_check_memory_budget(PGRAPHState *pg);
 #define RGBA_DEFAULT (float[4]){0,0,0,0}
 
 void pgraph_vk_debug_init(void);
+const char *pgraph_vk_result_to_string(VkResult result);
 void pgraph_vk_insert_debug_marker(PGRAPHVkState *r, VkCommandBuffer cmd,
                                    float color[4], const char *format, ...) G_GNUC_PRINTF(4, 5);
 void pgraph_vk_begin_debug_marker(PGRAPHVkState *r, VkCommandBuffer cmd,

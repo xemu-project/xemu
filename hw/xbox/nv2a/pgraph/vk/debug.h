@@ -40,19 +40,25 @@ extern int nv2a_vk_dgroup_indent;
         nv2a_vk_dgroup_indent++;                        \
     } while (0)
 
-#define NV2A_VK_DGROUP_END(...)             \
-    do {                                    \
-        nv2a_vk_dgroup_indent--;            \
-        assert(nv2a_vk_dgroup_indent >= 0); \
+#define NV2A_VK_DGROUP_END(...)                        \
+    do {                                               \
+        nv2a_vk_dgroup_indent--;                       \
+        NV2A_ASSERT_FATAL(nv2a_vk_dgroup_indent >= 0); \
     } while (0)
 
-#define VK_CHECK(x)                                           \
-    do {                                                      \
-        VkResult vk_result = (x);                             \
-        if (vk_result != VK_SUCCESS) {                        \
-            fprintf(stderr, "vk_result = %d\n", vk_result);   \
-        }                                                     \
-        assert(vk_result == VK_SUCCESS && "vk check failed"); \
+#define VK_CHECK(x)                                                            \
+    do {                                                                       \
+        VkResult vk_result = (x);                                              \
+        if (vk_result != VK_SUCCESS) {                                         \
+            const char *vk_result_str = pgraph_vk_result_to_string(vk_result); \
+            nv2a_log_timestamped_message(                                      \
+                "vk check failed: vk_result = %s (%d)\nat %s:%d\n",            \
+                vk_result_str, vk_result, __FILE__, __LINE__);                 \
+            assert(vk_result == VK_SUCCESS &&                                  \
+                   "A fatal error occurred. Check xemu.log or the console "    \
+                   "output for details.");                                     \
+            exit(127);                                                         \
+        }                                                                      \
     } while (0)
 
 void pgraph_vk_debug_frame_terminator(void);
