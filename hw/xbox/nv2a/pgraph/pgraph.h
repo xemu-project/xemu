@@ -335,7 +335,7 @@ static inline bool pgraph_is_texture_stage_active(PGRAPHState *pg, unsigned int 
 static inline bool pgraph_is_texture_enabled(PGRAPHState *pg, int texture_idx)
 {
     uint32_t ctl_0 = pgraph_reg_r(pg, NV_PGRAPH_TEXCTL0_0 + texture_idx*4);
-    return // pgraph_is_texture_stage_active(pg, texture_idx) &&
+    return pgraph_is_texture_stage_active(pg, texture_idx) &&
                        GET_MASK(ctl_0, NV_PGRAPH_TEXCTL0_0_ENABLE);
 }
 
