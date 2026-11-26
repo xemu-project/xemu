@@ -19,6 +19,11 @@ general:
       f7: string
       f8: string
     filter_current_game: bool
+  recent:
+    discs:
+      type: array
+      items:
+        type: string
 
 input:
   bindings:
