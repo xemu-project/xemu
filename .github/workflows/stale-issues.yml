@@ -1,0 +1,32 @@
+name: Stale Issues
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/stale@v9
+        with:
+          days-before-stale: 30
+          days-before-close: 14
+          
+          only-labels: "pending author response"
+
+          stale-issue-message: >
+            This issue is awaiting a response from the author.
+            It will be closed if no update is provided.
+
+          close-issue-message: >
+            Closing this issue due to lack of response from the author, feel free to reopen with a response.
+
+          stale-issue-label: "pending author response"
+          remove-stale-when-updated: true
