@@ -3938,6 +3938,8 @@ trace_ss = ss.source_set()
 user_ss = ss.source_set()
 util_ss = ss.source_set()
 
+subdir('po')
+
 # accel modules
 qtest_module_ss = ss.source_set()
 
@@ -4810,10 +4812,6 @@ subdir('docs')
 if host_os != 'emscripten'
   subdir('tests')
 endif
-if gtk.found()
-  subdir('po')
-endif
-
 if host_machine.system() == 'windows'
   nsis_cmd = [
     find_program('scripts/nsis.py'),

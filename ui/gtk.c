@@ -27,7 +27,7 @@
  * Copyright (C) 2009-2010 Daniel P. Berrange <dan@berrange.com>
  */
 
-#define GETTEXT_PACKAGE "qemu"
+#define GETTEXT_PACKAGE "xemu"
 #define LOCALEDIR "po"
 
 #include "qemu/osdep.h"
@@ -2536,10 +2536,10 @@ static void gtk_display_init(DisplayState *ds, DisplayOptions *opts)
     setlocale(LC_MESSAGES, "");
     setlocale(LC_CTYPE, "C.UTF-8");
     dir = get_relocated_path(CONFIG_QEMU_LOCALEDIR);
-    bindtextdomain("qemu", dir);
+    bindtextdomain(GETTEXT_PACKAGE, dir);
     g_free(dir);
-    bind_textdomain_codeset("qemu", "UTF-8");
-    textdomain("qemu");
+    bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8");
+    textdomain(GETTEXT_PACKAGE);
 
     window_display = gtk_widget_get_display(s->window);
     if (s->opts->has_show_cursor && s->opts->show_cursor) {

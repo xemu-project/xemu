@@ -38,10 +38,12 @@ jobs:
       run: |
         if [[ "${{ matrix.configuration }}" == "debug" ]]; then
           opts=(
+            --enable-gettext
             --debug
           )
         else
           opts=(
+            --enable-gettext
             --extra-ldflags="-Wl,--thinlto-cache-policy=cache_size_bytes=$LTO_CACHE_MAXSIZE"
             -Db_lto=true
             -Db_lto_mode=thin

@@ -54,28 +54,28 @@ void MainMenuTabView::Draw()
 void MainMenuGeneralView::Draw()
 {
 #if defined(_WIN32)
-    SectionTitle("Updates");
-    Toggle("Check for updates", &g_config.general.updates.check,
-           "Check for updates whenever xemu is opened");
+    SectionTitle(N_("Updates"));
+    Toggle(N_("Check for updates"), &g_config.general.updates.check,
+           N_("Check for updates whenever xemu is opened"));
 #endif
 
 #if defined(__x86_64__)
-    SectionTitle("Performance");
-    Toggle("Hard FPU emulation", &g_config.perf.hard_fpu,
-           "Use hardware-accelerated floating point emulation (requires restart)");
+    SectionTitle(N_("Performance"));
+    Toggle(N_("Hard FPU emulation"), &g_config.perf.hard_fpu,
+           N_("Use hardware-accelerated floating point emulation (requires restart)"));
 #endif
 
-    Toggle("Cache shaders to disk", &g_config.perf.cache_shaders,
-           "Reduce stutter in games by caching previously generated shaders");
+    Toggle(N_("Cache shaders to disk"), &g_config.perf.cache_shaders,
+           N_("Reduce stutter in games by caching previously generated shaders"));
 
-    SectionTitle("Miscellaneous");
-    Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
-           "Skip the full Xbox boot animation sequence");
-    FilePicker("Screenshot output directory", g_config.general.screenshot_dir,
+    SectionTitle(N_("Miscellaneous"));
+    Toggle(N_("Skip startup animation"), &g_config.general.skip_boot_anim,
+           N_("Skip the full Xbox boot animation sequence"));
+    FilePicker(N_("Screenshot output directory"), g_config.general.screenshot_dir,
                nullptr, 0, true, [](const char *path) {
                    xemu_settings_set_string(&g_config.general.screenshot_dir, path);
                });
-    FilePicker("Games directory", g_config.general.games_dir, nullptr, 0, true,
+    FilePicker(N_("Games directory"), g_config.general.games_dir, nullptr, 0, true,
                [](const char *path) {
                    xemu_settings_set_string(&g_config.general.games_dir, path);
                });
@@ -104,7 +104,7 @@ bool MainMenuInputView::IsInputRebinding()
 
 void MainMenuInputView::Draw()
 {
-    SectionTitle("Controllers");
+    SectionTitle(N_("Controllers"));
     ImGui::PushFont(g_font_mgr.m_menu_font_small);
 
     static int active = 0;
@@ -193,38 +193,37 @@ void MainMenuInputView::Draw()
     // Render device driver combo
     //
 
-    // List available device drivers
+    static const struct {
+        const char *id;
+        const char *name;
+    } drivers[] = {
+        { DRIVER_DUKE, N_("Xbox Controller") },
+        { DRIVER_S, N_("Xbox Controller S") },
+    };
     const char *driver = bound_drivers[active];
-
-    if (strcmp(driver, DRIVER_DUKE) == 0)
-        driver = DRIVER_DUKE_DISPLAY_NAME;
-    else if (strcmp(driver, DRIVER_S) == 0)
-        driver = DRIVER_S_DISPLAY_NAME;
+    const char *driver_name = driver;
+    for (const auto &entry : drivers) {
+        if (strcmp(driver, entry.id) == 0) {
+            driver_name = _(entry.name);
+            break;
+        }
+    }
 
     ImGui::Columns(2, "", false);
     ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.25);
 
-    ImGui::Text("Emulated Device");
+    ImGui::Text("%s", _("Emulated Device"));
     ImGui::SameLine(0, 0);
     ImGui::NextColumn();
 
     ImGui::SetNextItemWidth(-FLT_MIN);
-    if (ImGui::BeginCombo("###InputDrivers", driver,
+    if (ImGui::BeginCombo("###InputDrivers", driver_name,
                           ImGuiComboFlags_NoArrowButton)) {
-        const char *available_drivers[] = { DRIVER_DUKE, DRIVER_S };
-        const char *driver_display_names[] = { DRIVER_DUKE_DISPLAY_NAME,
-                                               DRIVER_S_DISPLAY_NAME };
-        bool is_selected = false;
-        int num_drivers = sizeof(driver_display_names) / sizeof(driver_display_names[0]);
-        for (int i = 0; i < num_drivers; i++) {
-            const char *iter = driver_display_names[i];
-            is_selected = strcmp(driver, iter) == 0;
-            ImGui::PushID(iter);
-            if (ImGui::Selectable(iter, is_selected)) {
-                for (int j = 0; j < num_drivers; j++) {
-                    if (iter == driver_display_names[j])
-                        bound_drivers[active] = available_drivers[j];
-                }
+        for (const auto &entry : drivers) {
+            bool is_selected = strcmp(driver, entry.id) == 0;
+            ImGui::PushID(entry.id);
+            if (ImGui::Selectable(_(entry.name), is_selected)) {
+                bound_drivers[active] = entry.id;
                 xemu_input_bind(active, bound_controllers[active], 1);
             }
             if (is_selected) {
@@ -243,12 +242,12 @@ void MainMenuInputView::Draw()
     // Render input device combo
     //
 
-    ImGui::Text("Input Device");
+    ImGui::Text("%s", _("Input Device"));
     ImGui::SameLine(0, 0);
     ImGui::NextColumn();
 
     // List available input devices
-    const char *not_connected = "Not Connected";
+    const char *not_connected = N_("Not Connected");
     ControllerState *bound_state = xemu_input_get_bound(active);
 
     // Get current controller name
@@ -260,11 +259,12 @@ void MainMenuInputView::Draw()
     }
 
     ImGui::SetNextItemWidth(-FLT_MIN);
-    if (ImGui::BeginCombo("###InputDevices", name, ImGuiComboFlags_NoArrowButton))
+    const char *translated_name = name == not_connected ? _(name) : name;
+    if (ImGui::BeginCombo("###InputDevices", translated_name, ImGuiComboFlags_NoArrowButton))
     {
         // Handle "Not connected"
         bool is_selected = bound_state == NULL;
-        if (ImGui::Selectable(not_connected, is_selected)) {
+        if (ImGui::Selectable(_(not_connected), is_selected)) {
             xemu_input_bind(active, NULL, 1);
             bound_state = NULL;
         }
@@ -350,7 +350,7 @@ void MainMenuInputView::Draw()
         ImVec2(controller_width/t_w, 0));
     ImVec2 pos = ImGui::GetCursorPos();
     if (!device_selected) {
-        const char *msg = "Please select an available input device";
+        const char *msg = _("Please select an available input device");
         ImVec2 dim = ImGui::CalcTextSize(msg);
         ImGui::SetCursorPosX(cur.x + (controller_display_size.x-dim.x)/2);
         ImGui::SetCursorPosY(cur.y + (controller_display_size.y-dim.y)/2);
@@ -365,7 +365,7 @@ void MainMenuInputView::Draw()
     if (bound_state) {
         ImGui::PushID(active);
 
-        SectionTitle("Expansion Slots");
+        SectionTitle(N_("Expansion Slots"));
         // Begin a 2-column layout to render the expansion slots
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
                             g_viewport_mgr.Scale(ImVec2(0, 12)));
@@ -480,7 +480,7 @@ void MainMenuInputView::Draw()
 
                 // Button to generate a new XMU
                 ImGui::PushID(i);
-                if (ImGui::Button("New Image", ImVec2(250, 0))) {
+                if (ImGui::Button(_("New Image"), ImVec2(250, 0))) {
                     int port = active;
                     int slot = i;
                     ShowSaveFileDialog(img_file_filters, 2, nullptr, [port, slot](const char *new_path) {
@@ -499,7 +499,7 @@ void MainMenuInputView::Draw()
 
                 int port = active;
                 int slot = i;
-                FilePicker("Image", xmu->filename, img_file_filters, 2, false,
+                FilePicker(N_("Image"), xmu->filename, img_file_filters, 2, false,
                            [port, slot](const char *path) {
                                if (strlen(path) > 0) {
                                    xemu_input_bind_xmu(port, slot, path, false);
@@ -519,7 +519,7 @@ void MainMenuInputView::Draw()
         ImGui::PopStyleVar(); // ItemSpacing
         ImGui::Columns(1);
 
-        SectionTitle("Mapping");
+        SectionTitle(N_("Mapping"));
         ImVec4 tc = ImGui::GetStyle().Colors[ImGuiCol_Header];
         tc.w = 0.0f;
         ImGui::PushStyleColor(ImGuiCol_Header, tc);
@@ -542,23 +542,23 @@ void MainMenuInputView::Draw()
         }
 
         if (bound_state->type == INPUT_DEVICE_SDL_GAMEPAD) {
-            Toggle("Enable Rumble",
+            Toggle(N_("Enable Rumble"),
                    &bound_state->controller_map->enable_rumble);
-            Toggle("Invert Left X Axis",
+            Toggle(N_("Invert Left X Axis"),
                    &bound_state->controller_map->controller_mapping
                         .invert_axis_left_x);
-            Toggle("Invert Left Y Axis",
+            Toggle(N_("Invert Left Y Axis"),
                    &bound_state->controller_map->controller_mapping
                         .invert_axis_left_y);
-            Toggle("Invert Right X Axis",
+            Toggle(N_("Invert Right X Axis"),
                    &bound_state->controller_map->controller_mapping
                         .invert_axis_right_x);
-            Toggle("Invert Right Y Axis",
+            Toggle(N_("Invert Right Y Axis"),
                    &bound_state->controller_map->controller_mapping
                         .invert_axis_right_y);
         }
 
-        if (ImGui::Button("Reset to Default")) {
+        if (ImGui::Button(_("Reset to Default"))) {
             xemu_input_reset_input_mapping(bound_state);
         }
 
@@ -566,12 +566,12 @@ void MainMenuInputView::Draw()
         ImGui::PopID();
     }
 
-    SectionTitle("Options");
-    Toggle("Auto-bind controllers", &g_config.input.auto_bind,
-           "Bind newly connected controllers to any open port");
-    Toggle("Background controller input capture",
+    SectionTitle(N_("Options"));
+    Toggle(N_("Auto-bind controllers"), &g_config.input.auto_bind,
+           N_("Bind newly connected controllers to any open port"));
+    Toggle(N_("Background controller input capture"),
            &g_config.input.background_input_capture,
-           "Capture even if window is unfocused (requires restart)");
+           N_("Capture even if window is unfocused (requires restart)"));
 }
 
 void MainMenuInputView::Hide()
@@ -739,17 +739,17 @@ void MainMenuInputView::PopulateTableController(ControllerState *state)
 
 void MainMenuDisplayView::Draw()
 {
-    SectionTitle("Renderer");
-    ChevronCombo("Backend", &g_config.display.renderer,
+    SectionTitle(N_("Renderer"));
+    ChevronCombo(N_("Backend"), &g_config.display.renderer,
                  "Null\0"
                  "OpenGL\0"
 #ifdef CONFIG_VULKAN
                  "Vulkan\0"
 #endif
                  ,
-                 "Select desired renderer implementation");
+                 N_("Select desired renderer implementation"));
     int rendering_scale = nv2a_get_surface_scale_factor() - 1;
-    if (ChevronCombo("Internal resolution scale", &rendering_scale,
+    if (ChevronCombo(N_("Internal resolution scale"), &rendering_scale,
                      "1x\0"
                      "2x\0"
                      "3x\0"
@@ -760,45 +760,48 @@ void MainMenuDisplayView::Draw()
                      "8x\0"
                      "9x\0"
                      "10x\0",
-                     "Increase surface scaling factor for higher quality")) {
+                     N_("Increase surface scaling factor for higher quality"))) {
         nv2a_set_surface_scale_factor(rendering_scale+1);
     }
 
-    SectionTitle("Window");
+    SectionTitle(N_("Window"));
     bool fs = xemu_is_fullscreen();
-    if (Toggle("Fullscreen", &fs, "Enable fullscreen now")) {
+    if (Toggle(N_("Fullscreen"), &fs, N_("Enable fullscreen now"))) {
         xemu_toggle_fullscreen();
     }
-    Toggle("Fullscreen on startup",
+    Toggle(N_("Fullscreen on startup"),
            &g_config.display.window.fullscreen_on_startup,
-           "Start xemu in fullscreen when opened");
-    Toggle("Exclusive fullscreen",
+           N_("Start xemu in fullscreen when opened"));
+    Toggle(N_("Exclusive fullscreen"),
            &g_config.display.window.fullscreen_exclusive,
-           "May improve responsiveness, but slows window switching");
-    if (ChevronCombo("Window size", &g_config.display.window.startup_size,
-                     "Last Used\0"
-                     "640x480\0"
-                     "720x480\0"
-                     "1280x720\0"
-                     "1280x800\0"
-                     "1280x960\0"
-                     "1920x1080\0"
-                     "2560x1440\0"
-                     "2560x1600\0"
-                     "2560x1920\0"
-                     "3840x2160\0",
-                     "Select preferred startup window size")) {
+           N_("May improve responsiveness, but slows window switching"));
+    static const char *const window_sizes[] = {
+        N_("Last Used"),
+        "640x480",
+        "720x480",
+        "1280x720",
+        "1280x800",
+        "1280x960",
+        "1920x1080",
+        "2560x1440",
+        "2560x1600",
+        "2560x1920",
+        "3840x2160",
+    };
+    if (ChevronCombo(N_("Window size"), &g_config.display.window.startup_size,
+                     window_sizes,
+                     N_("Select preferred startup window size"))) {
     }
-    Toggle("Vertical refresh sync", &g_config.display.window.vsync,
-           "Sync to screen vertical refresh to reduce tearing artifacts");
+    Toggle(N_("Vertical refresh sync"), &g_config.display.window.vsync,
+           N_("Sync to screen vertical refresh to reduce tearing artifacts"));
 
-    SectionTitle("Interface");
-    Toggle("Show main menu bar", &g_config.display.ui.show_menubar,
-           "Show main menu bar when mouse is activated");
-    Toggle("Show notifications", &g_config.display.ui.show_notifications,
-           "Display notifications in upper-right corner");
-    Toggle("Hide mouse cursor", &g_config.display.ui.hide_cursor,
-           "Hide the mouse cursor when it is not moving");
+    SectionTitle(N_("Interface"));
+    Toggle(N_("Show main menu bar"), &g_config.display.ui.show_menubar,
+           N_("Show main menu bar when mouse is activated"));
+    Toggle(N_("Show notifications"), &g_config.display.ui.show_notifications,
+           N_("Display notifications in upper-right corner"));
+    Toggle(N_("Hide mouse cursor"), &g_config.display.ui.hide_cursor,
+           N_("Hide the mouse cursor when it is not moving"));
 
     int ui_scale_idx;
     if (g_config.display.ui.auto_scale) {
@@ -808,11 +811,14 @@ void MainMenuDisplayView::Draw()
         if (ui_scale_idx < 1) ui_scale_idx = 1;
         else if (ui_scale_idx > 2) ui_scale_idx = 2;
     }
-    if (ChevronCombo("UI scale", &ui_scale_idx,
-                     "Auto\0"
-                     "1x\0"
-                     "2x\0",
-                     "Interface element scale")) {
+    static const char *const ui_scales[] = {
+        N_("Auto"),
+        "1x",
+        "2x",
+    };
+    if (ChevronCombo(N_("UI scale"), &ui_scale_idx,
+                     ui_scales,
+                     N_("Interface element scale"))) {
         if (ui_scale_idx == 0) {
             g_config.display.ui.auto_scale = true;
         } else {
@@ -820,34 +826,40 @@ void MainMenuDisplayView::Draw()
             g_config.display.ui.scale = ui_scale_idx;
         }
     }
-    Toggle("Animations", &g_config.display.ui.use_animations,
-           "Enable xemu user interface animations");
-    ChevronCombo("Display mode", &g_config.display.ui.fit,
-                 "Center\0"
-                 "Scale\0"
-                 "Stretch\0",
-                 "Select how the framebuffer should fit or scale into the window");
-    ChevronCombo("Aspect ratio", &g_config.display.ui.aspect_ratio,
-                 "Native\0"
-                 "Auto (Default)\0"
-                 "4:3\0"
-                 "16:9\0",
-                 "Select the displayed aspect ratio");
+    Toggle(N_("Animations"), &g_config.display.ui.use_animations,
+           N_("Enable xemu user interface animations"));
+    static const char *const display_modes[] = {
+        N_("Center"),
+        N_("Scale"),
+        N_("Stretch"),
+    };
+    ChevronCombo(N_("Display mode"), &g_config.display.ui.fit,
+                 display_modes,
+                 N_("Select how the framebuffer should fit or scale into the window"));
+    static const char *const aspect_ratios[] = {
+        N_("Native"),
+        N_("Auto (Default)"),
+        "4:3",
+        "16:9",
+    };
+    ChevronCombo(N_("Aspect ratio"), &g_config.display.ui.aspect_ratio,
+                 aspect_ratios,
+                 N_("Select the displayed aspect ratio"));
 }
 
 void MainMenuAudioView::Draw()
 {
-    SectionTitle("Volume");
-    char buf[32];
-    snprintf(buf, sizeof(buf), "Limit output volume (%d%%)",
-             (int)(g_config.audio.volume_limit * 100));
-    Slider("Output volume limit", &g_config.audio.volume_limit, buf);
+    SectionTitle(N_("Volume"));
+    auto description = string_format(_("Limit output volume (%d%%)"),
+                                     (int)(g_config.audio.volume_limit * 100));
+    Slider(N_("Output volume limit"), &g_config.audio.volume_limit,
+           description.c_str());
 
-    SectionTitle("Quality");
-    Toggle("Real-time DSP processing", &g_config.audio.use_dsp,
-           "Enable improved audio accuracy (experimental)");
-    Toggle("DSP JIT engine", &g_config.audio.use_dsp_jit,
-           "Use DSP JIT engine");
+    SectionTitle(N_("Quality"));
+    Toggle(N_("Real-time DSP processing"), &g_config.audio.use_dsp,
+           N_("Enable improved audio accuracy (experimental)"));
+    Toggle(N_("DSP JIT engine"), &g_config.audio.use_dsp_jit,
+           N_("Use DSP JIT engine"));
 
 }
 
@@ -931,13 +943,13 @@ MainMenuNetworkView::MainMenuNetworkView()
 
 void MainMenuNetworkView::Draw()
 {
-    SectionTitle("Adapter");
+    SectionTitle(N_("Adapter"));
     bool enabled = xemu_net_is_enabled();
     g_config.net.enable = enabled;
-    if (Toggle("Enable", &g_config.net.enable,
-               enabled ? "Virtual network connected (disable to change network "
-                         "settings)" :
-                         "Connect virtual network cable to machine")) {
+    if (Toggle(N_("Enable"), &g_config.net.enable,
+               enabled ? N_("Virtual network connected (disable to change network "
+                         "settings)") :
+                         N_("Connect virtual network cable to machine"))) {
         if (enabled) {
             xemu_net_disable();
         } else {
@@ -947,15 +959,18 @@ void MainMenuNetworkView::Draw()
 
     bool appearing = ImGui::IsWindowAppearing();
     if (enabled) ImGui::BeginDisabled();
+    static const char *const network_backends[] = {
+        N_("NAT"),
+        N_("UDP Tunnel"),
+        N_("Bridged Adapter"),
+    };
     if (ChevronCombo(
-            "Attached to", &g_config.net.backend,
-            "NAT\0"
-            "UDP Tunnel\0"
-            "Bridged Adapter\0",
-            "Controls what the virtual network controller interfaces with")) {
+            N_("Attached to"), &g_config.net.backend,
+            network_backends,
+            N_("Controls what the virtual network controller interfaces with"))) {
         appearing = true;
     }
-    SectionTitle("Options");
+    SectionTitle(N_("Options"));
     switch (g_config.net.backend) {
     case CONFIG_NET_BACKEND_PCAP:
         DrawPcapOptions(appearing);
@@ -985,7 +1000,7 @@ void MainMenuNetworkView::DrawPcapOptions(bool appearing)
         ImGui::Text("%s", msg);
         ImGui::Dummy(ImVec2(0,10*g_viewport_mgr.m_scale));
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_viewport_mgr.m_scale)/2);
-        if (ImGui::Button("Install npcap", ImVec2(120*g_viewport_mgr.m_scale, 0))) {
+        if (ImGui::Button(_("Install Npcap"), ImVec2(120*g_viewport_mgr.m_scale, 0))) {
             SDL_OpenURL("https://nmap.org/npcap/");
         }
 #endif
@@ -1066,7 +1081,7 @@ void MainMenuNetworkView::DrawNatOptions(bool appearing)
 
             ImGui::TableSetColumnIndex(3);
             ImGui::PushID(row);
-            if (ImGui::Button("Remove")) {
+            if (ImGui::Button(_("Remove"))) {
                 remove_net_nat_forward_ports(row);
             }
             ImGui::PopID();
@@ -1092,7 +1107,7 @@ void MainMenuNetworkView::DrawNatOptions(bool appearing)
         ImGui::Combo("###protocol", &protocol, "TCP\0UDP\0");
 
         ImGui::TableSetColumnIndex(3);
-        if (ImGui::Button("Add")) {
+        if (ImGui::Button(_("Add"))) {
             int host, guest;
             if (sscanf(buf, "%d", &host) == 1 &&
                 sscanf(buf2, "%d", &guest) == 1) {
@@ -1293,11 +1308,11 @@ void MainMenuSnapshotsView::Draw()
 {
     g_snapshot_mgr.Refresh();
 
-    SectionTitle("Snapshots");
-    Toggle("Filter by current title",
+    SectionTitle(N_("Snapshots"));
+    Toggle(N_("Filter by current title"),
            &g_config.general.snapshots.filter_current_game,
-           "Only display snapshots created while running the currently running "
-           "XBE");
+           N_("Only display snapshots created while running the currently running "
+           "XBE"));
 
     if (g_config.general.snapshots.filter_current_game) {
         struct xbe *xbe = xemu_get_xbe_info();
@@ -1526,49 +1541,54 @@ void MainMenuSystemView::Draw()
 
     if (m_dirty) {
         ImGui::TextColored(ImVec4(1, 0, 0, 1),
-                           "Application restart required to apply settings");
+                           "%s", _("Application restart required to apply settings"));
     }
 
     if ((int)g_config.sys.avpack == CONFIG_SYS_AVPACK_NONE) {
-        ImGui::TextColored(ImVec4(1,0,0,1), "Setting AV Pack to NONE disables video output.");
+        ImGui::TextColored(ImVec4(1,0,0,1), "%s", _("Setting AV Pack to NONE disables video output."));
     }
 
-    SectionTitle("System Configuration");
+    SectionTitle(N_("System Configuration"));
 
-    if (ChevronCombo(
-            "System Memory", &g_config.sys.mem_limit,
-            "64 MiB (Default)\0"
-            "128 MiB\0",
-            "Increase to 128 MiB for debug or homebrew applications")) {
+    static const char *const memory_options[] = {
+        N_("64 MiB (Default)"),
+        N_("128 MiB"),
+    };
+    if (ChevronCombo(N_("System Memory"), &g_config.sys.mem_limit,
+                     memory_options,
+                     N_("Increase to 128 MiB for debug or homebrew applications"))) {
         m_dirty = true;
     }
 
-    if (ChevronCombo(
-            "AV Pack", &g_config.sys.avpack,
-            "SCART\0HDTV (Default)\0VGA\0RFU\0S-Video\0Composite\0None\0",
-            "Select the attached AV pack")) {
+    static const char *const avpack_options[] = {
+        N_("SCART"), N_("HDTV (Default)"), N_("VGA"), N_("RFU"),
+        N_("S-Video"), N_("Composite"), N_("None"),
+    };
+    if (ChevronCombo(N_("AV Pack"), &g_config.sys.avpack,
+                     avpack_options,
+                     N_("Select the attached AV pack"))) {
         m_dirty = true;
     }
 
-    SectionTitle("Files");
-    FilePicker("MCPX Boot ROM", g_config.sys.files.bootrom_path,
+    SectionTitle(N_("Files"));
+    FilePicker(N_("MCPX Boot ROM"), g_config.sys.files.bootrom_path,
                rom_file_filters, 3, false, [this](const char *path) {
                    xemu_settings_set_string(&g_config.sys.files.bootrom_path, path);
                    m_dirty = true;
                    g_main_menu.UpdateAboutViewConfigInfo();
                });
-    FilePicker("Flash ROM (BIOS)", g_config.sys.files.flashrom_path,
+    FilePicker(N_("Flash ROM (BIOS)"), g_config.sys.files.flashrom_path,
                rom_file_filters, 3, false, [this](const char *path) {
                    xemu_settings_set_string(&g_config.sys.files.flashrom_path, path);
                    m_dirty = true;
                    g_main_menu.UpdateAboutViewConfigInfo();
                });
-    FilePicker("Hard Disk", g_config.sys.files.hdd_path,
+    FilePicker(N_("Hard Disk"), g_config.sys.files.hdd_path,
                qcow_file_filters, 2, false, [this](const char *path) {
                    xemu_settings_set_string(&g_config.sys.files.hdd_path, path);
                    m_dirty = true;
                });
-    FilePicker("EEPROM", g_config.sys.files.eeprom_path,
+    FilePicker(N_("EEPROM"), g_config.sys.files.eeprom_path,
                rom_file_filters, 3, false, [this](const char *path) {
                    xemu_settings_set_string(&g_config.sys.files.eeprom_path, path);
                    m_dirty = true;
@@ -1636,7 +1656,7 @@ void MainMenuAboutView::Draw()
 
     Logo();
 
-    SectionTitle("Build Information");
+    SectionTitle(N_("Build Information"));
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::InputTextMultiline("##build_info", (char *)build_info_text,
                               strlen(build_info_text) + 1,
@@ -1644,7 +1664,7 @@ void MainMenuAboutView::Draw()
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
 
-    SectionTitle("System Information");
+    SectionTitle(N_("System Information"));
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::InputTextMultiline("###systeminformation", (char *)sys_info_text,
                               strlen(sys_info_text) + 1,
@@ -1652,7 +1672,7 @@ void MainMenuAboutView::Draw()
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
 
-    SectionTitle("Config Information");
+    SectionTitle(N_("Config Information"));
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::InputTextMultiline("##config_info", (char *)m_config_info_text,
                               strlen(m_config_info_text) + 1,
@@ -1660,15 +1680,11 @@ void MainMenuAboutView::Draw()
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
 
-    SectionTitle("Community");
+    SectionTitle(N_("Community"));
 
-    ImGui::Text("Visit");
-    ImGui::SameLine();
-    if (ImGui::SmallButton("https://xemu.app")) {
-        SDL_OpenURL("https://xemu.app");
-    }
-    ImGui::SameLine();
-    ImGui::Text("for more information");
+    const char *url = "https://xemu.app";
+    auto link = string_format(_("Visit %s for more information"), url);
+    Hyperlink(link.c_str(), url);
 }
 
 MainMenuTabButton::MainMenuTabButton(std::string text, std::string icon)
@@ -1696,7 +1712,7 @@ bool MainMenuTabButton::Draw(bool selected)
     ImGui::PushFont(g_font_mgr.m_menu_font);
 
     ImVec2 button_size = ImVec2(-FLT_MIN, 0);
-    auto text = string_format("%s %s", m_icon.c_str(), m_text.c_str());
+    auto text = string_format("%s %s", m_icon.c_str(), _(m_text.c_str()));
     ImGui::PushID(this);
     bool status = ImGui::Button(text.c_str(), button_size);
     ImGui::PopID();
@@ -1707,14 +1723,14 @@ bool MainMenuTabButton::Draw(bool selected)
 }
 
 MainMenuScene::MainMenuScene()
-    : m_animation(0.12, 0.12), m_general_button("General", ICON_FA_GEARS),
-      m_input_button("Input", ICON_FA_GAMEPAD),
-      m_display_button("Display", ICON_FA_TV),
-      m_audio_button("Audio", ICON_FA_VOLUME_HIGH),
-      m_network_button("Network", ICON_FA_NETWORK_WIRED),
-      m_snapshots_button("Snapshots", ICON_FA_CLOCK_ROTATE_LEFT),
-      m_system_button("System", ICON_FA_MICROCHIP),
-      m_about_button("About", ICON_FA_CIRCLE_INFO)
+    : m_animation(0.12, 0.12), m_general_button(N_("General"), ICON_FA_GEARS),
+      m_input_button(N_("Input"), ICON_FA_GAMEPAD),
+      m_display_button(N_("Display"), ICON_FA_TV),
+      m_audio_button(N_("Audio"), ICON_FA_VOLUME_HIGH),
+      m_network_button(N_("Network"), ICON_FA_NETWORK_WIRED),
+      m_snapshots_button(N_("Snapshots"), ICON_FA_CLOCK_ROTATE_LEFT),
+      m_system_button(N_("System"), ICON_FA_MICROCHIP),
+      m_about_button(N_("About"), ICON_FA_CIRCLE_INFO)
 {
     m_had_focus_last_frame = false;
     m_focus_view = false;
