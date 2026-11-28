@@ -8,12 +8,6 @@ project_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd
 
 target_arch=$(uname -m)
 gettext_mode=auto
-for option in "$@"; do
-    case "${option}" in
-        --enable-gettext|-Dgettext=enabled) gettext_mode=enabled ;;
-        --disable-gettext|-Dgettext=disabled) gettext_mode=disabled ;;
-    esac
-done
 
 gettext_tools_available() {
     command -v xgettext >/dev/null && command -v msgfmt >/dev/null
@@ -180,6 +174,14 @@ platform="$(uname -s)"
 while [ ! -z "${1}" ]
 do
     case "${1}" in
+    '--enable-gettext')
+        gettext_mode=enabled
+        shift
+        ;;
+    '--disable-gettext')
+        gettext_mode=disabled
+        shift
+        ;;
     '-j'*)
         job_count="${1:2}"
         shift
@@ -297,9 +299,15 @@ case "$platform" in # Adjust compilation options based on platform
         ;;
 esac
 
-if [[ "${gettext_mode}" == auto ]] && gettext_tools_available; then
-    opts="$opts --enable-gettext"
-fi
+case "${gettext_mode}" in
+    enabled) opts="$opts --enable-gettext" ;;
+    disabled) opts="$opts --disable-gettext" ;;
+    auto)
+        if gettext_tools_available; then
+            opts="$opts --enable-gettext"
+        fi
+        ;;
+esac
 
 # find absolute path (and resolve symlinks) to build out of tree
 configure="${project_source_dir}/configure"

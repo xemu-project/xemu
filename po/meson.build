@@ -1,4 +1,5 @@
 i18n = import('i18n')
+fs = import('fs')
 
 if find_program('xgettext', required: get_option('gettext')).found()
   i18n.gettext('xemu',
@@ -12,15 +13,14 @@ endif
 if host_os == 'windows'
   msgfmt = find_program('msgfmt', required: get_option('gettext'))
   if msgfmt.found()
-    xemu_sv_catalog = custom_target(
-      'xemu Swedish catalog',
-      input: files('sv.po'),
-      output: 'xemu-sv-catalog.cc',
+    embedded_catalog = custom_target(
+      'xemu embedded translation catalogs',
+      input: fs.glob('*.po'),
+      output: 'xemu-embedded-catalogs.cc',
       command: [python, files('../scripts/embed-mo-catalog.py'), msgfmt,
                 '@INPUT@', '@OUTPUT@'])
+    system_ss.add(embedded_catalog)
   else
-    xemu_sv_catalog = files('xemu-empty-catalog.cc')
+    system_ss.add(files('xemu-empty-catalogs.cc'))
   endif
-  # ui/meson.build has already transferred xemu_ss into system_ss.
-  system_ss.add(xemu_sv_catalog)
 endif

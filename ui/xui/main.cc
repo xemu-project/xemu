@@ -138,6 +138,9 @@ static void xemu_i18n_init(void)
     bindtextdomain(GETTEXT_PACKAGE, dir);
     bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8");
     textdomain(GETTEXT_PACKAGE);
+#if defined(_WIN32)
+    xemu_i18n_select_catalog();
+#endif
     g_free(dir);
 }
 

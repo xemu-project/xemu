@@ -20,6 +20,9 @@
 
 #if defined(_WIN32)
 const char *xemu_i18n_gettext(const char *message);
+void xemu_i18n_register_catalog(const char *language,
+                                const unsigned char *data, size_t size);
+void xemu_i18n_select_catalog(void);
 
 #undef _
 #define _(String) xemu_i18n_gettext(String)

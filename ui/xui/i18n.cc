@@ -13,12 +13,31 @@
 #if defined(_WIN32)
 
 #include <windows.h>
+#include <winnls.h>
 
 #include <cstdint>
 #include <cstring>
+#include <cwchar>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-extern const unsigned char xemu_sv_catalog[];
-extern const size_t xemu_sv_catalog_size;
+void xemu_i18n_register_embedded_catalogs(void);
+
+struct XemuCatalog {
+    std::string language;
+    std::unordered_map<std::string_view, std::string_view> messages;
+};
+
+static std::vector<XemuCatalog> &xemu_catalogs()
+{
+    static std::vector<XemuCatalog> catalogs;
+    return catalogs;
+}
+
+static const XemuCatalog *xemu_active_catalog;
 
 static uint32_t ReadU32(const unsigned char *data, bool swapped)
 {
@@ -29,66 +48,178 @@ static uint32_t ReadU32(const unsigned char *data, bool swapped)
     return swapped ? __builtin_bswap32(value) : value;
 }
 
-static bool IsSwedishLocale()
+static std::string NormalizeLanguage(std::string language)
 {
-    wchar_t language[LOCALE_NAME_MAX_LENGTH];
-    return GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, LOCALE_SISO639LANGNAME,
-                           language, G_N_ELEMENTS(language)) &&
-           wcscmp(language, L"sv") == 0;
+    for (char &character : language) {
+        if (character == '_') {
+            character = '-';
+        } else if (character >= 'A' && character <= 'Z') {
+            character += 'a' - 'A';
+        }
+    }
+    const size_t modifier = language.find('@');
+    if (modifier != std::string::npos) {
+        language[modifier] = '-';
+        if (language.substr(modifier + 1) == "latin") {
+            language.replace(modifier + 1, std::string::npos, "latn");
+        }
+    }
+    return language;
+}
+
+static bool ReadLanguageName(const wchar_t *language, std::string &result)
+{
+    const int required = WideCharToMultiByte(CP_UTF8, 0, language, -1, nullptr,
+                                              0, nullptr, nullptr);
+    if (required <= 1) {
+        return false;
+    }
+    std::vector<char> utf8(required);
+    if (!WideCharToMultiByte(CP_UTF8, 0, language, -1, utf8.data(), required,
+                             nullptr, nullptr)) {
+        return false;
+    }
+    result.assign(utf8.data());
+    return true;
+}
+
+static std::vector<std::string> PreferredLanguages()
+{
+    std::vector<std::string> languages;
+    ULONG count = 0;
+    ULONG size = 0;
+    const BOOL queried = GetUserPreferredUILanguages(
+        MUI_LANGUAGE_NAME, &count, nullptr, &size);
+    if (size > 0 && (queried || GetLastError() == ERROR_INSUFFICIENT_BUFFER)) {
+        std::vector<wchar_t> buffer(size);
+        if (GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &count, buffer.data(),
+                                        &size)) {
+            for (const wchar_t *language = buffer.data(); *language;
+                 language += wcslen(language) + 1) {
+                std::string utf8;
+                if (ReadLanguageName(language, utf8)) {
+                    languages.push_back(NormalizeLanguage(std::move(utf8)));
+                }
+            }
+        }
+    }
+
+    if (languages.empty()) {
+        wchar_t language[LOCALE_NAME_MAX_LENGTH];
+        if (GetUserDefaultLocaleName(language, G_N_ELEMENTS(language))) {
+            std::string utf8;
+            if (ReadLanguageName(language, utf8)) {
+                languages.push_back(NormalizeLanguage(std::move(utf8)));
+            }
+        }
+    }
+    return languages;
+}
+
+void xemu_i18n_register_catalog(const char *language,
+                                const unsigned char *data, size_t size)
+{
+    if (!language || !data || size < 28) {
+        return;
+    }
+
+    const uint32_t magic = ReadU32(data, false);
+    const bool swapped = magic == 0xde120495;
+    if (magic != 0x950412de && !swapped) {
+        return;
+    }
+
+    const uint32_t count = ReadU32(data + 8, swapped);
+    const uint32_t originals = ReadU32(data + 12, swapped);
+    const uint32_t translations = ReadU32(data + 16, swapped);
+    if (count > (size - 28) / 8 || originals > size - count * 8 ||
+        translations > size - count * 8) {
+        return;
+    }
+
+    XemuCatalog catalog;
+    catalog.language = NormalizeLanguage(language);
+    catalog.messages.reserve(count);
+    for (uint32_t index = 0; index < count; ++index) {
+        const unsigned char *original = data + originals + index * 8;
+        const unsigned char *translation = data + translations + index * 8;
+        const uint32_t original_length = ReadU32(original, swapped);
+        const uint32_t original_offset = ReadU32(original + 4, swapped);
+        const uint32_t translation_length = ReadU32(translation, swapped);
+        const uint32_t translation_offset = ReadU32(translation + 4, swapped);
+        if (!original_length || !translation_length) {
+            continue;
+        }
+        if (original_offset >= size || original_length >= size - original_offset ||
+            translation_offset >= size ||
+            translation_length >= size - translation_offset ||
+            data[original_offset + original_length] != 0 ||
+            data[translation_offset + translation_length] != 0) {
+            return;
+        }
+
+        const char *original_text = reinterpret_cast<const char *>(data + original_offset);
+        const char *translation_text = reinterpret_cast<const char *>(data + translation_offset);
+        const char *original_end = static_cast<const char *>(
+            memchr(original_text, '\0', original_length));
+        const char *translation_end = static_cast<const char *>(
+            memchr(translation_text, '\0', translation_length));
+        const size_t singular_length = original_end
+            ? original_end - original_text : original_length;
+        const size_t translated_length = translation_end
+            ? translation_end - translation_text : translation_length;
+        if (singular_length && translated_length) {
+            catalog.messages.emplace(
+                std::string_view(original_text, singular_length),
+                std::string_view(translation_text, translated_length));
+        }
+    }
+    if (!catalog.messages.empty()) {
+        xemu_catalogs().push_back(std::move(catalog));
+    }
+}
+
+void xemu_i18n_select_catalog(void)
+{
+    xemu_i18n_register_embedded_catalogs();
+    const std::vector<std::string> languages = PreferredLanguages();
+    const std::vector<XemuCatalog> &catalogs = xemu_catalogs();
+
+    for (const std::string &language : languages) {
+        for (const XemuCatalog &catalog : catalogs) {
+            if (catalog.language == language) {
+                xemu_active_catalog = &catalog;
+                return;
+            }
+        }
+    }
+    for (const std::string &language : languages) {
+        std::string fallback = language;
+        while (!fallback.empty()) {
+            for (const XemuCatalog &catalog : catalogs) {
+                if (catalog.language == fallback) {
+                    xemu_active_catalog = &catalog;
+                    return;
+                }
+            }
+            const size_t separator = fallback.rfind('-');
+            if (separator == std::string::npos) {
+                break;
+            }
+            fallback.resize(separator);
+        }
+    }
 }
 
 const char *xemu_i18n_gettext(const char *message)
 {
-    if (!IsSwedishLocale() || xemu_sv_catalog_size < 28) {
-        return g_dgettext(GETTEXT_PACKAGE, message);
-    }
-
-    const uint32_t magic = ReadU32(xemu_sv_catalog, false);
-    const bool swapped = magic == 0xde120495;
-    if (magic != 0x950412de && !swapped) {
-        return g_dgettext(GETTEXT_PACKAGE, message);
-    }
-
-    const uint32_t count = ReadU32(xemu_sv_catalog + 8, swapped);
-    const uint32_t originals = ReadU32(xemu_sv_catalog + 12, swapped);
-    const uint32_t translations = ReadU32(xemu_sv_catalog + 16, swapped);
-    if (count > (xemu_sv_catalog_size - 28) / 8 ||
-        originals > xemu_sv_catalog_size - count * 8 ||
-        translations > xemu_sv_catalog_size - count * 8) {
-        return g_dgettext(GETTEXT_PACKAGE, message);
-    }
-
-    size_t first = 0;
-    size_t last = count;
-    const size_t message_length = strlen(message);
-    while (first < last) {
-        const size_t index = first + (last - first) / 2;
-        const unsigned char *original = xemu_sv_catalog + originals + index * 8;
-        const uint32_t length = ReadU32(original, swapped);
-        const uint32_t offset = ReadU32(original + 4, swapped);
-        if (offset > xemu_sv_catalog_size || length > xemu_sv_catalog_size - offset) {
-            return g_dgettext(GETTEXT_PACKAGE, message);
-        }
-
-        const size_t comparable = message_length < length ? message_length : length;
-        const int comparison = memcmp(message, xemu_sv_catalog + offset, comparable);
-        if (comparison == 0 && message_length == length) {
-            const unsigned char *translation = xemu_sv_catalog + translations + index * 8;
-            const uint32_t translation_length = ReadU32(translation, swapped);
-            const uint32_t translation_offset = ReadU32(translation + 4, swapped);
-            if (translation_offset <= xemu_sv_catalog_size &&
-                translation_length < xemu_sv_catalog_size - translation_offset) {
-                return reinterpret_cast<const char *>(xemu_sv_catalog + translation_offset);
-            }
-            return g_dgettext(GETTEXT_PACKAGE, message);
-        }
-        if (comparison < 0 || (comparison == 0 && message_length < length)) {
-            last = index;
-        } else {
-            first = index + 1;
+    if (xemu_active_catalog) {
+        const auto translation = xemu_active_catalog->messages.find(message);
+        if (translation != xemu_active_catalog->messages.end()) {
+            return translation->second.data();
         }
     }
-    return g_dgettext(GETTEXT_PACKAGE, message);
+    return message;
 }
 
 #endif
