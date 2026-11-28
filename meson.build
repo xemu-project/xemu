@@ -279,6 +279,13 @@ enable_modules = get_option('modules') \
            error_message: 'Modules are incompatible with static linking') \
   .allowed()
 
+freebsd_version_int = 0
+if host_os == 'freebsd'
+  freebsd_version_str = cc.get_define('__FreeBSD_version',
+                                     prefix: '#include <sys/param.h>')
+  freebsd_version_int = freebsd_version_str.to_int()
+endif
+
 #######################################
 # Variables for host and accelerators #
 #######################################
@@ -1711,7 +1718,7 @@ if sdl.found()
     sdl = declare_dependency(compile_args: '-Wno-undef',
                              dependencies: sdl.partial_dependency(compile_args: true, link_args: true, links: true, includes: true))
   endif
-  sdl_image = dependency('SDL3_image', required: get_option('sdl_image'),
+  sdl_image = dependency('SDL3_image', 'sdl3-image', required: get_option('sdl_image'),
                          method: 'pkg-config')
 else
   if get_option('sdl_image').enabled()
@@ -1893,6 +1900,8 @@ if not get_option('opengl').auto() or have_system or have_vhost_user_gpu
     opengl_libs=['-lopengl32', '-lgdi32']
   elif host_os == 'linux'
     opengl_libs=['-lGL']
+  elif host_os == 'freebsd'
+    opengl_libs=['-L/usr/local/lib', '-lGL']
   else
     error('Unknown GL platform')
   endif
@@ -2890,7 +2899,7 @@ config_host_data.set('CONFIG_ASAN_IFACE_FIBER', have_asan_fiber)
 have_inotify_init = cc.has_header_symbol('sys/inotify.h', 'inotify_init')
 have_inotify_init1 = cc.has_header_symbol('sys/inotify.h', 'inotify_init1')
 inotify = not_found
-if (have_inotify_init or have_inotify_init1) and host_os == 'freebsd'
+if (have_inotify_init or have_inotify_init1) and host_os == 'freebsd' and freebsd_version_int < 1500000
   # libinotify-kqueue
   inotify = cc.find_library('inotify')
   if have_inotify_init

@@ -28,7 +28,8 @@ multi = "multi"
 windows = "windows"
 macos = "darwin"
 linux = "linux"
-all_platforms = {windows, macos, linux}
+freebsd = "freebsd"
+all_platforms = {windows, macos, linux, freebsd}
 current_platform = linux
 
 versions = {}
@@ -107,7 +108,7 @@ class Lib:
                 .strip()
             )
             return self._version
-        elif current_platform == macos and self.pkg_mac:
+        elif current_platform in (macos, freebsd) and self.pkg_mac:
             self._version = versions[self.pkg_mac]
             return self._version
         elif current_platform == linux and self.pkg_ubuntu:
@@ -122,7 +123,6 @@ class Lib:
                 .strip()
             )
             return self._version
-
         assert False, "Failed to get version info for " + self.name
 
     @property
@@ -164,9 +164,10 @@ class PkgConfig:
     @property
     def modversion(self):
         pkg_config = {
+            freebsd: "pkg-config",
             linux: "pkg-config",
-            windows: "x86_64-w64-mingw32.static-pkg-config",
             macos: "pkg-config",
+            windows: "x86_64-w64-mingw32.static-pkg-config",
         }[current_platform]
         ver = subprocess.run(
             [pkg_config, "--modversion", self.name], capture_output=True, check=True
@@ -568,6 +569,8 @@ def main():
 
     if args.platform == "":
         args.platform = sys.platform.lower()
+    if args.platform.startswith(freebsd):
+        args.platform = "freebsd"
     global current_platform
     current_platform = args.platform
     if args.version_file != "":

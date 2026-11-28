@@ -4,6 +4,13 @@ set -e # exit if a command fails
 set -o pipefail # Will return the exit status of make if it fails
 set -o physical # Resolve symlinks when changing directory
 
+MAKE_CMD=""
+if command -v make >/dev/null 2>&1 && make --version 2>/dev/null | grep -q "GNU Make"; then
+    MAKE_CMD="make"
+elif command -v gmake >/dev/null 2>&1; then
+    MAKE_CMD="gmake"
+fi
+
 project_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 target_arch=$(uname -m)
@@ -199,6 +206,12 @@ case "$platform" in # Adjust compilation options based on platform
         opts="$opts --disable-werror"
         postbuild='package_linux'
         ;;
+    FreeBSD)
+        echo 'Compiling for FreeBSD...'
+        sys_cflags='-Wno-error=redundant-decls'
+        opts="$opts --disable-werror"
+        postbuild='package_linux'
+        ;;
     Darwin)
         echo "Compiling for MacOS for $target_arch..."
         if [ "$target_arch" == "arm64" ]; then
@@ -266,6 +279,6 @@ set -x # Print commands from now on
     ${opts} \
     "$@"
 
-time make -j"${job_count}" ${target} 2>&1 | tee build.log
+time "${MAKE_CMD}" -j"${job_count}" ${target} 2>&1 | tee build.log
 
 "${postbuild}" # call post build functions
