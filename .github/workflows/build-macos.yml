@@ -37,7 +37,8 @@ jobs:
         brew install \
           ccache \
           coreutils \
-          dylibbundler
+          dylibbundler \
+          gettext
         pip install pyyaml requests
     - name: Initialize compiler, library cache
       id: cache
@@ -58,10 +59,12 @@ jobs:
       run: |
         if [[ "${{ matrix.configuration }}" == "debug" ]]; then
           opts=(
+            --enable-gettext
             --debug
           )
         else
           opts=(
+            --enable-gettext
             -Db_lto=true
             -Db_lto_mode=thin
             -Db_thinlto_cache=true

@@ -17,6 +17,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "ui/xemu-notifications.h"
+#include "i18n.hh"
 #include "common.hh"
 #include "main-menu.hh"
 #include "menubar.hh"
@@ -91,7 +92,7 @@ void ShowMainMenu()
 
     if (ImGui::BeginMainMenuBar())
     {
-        if (ImGui::BeginMenu("Machine"))
+        if (ImGui::BeginMenu(_("Machine")))
         {
             if (ImGui::MenuItem(running ? "Pause" : "Resume", SHORTCUT_MENU_TEXT(P))) ActionTogglePause();
             if (ImGui::MenuItem("Screenshot", "F12")) ActionScreenshot();
@@ -154,7 +155,7 @@ void ShowMainMenu()
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("View"))
+        if (ImGui::BeginMenu(_("View")))
         {
             int ui_scale_idx;
             if (g_config.display.ui.auto_scale) {
@@ -216,7 +217,7 @@ void ShowMainMenu()
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Debug"))
+        if (ImGui::BeginMenu(_("Debug")))
         {
             ImGui::MenuItem("Monitor", "~", &monitor_window.is_open);
             ImGui::MenuItem("Audio", NULL, &apu_window.m_is_open);
@@ -229,7 +230,7 @@ void ShowMainMenu()
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Help"))
+        if (ImGui::BeginMenu(_("Help")))
         {
             if (ImGui::MenuItem("Help", NULL)) {
                 SDL_OpenURL("https://xemu.app/docs/getting-started/");

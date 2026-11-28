@@ -58,10 +58,12 @@ jobs:
       run: |
         if [[ "${{ matrix.configuration }}" == "debug" ]]; then
           opts=(
+            --enable-gettext
             --debug
           )
         elif [[ "${{ matrix.arch }}" == "x86_64" ]]; then
           opts=(
+            --enable-gettext
             --extra-cflags="-flto-incremental=${LTO_CACHE_DIR} -flto-partition=cache"
             -Db_lto=true
             -Dx86_version=3
@@ -72,7 +74,7 @@ jobs:
           #        being intentionaly undefined (to ensure 'unreachable' paths are
           #        optimized out). Regular LTO doesn't pass cv2pdb. Resolve linking
           #        failure and have llvm toolchain generate PDB directly.
-          opts=()
+          opts=(--enable-gettext)
         fi
         echo "XEMU_BUILD_OPTIONS=${opts[*]}" >> "$GITHUB_ENV"
     - name: Compile

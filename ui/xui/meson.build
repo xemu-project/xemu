@@ -26,5 +26,5 @@ xemu_ss.add(files(
 xemu_ss.add([curl, files('github-issue.cc')])
 
 if host_os == 'windows'
-  xemu_ss.add(files('update.cc', 'win32-dxgi-present.cc'))
+  xemu_ss.add(files('i18n.cc', 'update.cc', 'win32-dxgi-present.cc'))
 endif

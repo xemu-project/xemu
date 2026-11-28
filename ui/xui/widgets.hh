@@ -46,6 +46,17 @@ void PrepareComboTitleDescription(const char *label, const char *description,
 bool ChevronCombo(const char *label, int *current_item,
                   bool (*items_getter)(void *, int, const char **), void *data,
                   int items_count, const char *description = NULL);
+template <size_t N>
+bool ChevronCombo(const char *label, int *current_item,
+                  const char *const (&items)[N], const char *description = NULL)
+{
+    auto getter = [](void *data, int index, const char **text) {
+        *text = static_cast<const char *const *>(data)[index];
+        return true;
+    };
+    return ChevronCombo(label, current_item, getter,
+                        const_cast<const char **>(items), N, description);
+}
 bool ChevronCombo(const char* label, int* current_item, const char* items_separated_by_zeros, const char *description = NULL);
 void Hyperlink(const char *text, const char *url);
 void HelpMarker(const char* desc);
