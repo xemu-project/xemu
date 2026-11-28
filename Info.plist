@@ -32,5 +32,7 @@
   <true/>
   <key>NSMicrophoneUsageDescription</key>
   <string>Microphone used for peripheral emulation, e.g. Xbox Live Communicator.</string>
+  <key>SDL_FILESYSTEM_BASE_DIR_TYPE</key>
+  <string>parent</string>
 </dict>
 </plist>
