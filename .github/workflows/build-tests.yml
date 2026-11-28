@@ -28,3 +28,6 @@ jobs:
     - name: Run unit tests
       working-directory: src
       run: make -j$(nproc) check-unit
+    - name: Run Xbox tests
+      working-directory: src
+      run: make -j$(nproc) check-xbox
